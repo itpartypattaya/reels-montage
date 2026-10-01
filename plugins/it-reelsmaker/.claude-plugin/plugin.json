@@ -3,11 +3,28 @@
   "displayName": "IT Reelsmaker",
   "version": "1.0.0",
   "description": "Edit vertical short videos (Reels, Shorts, TikTok) from talking-head footage in Claude Code: cut pauses and retakes by audio, virtual camera and on-brand motion graphics in Remotion, word-timed subtitles, face-aware layout, loudness mastering and a 1080×1920 render. Runs locally with ffmpeg, Node.js and Python.",
-  "author": { "name": "IT Party Pattaya", "email": "mr.a.vaskov@gmail.com", "url": "https://github.com/itpartypattaya" },
+  "author": {
+    "name": "IT Party Pattaya",
+    "email": "mr.a.vaskov@gmail.com",
+    "url": "https://github.com/itpartypattaya"
+  },
   "homepage": "https://github.com/itpartypattaya/reels-montage/tree/main/plugins/it-reelsmaker",
   "repository": "https://github.com/itpartypattaya/reels-montage",
+  "documentationUrl": "https://github.com/itpartypattaya/reels-montage/blob/main/plugins/it-reelsmaker/README.md",
+  "privacyPolicyUrl": "https://github.com/itpartypattaya/reels-montage/blob/main/plugins/it-reelsmaker/PRIVACY.md",
+  "supportUrl": "https://github.com/itpartypattaya/reels-montage/issues",
+  "termsOfServiceUrl": "https://github.com/itpartypattaya/reels-montage/blob/main/plugins/it-reelsmaker/LICENSE",
   "license": "MIT",
-  "keywords": ["video", "video-editing", "short-video", "reels", "shorts", "subtitles", "remotion", "ffmpeg"],
+  "keywords": [
+    "video",
+    "video-editing",
+    "short-video",
+    "reels",
+    "shorts",
+    "subtitles",
+    "remotion",
+    "ffmpeg"
+  ],
   "userConfig": {
     "project_root": {
       "type": "directory",
