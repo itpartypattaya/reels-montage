@@ -11,7 +11,7 @@ The core plugin works without this add-on. Install the add-on only if you want t
 ## Install
 
 ```bash
-claude plugin marketplace add itpartypattaya/reels-montage
+claude plugin marketplace add https://github.com/itpartypattaya/reels-montage.git
 ```
 
 ```bash

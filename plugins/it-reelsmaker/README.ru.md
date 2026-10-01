@@ -71,7 +71,7 @@
 ## 📦 Установка
 
 ```bash
-claude plugin marketplace add itpartypattaya/reels-montage
+claude plugin marketplace add https://github.com/itpartypattaya/reels-montage.git
 ```
 
 ```bash
