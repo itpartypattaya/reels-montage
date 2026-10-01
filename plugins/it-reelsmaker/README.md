@@ -95,7 +95,7 @@ More online sources are available through the online-sources add-on `it-reelsmak
 
 ## Support
 
-Questions, bugs and security reports: [GitHub Issues](https://github.com/itpartypattaya/reels-montage/issues).
+Questions, bugs and security reports: [GitHub Issues](https://github.com/itpartypattaya/reels-montage/issues) or mr.a.vaskov@gmail.com.
 
 ## License
 

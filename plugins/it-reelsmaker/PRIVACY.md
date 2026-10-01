@@ -1,6 +1,6 @@
 # Privacy policy — IT Reelsmaker
 
-Effective date: 2 October 2026. Maintainer: IT Party Pattaya, https://github.com/itpartypattaya. Contact: [GitHub Issues](https://github.com/itpartypattaya/reels-montage/issues).
+Effective date: 2 October 2026. Maintainer: IT Party Pattaya, https://github.com/itpartypattaya. Contact: mr.a.vaskov@gmail.com or [GitHub Issues](https://github.com/itpartypattaya/reels-montage/issues).
 
 ## What the plugin collects
 

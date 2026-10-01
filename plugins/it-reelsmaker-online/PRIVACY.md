@@ -1,6 +1,6 @@
 # Privacy policy — IT Reelsmaker Online
 
-Effective date: 2 October 2026. Maintainer: IT Party Pattaya, https://github.com/itpartypattaya. Contact: [GitHub Issues](https://github.com/itpartypattaya/reels-montage/issues).
+Effective date: 2 October 2026. Maintainer: IT Party Pattaya, https://github.com/itpartypattaya. Contact: mr.a.vaskov@gmail.com or [GitHub Issues](https://github.com/itpartypattaya/reels-montage/issues).
 
 The add-on collects nothing. It has no server and no telemetry, and the maintainer receives no data from it. The core plugin's [privacy policy](../it-reelsmaker/PRIVACY.md) applies to everything else.
 

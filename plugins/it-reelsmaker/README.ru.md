@@ -126,7 +126,7 @@ it-reelsmaker/
 
 ## Поддержка
 
-Вопросы и ошибки — [GitHub Issues](https://github.com/itpartypattaya/reels-montage/issues).
+Вопросы и ошибки — [GitHub Issues](https://github.com/itpartypattaya/reels-montage/issues) или mr.a.vaskov@gmail.com.
 
 ## Лицензия
 

@@ -54,7 +54,7 @@ Photorealistic AI inserts need the “AI info” label when you publish on Insta
 
 ## Support
 
-[GitHub Issues](https://github.com/itpartypattaya/reels-montage/issues).
+[GitHub Issues](https://github.com/itpartypattaya/reels-montage/issues) or mr.a.vaskov@gmail.com.
 
 ## License
 
