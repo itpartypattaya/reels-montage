@@ -1,4 +1,8 @@
-# Профили реальных брендов (логотипы, контакты, правила клиентов) — только локально. В репозитории — шаблон и README.
-brands/*
-!brands/README.md
-!brands/_template/
+# OS junk files (the plugin directory rejects them)
+.DS_Store
+Thumbs.db
+desktop.ini
+__MACOSX/
+
+# Brand profiles live in your editing project (<project>/brands/), never in this repository
+brands/

@@ -1,0 +1,52 @@
+{
+ "_comment": "Brand profile template. Copy this folder to <PROJECT_ROOT>/brands/<slug>/ and fill it in. Only name and colors.primary/accent are required; the agent infers the rest itself (references/brands.md). Paths are relative to the brand folder (assets/…) or to the project.",
+ "schema": 1,
+ "slug": "<slug>",
+ "name": "⟨YOURS: brand name⟩",
+ "description": "⟨YOURS: what the brand does, who the videos are for⟩",
+ "language": "⟨YOURS: brand language code, for example en, ru or th⟩",
+ "voice": "⟨YOURS: the brand voice in 1–2 lines, for example “calm expertise, specifics instead of promises”⟩",
+ "tagline": "",
+ "colors": {
+  "primary": "#111418",
+  "accent": "#FFCC00",
+  "light": "#FFFFFF",
+  "text_on_primary": "#FFFFFF",
+  "text_on_accent": "#111418",
+  "extra": {
+   "muted": "#6F849B",
+   "marker": "#F5FAA4",
+   "ink": "#111111"
+  }
+ },
+ "fonts": {
+  "heading": {"family": "Manrope", "weights": [600, 800], "source": "google"},
+  "body": {"family": "Inter", "weights": [500, 600, 700, 800], "source": "google"},
+  "serif": null
+ },
+ "logos": {
+  "on_dark": "assets/⟨logo for a dark background and over video⟩.png",
+  "on_light": "assets/⟨logo for a light background⟩.png",
+  "mark_on_dark": "assets/⟨compact mark for the frame corner⟩.png",
+  "mark_on_light": null
+ },
+ "lut": {"hald": null, "cube": null, "strength": 0.7},
+ "rules": "rules.md",
+ "styles": {"default": "marker", "allowed": ["marker", "brand", "minimal", "editorial", "bold", "glass"]},
+ "subtitles_default": "accent",
+ "motion": "calm",
+ "forbidden_imagery": ["⟨YOURS: imagery not allowed in the frame, in the brand's language⟩"],
+ "forbidden_imagery_en": ["⟨the same in English, for English-language searches and prompts⟩"],
+ "forbidden_words": ["⟨YOURS: promises and clichés that are not allowed⟩"],
+ "cta": {"site": "⟨website⟩", "handle": "⟨handle in a messenger / DMs⟩", "code_word": null},
+ "approver": "⟨YOURS: who gives the “yes” to publish⟩",
+ "account": "business",
+ "music_policy": "do not burn in without a commercial license; pick the track in the app when publishing",
+ "memes_policy": "strict",
+ "meme_size": "m",
+ "inserts": {},
+ "unverified": [],
+ "created": null,
+ "updated": null,
+ "last_used": null
+}

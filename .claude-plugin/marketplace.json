@@ -1,0 +1,17 @@
+{
+  "name": "itparty",
+  "description": "Video editing plugins for Claude Code by IT Party Pattaya: vertical short videos from talking-head footage, plus an optional add-on for online stock, memes and AI video generation.",
+  "owner": { "name": "IT Party Pattaya", "url": "https://github.com/itpartypattaya" },
+  "plugins": [
+    {
+      "name": "it-reelsmaker",
+      "source": "./plugins/it-reelsmaker",
+      "category": "media"
+    },
+    {
+      "name": "it-reelsmaker-online",
+      "source": "./plugins/it-reelsmaker-online",
+      "category": "media"
+    }
+  ]
+}
