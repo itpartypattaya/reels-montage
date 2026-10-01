@@ -1,4 +1,4 @@
-![IT Reelsmaker](docs/banner.png)
+![IT Reelsmaker](https://raw.githubusercontent.com/itpartypattaya/reels-montage/main/docs/img/banner.jpg)
 
 # IT Reelsmaker
 
@@ -8,7 +8,7 @@ The plugin is a skill built on real client videos: the thresholds and numbers in
 
 ## How it works
 
-![The IT Reelsmaker pipeline, from a raw recording to a master](docs/pipeline.png)
+![The IT Reelsmaker pipeline, from a raw recording to a master](https://raw.githubusercontent.com/itpartypattaya/reels-montage/main/docs/img/pipeline.png)
 
 1. **Brand, style and inserts first.** Pick a saved brand profile (colors, fonts, logos, design rules) or create one from a name and 1–3 colors. Choose one of six styles and the subtitle mode.
 2. **Word-level transcript**, then a search for retakes and slips.
@@ -19,9 +19,9 @@ The plugin is a skill built on real client videos: the thresholds and numbers in
 7. **Remotion**: virtual camera, graphics on their spoken words, subtitles, render, and an audit of faces against text in the final file.
 8. **Mastering** with an acceptance check, then a report in numbers: duration, remaining silence, loudness and peak, cuts and retakes removed.
 
-![Cutting by the sound: speech mask, edges and pause compression](docs/speech-mask.png)
+![Cutting by the sound: speech mask, edges and pause compression](https://raw.githubusercontent.com/itpartypattaya/reels-montage/main/docs/img/speech-mask.png)
 
-![Face-aware layout: free zones, subtitle band and false-face filter](docs/face-layout.png)
+![Face-aware layout: free zones, subtitle band and false-face filter](https://raw.githubusercontent.com/itpartypattaya/reels-montage/main/docs/img/face-layout.png)
 
 ## Requirements
 

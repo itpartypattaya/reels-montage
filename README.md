@@ -1,4 +1,4 @@
-![IT Reelsmaker](plugins/it-reelsmaker/docs/banner.png)
+![IT Reelsmaker](docs/img/banner.jpg)
 
 # IT Reelsmaker — Claude Code plugins for vertical video
 

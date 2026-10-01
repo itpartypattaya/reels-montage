@@ -1,4 +1,4 @@
-![IT Reelsmaker](docs/banner.png)
+![IT Reelsmaker](https://raw.githubusercontent.com/itpartypattaya/reels-montage/main/docs/img/banner.jpg)
 
 # IT Reelsmaker — плагин Claude Code для монтажа вертикальных роликов
 
@@ -8,7 +8,7 @@
 
 ## ⚙️ Как работает
 
-![Конвейер IT Reelsmaker](docs/pipeline.png)
+![Конвейер IT Reelsmaker](https://raw.githubusercontent.com/itpartypattaya/reels-montage/main/docs/img/pipeline.png)
 
 1. **Бренд, стиль и вставки первым вопросом.** Бренд — из сохранённых или новый из названия и цветов. Стилей шесть: плашка-маркер, фирменный, минимализм, Editorial, дерзко, стекло. Вставки (B-roll, сцены кодом, мемы) включаются по желанию, интенсивность по умолчанию умеренная.
 2. **Расшифровка по словам** и поиск дублей и оговорок.
@@ -39,9 +39,9 @@
 - **Фраза — один блок.** Подводка и крупное слово, заголовок и подпись стоят вплотную (15–25 px по видимым краям, а не по рамкам строк), на общей оси и двигаются вместе. Предлоги, «не» и числа не висят в конце строки.
 - **Мемы с правилами.** Мемы ищутся по смыслу реплики в своей разметке. Права проверяются: чужие GIF и мемы без лицензии вшивать нельзя, CC — с атрибуцией. Мем — не больше 460 px по длинной стороне, у края кадра, на стороне, противоположной лицу, не на субтитрах и не на плашках.
 
-![Нарезка по маске речи](docs/speech-mask.png)
+![Нарезка по маске речи](https://raw.githubusercontent.com/itpartypattaya/reels-montage/main/docs/img/speech-mask.png)
 
-![Раскладка по замеру лиц](docs/face-layout.png)
+![Раскладка по замеру лиц](https://raw.githubusercontent.com/itpartypattaya/reels-montage/main/docs/img/face-layout.png)
 
 ## ✨ Приёмы по брифу
 
