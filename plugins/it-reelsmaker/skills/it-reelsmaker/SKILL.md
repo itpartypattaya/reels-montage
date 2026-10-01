@@ -319,7 +319,7 @@ The camera is `{ z, cx, cy }`: the scale and the frame point that ends up in the
 const at = (src: number, file?: string, seg?: number) => {
   const pool = SEGS.filter((g) => (file === undefined || g.src === file) && (seg === undefined || g.i === seg));
   const hit = pool.filter((g) => src >= g.src_start - 0.001 && src <= g.src_end + 0.001);
-  if (!hit.length) throw new Error(`at(${src}): this second was cut out, or wrong source file`);
+  if (hit.length === 0) throw new Error(`at(${src}): this second was cut out, or wrong source file`);
   if (hit.length > 1) throw new Error(`at(${src}): this second is in several segments — pass seg`);
   const s = hit[0];
   return s.out_start + Math.max(0, src - s.src_start) * (s.out_dur / (s.src_end - s.src_start));
