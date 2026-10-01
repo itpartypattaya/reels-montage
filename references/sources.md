@@ -83,7 +83,7 @@
 | Imgflip / memegen.link | генераторы подписей на чужих шаблонах | нет: шаблоны — чужие кадры |
 | Know Your Meme, Reddit, 9GAG | API нет или коммерция по договору | нет |
 
-**Openverse:** `GET https://api.openverse.org/v1/images/?q=…&license_type=commercial&page_size=20` → `results[].{id,title,url,foreign_landing_url,creator,license,license_version,attribution,width,height}`.
+**Openverse:** лицензию проверять по **подробной карточке** картинки перед скачиванием — брать только CC0, PDM, CC BY, CC BY-SA (NC и ND — отказ); сохранять код и версию лицензии, ссылку, автора и атрибуцию. Поиск: `GET https://api.openverse.org/v1/images/?q=…&license_type=commercial&page_size=20` → `results[].{id,title,url,foreign_landing_url,creator,license,license_version,attribution,width,height}`.
 
 **Instagram.** Редактор Reels даёт GIF-стикеры GIPHY. Это легальный способ поставить чужой GIF. Можно ли продвигать такой ролик как рекламу — источники противоречат друг другу, проверить в приложении.
 
