@@ -1,0 +1,5 @@
+Wide cinematic banner illustration for a developer tool that edits vertical short videos (talking-head Reels/Shorts) automatically.
+Composition: dark slate background (#111418) with a subtle grid. Right half: a tall vertical 9:16 video frame with rounded corners and a thin golden-yellow (#FFCC00) outline, showing a softly lit person speaking to camera (stylized, faceless silhouette, not photoreal, no recognizable face), two short white subtitle bars near the bottom of the frame, and a thin dashed rectangle around the head (face detection). Behind and to the left of the frame: a horizontal editing timeline with an audio waveform, clean cut marks where pauses were removed, and small yellow keyframe diamonds.
+The left 45% of the image stays calm and mostly empty dark space for a title that will be added later.
+Style: modern flat vector with soft glow, minimal, premium, high contrast, yellow and white accents on dark, no gradients overload.
+Strictly no text, no letters, no numbers, no logos, no watermarks, no brand names, no UI from real apps.

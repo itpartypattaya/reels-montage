@@ -1,0 +1,125 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 430">
+  <style>
+    text { font-family: 'JetBrains Mono', 'SF Mono', 'Cascadia Code', Consolas, monospace; }
+    .t { fill: #fff; font-size: 12px; font-weight: 600; }
+    .s { fill: #94a3b8; font-size: 9.5px; }
+    .n { fill: #64748b; font-size: 9px; font-weight: 700; }
+    .gate { fill: #fbbf24; font-size: 8.5px; font-weight: 700; letter-spacing: 0.8px; }
+  </style>
+  <defs>
+    <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+      <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#1e293b" stroke-width="0.5"/>
+    </pattern>
+    <marker id="a" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#64748b"/>
+    </marker>
+  </defs>
+  <rect width="100%" height="100%" fill="#0f172a"/>
+  <rect width="100%" height="100%" fill="url(#grid)"/>
+
+  <!-- title -->
+  <text x="30" y="42" fill="#fff" font-size="16" font-weight="700">How IT Reelsmaker edits a video</text>
+  <text x="30" y="62" class="s">From a raw recording to a 1080×1920 master. Nothing is cut or rendered before your approval.</text>
+
+  <!-- arrows row 1 (left to right), boxes x = 226 + i*196, w 160, y 100..170 -->
+  <line x1="386" y1="135" x2="420" y2="135" stroke="#64748b" stroke-width="1.5" marker-end="url(#a)"/>
+  <line x1="582" y1="135" x2="616" y2="135" stroke="#64748b" stroke-width="1.5" marker-end="url(#a)"/>
+  <line x1="778" y1="135" x2="812" y2="135" stroke="#64748b" stroke-width="1.5" marker-end="url(#a)"/>
+  <line x1="974" y1="135" x2="1008" y2="135" stroke="#64748b" stroke-width="1.5" marker-end="url(#a)"/>
+  <!-- down -->
+  <line x1="1090" y1="170" x2="1090" y2="246" stroke="#64748b" stroke-width="1.5" marker-end="url(#a)"/>
+  <!-- arrows row 2 (right to left), y 250..320 -->
+  <line x1="1010" y1="285" x2="976" y2="285" stroke="#64748b" stroke-width="1.5" marker-end="url(#a)"/>
+  <line x1="814" y1="285" x2="780" y2="285" stroke="#64748b" stroke-width="1.5" marker-end="url(#a)"/>
+  <line x1="618" y1="285" x2="584" y2="285" stroke="#64748b" stroke-width="1.5" marker-end="url(#a)"/>
+  <line x1="422" y1="285" x2="388" y2="285" stroke="#64748b" stroke-width="1.5" marker-end="url(#a)"/>
+  <line x1="226" y1="285" x2="192" y2="285" stroke="#64748b" stroke-width="1.5" marker-end="url(#a)"/>
+  <!-- input arrow -->
+  <line x1="120" y1="135" x2="222" y2="135" stroke="#64748b" stroke-width="1.5" stroke-dasharray="4,3" marker-end="url(#a)"/>
+  <text x="30" y="131" fill="#fff" font-size="11" font-weight="600">IMG_xxxx.MOV</text>
+  <text x="30" y="146" class="s">talking head,</text>
+  <text x="30" y="158" class="s">skit or Zoom call</text>
+
+  <!-- row 1 -->
+  <rect x="226" y="100" width="160" height="70" rx="6" fill="rgba(8,51,68,0.4)" stroke="#22d3ee" stroke-width="1.5"/>
+  <text x="236" y="114" class="n">1</text>
+  <text x="306" y="130" class="t" text-anchor="middle">Transcript</text>
+  <text x="306" y="146" class="s" text-anchor="middle">word timings, local</text>
+  <text x="306" y="159" class="s" text-anchor="middle">faster-whisper</text>
+
+  <rect x="422" y="100" width="160" height="70" rx="6" fill="rgba(59,130,246,0.3)" stroke="#60a5fa" stroke-width="1.5"/>
+  <text x="432" y="114" class="n">2</text>
+  <text x="502" y="130" class="t" text-anchor="middle">Cut plan</text>
+  <text x="502" y="146" class="s" text-anchor="middle">retakes, slips, pacing,</text>
+  <text x="502" y="159" class="s" text-anchor="middle">what is dropped and why</text>
+  <rect x="452" y="174" width="100" height="16" rx="8" fill="rgba(120,53,15,0.5)" stroke="#fbbf24" stroke-width="1"/>
+  <text x="502" y="185" class="gate" text-anchor="middle">YOU APPROVE</text>
+
+  <rect x="618" y="100" width="160" height="70" rx="6" fill="rgba(6,78,59,0.4)" stroke="#34d399" stroke-width="1.5"/>
+  <text x="628" y="114" class="n">3</text>
+  <text x="698" y="130" class="t" text-anchor="middle">Rough cut</text>
+  <text x="698" y="146" class="s" text-anchor="middle">ffmpeg, edges from</text>
+  <text x="698" y="159" class="s" text-anchor="middle">the speech mask</text>
+
+  <rect x="814" y="100" width="160" height="70" rx="6" fill="rgba(76,29,149,0.4)" stroke="#a78bfa" stroke-width="1.5"/>
+  <text x="824" y="114" class="n">4</text>
+  <text x="894" y="130" class="t" text-anchor="middle">Face measurement</text>
+  <text x="894" y="146" class="s" text-anchor="middle">YuNet every 0.25 s,</text>
+  <text x="894" y="159" class="s" text-anchor="middle">false faces filtered</text>
+
+  <rect x="1010" y="100" width="160" height="70" rx="6" fill="rgba(8,51,68,0.4)" stroke="#22d3ee" stroke-width="1.5"/>
+  <text x="1020" y="114" class="n">5</text>
+  <text x="1090" y="130" class="t" text-anchor="middle">Graphics brief</text>
+  <text x="1090" y="146" class="s" text-anchor="middle">logo, CTA, hook,</text>
+  <text x="1090" y="159" class="s" text-anchor="middle">techniques, sound</text>
+
+  <!-- row 2 -->
+  <rect x="1010" y="250" width="160" height="70" rx="6" fill="rgba(59,130,246,0.3)" stroke="#60a5fa" stroke-width="1.5"/>
+  <text x="1020" y="264" class="n">6</text>
+  <text x="1090" y="280" class="t" text-anchor="middle">Visual plan</text>
+  <text x="1090" y="296" class="s" text-anchor="middle">B-roll, code scenes,</text>
+  <text x="1090" y="309" class="s" text-anchor="middle">memes, each with a why</text>
+  <rect x="1040" y="324" width="100" height="16" rx="8" fill="rgba(120,53,15,0.5)" stroke="#fbbf24" stroke-width="1"/>
+  <text x="1090" y="335" class="gate" text-anchor="middle">YOU APPROVE</text>
+
+  <rect x="814" y="250" width="160" height="70" rx="6" fill="rgba(6,78,59,0.4)" stroke="#34d399" stroke-width="1.5"/>
+  <text x="824" y="264" class="n">7</text>
+  <text x="894" y="280" class="t" text-anchor="middle">Remotion</text>
+  <text x="894" y="296" class="s" text-anchor="middle">virtual camera, brand</text>
+  <text x="894" y="309" class="s" text-anchor="middle">graphics, subtitles</text>
+
+  <rect x="618" y="250" width="160" height="70" rx="6" fill="rgba(136,19,55,0.4)" stroke="#fb7185" stroke-width="1.5"/>
+  <text x="628" y="264" class="n">8</text>
+  <text x="698" y="280" class="t" text-anchor="middle">Render audit</text>
+  <text x="698" y="296" class="s" text-anchor="middle">no text on a face,</text>
+  <text x="698" y="309" class="s" text-anchor="middle">safe zones, stills</text>
+
+  <rect x="422" y="250" width="160" height="70" rx="6" fill="rgba(120,53,15,0.3)" stroke="#fbbf24" stroke-width="1.5"/>
+  <text x="432" y="264" class="n">9</text>
+  <text x="502" y="280" class="t" text-anchor="middle">Mastering</text>
+  <text x="502" y="296" class="s" text-anchor="middle">−14 LUFS, peak −1 dBFS,</text>
+  <text x="502" y="309" class="s" text-anchor="middle">acceptance check</text>
+
+  <rect x="226" y="250" width="160" height="70" rx="6" fill="rgba(30,41,59,0.5)" stroke="#94a3b8" stroke-width="1.5"/>
+  <text x="236" y="264" class="n">10</text>
+  <text x="306" y="280" class="t" text-anchor="middle">Report</text>
+  <text x="306" y="296" class="s" text-anchor="middle">in numbers: length,</text>
+  <text x="306" y="309" class="s" text-anchor="middle">silence, loudness</text>
+
+  <!-- output -->
+  <rect x="30" y="250" width="160" height="70" rx="6" fill="rgba(120,53,15,0.3)" stroke="#fbbf24" stroke-width="2"/>
+  <text x="110" y="280" class="t" text-anchor="middle">master.mp4</text>
+  <text x="110" y="296" class="s" text-anchor="middle">1080×1920, 30 fps</text>
+  <text x="110" y="309" class="s" text-anchor="middle">ready to post</text>
+
+  <!-- legend -->
+  <g transform="translate(30,370)">
+    <rect x="0" y="0" width="12" height="12" rx="2" fill="rgba(59,130,246,0.3)" stroke="#60a5fa"/>
+    <text x="18" y="10" class="s">plan shown to you before anything changes</text>
+    <rect x="330" y="0" width="12" height="12" rx="2" fill="rgba(6,78,59,0.4)" stroke="#34d399"/>
+    <text x="348" y="10" class="s">runs locally (ffmpeg, Remotion, Python)</text>
+    <rect x="640" y="0" width="12" height="12" rx="2" fill="rgba(136,19,55,0.4)" stroke="#fb7185"/>
+    <text x="658" y="10" class="s">automatic check, fails loudly</text>
+    <text x="0" y="34" class="s">Brand profile (colors, fonts, logos, rules) is read at step 0 and used by every graphic.</text>
+  </g>
+</svg>

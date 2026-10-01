@@ -1,0 +1,109 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 640">
+  <style>
+    text { font-family: 'JetBrains Mono', 'SF Mono', 'Cascadia Code', Consolas, monospace; }
+    .s { fill: #94a3b8; font-size: 10px; }
+    .l { fill: #fff; font-size: 11px; font-weight: 600; }
+    .z { font-size: 8.5px; font-weight: 700; letter-spacing: 0.5px; }
+  </style>
+  <defs>
+    <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+      <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#1e293b" stroke-width="0.5"/>
+    </pattern>
+    <pattern id="hatch" width="8" height="8" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+      <line x1="0" y1="0" x2="0" y2="8" stroke="#fb7185" stroke-width="1.2" opacity="0.45"/>
+    </pattern>
+    <marker id="a" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+      <polygon points="0 0, 8 3, 0 6" fill="#64748b"/>
+    </marker>
+  </defs>
+  <rect width="100%" height="100%" fill="#0f172a"/>
+  <rect width="100%" height="100%" fill="url(#grid)"/>
+
+  <text x="30" y="42" fill="#fff" font-size="16" font-weight="700">Text never lands on a face</text>
+  <text x="30" y="62" class="s">Faces are measured by a model every 0.25 s; zones for the hook, cards and subtitles come from those numbers, not from guesswork.</text>
+
+  <!-- ===== Frame 1: medium shot (1080×1920 at 0.25) ===== -->
+  <g transform="translate(60,100)">
+    <text x="0" y="-12" class="l">Medium shot</text>
+    <rect x="0" y="0" width="270" height="480" rx="10" fill="#111827" stroke="#475569" stroke-width="1.5"/>
+    <!-- person -->
+    <path d="M 40 480 C 45 360 80 300 135 292 C 190 300 225 360 230 480 Z" fill="#334155"/>
+    <ellipse cx="135" cy="195" rx="40" ry="54" fill="#475569"/>
+    <!-- UI zones -->
+    <rect x="0" y="0" width="270" height="55" rx="10" fill="url(#hatch)"/>
+    <rect x="0" y="375" width="270" height="105" rx="10" fill="url(#hatch)"/>
+    <rect x="240" y="55" width="30" height="320" fill="url(#hatch)"/>
+    <!-- headroom -->
+    <rect x="12" y="63" width="220" height="62" rx="4" fill="rgba(6,78,59,0.45)" stroke="#34d399" stroke-width="1"/>
+    <text x="122" y="90" class="z" fill="#34d399" text-anchor="middle">HEADROOM</text>
+    <text x="122" y="104" class="s" font-size="8.5" text-anchor="middle">hook, cards</text>
+    <!-- face box + margin -->
+    <rect x="80" y="125" width="110" height="140" rx="3" fill="none" stroke="#a78bfa" stroke-width="1" stroke-dasharray="4,3"/>
+    <rect x="95" y="140" width="80" height="110" rx="3" fill="none" stroke="#a78bfa" stroke-width="1.8"/>
+    <!-- chest -->
+    <rect x="12" y="266" width="220" height="40" rx="4" fill="rgba(8,51,68,0.55)" stroke="#22d3ee" stroke-width="1"/>
+    <text x="122" y="290" class="z" fill="#22d3ee" text-anchor="middle">CHEST · chips, cards</text>
+    <!-- subtitles -->
+    <rect x="22" y="312" width="200" height="35" rx="5" fill="rgba(120,53,15,0.55)" stroke="#fbbf24" stroke-width="1.2"/>
+    <text x="122" y="334" class="z" fill="#fbbf24" text-anchor="middle">SUBTITLES</text>
+    <text x="135" y="432" class="z" fill="#fb7185" text-anchor="middle">APP UI · nothing important</text>
+    <text x="135" y="33" class="z" fill="#fb7185" text-anchor="middle">APP UI</text>
+  </g>
+  <!-- leader labels frame 1 -->
+  <g>
+    <line x1="344" y1="192" x2="254" y2="232" stroke="#64748b" marker-end="url(#a)"/>
+    <text x="350" y="186" class="l">face box + 60 px</text>
+    <text x="350" y="200" class="s">no text inside, ever</text>
+    <line x1="296" y1="433" x2="355" y2="433" stroke="#64748b"/>
+    <text x="360" y="420" class="l">subtitle top = chin + 30</text>
+    <text x="360" y="434" class="s">kept within y 1250–1390 and</text>
+    <text x="360" y="447" class="s">recomputed for every camera zoom:</text>
+    <text x="360" y="460" class="s">screen = (x − cx)·z + 540</text>
+    <line x1="296" y1="185" x2="345" y2="185" stroke="#64748b" stroke-dasharray="2,2" opacity="0"/>
+  </g>
+
+  <!-- ===== Frame 2: seated, false face ===== -->
+  <g transform="translate(620,100)">
+    <text x="0" y="-12" class="l">Seated: a false “face” on the knees</text>
+    <rect x="0" y="0" width="270" height="480" rx="10" fill="#111827" stroke="#475569" stroke-width="1.5"/>
+    <!-- seated person -->
+    <path d="M 60 330 C 62 260 90 230 135 225 C 180 230 208 260 210 330 Z" fill="#334155"/>
+    <ellipse cx="135" cy="165" rx="34" ry="46" fill="#475569"/>
+    <path d="M 55 330 L 215 330 L 230 380 L 40 380 Z" fill="#3b4a5e"/>
+    <ellipse cx="95" cy="352" rx="38" ry="22" fill="#475569"/>
+    <ellipse cx="175" cy="352" rx="38" ry="22" fill="#475569"/>
+    <rect x="0" y="0" width="270" height="55" rx="10" fill="url(#hatch)"/>
+    <rect x="0" y="375" width="270" height="105" rx="10" fill="url(#hatch)"/>
+    <!-- confident face -->
+    <rect x="103" y="122" width="64" height="88" rx="3" fill="none" stroke="#34d399" stroke-width="1.8"/>
+    <text x="135" y="116" class="z" fill="#34d399" text-anchor="middle">0.94 · h/w 1.37</text>
+    <!-- false face -->
+    <rect x="58" y="320" width="154" height="62" rx="3" fill="rgba(136,19,55,0.35)" stroke="#fb7185" stroke-width="1.8" stroke-dasharray="5,3"/>
+    <line x1="58" y1="320" x2="212" y2="382" stroke="#fb7185" stroke-width="1.5"/>
+    <line x1="212" y1="320" x2="58" y2="382" stroke="#fb7185" stroke-width="1.5"/>
+    <text x="135" y="398" class="z" fill="#fb7185" text-anchor="middle">0.68 · h/w 0.90</text>
+  </g>
+  <g>
+    <text x="910" y="230" class="l" fill="#34d399">Kept: a real face</text>
+    <text x="910" y="245" class="s">confidence ≥ 0.85 is always a face</text>
+    <text x="910" y="430" class="l">Discarded: knees, hands</text>
+    <text x="910" y="445" class="s">weak box right below the same</text>
+    <text x="910" y="458" class="s">person's face, or 2 of 3 signs:</text>
+    <text x="910" y="474" class="s">· not face proportions (h/w &lt; 1.05)</text>
+    <text x="910" y="488" class="s">· size unlike nearby faces</text>
+    <text x="910" y="502" class="s">· seen in a single sample only</text>
+    <text x="910" y="522" class="s">Without the filter the layout</text>
+    <text x="910" y="535" class="s">reported “no room for subtitles”.</text>
+  </g>
+
+  <!-- legend -->
+  <g transform="translate(60,612)">
+    <rect x="0" y="-9" width="12" height="12" fill="url(#hatch)" stroke="#fb7185"/>
+    <text x="18" y="1" class="s">app UI: top 220, bottom 420, right 120 px</text>
+    <rect x="330" y="-9" width="12" height="12" fill="rgba(6,78,59,0.45)" stroke="#34d399"/>
+    <text x="348" y="1" class="s">free zone above the head</text>
+    <rect x="560" y="-9" width="12" height="12" fill="rgba(8,51,68,0.55)" stroke="#22d3ee"/>
+    <text x="578" y="1" class="s">free zone between chin and subtitles</text>
+    <text x="860" y="1" class="s">The final render is audited the same way.</text>
+  </g>
+</svg>

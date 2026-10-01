@@ -1,3 +1,5 @@
+![IT Reelsmaker](plugins/it-reelsmaker/docs/banner.png)
+
 # IT Reelsmaker — Claude Code plugins for vertical video
 
 This repository is a Claude Code plugin marketplace, `itparty`, with two plugins:
