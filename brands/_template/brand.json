@@ -1,0 +1,52 @@
+{
+ "_comment": "Шаблон профиля бренда. Скопируйте папку _template в brands/<slug>/ и заполните. Обязательны только name и colors.primary/accent — остальное агент выведет сам (references/brands.md). Пути — относительно папки бренда (assets/…) или проекта.",
+ "schema": 1,
+ "slug": "<slug>",
+ "name": "⟨ВАШЕ: название бренда⟩",
+ "description": "⟨ВАШЕ: чем занимается, кому ролики⟩",
+ "language": "ru",
+ "voice": "⟨ВАШЕ: голос бренда в 1–2 строки, например «спокойная экспертиза, конкретика вместо обещаний»⟩",
+ "tagline": "",
+ "colors": {
+  "primary": "#111418",
+  "accent": "#FFCC00",
+  "light": "#FFFFFF",
+  "text_on_primary": "#FFFFFF",
+  "text_on_accent": "#111418",
+  "extra": {
+   "muted": "#6F849B",
+   "marker": "#F5FAA4",
+   "ink": "#111111"
+  }
+ },
+ "fonts": {
+  "heading": {"family": "Manrope", "weights": [600, 800], "source": "google"},
+  "body": {"family": "Inter", "weights": [500, 600, 700, 800], "source": "google"},
+  "serif": null
+ },
+ "logos": {
+  "on_dark": "assets/⟨логотип для тёмного фона и поверх видео⟩.png",
+  "on_light": "assets/⟨логотип для светлого фона⟩.png",
+  "mark_on_dark": "assets/⟨компактный знак для угла кадра⟩.png",
+  "mark_on_light": null
+ },
+ "lut": {"hald": null, "cube": null, "strength": 0.7},
+ "rules": "rules.md",
+ "styles": {"default": "marker", "allowed": ["marker", "brand", "minimal", "editorial", "bold", "glass"]},
+ "subtitles_default": "accent",
+ "motion": "calm",
+ "forbidden_imagery": ["⟨ВАШЕ: образы, которых нельзя в кадре — по-русски⟩"],
+ "forbidden_imagery_en": ["⟨то же по-английски — для промптов видеогенерации⟩"],
+ "forbidden_words": ["⟨ВАШЕ: обещания и штампы, которых нельзя⟩"],
+ "cta": {"site": "⟨сайт⟩", "handle": "⟨ник в мессенджере / директе⟩", "code_word": null},
+ "approver": "⟨ВАШЕ: кто даёт «да» на публикацию⟩",
+ "account": "business",
+ "music_policy": "не вшивать без коммерческой лицензии; трек выбрать в приложении при публикации",
+ "memes_policy": "strict",
+ "meme_size": "m",
+ "inserts": {},
+ "unverified": [],
+ "created": null,
+ "updated": null,
+ "last_used": null
+}
