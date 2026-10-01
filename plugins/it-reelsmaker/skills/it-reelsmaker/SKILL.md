@@ -138,7 +138,7 @@ On top of subtitles, if the brief asks for them: “accent titles”, 2–4 key 
 
 **End card** (if chosen): `{{DARK}}` or light background, logo, `{{TAGLINE}}`, CTA. 2.4–3 s. A separate option is a **logo sting without a CTA** (2–3 s), when the call to action is spoken.
 
-**Hooks in the brand voice** ⟨YOURS: your own examples⟩. Specifics instead of promises: “12 days from brief to result. Here's what sped it up”, “Why a résumé tells you almost nothing about sales”. Not suitable: loud promises, “Stop losing money!”. For skits the hook is the mechanics, with no headline: the video opens with the most controversial line.
+**Hooks in the brand voice** ⟨YOURS: your own examples⟩. Specifics instead of promises: “12 days from brief to result. Here's what sped it up”, “Why a résumé tells you almost nothing about sales”. Not suitable: loud promises, “Stop losing money”. For skits the hook is the mechanics, with no headline: the video opens with the most controversial line.
 
 ## 6. Pipeline
 
@@ -292,7 +292,7 @@ Layout 1080×1920: UI 0–220 · roles 240–360 · faces ~400–800 · subtitle
 
 ## 8. CTA library ⟨YOURS: fill in contacts, remove what you don't need⟩
 
-One CTA per video (exception: a job opening, with apply + recommend). Tone: a calm invitation, no “Urgent!” or “Hurry!”. Two lines on the card: the main line (52–60 px) and a clarifier (34–38 px, in a muted color).
+One CTA per video (exception: a job opening, with apply + recommend). Tone: a calm invitation, no “Urgent” or “Hurry up”. Two lines on the card: the main line (52–60 px) and a clarifier (34–38 px, in a muted color).
 
 | Code | Main line | Clarifier |
 |---|---|---|
@@ -376,7 +376,7 @@ ASSETS_DIR/
   App icons/  animated logos (often on a green background)
 ```
 **Work through a catalog, not by browsing files** (names like `IMG_xxxx` tell you nothing). A small script reads each file once and records:
-- for audio: duration, **sound start** (how much silence there is at the start of the file!), peak and mean loudness;
+- for audio: duration, **sound start** (how much silence there is at the start of the file — it matters), peak and mean loudness;
 - for images and video: size, background (transparent / green chroma key / black / white);
 - **brand verdict** (OK / caution / no + reason): a per-folder rule and per-file exceptions in a separate JSON;
 - **overview sheets** of icons, 80 per sheet, with a colored verdict stripe: pick an icon by eye from the sheet;
