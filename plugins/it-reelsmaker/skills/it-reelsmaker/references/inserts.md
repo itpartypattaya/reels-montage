@@ -2,6 +2,8 @@
 
 Inserts are an optional layer on top of the regular edit. If everything is off, the edit runs as it would without them: main footage, shot-size changes, graphics from the brief. Decisions about inserts are made in the **visual plan** (step 7a) before the Remotion code; the render only executes the plan.
 
+**Designed scenes** (hook, quote, slogan, number, list, CTA, cover; `kind: "scene"`, ids `c01`…) live in the same plan and budget: the `full`, `split`, `panel` and `window` modes count toward coverage together with B-roll, `overlay` counts like a card, through `keep_clear`. Everything about scenes: `references/scenes.md`. The **brand tone** (`brand.json → tone`, `references/brands.md`) sits between the skill defaults and the profile's `inserts` and sets the ceilings: memes, transitions, light flashes, whips, full-frame scenes.
+
 ## Settings
 
 Stored in the video's `edit/<id>/reel.json`. Layers apply in order, and each one overrides the previous:

@@ -27,7 +27,10 @@ MAX_TEXT = 256 * 1024
 MAX_FILES = 512
 CORE_FORBIDDEN = re.compile(
     r"fal\.ai|\bfal\b|\bveo\b|kling|\bltx\b|runway|sora|seedance|luma ray|pixabay|pexels|magnific|freepik"
-    r"|videvo|giphy|openverse|tenor|api[_ -]?key|FAL_KEY|_API_KEY|keys\.env",
+    r"|videvo|giphy|openverse|tenor|api[_ -]?key|FAL_KEY|_API_KEY|keys\.env"
+    # policy 4.B: no generative image, video, voice or music models in the core (designed scenes are drawn in code)
+    r"|kokoro|elevenlabs|text[- ]to[- ]speech|\btts\b|\bsuno\b|\budio\b|midjourney|dall-?e|stable diffusion"
+    r"|\bflux\b|\bimagen\b|hyperframes tts|ai[- ]generated",
     re.I,
 )
 CYRILLIC = re.compile(r"[Ѐ-ӿ]")
@@ -61,10 +64,12 @@ def check_plugin(pdir, private_terms):
     if len(files) > MAX_FILES:
         warnings.append(f"{name}: {len(files)} files > {MAX_FILES} (held for review)")
     manifest = pdir / ".claude-plugin" / "plugin.json"
+    public_email = ""  # the support contact declared in plugin.json is public on purpose, not a leak
     if not manifest.exists():
         errors.append(f"{name}: no .claude-plugin/plugin.json")
     else:
         data = json.loads(manifest.read_text(encoding="utf-8"))
+        public_email = ((data.get("author") or {}).get("email") or "").lower()
         if data.get("name") != name:
             errors.append(f"{name}: plugin.json name {data.get('name')!r} != folder")
         for key in ("version", "description", "author", "license"):
@@ -105,8 +110,9 @@ def check_plugin(pdir, private_terms):
             if m:
                 line = text[: m.start()].count("\n") + 1
                 errors.append(f"{rel}:{line}: core mentions online provider/keys: {m.group(0)!r}")
+        scan = text.lower().replace(public_email, "") if public_email else text.lower()
         for term in private_terms:
-            if term.lower() in text.lower():
+            if term.lower() in scan:
                 errors.append(f"{rel}: private term {term!r}")
 
     for skill in (pdir / "skills").glob("*/SKILL.md"):
@@ -126,7 +132,7 @@ def check_plugin(pdir, private_terms):
             errors.append(f"{rel}: description {len(desc)} chars > 1024")
         lines = text.count("\n") + 1
         if lines > 500:
-            warnings.append(f"{rel}: {lines} lines > 500 (move detail to references/)")
+            errors.append(f"{rel}: {lines} lines > 500 (move detail to references/)")
         for ref in re.findall(r"`(references/[\w./-]+\.md)`", text):
             if not (skill.parent / ref).exists():
                 errors.append(f"{rel}: missing {ref}")

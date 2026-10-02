@@ -2,12 +2,13 @@
 name: it-reelsmaker
 description: >
   Edit vertical short videos (Reels, Shorts, TikTok) in Claude Code from talking-head, two-person or horizontal
-  footage: cut pauses and retakes by audio, pick takes, virtual camera and on-brand motion graphics in Remotion,
-  word-timed subtitles, hook and CTA cards, optional inserts (B-roll from the project or your own library, code
-  scenes in Remotion, memes with size and placement rules), face-aware layout (YuNet), cut-out presenter over a scene, loudness mastering to −14 LUFS,
-  1080×1920 render. Saved brand profiles: colors, fonts, logos, design rules. Use when asked to edit, cut,
-  assemble or fix a vertical video: “edit a reel”, “video for <brand>”, “make a Reel/Short from IMG_xxxx.MOV”,
-  “add subtitles / a hook / cards / an end card / B-roll / memes”, “new brand”, “the video jumps back”, fixes to
+  footage, or make a brand promo with no footage: cut pauses and retakes by audio, pick takes, virtual camera and
+  on-brand motion graphics in Remotion, word-timed subtitles, designed scenes drawn in code (hook, quote, slogan,
+  number, list, CTA, cover), optional inserts (B-roll from the project or your own library, code scenes, memes with
+  size and placement rules), face-aware layout (YuNet), loudness mastering to −14 LUFS, 1080×1920 render. Saved brand
+  profiles: colors, fonts, logos, brand tone, design rules. Use when asked to edit, cut, assemble or fix a vertical
+  video: “edit a reel”, “video for <brand>”, “make a Reel/Short from IMG_xxxx.MOV”, “add subtitles / a hook / a quote
+  / an end card / a cover / B-roll / memes”, “a promo without footage”, “new brand”, “the video jumps back”, fixes to
   a finished video. Needs ffmpeg, Node.js with Remotion and Python on this computer.
 ---
 
@@ -38,7 +39,7 @@ FACE_MODEL    = ${user_config.face_model}      empty = faces checked frame by fr
 A value that is empty or still reads `${user_config.…}` (the skill was not installed as a plugin, or the setting is not set) → take it from `it-reelsmaker.json` in the project folder (the current folder or its parent); if that is missing too, ask once (project folder, Remotion project) and write it there. Further in the text: `{{PROJECT_ROOT}}`, `{{REMOTION_DIR}}`, `{{ASSETS_DIR}}`, `{{HEAVY_SERVER}}`, `{{FACE_MODEL}}`.
 
 **Brands**: `{{PROJECT_ROOT}}/brands/<slug>/` (`brand.json` + `rules.md` + `assets/`), as many as you like:
-- **minimum**: a name and 1–3 colors. The agent works out color roles, text contrast, fonts that cover your language's script and the logo search itself (`references/brands.md`);
+- **minimum**: a name, 1–3 colors and the **brand tone**: `premium` “Premium, restrained” · `expert` “Expert, calm” · `friendly` “Lively, friendly” · `bold` “Bold, with humor”. The tone sets the limits for the brand's videos right away: which memes are allowed, how many cutaways, how loud the techniques can be (light flash, whip, shake, full-frame scenes) and the scene tones; louder only on explicit request for a video (`tone_override`). The agent works out color roles, text contrast, fonts that cover your language's script and the logo search itself (`references/brands.md`);
 - **revisions** (yours or the client's) that apply to the brand as a whole are appended to its `rules.md` with a date: the brand's next video already knows them;
 - profiles live in your project, not in the plugin, so a plugin update does not touch them. **Moving from an old version:** if `~/.claude/skills/reels-montage/brands/<slug>/` exists (versions before 1.0 were installed by cloning), offer to move those folders to `{{PROJECT_ROOT}}/brands/`.
 
@@ -48,15 +49,16 @@ A value that is empty or still reads `${user_config.…}` (the skill was not ins
 
 ## 1. The main rule: the template is a menu, not a checklist
 
-Everything described below (logo, end card, hook headline, cards, focus brackets, role tags, verdict scale, “save” bookmark, music, B-roll, code scenes, memes, special techniques) is a **set of possible techniques**, not a required package. By default a video has only a clean edit with shot-size changes, plus subtitles. Anything else is added if it was chosen in the brief (step 7) or stated directly in the prompt. Carrying everything over makes a video noisy and templated.
+Everything described below (logo, end card, hook headline, cards, focus brackets, role tags, verdict scale, “save” bookmark, music, B-roll, code scenes, designed scenes, memes, special techniques) is a **set of possible techniques**, not a required package. By default a video has only a clean edit with shot-size changes, plus subtitles. Anything else is added if it was chosen in the brief (step 7) or stated directly in the prompt. Carrying everything over makes a video noisy and templated.
 
 **Only the quality rules always apply:**
 - no text on a face; nothing important in the UI zones (grid below);
 - graphics and highlights start on their word (±2 frames); timing comes from the transcript, not by eye;
 - one typography style and one accent color per video;
 - no leftover takes or slips in the final video;
-- brand voice `{{TONE}}`, with no `{{FORBIDDEN_WORDS}}` and no `{{FORBIDDEN_IMAGES}}`, in graphics, B-roll, code scenes and memes alike;
-- an insert (B-roll, meme) only with an answer to “why” and within the intensity budget; film stills, celebrities and memes without rights are never burned in;
+- brand voice `{{VOICE}}`, with no `{{FORBIDDEN_WORDS}}` and no `{{FORBIDDEN_IMAGES}}`, in graphics, B-roll, code scenes and memes alike;
+- an insert (B-roll, meme, designed scene) only with an answer to “why”, within the intensity budget and within the brand tone; film stills, celebrities and memes without rights are never burned in;
+- facts in graphics only from a source: a quote verbatim from the speech, a number from the speaker, the brief or the client;
 - any download and any paid action only after the person's approval (“yes”) of a visual plan with source, size and price;
 - publishing only after a “yes” from `{{APPROVER}}`.
 
@@ -150,7 +152,7 @@ File layout per video: `{{PROJECT_ROOT}}/edit/<id>/` with `cut.py`, `project.md`
 - **Brand.** If it is clear from the prompt or the folder, take its profile; otherwise offer the 3 most recent saved brands, and a new one via “Other” (name and colors). Read the brand's `rules.md`.
 - **Style.** Show the style table, 3–4 options (the tool's limit), with the recommendation for this video first and a one-line explanation.
 - **Subtitle mode.**
-- **Inserts** (`multiSelect`, if the prompt says nothing): B-roll from project materials and the library · code scenes in Remotion (diagram, interface, symbolic object; free) · memes from your own folder and the library. With the online-sources add-on `it-reelsmaker-online` installed, online sources are added as well (with a price where they cost money). Nothing chosen → no inserts. Intensity is moderate unless stated otherwise.
+- **Inserts** (`multiSelect`, if the prompt says nothing): B-roll from project materials and the library · code scenes in Remotion (diagram, interface, symbolic object; free) · designed scenes (hook, quote, number, list, CTA; `references/scenes.md`) · memes from your own folder and the library (if the brand tone allows them). With the online-sources add-on `it-reelsmaker-online` installed, online sources are added as well (with a price where they cost money). Nothing chosen → no inserts. Intensity and scene tone follow the brand tone unless stated otherwise.
 
 Limit: 4 questions; if the brand is clear, don't ask about it. Horizontal source → offer the “framed” format right away. Answers go into `edit/<id>/reel.json` and `project.md`.
 
@@ -245,7 +247,7 @@ Then **face measurement** on `final.mp4` (`references/faces.md`): `faces.json` (
 The recommendation for this video goes first. Don't ask about what the prompt already says. At most 4 options per question, the most relevant ones.
 1. **Logo**, every time: none / mark in the corner for the whole video / only on the end card / both.
 2. **End card and CTA**: 3 options from the CTA library (section 8) with exact wording, or a logo sting without a CTA. The agent does not pick the CTA on its own.
-3. **Techniques** (`multiSelect`): hook headline · text behind the person (needs a figure cut-out; give a time estimate) · presenter over a scene (overview, review, stream; only if there is something to show) · thesis cards · focus brackets · role tags · verdict scale · “save” bookmark · punch-in · icons for theses · phone mockup on the CTA · light flash · slide scene · full-screen phrase. Recommend only what follows from the content. B-roll, code scenes and memes are not asked about here: they are turned on in step 0 and decided in the visual plan (step 7a).
+3. **Techniques** (`multiSelect`): hook headline · text behind the person (needs a figure cut-out; give a time estimate) · presenter over a scene (overview, review, stream; only if there is something to show) · thesis cards · focus brackets · role tags · verdict scale · “save” bookmark · punch-in · icons for theses · phone mockup on the CTA · light flash · slide scene · full-screen phrase. Recommend only what follows from the content. B-roll, code scenes, designed scenes and memes are not asked about here: they are turned on in step 0 and decided in the visual plan (step 7a); with designed scenes on, the hook, full-screen phrase, list and CTA are made as `hook` / `slogan` / `list` / `cta` scenes.
 4. **Sound**: none / sound accents on events / accents + music, with specific picks from the library (section 11).
 
 Answers go into the video's `project.md`; they are not inherited by the next video. Do not silently resolve contradictory answers.
@@ -253,7 +255,7 @@ Answers go into the video's `project.md`; they are not inherited by the next vid
 ### Step 7a. Visual plan — insert decisions before rendering
 Inserts off → skip. Otherwise (`references/inserts.md`):
 1. Spans by phrase on the rough-cut timeline + hints (segment join, long segment, number, reference to an object, emotion, hook, CTA) + intensity budget.
-2. Decide where an insert **really helps**: understanding, a cut, dynamics, the hook, or emotion for a meme. Each one gets a “what” and a “why”, with the moment given by a word. Numbers and lists go on cards; the ending and the CTA get no memes.
+2. Decide where an insert **really helps**: understanding, a cut, dynamics, the hook, or emotion for a meme. Each one gets a “what” and a “why”, with the moment given by a word. Numbers and lists go on cards or `stat` / `list` scenes; the ending and the CTA get no memes. Designed scenes (`references/scenes.md`) go in the same plan: gaps in the video suggest `scene:*`, text is verbatim from the speech or has a source, the default mode keeps the face, and the plan check enforces the reading-time floor and the brand tone's ceilings.
 3. Sources by priority: B-roll: project → library → code scene → main footage; memes: your own folder and library → none. With the online-sources add-on `it-reelsmaker-online` installed, online sources join the chain, following the add-on's rules.
 4. **Show the plan table to the person** together with the card texts and, if any, the list of downloads (source, MB) and paid actions (≈ $). Wait for a “yes”.
 5. After the “yes”: render the code scenes (and download what was approved), prepare them (1080×1920, 30 fps, no audio, exactly the required length), place the memes (size and position by the rules, faces by the measurement), validate the plan (0 errors).
@@ -267,15 +269,16 @@ Camera (section 9) → B-roll → only the chosen elements → memes → subtitl
 - **A cut-out figure on another scene or cutaway** (`references/figure.md`): where the figure touches the edge of its source frame (arm, elbow, lower body), that edge must coincide with the edge of our frame; **a chopped-off arm in the middle of the screen is a defect**. Arm at the left edge of the source → the figure goes only against the left edge of the video; touches both sides or the top → do not put it in a corner. A source-edge cut can be hidden only by the frame edge or an opaque element on top, not by feathering.
 
 ### Step 9. Check, render, mastering
-- stills (`npx remotion still`) at every graphics entrance and every camera shot;
+- stills (`npx remotion still`) at every graphics entrance and every camera shot; for designed scenes, a settled frame (postable as a picture) and a mid-transition frame (no muddy double exposure);
 - render → preview to the person → revisions → only then the master. Run the render as a separate command, checking the exit code and the file time; don't chain `render | tail && master`: `tail` hides a render failure, and the master will silently be built from the old file;
 - **a late spot fix** that does not shift timing (a word in a subtitle, a card text, an element's position): not a full render but a re-render of a segment. The range is widened to the neighboring keyframes [K1, K2), Remotion draws only those (`--frames=K1-(K2-1) --muted`), and the segment is spliced in without re-encoding (if the codec parameters match) or with it; the audio is the old track, whole (if the fix touches audio, a full render is better: Remotion's audio render goes through all frames anyway, so the gain is small). Check: frame count and duration unchanged, timestamps even (every frame at n/fps; this is what catches “stutter”), frames at the joins compared with the old ones by frame number, not by time (PSNR ≥ 35 dB; for static neighboring frames the “best match” is random, so count it as a shift only if the neighboring frame is better by more than 1 dB), and the sheet of joins checked by eye. Measured on a one-minute video: full render 8–10 min, a ~100-frame patch without re-encoding 40–52 s (outside the patch, frames are bit-identical), with re-encoding ~2.5 min. Re-cutting, speed or length changes: full render only;
 - **contact sheet** of the finished file, 12 frames in one image: `ffmpeg -i out.mp4 -vf "fps=1/<duration/12>,scale=200:356,tile=6x2" -frames:v 1 sheet.png`; it shows whether the picture changes, whether the top of the head is cut off, whether text covers the mouth;
 - **render audit** of faces before showing the video to the person (`references/faces.md`, section 5): faces after the camera against the subtitle band (where speech is heard), the `keep_clear` zones and memes, plus a cut-off top of the head; fix any overlaps and re-render;
+- **cover in frame 0** (optional): a settled frame → `cover.jpg`, replace only frame 0, frame count and duration unchanged, before mastering (`references/scenes.md`);
 - **audio mastering, always** (section 12), with an acceptance check: failing any checklist item (LUFS, true peak, duration) → non-zero exit code; do not deliver the master.
 
 ### Step 10. Delivery
-Show **measurable results, not “it got better”**: duration, remaining silence in ms, master loudness and peak, how many cuts and takes were removed, how many inserts and from where (and which ones did not land, with the reason). Found a defect nobody asked about → say so and fix it. Update `project.md`. **On-screen facts need a source**: a number, place, price, contact or promise comes from the speaker's words or from the client; anything the agent took on its own (from a website, “from general knowledge”, by default) goes into “open items” as “to verify”. Attribution for CC files (and stock footage, if any) goes into the post description.
+Show **measurable results, not “it got better”**: duration, remaining silence in ms, master loudness and peak, how many cuts and takes were removed, how many inserts and from where (and which ones did not land, with the reason). Found a defect nobody asked about → say so and fix it. Update `project.md`. **On-screen facts need a source**: a number, place, price, contact or promise comes from the speaker's words or from the client; anything the agent took on its own (from a website, “from general knowledge”, by default) goes into “open items” as “to verify”. Attribution for CC files (and stock footage, if any) goes into the post description. A post caption `caption.txt` (1–3 sentences in the brand voice, the same CTA) follows `references/scenes.md`, on a “yes” from `{{APPROVER}}`.
 
 ## 7. Two-person skit / “Verdict”
 
@@ -363,6 +366,8 @@ Match ignoring edge punctuation and case: between runs, Whisper is inconsistent 
 
 **Slide scene**: covers choppy speech. The speaker shrinks to ~0.42 and slides to the free edge (background in the style color), a panel with the thesis slides in from the other side, points appear on their words. 1–2 times, 3–5 s, the panel no lower than y 1500.
 
+**Designed scenes** (`references/scenes.md`): hook, quote, slogan, number, list, before → after, message thread, interface, CTA, cover, drawn in code in brand colors, on a spoken word; the `overlay` / `split` / `panel` / `window` modes keep the face, `full` 1–2 per video by brand tone. **A promo without footage** is the “scenes only” format: 15–25 s, hook → reveal → 2–3 strong moments → ending/CTA.
+
 **Full-screen key phrase**: a “punch”, 1–2 times per video. A field in the style color wipes in over 8–10 frames, a pictogram “draws itself”, 3–6 words come up from below one by one on their words. Hide subtitles for that time. Not on the hook and not on the CTA.
 
 ## 11. Your own library of sounds, music and icons (optional)
@@ -436,6 +441,7 @@ Without mastering, finished videos came out between −33 and −17 LUFS, some w
 - [ ] No icons with a “no” verdict; service logos only when the service is named
 - [ ] Special techniques: text behind the person reads without an outline, lead-in tight against the word; the mask check frame was reviewed (no furniture or wall); cut-out figure on a scene: not a single chopped-off arm inside the frame, face above the UI; skin looks natural after the LUT; no third-party data on the phone screen or in the scene
 - [ ] On-screen facts come from the speaker or the client; anything the agent sourced itself is in “open items”
+- [ ] Designed scenes (if any): within the brand tone; quotes verbatim, numbers sourced; reading-time floor kept; the face is not covered in `overlay` / `split`; settled and mid-transition frames reviewed
 - [ ] The video makes sense without sound
 - [ ] Consent from the people on screen; **publishing only after a “yes” from `{{APPROVER}}`**
 
@@ -462,6 +468,7 @@ Several agent sessions in one editing folder are normal: write JSON (video setti
 | File | When |
 |---|---|
 | `references/brands.md` | step 0 and any graphics: brand profiles, a new brand from the minimum, logos, rules from revisions, styles in brand colors, `{{…}}` placeholders |
+| `references/scenes.md` | steps 0, 7a, 8–10: designed scenes (catalog, modes, tones, fields, reading-time floor, facts, transitions, sound), promo without footage, cover, post caption; a sample component in `references/scene-sample.md` |
 | `references/inserts.md` | step 0 (inserts) and 7a: settings, intensity, when an insert is needed, priority and fallback, visual plan, modes and transitions, code scenes, memes: rights, size and placement |
 | `references/faces.md` | steps 6, 8, 9: face measurement with the YuNet model, false “faces” and the filter, zones for the hook, cards and subtitles accounting for the camera, card checks, render audit |
 | `references/figure.md` | cut-out figure: the cut-out pipeline and model memory, check frame, presenter over a scene (layouts), source-edge cuts, text behind the person |

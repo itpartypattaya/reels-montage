@@ -10,18 +10,22 @@ The plugin is a skill built on real client videos: the thresholds and numbers in
 
 ![The IT Reelsmaker pipeline, from a raw recording to a master](https://raw.githubusercontent.com/itpartypattaya/reels-montage/main/docs/img/pipeline.png)
 
-1. **Brand, style and inserts first.** Pick a saved brand profile (colors, fonts, logos, design rules) or create one from a name and 1–3 colors. Choose one of six styles and the subtitle mode.
+1. **Brand, style and inserts first.** Pick a saved brand profile (colors, fonts, logos, design rules) or create one from a name, 1–3 colors and a brand tone (premium, expert, friendly or bold), which sets which memes are allowed, how many cutaways and how loud the techniques can be. Choose one of six styles and the subtitle mode.
 2. **Word-level transcript**, then a search for retakes and slips.
 3. **Cut plan → your “yes”.** The plan lists what stays, what goes and why. Nothing is cut before you approve.
 4. **Rough cut** with ffmpeg: segment edges found by a speech mask (on a tested video they matched a manual cut within ±40 ms), color, speed-up, subtitles on the new timeline. Then faces are measured across the whole cut.
 5. **Graphics brief** in one question: logo, call to action, techniques, sound.
-6. **Visual plan** for inserts (B-roll from your project or library, code scenes, memes), shown before any render.
+6. **Visual plan** for inserts (B-roll from your project or library, code scenes, designed scenes, memes), shown before any render.
 7. **Remotion**: virtual camera, graphics on their spoken words, subtitles, render, and an audit of faces against text in the final file.
 8. **Mastering** with an acceptance check, then a report in numbers: duration, remaining silence, loudness and peak, cuts and retakes removed.
 
 ![Cutting by the sound: speech mask, edges and pause compression](https://raw.githubusercontent.com/itpartypattaya/reels-montage/main/docs/img/speech-mask.png)
 
 ![Face-aware layout: free zones, subtitle band and false-face filter](https://raw.githubusercontent.com/itpartypattaya/reels-montage/main/docs/img/face-layout.png)
+
+## Designed scenes
+
+A hook set large, a quote taken verbatim from the speech, the main thought as a punch, a number with a counter and its source, a list item by item, “before → after”, a message thread, an interface with a cursor, the call to action as an action, a cover in frame 0. Claude draws them in code in your brand's colors and fonts and places each one on its spoken word. By default the speaker's face stays in the frame: the scene sits in a free zone, above the speaker or beside them. The plan check counts reading time (0.8 s for a short line, 0.3 s per word in a phrase), compares quotes with the transcript and asks for a source for every number. A promo without footage uses the same scenes on their own, 15–25 s. The scene planning method is adapted from [brag](https://github.com/latent-spaces/brag) (MIT).
 
 ## Requirements
 
@@ -70,6 +74,8 @@ Brand profiles live in your project, not in the plugin, so updates never touch t
 - “Video 4821 jumps back around 0:18 — find the missed retake and fix the cut.”
 - “Add a hook headline, two cards with the key points and an end card with a DM call to action to video 4821.”
 - “Run the face audit on the final render and move anything that covers the speaker's face.”
+- “Add designed scenes to video 4821: a big hook in the first 1.5 s, the quote about testing how people think, verbatim, and the three signs as a list. Keep the face visible. Show me the plan and texts first.”
+- “Make a 20-second promo for Acme without footage: hook, what we do, three numbers from our site with sources, the end card with our site. Then a cover and a post caption.”
 
 ## Data and network
 
@@ -86,7 +92,7 @@ Details: [PRIVACY.md](PRIVACY.md).
 
 ## What it does not do
 
-- No AI image, video or audio generation. Code scenes are motion graphics that Claude writes in Remotion.
+- No AI image, video or audio generation. Code scenes and designed scenes are motion graphics that Claude writes in Remotion.
 - No publishing to social networks. You upload the master yourself.
 - No face recognition or identification.
 

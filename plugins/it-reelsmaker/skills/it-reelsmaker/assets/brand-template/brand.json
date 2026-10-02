@@ -1,5 +1,5 @@
 {
- "_comment": "Brand profile template. Copy this folder to <PROJECT_ROOT>/brands/<slug>/ and fill it in. Only name and colors.primary/accent are required; the agent infers the rest itself (references/brands.md). Paths are relative to the brand folder (assets/…) or to the project.",
+ "_comment": "Brand profile template. Copy this folder to <PROJECT_ROOT>/brands/<slug>/ and fill it in. Only name, colors.primary/accent and tone.preset are required; the agent infers the rest itself (references/brands.md). motion and meme_size are null: the brand tone sets them, and explicit values override it. Paths are relative to the brand folder (assets/…) or to the project.",
  "schema": 1,
  "slug": "<slug>",
  "name": "⟨YOURS: brand name⟩",
@@ -7,6 +7,7 @@
  "language": "⟨YOURS: brand language code, for example en, ru or th⟩",
  "voice": "⟨YOURS: the brand voice in 1–2 lines, for example “calm expertise, specifics instead of promises”⟩",
  "tagline": "",
+ "tone": {"preset": "⟨YOURS: premium | expert | friendly | bold, see references/brands.md, “Brand tone”⟩", "overrides": {}},
  "colors": {
   "primary": "#111418",
   "accent": "#FFCC00",
@@ -34,7 +35,7 @@
  "rules": "rules.md",
  "styles": {"default": "marker", "allowed": ["marker", "brand", "minimal", "editorial", "bold", "glass"]},
  "subtitles_default": "accent",
- "motion": "calm",
+ "motion": null,
  "forbidden_imagery": ["⟨YOURS: imagery not allowed in the frame, in the brand's language⟩"],
  "forbidden_imagery_en": ["⟨the same in English, for English-language searches and prompts⟩"],
  "forbidden_words": ["⟨YOURS: promises and clichés that are not allowed⟩"],
@@ -43,7 +44,7 @@
  "account": "business",
  "music_policy": "do not burn in without a commercial license; pick the track in the app when publishing",
  "memes_policy": "strict",
- "meme_size": "m",
+ "meme_size": null,
  "inserts": {},
  "unverified": [],
  "created": null,

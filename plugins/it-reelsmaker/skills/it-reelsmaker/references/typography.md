@@ -36,6 +36,14 @@ It is handy to keep a “phrase” component in the Remotion template (lines wit
 
 **Check.** A still frame with the phrase, scaled down to 25 %: the phrase reads as one blob. Two blobs with empty space between them mean the gap is too big.
 
+## Reading-time floor
+
+For the hook, cards, designed scenes and the end card: everything that doesn't run in sync with the speech like a subtitle. Time is counted “settled”: the text is fully on screen and not yet leaving.
+- 1–3 words: at least 0.8 s; a phrase: 0.3 s per word, at least 1.2 s; the hook gets the most;
+- text that appears on spoken words is held for another 0.3–0.5 s after the last word;
+- items one by one: no faster than 0.6 s apart;
+- fast in, then hold: pace comes from motion and cuts, not from text that leaves before it can be read; if it doesn't fit, cut the text or split it, don't speed it up.
+
 ## Subtitles
 
 **Contrast without an outline.** A soft gradient darkening of the lower third: **15–25 % is only a starting point**. On light clothing, a laptop or a white wall it isn't enough: real videos needed 42 % and 60 % (at 34–48 % on a white T-shirt the text was unreadable); on white walls, use a backing under the subtitles instead of darkening. Tune it on the still frame with the **lightest** background behind the subtitles.

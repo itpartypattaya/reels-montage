@@ -18,7 +18,7 @@ Profiles live in the project, not in the plugin: a plugin update doesn't touch t
 
 | Placeholder | Profile field |
 |---|---|
-| `{{BRAND}}`, `{{TONE}}`, `{{TAGLINE}}` | `name`, `voice`, `tagline` |
+| `{{BRAND}}`, `{{VOICE}}`, `{{TAGLINE}}` | `name`, `voice`, `tagline` |
 | `{{DARK}}`, `{{ACCENT}}`, `{{LIGHT}}` | `colors.primary`, `colors.accent`, `colors.light` |
 | `{{MUTED}}`, `{{MARKER}}`, `{{INK}}` | `colors.extra.muted`, `colors.extra.marker`, `colors.extra.ink`; if the brand doesn't set marker and ink, `{{MARKER}}` = `colors.accent` and `{{INK}}` = `colors.text_on_accent` |
 | `{{FONT_HEADING}}`, `{{FONT_TEXT}}`, `{{FONT_SERIF}}` | `fonts.heading`, `fonts.body`, `fonts.serif` |
@@ -31,13 +31,13 @@ Profiles live in the project, not in the plugin: a plugin update doesn't touch t
 
 1. List the saved brands. The most recently used come first (`last_used`).
 2. If the brand is clear from the prompt or the folder, don't ask.
-3. If it isn't clear, make the first question of the step 0 `AskUserQuestion` offer the 3 most recent brands. A new brand comes in through “Other”: a name and 1–3 colors.
+3. If it isn't clear, make the first question of the step 0 `AskUserQuestion` offer the 3 most recent brands. A new brand comes in through “Other”: a name and 1–3 colors, then the **brand tone** (section below).
 4. Write the brand to `edit/<id>/reel.json` and update `last_used` in the profile.
 5. Read the brand's `rules.md` before doing any graphics.
 
 ## A new brand from a minimum
 
-Only the name and the colors are required. The agent infers the rest itself and says what it filled in:
+The name, the colors and the **brand tone** are asked for (one question, 4 presets, the recommendation for the brand's field first). The agent infers the rest itself and says what it filled in:
 
 - **Color roles:**
   - `primary`: the darkest (relative luminance < 0.25), otherwise near-black `#111418`;
@@ -55,6 +55,42 @@ Only the name and the colors are required. The agent infers the rest itself and 
 - **Identical names:** compare by content (hash). A different file with the same name gets `-2`; assets already written are not overwritten. **Slug:** Latin letters, digits, `-`, `_` only; reject paths containing `..`.
 - **Fonts.** If the brand has no fonts of its own, use Manrope + Inter, but only if they cover the brand's language (both cover Latin and Cyrillic). Otherwise choose fonts that cover the required script.
 - **Rules.** The agent creates `rules.md` with the basics.
+
+## Brand tone: what the brand's videos may do
+
+The brand tone is one choice that immediately sets the limits for all of the brand's videos: **which memes are allowed, how many cutaways (B-roll and designed scenes) and how loud the visual techniques can be**. In the profile: `"tone": {"preset": "expert", "overrides": {}}`.
+
+| Preset | For | Memes | Cutaways (intensity) | Techniques | Scene tones |
+|---|---|---|---|---|---|
+| `premium`: “Premium, restrained” | luxury, finance, law, premium B2B | none | minimal | quiet: cut and fade only, no light flash or whip, full-frame ≤ 1 | calm, deadpan, cinematic |
+| `expert`: “Expert, calm” | consulting, recruiting, education, B2B expertise | only on explicit request, ≤ 1, `s` | moderate | calm: whip ≤ 3, light flash ≤ 2 by choice, full-frame ≤ 2, no bounces | calm, feature, cinematic, deadpan |
+| `friendly`: “Lively, friendly” | real estate, local business, lifestyle, communities | yes, ≤ 2, up to `m` | moderate | lively: soft overshoot, whip ≤ 4, light flash ≤ 2, full-frame ≤ 2 | punchy, feature, calm, deadpan |
+| `bold`: “Bold, with humor” | entertainment, events, provocative and humorous content | yes, ≤ 4, up to `l`, a full-frame meme is fine | active | loud: light shake, fast zooms, light flash ≤ 3, whip ≤ 6, full-frame ≤ 3, hype and parody tones on request | punchy, hype, parody, cinematic, deadpan |
+
+The presets in full (exact values, for the plan check):
+
+```json
+{"premium":  {"intensity": "minimal",  "motion": "calm",      "memes": {"allowed": false, "default": false, "max": 0, "size_max": null, "cutaway": false},
+              "transitions": ["cut", "fade"], "flash_max": 0, "whip_max": 0, "shake": false, "overshoot": false, "full_scenes_max": 1,
+              "scene_tones": ["calm", "deadpan", "cinematic"], "scene_tone": "calm", "sfx": "sparse"},
+ "expert":   {"intensity": "moderate", "motion": "calm",      "memes": {"allowed": true,  "default": false, "max": 1, "size_max": "s",  "cutaway": false},
+              "transitions": ["cut", "fade", "whip", "slide", "flash"], "flash_max": 2, "whip_max": 3, "shake": false, "overshoot": false, "full_scenes_max": 2,
+              "scene_tones": ["calm", "feature", "cinematic", "deadpan"], "scene_tone": "calm", "sfx": "sparse"},
+ "friendly": {"intensity": "moderate", "motion": "lively",    "memes": {"allowed": true,  "default": true,  "max": 2, "size_max": "m",  "cutaway": false},
+              "transitions": ["cut", "fade", "whip", "slide", "flash"], "flash_max": 2, "whip_max": 4, "shake": false, "overshoot": true, "full_scenes_max": 2,
+              "scene_tones": ["punchy", "feature", "calm", "deadpan"], "scene_tone": "punchy", "sfx": "moderate"},
+ "bold":     {"intensity": "active",   "motion": "energetic", "memes": {"allowed": true,  "default": true,  "max": 4, "size_max": "l",  "cutaway": true},
+              "transitions": ["cut", "fade", "whip", "slide", "flash"], "flash_max": 3, "whip_max": 6, "shake": true, "overshoot": true, "full_scenes_max": 3,
+              "scene_tones": ["punchy", "hype", "parody", "cinematic", "deadpan"], "scene_tone": "punchy", "sfx": "dense"}}
+```
+
+How it works:
+- **A ceiling, not a target.** The preset sets the defaults (intensity, memes on or off, meme size, scene tone) and the ceilings the visual plan check enforces: number and size of memes, a full-frame meme, allowed transitions, number of light flashes and whips, number of full-frame scenes, scene tone. A violation is an error.
+- **Settings layers:** skill defaults ← tone preset ← the profile's `inserts` ← the video's `reel.json` ← words from the prompt. Ceilings: the preset plus `tone.overrides`.
+- **Louder than the brand tone** only on the person's explicit request for this video: `reel.json → "tone_override": true`; violations become warnings and go into the report.
+- **A custom tone** (“Other” in the question): the nearest preset plus field changes in `tone.overrides`.
+- `memes_policy` (meme rights) and `motion`, if set explicitly in the profile, override the preset. A profile without a tone counts as `expert`, and the agent asks for the tone once.
+- The recommendation when creating a brand follows the field (the “For” column) and the brand voice: a bank, doctor or lawyer → `premium`; an expert or an education project → `expert`; a café, real estate agent or community → `friendly`; an event agency with a sense of humor → `bold`.
 
 ## Logos
 
@@ -101,7 +137,8 @@ HEX codes and font names are never written into the video's code.
 
 - **Who approves publishing:** `approver`.
 - **Music:** `music_policy`. For a business account, don't burn music in without a commercial license.
-- **Memes:** `memes_policy`. With `strict`, only memes with known rights are used. Meme size is `meme_size`: for a calm brand, `s`.
+- **Brand tone:** `tone`: memes, cutaways, how loud the techniques are, scene tones (section “Brand tone”).
+- **Memes:** `memes_policy`. With `strict`, only memes with known rights are used. Meme size is `meme_size` (no larger than the tone's ceiling): for a calm brand, `s`.
 - **Icon library verdicts.** A “no” for rights reasons (film stills, celebrities, stock people) always applies. A “no” for style reasons applies only to the brand it belongs to.
 - **Forbidden imagery:** `forbidden_imagery` / `_en`. It applies to B-roll, code scenes and memes (and to the online sources of the online-sources add-on `it-reelsmaker-online`).
 - **Insert defaults:** `inserts`. For example, `{"use_online_footage": false}` (a key of the online-sources add-on `it-reelsmaker-online`) for a brand whose guidelines forbid stock footage.
