@@ -67,6 +67,34 @@ Claude Code asks for these settings when you enable the plugin; change them late
 
 Brand profiles live in your project, not in the plugin, so updates never touch them. Start one by saying “new brand — Acme, colors #0B1F3A and #FFB800, logo logo.svg”.
 
+## Updates
+
+- **Installed from the Claude directory** (Customize → Plugins): updates arrive by themselves. Claude Code syncs the plugin in the background, shows “Plugins changed. Run /reload-plugins to activate.”, and loads the new version in your next session.
+- **Installed from this repository's marketplace:** auto-update is off by default for marketplaces outside Anthropic's own. Turn it on once: `/plugin` → **Marketplaces** → `itparty` → **Enable auto-update**. Or add the marketplace to your `~/.claude/settings.json` with auto-update on:
+
+```json
+{
+  "extraKnownMarketplaces": {
+    "itparty": {
+      "source": { "source": "git", "url": "https://github.com/itpartypattaya/reels-montage.git" },
+      "autoUpdate": true
+    }
+  }
+}
+```
+
+  To update by hand, run these in your shell, then `/reload-plugins` in the session (or start a new one):
+
+```bash
+claude plugin marketplace update itparty
+```
+
+```bash
+claude plugin update it-reelsmaker@itparty
+```
+
+What changed in each version is in [CHANGELOG.md](CHANGELOG.md). After an update, the skill shows a short “What's new” note once, on your first edit. The plugin never updates itself and makes no network requests to check for updates.
+
 ## Examples
 
 - “Edit a reel from IMG_4821.MOV for Acme: tight pacing, Marker style, subtitles on.”

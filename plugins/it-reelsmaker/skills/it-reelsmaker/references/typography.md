@@ -40,7 +40,8 @@ It is handy to keep a “phrase” component in the Remotion template (lines wit
 
 For the hook, cards, designed scenes and the end card: everything that doesn't run in sync with the speech like a subtitle. Time is counted “settled”: the text is fully on screen and not yet leaving.
 - 1–3 words: at least 0.8 s; a phrase: 0.3 s per word, at least 1.2 s; the hook gets the most;
-- text that appears on spoken words is held for another 0.3–0.5 s after the last word;
+- the floor counts from the moment the whole text is on screen: after its entrance, or from the last word if the text builds up word by word on the speech;
+- text the speaker says stays at least 0.3–0.5 s after the last spoken word (a designed scene: its tone's hold, `references/scenes.md`);
 - items one by one: no faster than 0.6 s apart;
 - fast in, then hold: pace comes from motion and cuts, not from text that leaves before it can be read; if it doesn't fit, cut the text or split it, don't speed it up.
 

@@ -85,7 +85,7 @@ The presets in full (exact values, for the plan check):
 ```
 
 How it works:
-- **A ceiling, not a target.** The preset sets the defaults (intensity, memes on or off, meme size, scene tone) and the ceilings the visual plan check enforces: number and size of memes, a full-frame meme, allowed transitions, number of light flashes and whips, number of full-frame scenes, scene tone. A violation is an error.
+- **A ceiling, not a target.** The preset sets the defaults (intensity, meme size, scene tone; `memes.default` only says whether step 0 recommends memes: they go into a video only if the person chooses them there or asks in the prompt) and the ceilings the visual plan check enforces: number and size of memes, a full-frame meme, allowed transitions, number of light flashes and whips, number of full-frame scenes, scene tone. A violation is an error.
 - **Settings layers:** skill defaults ← tone preset ← the profile's `inserts` ← the video's `reel.json` ← words from the prompt. Ceilings: the preset plus `tone.overrides`.
 - **Louder than the brand tone** only on the person's explicit request for this video: `reel.json → "tone_override": true`; violations become warnings and go into the report.
 - **A custom tone** (“Other” in the question): the nearest preset plus field changes in `tone.overrides`.

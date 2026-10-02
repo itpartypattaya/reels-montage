@@ -29,8 +29,8 @@ CORE_FORBIDDEN = re.compile(
     r"fal\.ai|\bfal\b|\bveo\b|kling|\bltx\b|runway|sora|seedance|luma ray|pixabay|pexels|magnific|freepik"
     r"|videvo|giphy|openverse|tenor|api[_ -]?key|FAL_KEY|_API_KEY|keys\.env"
     # policy 4.B: no generative image, video, voice or music models in the core (designed scenes are drawn in code)
-    r"|kokoro|elevenlabs|text[- ]to[- ]speech|\btts\b|\bsuno\b|\budio\b|midjourney|dall-?e|stable diffusion"
-    r"|\bflux\b|\bimagen\b|hyperframes tts|ai[- ]generated",
+    r"|kokoro|elevenlabs|text[-_ ]to[-_ ]speech|\btts\b|\bsuno\b|\budio\b|midjourney|\bdall[-·. ]?e\b|stable diffusion"
+    r"|\bflux\b|\bimagen\b|hyperframes tts|\bai[-‐‑–— ]generated",
     re.I,
 )
 CYRILLIC = re.compile(r"[Ѐ-ӿ]")
@@ -58,6 +58,26 @@ def readme_words(text):
     return len(re.findall(r"\w+", text))
 
 
+def check_changelog(pdir, name, version):
+    """The core must have CHANGELOG.md (the skill's "What's new" note reads it); any plugin that has one must keep
+    its top entry, "## <version>", equal to plugin.json and non-empty."""
+    log = pdir / "CHANGELOG.md"
+    if not log.exists():
+        if name == CORE:
+            errors.append(f"{name}: CHANGELOG.md missing (the skill's What's new note reads it)")
+        return
+    text = re.sub(r"^```.*?^```[^\n]*$", "", log.read_text(encoding="utf-8"), flags=re.M | re.S)  # no code examples
+    m = re.search(r"^## +v?(\S+)[^\n]*\n(.*?)(?=^## |\Z)", text, re.M | re.S)
+    if not m:
+        errors.append(f"{name}: CHANGELOG.md has no '## <version>' entry")
+        return
+    top, body = m.group(1), m.group(2)
+    if top != version:
+        errors.append(f"{name}: CHANGELOG.md top entry {top!r} != plugin.json version {version!r}")
+    if not re.search(r"^[-*] +\S", body, re.M):  # a top-level item, not an indented example
+        errors.append(f"{name}: CHANGELOG.md entry {top!r} has no items")
+
+
 def check_plugin(pdir, private_terms):
     name = pdir.name
     files = [p for p in pdir.rglob("*") if p.is_file()]
@@ -75,6 +95,7 @@ def check_plugin(pdir, private_terms):
         for key in ("version", "description", "author", "license"):
             if key not in data:
                 warnings.append(f"{name}: plugin.json has no {key}")
+        check_changelog(pdir, name, data.get("version"))
     readme = pdir / "README.md"
     if not readme.exists():
         errors.append(f"{name}: README.md missing")

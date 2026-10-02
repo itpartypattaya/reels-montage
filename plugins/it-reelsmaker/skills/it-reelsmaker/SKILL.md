@@ -19,6 +19,8 @@ description: >
 > **Brands** live in the project folder: `{{PROJECT_ROOT}}/brands/<slug>/` holds the `brand.json` profile, the `rules.md` design rules and the `assets/` files (logos, LUTs, fonts). Template: `${CLAUDE_SKILL_DIR}/assets/brand-template/`. Before editing, the agent asks which brand the video is for. `{{NAME}}` placeholders are fields of the selected brand's profile (table: `references/brands.md`).
 >
 > Long sections live in `references/` (table at the end). The plugin ships no scripts: the algorithms are described so that the agent can write them for your project.
+>
+> **Language.** Talk to the person in their language and translate any fixed labels from this file (style and tone names, question options, plan and report headings). On-screen text (hook, cards, scenes, CTA, subtitles) is in the language of the video, not of these instructions.
 
 ---
 
@@ -38,12 +40,14 @@ FACE_MODEL    = ${user_config.face_model}      empty = faces checked frame by fr
 
 A value that is empty or still reads `${user_config.…}` (the skill was not installed as a plugin, or the setting is not set) → take it from `it-reelsmaker.json` in the project folder (the current folder or its parent); if that is missing too, ask once (project folder, Remotion project) and write it there. Further in the text: `{{PROJECT_ROOT}}`, `{{REMOTION_DIR}}`, `{{ASSETS_DIR}}`, `{{HEAVY_SERVER}}`, `{{FACE_MODEL}}`.
 
+**What's new after an update.** Once the project folder is known and before the editing questions, read `version` from `${CLAUDE_SKILL_DIR}/../../.claude-plugin/plugin.json` and `last_seen_version` from `{{PROJECT_ROOT}}/it-reelsmaker.json` (create the file if needed and keep its other keys). Compare versions as numbers, part by part (1.10.0 is newer than 1.9.0). The installed version is newer → show one short block “What's new in X.Y”: at most 4 points from the `${CLAUDE_SKILL_DIR}/../../CHANGELOG.md` entries newer than the last seen version and not newer than the installed one, in the person's language and without technical detail; then write the installed version there. No `last_seen_version`: if the project already has `edit/` or `brands/`, it was used with 1.0.0, which kept no record, so take 1.0.0 as the last seen; an empty project → write the version silently. Something can't be read (no `plugin.json` at that path, as in a manual copy of the skill, no version, no CHANGELOG entry) → skip this step and write nothing. Never update the plugin yourself: how to update is in the README.
+
 **Brands**: `{{PROJECT_ROOT}}/brands/<slug>/` (`brand.json` + `rules.md` + `assets/`), as many as you like:
 - **minimum**: a name, 1–3 colors and the **brand tone**: `premium` “Premium, restrained” · `expert` “Expert, calm” · `friendly` “Lively, friendly” · `bold` “Bold, with humor”. The tone sets the limits for the brand's videos right away: which memes are allowed, how many cutaways, how loud the techniques can be (light flash, whip, shake, full-frame scenes) and the scene tones; louder only on explicit request for a video (`tone_override`). The agent works out color roles, text contrast, fonts that cover your language's script and the logo search itself (`references/brands.md`);
 - **revisions** (yours or the client's) that apply to the brand as a whole are appended to its `rules.md` with a date: the brand's next video already knows them;
 - profiles live in your project, not in the plugin, so a plugin update does not touch them. **Moving from an old version:** if `~/.claude/skills/reels-montage/brands/<slug>/` exists (versions before 1.0 were installed by cloning), offer to move those folders to `{{PROJECT_ROOT}}/brands/`.
 
-**Video settings**: `edit/<id>/reel.json` holds the brand, style, inserts (`use_broll`, `use_generated_footage` = code scenes, `use_memes`, `use_local_memes`, …), intensity (`minimal` / `moderate` by default / `active`) and meme size. Everything about inserts: `references/inserts.md`. Online sources belong to the online-sources add-on `it-reelsmaker-online`: without it the related settings are ignored, and the skill does not suggest the add-on until the person asks about online sources.
+**Video settings**: `edit/<id>/reel.json` holds the brand, style, inserts (`use_broll`, `use_generated_footage` = code scenes, `use_scenes` = designed scenes, `use_memes`, `use_local_memes`, …), intensity (`minimal` / `moderate` by default / `active`) and meme size. Everything about inserts: `references/inserts.md`. Online sources belong to the online-sources add-on `it-reelsmaker-online`: without it the related settings are ignored, and the skill does not suggest the add-on until the person asks about online sources.
 
 ---
 
@@ -146,13 +150,13 @@ On top of subtitles, if the brief asks for them: “accent titles”, 2–4 key 
 
 Three tools in sequence: **transcription and cut plan** (locally faster-whisper, or your own transcription tool) → **the cut script `cut.py`** (segments, color, speed-up, subtitles on the finished video's timeline) → **Remotion** (camera, graphics, subtitles, render) → **audio mastering**.
 
-File layout per video: `{{PROJECT_ROOT}}/edit/<id>/` with `cut.py`, `project.md` (brief, decisions, open items), `transcripts/`, `final.mp4`, `captions.json`; in Remotion, `src/Reel<id>.tsx` and `public/<id>/video.mp4`. `<id>` is the source file number. Start a new video from a copy of the last successful one, not from scratch.
+File layout per video: `{{PROJECT_ROOT}}/edit/<id>/` with `cut.py`, `project.md` (brief, decisions, open items), `transcripts/`, `final.mp4`, `captions.json`; in Remotion, `src/Reel<id>.tsx` and `public/<id>/video.mp4`. `<id>` is the source file number; a promo without footage gets a short name (`promo-<brand>`) and skips steps 1–6 (`references/scenes.md`, the “scenes only” format). Start a new video from a copy of the last successful one, not from scratch.
 
 ### Step 0. Brand, style, subtitles, inserts — the first `AskUserQuestion`
 - **Brand.** If it is clear from the prompt or the folder, take its profile; otherwise offer the 3 most recent saved brands, and a new one via “Other” (name and colors). Read the brand's `rules.md`.
 - **Style.** Show the style table, 3–4 options (the tool's limit), with the recommendation for this video first and a one-line explanation.
 - **Subtitle mode.**
-- **Inserts** (`multiSelect`, if the prompt says nothing): B-roll from project materials and the library · code scenes in Remotion (diagram, interface, symbolic object; free) · designed scenes (hook, quote, number, list, CTA; `references/scenes.md`) · memes from your own folder and the library (if the brand tone allows them). With the online-sources add-on `it-reelsmaker-online` installed, online sources are added as well (with a price where they cost money). Nothing chosen → no inserts. Intensity and scene tone follow the brand tone unless stated otherwise.
+- **Inserts** (`multiSelect`, if the prompt says nothing): B-roll from project materials and the library · code scenes in Remotion (diagram, interface, symbolic object; free) · designed scenes (hook, quote, number, list, CTA; `references/scenes.md`) · memes from your own folder and the library (if the brand tone allows them; `friendly` and `bold` recommend this option, but it is still the person's choice). With the online-sources add-on `it-reelsmaker-online` installed, online sources are added as well (with a price where they cost money). Nothing chosen → no inserts. Intensity and scene tone follow the brand tone unless stated otherwise.
 
 Limit: 4 questions; if the brand is clear, don't ask about it. Horizontal source → offer the “framed” format right away. Answers go into `edit/<id>/reel.json` and `project.md`.
 
@@ -253,7 +257,7 @@ The recommendation for this video goes first. Don't ask about what the prompt al
 Answers go into the video's `project.md`; they are not inherited by the next video. Do not silently resolve contradictory answers.
 
 ### Step 7a. Visual plan — insert decisions before rendering
-Inserts off → skip. Otherwise (`references/inserts.md`):
+All inserts off (`use_broll`, `use_scenes`, `use_memes` all false) → skip. Otherwise (`references/inserts.md`):
 1. Spans by phrase on the rough-cut timeline + hints (segment join, long segment, number, reference to an object, emotion, hook, CTA) + intensity budget.
 2. Decide where an insert **really helps**: understanding, a cut, dynamics, the hook, or emotion for a meme. Each one gets a “what” and a “why”, with the moment given by a word. Numbers and lists go on cards or `stat` / `list` scenes; the ending and the CTA get no memes. Designed scenes (`references/scenes.md`) go in the same plan: gaps in the video suggest `scene:*`, text is verbatim from the speech or has a source, the default mode keeps the face, and the plan check enforces the reading-time floor and the brand tone's ceilings.
 3. Sources by priority: B-roll: project → library → code scene → main footage; memes: your own folder and library → none. With the online-sources add-on `it-reelsmaker-online` installed, online sources join the chain, following the add-on's rules.
@@ -333,7 +337,7 @@ const SHOTS = [ { src: 0, cam: M, drift: 0.05 }, { src: 17.6, cam: P, whip: true
 // rendering: <div style={{ transform: `translate(${540 - cx*z}px, ${960 - cy*z}px) scale(${z})`,
 //             transformOrigin: "0 0" }}><OffthreadVideo …/></div>
 ```
-- `drift`: a slow push-in of +2–6% within a shot; `whip`: a 7-frame transition with `Easing.out(cubic)` and a `sin(πp)·6 px` blur, 1–3 times per video;
+- `drift`: a slow push-in of +2–6% within a shot; `whip`: a 7-frame transition with `Easing.out(cubic)` and a `sin(πp)·6 px` blur, 1–3 times per video, never above the brand tone's ceiling (none for `premium`, up to 6 for `bold`; `references/brands.md`);
 - change shots on the pause between phrases, a shot lasts 1.4–3.5 s; cycle wide → medium → close-up → medium; punch-in on the main point; CTA: close-up with a slow push-in; ending: pull-out;
 - **on silence, a hard cut**: a smooth transition over a pause reads as sluggish.
 
@@ -362,11 +366,11 @@ Match ignoring edge punctuation and case: between runs, Whisper is inconsistent 
 
 **Phone mockup on the CTA.** A PNG phone frame with a transparent screen ⟨YOURS: frame files⟩, with a screen recording or screenshot of where the CTA leads underneath. Compute the screen rectangle from the frame's transparent area (look for the edges not at the center but at a quarter of the width: the notch gets in the way). Frame 480–600 px; entrance: a 40–60 px rise and `rotateY` 10–12° → 0 over 14–18 frames, no “spinning 3D”. Cover other people's personal data in the screenshot.
 
-**Light flash instead of a transition.** A 6–10-frame flash in `screen` mode at a change of topic blocks, 1–2 per video at most. Procedurally: a radial warm-white spot with opacity 0 → 0.55 → 0. If the brand forbids light effects, don't use it.
+**Light flash instead of a transition.** A 6–10-frame flash in `screen` mode at a change of topic blocks, 1–2 per video, within the brand tone's ceiling (none for `premium`, up to 3 for `bold`). Procedurally: a radial warm-white spot with opacity 0 → 0.55 → 0. If the brand forbids light effects, don't use it.
 
 **Slide scene**: covers choppy speech. The speaker shrinks to ~0.42 and slides to the free edge (background in the style color), a panel with the thesis slides in from the other side, points appear on their words. 1–2 times, 3–5 s, the panel no lower than y 1500.
 
-**Designed scenes** (`references/scenes.md`): hook, quote, slogan, number, list, before → after, message thread, interface, CTA, cover, drawn in code in brand colors, on a spoken word; the `overlay` / `split` / `panel` / `window` modes keep the face, `full` 1–2 per video by brand tone. **A promo without footage** is the “scenes only” format: 15–25 s, hook → reveal → 2–3 strong moments → ending/CTA.
+**Designed scenes** (`references/scenes.md`): hook, quote, slogan, number, list, before → after, message thread, interface, CTA, cover, drawn in code in brand colors, on a spoken word; the `overlay` / `split` / `panel` / `window` modes keep the face, `full` within the brand tone's ceiling (1–3). **A promo without footage** is the “scenes only” format: 15–25 s, hook → reveal → 2–3 strong moments → ending/CTA, with no source analysis, transcript or cut.
 
 **Full-screen key phrase**: a “punch”, 1–2 times per video. A field in the style color wipes in over 8–10 frames, a pictogram “draws itself”, 3–6 words come up from below one by one on their words. Hide subtitles for that time. Not on the hook and not on the CTA.
 
@@ -430,7 +434,7 @@ Without mastering, finished videos came out between −33 and −17 LUFS, some w
 - [ ] Meme: on its line, rights known, no more than 460 px on the long side, at the edge of the frame, not over the face, subtitles or cards; no more than one full-frame meme
 - [ ] Graphics start on their word (±2 frames); hard cuts where there is silence
 - [ ] The picture changes every 1.5–3.5 s; close-ups are not blurry; the top of the head is not cut off
-- [ ] One style and one accent color; ≤ 6 words on screen; no outline or glow (unless the style calls for it)
+- [ ] One style and one accent color; ≤ 6 words in a card or hook headline (designed scenes follow the reading-time floor); no outline or glow (unless the style calls for it)
 - [ ] A phrase is one block: parts of one thought tight together, shared axis, one zone; on a still at 25% size it reads as a single mass
 - [ ] Text is readable on a phone
 - [ ] The logo is not distorted; there is one CTA and it works

@@ -20,6 +20,7 @@ Stored in the video's `edit/<id>/reel.json`. Layers apply in order, and each one
  "use_project_footage": true,
  "use_local_footage": true,
  "use_generated_footage": true,
+ "use_scenes": false,
  "use_memes": false,
  "use_local_memes": true,
  "meme_size": "m",
@@ -40,11 +41,12 @@ What each setting does:
 | `use_broll` | B-roll at all |
 | `use_project_footage` / `use_local_footage` | B-roll sources: project, library |
 | `use_generated_footage` | code scenes in Remotion |
+| `use_scenes` | designed scenes (`references/scenes.md`); on when chosen in step 0 or asked for in the prompt |
 | `use_memes`, `use_local_memes` | memes, and your own meme library |
 | `meme_size` | pop-up meme size: `s` / `m` / `l` |
 | `intensity` | `minimal` / `moderate` / `active` |
 
-**Turn everything off** (as without inserts): `use_broll=false`, `use_memes=false`.
+**Turn everything off** (as without inserts): `use_broll=false`, `use_scenes=false`, `use_memes=false`.
 
 **What actually turns on.** Before the plan, the agent checks what is really available: an enabled source that isn't there (empty folders, no library catalog, the Remotion project doesn't build) turns itself off, and the reason goes into the report. This is not an error: the edit proceeds with what is available.
 

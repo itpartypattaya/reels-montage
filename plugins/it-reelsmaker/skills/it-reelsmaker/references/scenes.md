@@ -30,7 +30,7 @@ A scene is **not needed** when the face and intonation matter more (a personal s
 
 | type | On screen | Required | Modes |
 |---|---|---|---|
-| `hook` | a hook of 2–6 words, one accent word; variants `slam` (fast in, then holds), `type` (typed out), `stack` (words stack up), `counter` (a number) | `text.lines`, `variant` | overlay, split, full (≤ 1.5 s) |
+| `hook` | a hook of 2–6 words, one accent word; variants `slam` (fast in, then holds), `type` (typed out), `stack` (words stack up), `counter` (a number) | `text.lines`, `variant` | overlay, split, full (≤ 1.5 s, fast tones only) |
 | `quote` | a **verbatim** quote, quotation marks, an all-caps caption “NAME · ROLE” | `text.lines`, `source` | overlay, split, full |
 | `slogan` | the main thought as a punch: a color field wipes in, words come in one by one on their spoken words (an evolution of the full-screen phrase) | `text.lines` | full, split |
 | `stat` | a big number with a from → to counter, a caption, a source | `value`, `text.lines`, `source` | overlay, split, full |
@@ -54,7 +54,9 @@ In a talking-head video the face and intonation are the main asset, so by defaul
 | `window` | the scene fills the frame, the speaker is in a rounded 360×480 window in a bottom corner | hidden |
 | `full` | the scene fills the frame, the speaker is hidden, the voice continues | hidden |
 
-`full` stays within the brand tone's ceiling (1–3); two `full` scenes in a row (gap < 2 s) are not allowed; a `full` hook lasts at most 1.5 s. Not on the CTA line (except the `cta` scene) and not in the last 2 s (that is for `cta` or a logo sting).
+In every mode except `overlay` the layout changes first (the speaker moves, or the field covers the frame): about 0.6 of the transition, ≈ 0.27 s for a fade, nothing for a cut. The text enters after it, and the same happens in reverse on the way out.
+
+`full` stays within the brand tone's ceiling (1–3); two `full` scenes in a row (gap < 2 s) are not allowed; a `full` hook lasts at most 1.5 s, which only the fast tones fit (`feature`, `punchy`, `hype`, with a cut): in `calm`, `deadpan` and `cinematic` the entrance, the exit and 0.8 s of reading already take longer, so there the hook goes in `overlay` or `split`. Not on the CTA line (except the `cta` scene) and not in the last 2 s (that is for `cta` or a logo sting).
 
 ## Brand tone and scene tone
 
@@ -86,12 +88,14 @@ Hook and ending formulas by tone:
 A scene is an entry in `edit/<id>/visual_plan.json` with `kind: "scene"` (ids `c01`, `c02`…). The plan is the contract: what appears, in what order and on which word is decided here, not in code.
 
 ```json
-{"id": "c01", "kind": "scene", "type": "quote", "mode": "split", "at": "word:thinking#1", "start": 12.3, "dur": 2.6,
+{"id": "c01", "kind": "scene", "type": "quote", "mode": "split", "at": "word:thinking#1", "start": 12.3, "dur": 3.6,
  "tone": null, "text": {"lines": ["Test how they think,", "not what they remember"], "accent": "think", "label": "NAME · ROLE"},
  "source": {"kind": "speech", "ref": "12.3–14.1"}, "what": "the quote large above the speaker",
  "why": "the main thought of the video", "transition_in": "fade", "transition_out": "cut", "sound": "hit",
  "hide_subtitles": true, "status": "planned"}
 ```
+
+Check of this example: 8 words need 2.4 s settled; 3.6 s minus the entrance and exit of `calm` (14 + 9 frames ≈ 0.77 s) and minus the layout change of `split` before the text (fade, ≈ 0.27 s) leaves ≈ 2.57 s ✓; the scene leaves at 15.9 s, well after the last spoken word (14.1 s) plus the 0.4 s hold ✓.
 
 Fields: `type`, `mode`, `at` or `start`, `dur`, `tone`, `text` (`lines`, `accent`, `label`), `items` (`text`, `at` or `t`, `from`), `value` (`from`, `to`, `prefix`, `suffix`, `decimals`), `media`, `interaction` (`kind`: tap / type / cursor / swipe, `target`, `text`, `at`), `box`, `source` (`kind`: speech / brief / brand / client / agent, `ref`), `what`, `why`, `transition_in`, `transition_out`, `sound`, `hide_subtitles`, `status` (planned → ready once the fields pass the check; skipped). A scene needs no file: it is drawn at render time from its fields.
 
@@ -112,10 +116,11 @@ Scene texts, like card texts, are **shown to the person before rendering** in th
 
 **Show the thing.** Material in order of preference: the real product in use (a screenshot, a screen recording, an object from the source footage) → a recreated interface element → an animated idea (a grid of cards, a funnel) → large typography. Abstract filler (gradients, particles, waves, a “tech background”) is not allowed: a still should be about this video, not any video.
 
-**Reading-time floor.** “Settled” means the text is fully on screen and not yet leaving (`dur` minus the tone's entrance and exit).
+**Reading-time floor.** “Settled” means the whole text is on screen and not yet leaving (`dur` minus the layout change, if any, and the tone's entrance and exit).
 - 1–3 words: at least 0.8 s;
 - a phrase: 0.3 s per word, at least 1.2 s; the hook gets the most;
-- text that appears on spoken words is complete at the last word: the floor counts from there, and is never shorter than the tone's hold;
+- the floor counts from the moment the whole text is on screen: after the entrance, or from the last word if the text builds up word by word on the speech;
+- text the speaker says doesn't leave earlier than the tone's hold after the last spoken word (0.25–0.6 s, table above): the viewer reads along while hearing it;
 - items one by one: no faster than 0.6 s apart;
 - fast in, then hold: pace comes from motion and cuts, not from text that leaves before it can be read;
 - it doesn't fit → cut the text or split the scene; don't speed it up.
@@ -149,9 +154,10 @@ The sound goes on the **start** of the motion (0–0.1 s before the first visibl
 ## The “scenes only” format: a promo without footage
 
 A video with no talking head: the brand's texts, numbers and pictures, in scenes only. The brand profile, the CTA library, sounds, mastering and the cover all work as usual.
-1. **Material.** The brand profile, the client's site and materials, product screenshots. First answer 6 questions: what it is, in one sentence; who it is for and what it does for them; what sets it apart; the strongest line or number (verbatim from a source); what real material to show; which tone.
+1. **Material.** The brand profile, the texts, numbers and screenshots the person provides (from their site, deck or product). First answer 6 questions: what it is, in one sentence; who it is for and what it does for them; what sets it apart; the strongest line or number (verbatim from a source); what real material to show; which tone.
 2. **Storyboard:** hook 2–3 s → reveal 2–4 s → 2–3 strong moments → ending / CTA 2–4 s. 15–25 s in total, 18–22 is the sweet spot. Number of scenes by tone: `calm` and `deadpan` 3–4 with long holds, `feature` 4–6, `punchy` 4–5, `hype` 6–8. Add up the durations.
-3. A plan without speech spans: scenes at absolute times, back to back, covering ≥ 95 % of the video.
+3. A plan without speech spans: scenes at absolute times, back to back, covering ≥ 95 % of the video; the first scene is the `hook`, from 0 s. All scenes are `full` (there is no speaker), so the rules that protect the face don't apply: the intensity budget and spacing, the `full` ceiling, “not two `full` in a row” and the 1.5 s limit on a `full` hook. Everything else does: the reading-time floor, facts from a source, transitions, the brand tone's scene tones and its transition, light flash and whip ceilings.
+   Steps 1–6 (source analysis, transcript, takes, rough cut) are skipped: the video id is a short name such as `promo-<brand>`, and the work goes from the brand and the 6 answers straight to the storyboard (step 7a), then render, sound, cover.
 4. Render with the same template, without video and without subtitles.
 5. Sound: effects on events + music only with a commercial license; mastering as usual.
 
