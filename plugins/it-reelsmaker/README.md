@@ -10,7 +10,7 @@ The plugin is a skill built on real client videos: the thresholds and numbers in
 
 ![The IT Reelsmaker pipeline, from a raw recording to a master](https://raw.githubusercontent.com/itpartypattaya/reels-montage/main/docs/img/pipeline.png)
 
-1. **Brand, style and inserts first.** Pick a saved brand profile (colors, fonts, logos, design rules) or create one from a name, 1–3 colors and a brand tone (premium, expert, friendly or bold), which sets which memes are allowed, how many cutaways and how loud the techniques can be. Choose one of six styles and the subtitle mode.
+1. **Brand, style and inserts first.** Pick a saved brand profile (colors, fonts, logos, design rules) or create one from a name, 1–3 colors and a brand tone (one of eight, from premium and warm to drive and bold; you can change it later), which sets which memes are allowed, how many cutaways and how loud the techniques can be. Choose one of six styles and the subtitle mode.
 2. **Word-level transcript**, then a search for retakes and slips.
 3. **Cut plan → your “yes”.** The plan lists what stays, what goes and why. Nothing is cut before you approve.
 4. **Rough cut** with ffmpeg: segment edges found by a speech mask (on a tested video they matched a manual cut within ±40 ms), color, speed-up, subtitles on the new timeline. Then faces are measured across the whole cut.
@@ -99,6 +99,7 @@ What changed in each version is in [CHANGELOG.md](CHANGELOG.md). After an update
 
 - “Edit a reel from IMG_4821.MOV for Acme: tight pacing, Marker style, subtitles on.”
 - “New brand: Northwind Coffee, colors #2E1F17 and #E8B04B, logo in brand/logo.svg.”
+- “Change the brand tone for Acme: it feels too strict, make it livelier.”
 - “Video 4821 jumps back around 0:18 — find the missed retake and fix the cut.”
 - “Add a hook headline, two cards with the key points and an end card with a DM call to action to video 4821.”
 - “Run the face audit on the final render and move anything that covers the speaker's face.”
@@ -134,6 +135,7 @@ More online sources are available through the online-sources add-on `it-reelsmak
 - **The text lands on a face.** Install the YuNet model for measured layout, or ask for the face audit on the render.
 - **A cut-out shows furniture next to the person.** Check the check frame the skill renders, then use the “window” layout or reshoot against a wall.
 - **The laptop runs out of memory.** Run one Remotion Studio at a time. Videos over 90 s and cut-outs are best on a server.
+- **Something else.** The skill keeps a table of known pitfalls with causes and fixes: [`references/pitfalls.md`](skills/it-reelsmaker/references/pitfalls.md).
 
 ## Support
 

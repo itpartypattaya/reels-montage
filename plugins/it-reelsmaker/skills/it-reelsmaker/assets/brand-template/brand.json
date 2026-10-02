@@ -1,13 +1,13 @@
 {
  "_comment": "Brand profile template. Copy this folder to <PROJECT_ROOT>/brands/<slug>/ and fill it in. Only name, colors.primary/accent and tone.preset are required; the agent infers the rest itself (references/brands.md). motion and meme_size are null: the brand tone sets them, and explicit values override it. Paths are relative to the brand folder (assets/…) or to the project.",
- "schema": 1,
+ "schema": 2,
  "slug": "<slug>",
  "name": "⟨YOURS: brand name⟩",
  "description": "⟨YOURS: what the brand does, who the videos are for⟩",
  "language": "⟨YOURS: brand language code, for example en, ru or th⟩",
  "voice": "⟨YOURS: the brand voice in 1–2 lines, for example “calm expertise, specifics instead of promises”⟩",
  "tagline": "",
- "tone": {"preset": "⟨YOURS: premium | expert | friendly | bold, see references/brands.md, “Brand tone”⟩", "overrides": {}},
+ "tone": {"preset": "⟨YOURS: premium | warm | expert | story | tech | friendly | drive | bold, see references/brands.md, “Brand tone”⟩", "overrides": {}},
  "colors": {
   "primary": "#111418",
   "accent": "#FFCC00",

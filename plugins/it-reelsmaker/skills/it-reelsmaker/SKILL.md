@@ -43,7 +43,8 @@ A value that is empty or still reads `${user_config.…}` (the skill was not ins
 **What's new after an update.** Once the project folder is known and before the editing questions, read `version` from `${CLAUDE_SKILL_DIR}/../../.claude-plugin/plugin.json` and `last_seen_version` from `{{PROJECT_ROOT}}/it-reelsmaker.json` (create the file if needed and keep its other keys). Compare versions as numbers, part by part (1.10.0 is newer than 1.9.0). The installed version is newer → show one short block “What's new in X.Y”: at most 4 points from the `${CLAUDE_SKILL_DIR}/../../CHANGELOG.md` entries newer than the last seen version and not newer than the installed one, in the person's language and without technical detail; then write the installed version there. No `last_seen_version`: if the project already has `edit/` or `brands/`, it was used with 1.0.0, which kept no record, so take 1.0.0 as the last seen; an empty project → write the version silently. Something can't be read (no `plugin.json` at that path, as in a manual copy of the skill, no version, no CHANGELOG entry) → skip this step and write nothing. Never update the plugin yourself: how to update is in the README.
 
 **Brands**: `{{PROJECT_ROOT}}/brands/<slug>/` (`brand.json` + `rules.md` + `assets/`), as many as you like:
-- **minimum**: a name, 1–3 colors and the **brand tone**: `premium` “Premium, restrained” · `expert` “Expert, calm” · `friendly` “Lively, friendly” · `bold` “Bold, with humor”. The tone sets the limits for the brand's videos right away: which memes are allowed, how many cutaways, how loud the techniques can be (light flash, whip, shake, full-frame scenes) and the scene tones; louder only on explicit request for a video (`tone_override`). The agent works out color roles, text contrast, fonts that cover your language's script and the logo search itself (`references/brands.md`);
+- **minimum**: a name, 1–3 colors and the **brand tone**, one of eight presets from `premium` to `bold` (`references/brands.md`, with how to offer eight in a 4-option question). The tone sets the limits for the brand's videos right away: which memes are allowed, how many cutaways, how loud the techniques can be (light flash, whip, shake, full-frame scenes) and the scene tones; louder only on explicit request for a video (`tone_override`). “Change the brand tone” rewrites it in the profile at any time. The agent works out color roles, text contrast, fonts that cover your language's script and the logo search itself;
+- **older files**: a `brand.json` or `it-reelsmaker.json` with an older `schema` is brought up to date once, with a `.bak` copy and one line saying what changed (`references/migrations.md`);
 - **revisions** (yours or the client's) that apply to the brand as a whole are appended to its `rules.md` with a date: the brand's next video already knows them;
 - profiles live in your project, not in the plugin, so a plugin update does not touch them. **Moving from an old version:** if `~/.claude/skills/reels-montage/brands/<slug>/` exists (versions before 1.0 were installed by cloning), offer to move those folders to `{{PROJECT_ROOT}}/brands/`.
 
@@ -206,7 +207,7 @@ A shot-size change is the main source of dynamics and the best way to hide a cut
 A limit below ~×1.15 → the camera will not give any dynamics; say so before editing.
 
 ### Step 5. Cut plan → “yes”
-In one message: phrase order (what stays, what goes, **what was rejected and why**), takes and slips, **pacing** (“tight”: pauses up to 50 ms; “natural”: up to 220 ms), **filler words** (keep / remove), speed-up via atempo with pitch preserved (insight monologue ×1.15–1.25, skit and calm delivery ×1.1–1.15; above ×1.3 sounds rushed), final length, zoom margin, transcription fixes. **No cutting without a “yes”.**
+In one message: phrase order (what stays, what goes, **what was rejected and why**), takes and slips, **pacing** (“tight”: pauses up to 50 ms; “natural”: up to 220 ms), **filler words** (keep / remove), speed-up via atempo with pitch preserved (insight monologue ×1.15–1.25, skit and calm delivery ×1.1–1.15; above ×1.3 sounds rushed), final length, zoom margin, transcription fixes. **No cutting without a “yes”.** The message looks like the cut plan in `references/examples.md`.
 
 **Multiple cameras:** measure the speech rate for each source (syllables per second) and even them out with a separate speed for each. Real case: one angle sounded 27% faster (9.56 vs 7.55 syllables/s) → ×0.915 and ×1.095. No more than two segments from the same angle in a row, and two in a row must differ in shot size; a phrase comes whole from one take; show the chain of angles in the plan.
 
@@ -282,132 +283,35 @@ Camera (section 9) → B-roll → only the chosen elements → memes → subtitl
 - **audio mastering, always** (section 12), with an acceptance check: failing any checklist item (LUFS, true peak, duration) → non-zero exit code; do not deliver the master.
 
 ### Step 10. Delivery
-Show **measurable results, not “it got better”**: duration, remaining silence in ms, master loudness and peak, how many cuts and takes were removed, how many inserts and from where (and which ones did not land, with the reason). Found a defect nobody asked about → say so and fix it. Update `project.md`. **On-screen facts need a source**: a number, place, price, contact or promise comes from the speaker's words or from the client; anything the agent took on its own (from a website, “from general knowledge”, by default) goes into “open items” as “to verify”. Attribution for CC files (and stock footage, if any) goes into the post description. A post caption `caption.txt` (1–3 sentences in the brand voice, the same CTA) follows `references/scenes.md`, on a “yes” from `{{APPROVER}}`.
+Show **measurable results, not “it got better”** (format: the report in `references/examples.md`): duration, remaining silence in ms, master loudness and peak, how many cuts and takes were removed, how many inserts and from where (and which ones did not land, with the reason). Found a defect nobody asked about → say so and fix it. Update `project.md`. **On-screen facts need a source**: a number, place, price, contact or promise comes from the speaker's words or from the client; anything the agent took on its own (from a website, “from general knowledge”, by default) goes into “open items” as “to verify”. Attribution for CC files (and stock footage, if any) goes into the post description. A post caption `caption.txt` (1–3 sentences in the brand voice, the same CTA) follows `references/scenes.md`, on a “yes” from `{{APPROVER}}`.
 
 ## 7. Two-person skit / “Verdict”
 
-> A library, not a template: each element only per the brief; if the video is not about an assessment, don't offer the scale.
-
-- **the hook is the mechanics**: roles and scale visible from the first frame, the first line is the most controversial one;
-- **role tags** above the heads for the whole video: the “Marker” variant is a light card with dark all-caps text, ~190 px above the head, hidden while thesis cards are on screen; the “Glass” variant is `{{DARK}}` 35–45%, blur, `{{ACCENT}}` glow;
-- **verdict scale** ⟨YOURS: your own three values⟩ at waist level; the mark: the word moves onto a `{{MARKER}}` marker bar, or the focus brackets close in on the word. A red circle / green check mark only if the brand allows it (it is a second bright color);
-- **subtitles** colored per speaker;
-- **“save”**: bookmark icon + hand cursor, 1–1.5 s, twice at most, not a second CTA;
-- **camera**: two-shots only; a punch-in to ×1.1–1.3 on the key line, no more than once every 10 s.
-
-Layout 1080×1920: UI 0–220 · roles 240–360 · faces ~400–800 · subtitles ~900–1020 · scale ~1040–1200 · mark ~1200–1420 · UI 1500–1920 (refine by frames). Shooting: both people at the same height, 15–20% free background above their heads, each with their own lavalier mic.
+Role tags above the heads, a verdict scale, subtitles colored per speaker, a “save” bookmark, two-shots with rare punch-ins and a frame layout for two people: `references/skit.md`. A library, not a template: the scale only if the video is about an assessment.
 
 ## 8. CTA library ⟨YOURS: fill in contacts, remove what you don't need⟩
 
-One CTA per video (exception: a job opening, with apply + recommend). Tone: a calm invitation, no “Urgent” or “Hurry up”. Two lines on the card: the main line (52–60 px) and a clarifier (34–38 px, in a muted color).
-
-| Code | Main line | Clarifier |
-|---|---|---|
-| `dm` | Send me a DM | I'll reply personally |
-| `dm-word` | DM me “`{{CODE_WORD}}`” | I'll send ⟨what exactly⟩ |
-| `comment-word` | Comment “+” below | I'll DM you ⟨what exactly⟩ |
-| `site` | `{{SITE}}` | ⟨YOURS: what's there⟩ |
-| `bio` | Link in bio | ⟨where it leads⟩ |
-| `messenger` | ⟨messenger⟩: `{{HANDLE}}` | Message me directly |
-| `apply` | Apply via DM | ⟨what to send⟩ |
-| `recommend` | Know someone like this? | Recommend them: link in bio |
-| `brief` | ⟨YOURS: question to the client⟩ | Describe your task: `{{SITE}}` |
-| `save` | Save this so you don't lose it | Useful ⟨when⟩ |
-| `share` | Send this to someone who ⟨who⟩ | — |
-| `follow` | Follow for more | ⟨YOURS: what about and how often⟩ |
-
-Promises (“I'll reply within a day”, “every week”, a lead magnet) only if they are actually kept. “Link in bio” only if the link is already there.
+One CTA per video (exception: a job opening, with apply + recommend), a calm invitation with no “Urgent” or “Hurry up”, two lines on the card: the main line (52–60 px) and a clarifier (34–38 px, in a muted color). The codes (`dm`, `dm-word`, `comment-word`, `site`, `bio`, `apply`, `save`, `follow`, …) and their texts: `references/cta.md`. Promises only if they are kept; “Link in bio” only if the link is already there.
 
 ## 9. Virtual camera and word anchoring (Remotion)
 
-The camera is `{ z, cx, cy }`: the scale and the frame point that ends up in the center. Shots are listed in **source time** and converted with the `at(src)` function, so a speed change in `cut.py` breaks nothing:
-```ts
-// file: source file (multicamera: the segment has a src field); seg: segment number, if that second appears in the video twice
-const at = (src: number, file?: string, seg?: number) => {
-  const pool = SEGS.filter((g) => (file === undefined || g.src === file) && (seg === undefined || g.i === seg));
-  const hit = pool.filter((g) => src >= g.src_start - 0.001 && src <= g.src_end + 0.001);
-  if (hit.length === 0) throw new Error(`at(${src}): this second was cut out, or wrong source file`);
-  if (hit.length > 1) throw new Error(`at(${src}): this second is in several segments — pass seg`);
-  const s = hit[0];
-  return s.out_start + Math.max(0, src - s.src_start) * (s.out_dur / (s.src_end - s.src_start));
-};
-const W = { z: 1.0, cx: 540, cy: 960 }, M = { z: 1.1, cx: 540, cy: 1000 },
-      C = { z: 1.2, cx: 540, cy: 990 },  P = { z: 1.28, cx: 540, cy: 1000 };
-const SHOTS = [ { src: 0, cam: M, drift: 0.05 }, { src: 17.6, cam: P, whip: true }, /* … */ ];
-// rendering: <div style={{ transform: `translate(${540 - cx*z}px, ${960 - cy*z}px) scale(${z})`,
-//             transformOrigin: "0 0" }}><OffthreadVideo …/></div>
-```
+The camera is `{ z, cx, cy }` (scale and the frame point in the center), with shots listed in **source time** and converted by `at(src)`, so a speed change in `cut.py` breaks nothing. Graphics are anchored **to the spoken word** (`atWord(word, n)`), matching ignoring edge punctuation and case. Code for both: `references/camera.md`.
 - `drift`: a slow push-in of +2–6% within a shot; `whip`: a 7-frame transition with `Easing.out(cubic)` and a `sin(πp)·6 px` blur, 1–3 times per video, never above the brand tone's ceiling (none for `premium`, up to 6 for `bold`; `references/brands.md`);
 - change shots on the pause between phrases, a shot lasts 1.4–3.5 s; cycle wide → medium → close-up → medium; punch-in on the main point; CTA: close-up with a slow push-in; ending: pull-out;
 - **on silence, a hard cut**: a smooth transition over a pause reads as sluggish.
 
-Anchor graphics **to the spoken word**, not to a second, so re-cutting shifts nothing:
-```ts
-const norm = (s: string) => s.toLowerCase().replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, "");
-const atWord = (word: string, n = 1, offset = 0) => {
-  const hits = WORDS.filter((w) => norm(w.text) === norm(word));
-  if (hits.length < n) throw new Error(`no word “${word}” #${n}`);
-  return hits[n - 1].start + offset;
-};
-```
-Match ignoring edge punctuation and case: between runs, Whisper is inconsistent about punctuation attached to a word (Russian example: *eti*, “these”, comes out as “eti” in one run and “eti.” in another).
-
 ## 10. Special techniques (all per the brief)
 
-**Cut-out figure**: everything is in `references/figure.md`: `rembg` cut-out on `{{HEAVY_SERVER}}` (frames from `final.mp4` as JPG; the WebM with alpha and edge cleanup is assembled on the server; a check frame on a light and a dark background shows furniture in the mask right away), source-edge cuts, layouts.
-
-**Text behind the person (hook).** A big word behind the figure but in front of the background, like a magazine cover. Offer it only if there is no room above the head for the whole hook: with a free “headroom” zone, a regular hook above the head reads better. Needs a calm, contrasting background behind the head; 1.5–3 s. In Remotion, three layers **inside one camera div**: video → word → `<OffthreadVideo src="person.webm" transparent muted />`. The word is ≤ 960 px wide, the figure covers only the bottom or the middle of the letters (≤ ~30%), the lead-in sits tight above the word. **The main risk is contrast:** light letters on a light wall disappear. The “antithesis” variant: the word is crossed out during a pause and replaced by a second word when that word is spoken.
-
-**Presenter over a scene** (overview, review, stream). The speaker is cut out and stands in front of a screen recording, the video being reviewed, or a code scene. Layouts: “review”: the scene in a panel at the top, the presenter's forehead at its bottom edge; “stream”: the scene fills the frame, a small presenter in a corner; “window”: no cut-out, the speaker's video in a rounded window. Scale by the face measurement, side by the source-edge cuts (no chopped-off arm in the frame), separation from the scene by composition, with no outline or shadow.
-
-**“Framed” format** (horizontal source: Zoom, webinar, podcast). A window of ~1030×1240 at (25, 340), ~50 px corner radius with no feathering, background in the style color ⟨YOURS⟩; text only inside the window and above y 1500; a small all-caps label above the window. Do not scale to 1080×1920 in `cut.py`; the camera works relative to the window; change shots when the speaker changes.
-
-**LUT**: see step 6.
-
-**Phone mockup on the CTA.** A PNG phone frame with a transparent screen ⟨YOURS: frame files⟩, with a screen recording or screenshot of where the CTA leads underneath. Compute the screen rectangle from the frame's transparent area (look for the edges not at the center but at a quarter of the width: the notch gets in the way). Frame 480–600 px; entrance: a 40–60 px rise and `rotateY` 10–12° → 0 over 14–18 frames, no “spinning 3D”. Cover other people's personal data in the screenshot.
-
-**Light flash instead of a transition.** A 6–10-frame flash in `screen` mode at a change of topic blocks, 1–2 per video, within the brand tone's ceiling (none for `premium`, up to 3 for `bold`). Procedurally: a radial warm-white spot with opacity 0 → 0.55 → 0. If the brand forbids light effects, don't use it.
-
-**Slide scene**: covers choppy speech. The speaker shrinks to ~0.42 and slides to the free edge (background in the style color), a panel with the thesis slides in from the other side, points appear on their words. 1–2 times, 3–5 s, the panel no lower than y 1500.
+Each only if the brief chose it; numbers, layouts and risks: `references/techniques.md` (the cut-out itself: `references/figure.md`). **Cut-out figure**; **text behind the person** (only when the headroom can't hold the hook; the main risk is contrast); **presenter over a scene** (review, stream, window); the **“framed” format** for a horizontal source (a ~1030×1240 window); a **phone mockup on the CTA**; a **light flash** instead of a transition (within the brand tone's ceiling); a **slide scene** to cover choppy speech; a **full-screen key phrase** (1–2 per video, not on the hook or the CTA). **LUT**: see step 6.
 
 **Designed scenes** (`references/scenes.md`): hook, quote, slogan, number, list, before → after, message thread, interface, CTA, cover, drawn in code in brand colors, on a spoken word; the `overlay` / `split` / `panel` / `window` modes keep the face, `full` within the brand tone's ceiling (1–3). **A promo without footage** is the “scenes only” format: 15–25 s, hook → reveal → 2–3 strong moments → ending/CTA, with no source analysis, transcript or cut.
 
-**Full-screen key phrase**: a “punch”, 1–2 times per video. A field in the style color wipes in over 8–10 frames, a pictogram “draws itself”, 3–6 words come up from below one by one on their words. Hide subtitles for that time. Not on the hook and not on the CTA.
-
 ## 11. Your own library of sounds, music and icons (optional)
 
-You can set up an `{{ASSETS_DIR}}` folder, roughly like this ⟨YOURS: your own categories⟩:
-```text
-ASSETS_DIR/
-  Sounds/     Whoosh · Click · Marker · Paper · Keyboard · Phone · Clock · Hit · Riser · Bass · …
-  Music/      Calm · Inspiring · Upbeat · Dark
-  Icons/      People (pictograms) · Hands · Smartphone (phone frames) · Apps (logos) · …
-  App icons/  animated logos (often on a green background)
-```
-**Work through a catalog, not by browsing files** (names like `IMG_xxxx` tell you nothing). A small script reads each file once and records:
-- for audio: duration, **sound start** (how much silence there is at the start of the file — it matters), peak and mean loudness;
-- for images and video: size, background (transparent / green chroma key / black / white);
-- **brand verdict** (OK / caution / no + reason): a per-folder rule and per-file exceptions in a separate JSON;
-- **overview sheets** of icons, 80 per sheet, with a colored verdict stripe: pick an icon by eye from the sheet;
-- **reaction memes** (emotion pictograms, statues, “hand gestures”): a separate `memes.json` annotation next to the catalog with description, emotion and “when it fits”. Then a meme is found by the meaning of the line (“the candidate didn't understand the question” → a figure with question marks), and its rights by the catalog verdict (`references/inserts.md`, “Memes”).
-
-**Icons:** flat pictograms are the safest option; service logos only when the service is named in the speech or the CTA; `{{FORBIDDEN_IMAGES}}`, real celebrities, politicians, film stills and meme stills are a no. One icon at a time, 180–320 px, not on the face. Copy **only the chosen files** into Remotion's `public/`, and compress large PNGs. Green background → `chromakey=0x00FF00:0.18:0.06,despill=type=green,format=yuva420p` into WebM VP9 with alpha; black background → `mixBlendMode: "screen"`.
-
-**Sounds for events:**
-
-| Event | Sound |
-|---|---|
-| whip, shot change, card fly-in | whoosh (on the 2–4 main ones, not on every one) |
-| marker bar appears | marker |
-| list item, chip | click (≤ 3–4 in a row) |
-| card, document | paper |
-| “Typewriter” subtitles | keyboard, quiet |
-| CTA “send me a message” | phone notification |
-| deadlines | clock |
-
-No more than one effect every 2–3 s. **Place by the start of the sound, not of the file:** `Sequence from = event frame − sound start`, otherwise the hit will be late (a whoosh can start with 1.8 s of silence). Effects 12–18 dB below voice peaks; trim long tails to 0.3–0.8 s with a fade.
-
-**Music: license first.** ⟨YOURS: `{{ACCOUNT_TYPE}}`⟩. An Instagram business account only has access to the royalty-free Meta Sound Collection library in the app, and a track burned into the video must have a **commercial** license. Commercial tracks, slowed/reverb versions of other people's songs, files from download sites: do not burn them in. A safe default: render without music and pick the track in the app when publishing.
+An `{{ASSETS_DIR}}` folder with sounds, music, icons and memes, used through a catalog (sound start, loudness, background, brand verdict, overview sheets, a meme annotation), not by browsing files: `references/library.md`. In every video:
+- sound effects: no more than one every 2–3 s, placed by the start of the sound, not of the file, 12–18 dB below voice peaks;
+- icons: flat pictograms; service logos only when the service is named; `{{FORBIDDEN_IMAGES}}`, celebrities and film stills are a no; one at a time, 180–320 px, not on the face;
+- **music: license first** ⟨YOURS: `{{ACCOUNT_TYPE}}`⟩: a burned-in track needs a commercial license; the safe default is a render without music and a track picked in the app when publishing.
 
 ## 12. Audio mastering — every video
 
@@ -418,13 +322,7 @@ Without mastering, finished videos came out between −33 and −17 LUFS, some w
 - the audio is put into the render **without re-encoding the video**: `-map 0:v:0 -map 1:a:0 -c:v copy -c:a aac -b:a 256k -movflags +faststart -shortest`;
 - a final `ebur128` measurement and a duration check **against the video track** (the render's audio can be a fraction of a second longer than the video).
 
-**Music, if burned in:**
-- set the level **by the gap to the voice**, not by a percentage of track volume: a 15 dB gap → bed at −24 LUFS (13 → −22, 17 → −26);
-- sidechain on the voice: `sidechaincompress=threshold=0.10:ratio=3:attack=20:release=380`;
-- trap: `sidechaincompress` outputs about a second less than it received, so the final hit silently disappears. `apad` both inputs, `atrim` the output, check the duration;
-- `amix` only with `normalize=0`, otherwise the voice quietly drops;
-- **cut the track to the meaning**: find the drop (the sharpest rise in short-term loudness over 1.5 s, not in the first 4 s) and land it on the final phrase: offset = drop time − phrase time;
-- bring the final mix to −14 LUFS again.
+**Music, if burned in:** level by the gap to the voice, sidechain, `amix` only with `normalize=0` (otherwise the voice quietly drops), the track's drop on the final phrase, then −14 LUFS again: `references/library.md`, “Music in the mix”.
 
 ## 13. Pre-delivery checklist
 
@@ -451,13 +349,7 @@ Without mastering, finished videos came out between −33 and −17 LUFS, some w
 
 ## 14. Shooting that makes editing possible (a memo for the speaker)
 
-1. One position, one main shot; face and hands visible. If there will be a figure cut-out, the speaker stands in front of a wall, not against a chair back, and the hands don't go past the edge of the frame.
-2. **Vertical, in 4K**, 1.5–2 m from the camera, waist up, with room above (15–20% background above the head for cards). Don't shoot horizontally “to crop a vertical out of it”: the zoom margin is lost.
-3. Light from the side (side-on to a window), not from behind and not head-on.
-4. Lines phrase by phrase, in takes; restart the whole phrase.
-5. After the main shot, 2–3 detail shots of 5–10 s each (hands, emotion, an object) from a new tripod position.
-6. A “hook” in the scene itself: an object or an action that raises a question.
-7. Two-person skit: each person has their own lavalier mic.
+Vertical 4K with room above the head, side light, lines phrase by phrase in takes, 2–3 detail shots, a lavalier for each person in a skit: the memo to send before the shoot is `references/shooting.md`.
 
 ## 15. Machine limits ⟨YOURS⟩
 
@@ -477,4 +369,12 @@ Several agent sessions in one editing folder are normal: write JSON (video setti
 | `references/faces.md` | steps 6, 8, 9: face measurement with the YuNet model, false “faces” and the filter, zones for the hook, cards and subtitles accounting for the camera, card checks, render audit |
 | `references/figure.md` | cut-out figure: the cut-out pipeline and model memory, check frame, presenter over a scene (layouts), source-edge cuts, text behind the person |
 | `references/typography.md` | any on-screen text: a phrase as one block, gaps and line breaks, subtitles (contrast, splitting, when to hide), transcription |
+| `references/camera.md` | step 8: code for shots in source time (`at`) and graphics on the spoken word (`atWord`) |
+| `references/techniques.md` | step 7 techniques: text behind the person, presenter over a scene, framed format, phone mockup, light flash, slide scene, full-screen phrase |
+| `references/skit.md`, `references/cta.md` | a two-person skit; the CTA library for the end card and the `cta` scene |
+| `references/library.md` | section 11: your own library, its catalog, sounds for events, music in the mix |
+| `references/shooting.md` | before the shoot: the memo for the speaker |
+| `references/examples.md` | steps 5 and 10: what the cut plan and the delivery report look like |
+| `references/pitfalls.md` | something went wrong in steps 6–9: symptom → cause → what to do |
+| `references/migrations.md` | step 0: bringing older brand profiles and settings up to date |
 | `assets/brand-template/` | brand profile template (`brand.json`, `rules.md`, `assets/`); copy into `{{PROJECT_ROOT}}/brands/<slug>/` |

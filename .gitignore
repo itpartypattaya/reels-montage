@@ -6,3 +6,6 @@ __MACOSX/
 
 # Brand profiles live in your editing project (<project>/brands/), never in this repository
 brands/
+
+# Eval results: local, per run (tools/run_evals.py)
+evals/results/
