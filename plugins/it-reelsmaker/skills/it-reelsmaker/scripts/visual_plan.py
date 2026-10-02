@@ -1554,6 +1554,8 @@ def cmd_export(a):
         sys.exit("the plan has errors: fix them (or use --force)")
     plan = load_plan(e)  # after validate the settings snapshot is current
     rem = Path(a.remotion).resolve()
+    if not (rem / "package.json").is_file() or not (rem / "src").is_dir():
+        sys.exit(f"not a Remotion project (no package.json or src/): {rem}; nothing exported")
     name = safe_slug(a.name or plan["id"], "--name", dots=True)
     pub = inside(rem / "public", rem / "public" / name / "inserts", "inserts folder")
     out, skipped = [], []

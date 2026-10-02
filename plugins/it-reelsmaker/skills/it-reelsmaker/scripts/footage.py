@@ -83,8 +83,9 @@ class Provider:
 
 
 class ProjectProvider(Provider):
-    """The project's own videos and photos: sources in the project folder + the footage_dirs folders. Descriptions
-    live in footage_index.json."""
+    """The project's own videos and photos: videos in the project folder + videos and photos in the footage_dirs
+    folders. Photos only from footage_dirs on purpose: the project folder also holds covers, screenshots and
+    exported frames, which must not turn into B-roll. Descriptions live in footage_index.json."""
     name = "project"
 
     def files(self, o):
@@ -124,7 +125,8 @@ class ProjectProvider(Provider):
 
 class LocalProvider(Provider):
     """Shared libraries (library_dirs): a library with a catalog (_catalog/catalog.json, library_catalog.py) is
-    searched by its catalog, the others by file names."""
+    searched by its catalog, the others by file names. Videos only on purpose: images in a library are icons and
+    graphics for scenes, and memes are picked by memes.py; photos for B-roll go into footage_dirs."""
     name = "local"
 
     def search(self, query, o):

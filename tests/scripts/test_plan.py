@@ -96,3 +96,14 @@ def test_reelcfg_show_and_save(project):
     assert reel["brand"] == "acme" and reel["use_memes"] is False and reel["intensity"] == "minimal"
     r = run_script("reelcfg.py", "save", "edit/4821", "--set", "use_online_footage=true", cwd=project, check=False)
     assert "unknown" in (r.stdout + r.stderr).lower()  # an add-on key without the add-on
+
+
+def test_export_refuses_a_folder_that_is_not_a_remotion_project(project):
+    e = project / "edit" / "4821"
+    e.mkdir(parents=True)
+    write_json(e / "visual_plan.json", {"id": "4821", "brand": "acme", "duration": 10, "inserts": []})
+    wrong = project / "not-remotion"
+    wrong.mkdir()
+    r = run_script("visual_plan.py", "export", "edit/4821", "--remotion", wrong, "--force", cwd=project, check=False)
+    assert r.returncode != 0 and "not a Remotion project" in (r.stdout + r.stderr)
+    assert not (wrong / "src").exists() and not (wrong / "public").exists()
