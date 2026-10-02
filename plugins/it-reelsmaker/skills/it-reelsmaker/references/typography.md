@@ -10,7 +10,7 @@ A real revision on a hook: “the gap between the lines is too big, it's one phr
 
 | What | Rule |
 |---|---|
-| Lines of the same size | line pitch 1.0–1.1× the font size for an all-caps headline, 1.1–1.2× for cards (same-size cards sit flush against each other), 1.2–1.3× for subtitles. The pitch is set with line height, not with margins. The only exception is all caps without a card, trimmed to cap height (so that the gap to the other part is measured by the letters): there the pitch is topped up with a margin |
+| Lines of the same size | line pitch 1.0–1.1× the font size for an all-caps headline, 1.1–1.2× for cards (same-size cards sit flush against each other), 1.2–1.3× for subtitles. The pitch is set with line height, not with margins. The only exception is all caps without a card, trimmed to cap height (so that the gap to the other part is measured by the letters): there (trimmed with `lineHeight` ≈ 0.78) the pitch is topped up with a margin of ~0.27× the font size, that is with a margin |
 | Parts of different sizes (lead-in + big word) | the gap between the bottom of the upper part and the top of the letters of the lower part is **15–25 px** and no more than **0.35× the font size of the smaller part**. Measure by visible edges (cards, the tops of capitals, x-height), not by block boxes |
 | Font sizes in one phrase | no more than two. In a “lead-in + big word” hook the ratio is 1.6–2.8 (working example: 190 / 72). Emphasis on one word inside a line: ×1.3–1.6 |
 | Axis | shared: both parts centered on one axis **or** on one left edge. The smaller part is no more than 15 % wider than the larger one |
@@ -44,6 +44,15 @@ For the hook, cards, designed scenes and the end card: everything that doesn't r
 - text the speaker says stays at least 0.3–0.5 s after the last spoken word (a designed scene: its tone's hold, `references/scenes.md`);
 - items one by one: no faster than 0.6 s apart;
 - fast in, then hold: pace comes from motion and cuts, not from text that leaves before it can be read; if it doesn't fit, cut the text or split it, don't speed it up.
+
+## Style specs (starting values; tune on a live frame)
+
+- **“Marker”**: the marker bar is a line background (`box-decoration-break: clone`), square corners, no shadow. Hook ~92 px bold; card text 54–58 px semibold; labels 26 px all caps, +0.2 em, muted gray. Thesis cards on a light backing at ~94 % opacity, square corners. In a list, the item being spoken sits on the marker bar, the others get a thin dark outline at ~18 % opacity. Subtitles at x 60, ~58 px semibold.
+- **“Minimal”**: a dense bold grotesque (for example Manrope 800 or Inter Tight 800–900), 2–3 lines bottom left.
+- **“Editorial”**: a serif for the key words (for example Playfair Display or Cormorant Garamond) + one sans (for example Manrope); secondary words in a thin sans or in serif italic.
+- **“Bold”**: Inter Tight 900 or Onest 800, capitals; the marker bar has square corners and no shadow.
+- **“Typewriter”** subtitles: regular or medium weight; the soft shadow of the original look only on explicit choice.
+- **Fonts:** at most two families per video (“Editorial”: one serif + one sans); no third font. Weights: headings 600, big numbers 800, subtitles 700–800, body text 500, small all-caps labels 600 with +0.2 em.
 
 ## Subtitles
 

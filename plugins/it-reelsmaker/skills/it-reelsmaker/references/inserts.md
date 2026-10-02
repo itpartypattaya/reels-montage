@@ -144,7 +144,7 @@ It is handy to anchor the insert to a word: “start of the 1st occurrence of th
 | Mode | What | When |
 |---|---|---|
 | `replace` | full-frame B-roll, the voice carries on, subtitles on top | detail, object, place |
-| `window` | a window in the insert box (default ~[60, 250, 900, 675]): the first box free of the face and graphics, always within the safe zone; no outline | when the reaction matters |
+| `window` | a window in the insert box (default ~[60, 250, 900, 675]): the first box free of the face and graphics, always within the safe zone; no outline; the background under the window is the brand's `primary` | when the reaction matters |
 | `popup` | a pop-up meme at the edge of the frame (size and placement below); a light pictogram gets a `primary` backing at 0.88 | reaction to a line |
 | `cutaway` | a full-frame meme, centered on a blurred background made from itself | a “punch”, 0.6–1.2 s, no more than one per video |
 
@@ -154,12 +154,12 @@ Duration:
 - full-frame meme: 0.6–1.2 s.
 
 The default transition is `cut`: a hard cut looks like a camera change. The others:
-- `whip`: 5 frames with blur;
+- `whip`: 5 frames with blur, on the main thought;
 - `fade`: 7 frames;
-- `flash`: a 3-frame light flash;
+- `flash`: a 3-frame light flash, only at a meaningful cut;
 - `slide`: 8 frames.
 
-B-roll audio is always muted.
+B-roll audio is always muted. A video meme's own sound plays only when turned on explicitly and only with rights to the sound. B-roll that shows a face whose lips don't match the speech: ≤ ~1 s, or a moment where the person is silent.
 
 ## Footage sources
 
@@ -226,6 +226,7 @@ A clip made by hand in any editor goes in as `edit/<id>/generated/<id>.mp4` and 
 CC meme attribution is carried through to `inserts/credits.json` (one entry per insert). With `memes_policy: strict`, memes with `unknown` rights are not used. Film stills, celebrity photos and other people's memes featuring people are never burned in: the rights belong to the studio and to the person in the photo, and there have been lawsuits.
 
 **How to pick a meme:**
+- for a calm brand tone: pictograms and statues, no screaming faces;
 - it is understandable without sound;
 - it holds for 1–1.5 s;
 - it is not next to other graphics.

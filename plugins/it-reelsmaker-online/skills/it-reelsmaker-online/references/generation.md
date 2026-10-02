@@ -46,5 +46,9 @@ Negative: text, captions, letters, logos, watermark, distorted hands, extra fing
 - **No double charging**: right after a job is submitted, its id and result URLs are written to the plan; a repeat run resumes the existing job instead of creating a new paid one. If the job failed at the provider, a new generation again needs the person's approval (“yes”).
 - **Checks before the price**: the prompt fields are non-empty strings; the provider/model pair is supported, and so is the duration for that model. Otherwise the insert stays a prompt (`pending`) with the reason.
 - A clip generated manually in any service is placed at `edit/<id>/generated/<id>.mp4` and picked up the same way.
+- To regenerate a finished clip on purpose, clear its job record and set the insert back to `pending`; the new run needs the person's approval (“yes”) again.
+- An unsupported provider, model or duration leaves the insert `pending` with the reason, exit code 0, and the key is never sent anywhere.
 
 **AI label.** A photorealistic insert from a model requires the “AI info” label when published on Instagram (Meta's rules). Stylized graphics made with code do not.
+
+Paid submissions reserve `gen.job` under the plan lock before contacting fal. A `submitting` or `unknown` state never resubmits automatically: check the provider dashboard, then restore the request ID and queue URLs to resume, or clear the job by hand only after confirming that no paid request was accepted. Resumed fal jobs use only `FAL_KEY`; other saved providers are refused. Downloaded raw clips are bound to their request ID, so an older clip cannot satisfy a new job. Requests and redirects require HTTPS; credentials are stripped on an origin change, and fal queue hosts are checked at every hop. JSON responses are limited to 20 MB and downloads use unique temporary files.

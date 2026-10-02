@@ -2,6 +2,13 @@
 
 What changed in IT Reelsmaker, written for the people who use it. The newest version is on top. The skill shows a short “What's new” note from this file once, on the first edit after an update.
 
+## 1.3.0
+
+- **Ready-made scripts.** The plugin now ships the tools Claude used to write for each project: the rough cut, cut edges by the sound, face measurement, the visual plan with its checks, B-roll and memes from your own folders, code scenes, brand profiles, the cover and mastering. Edits go faster and work the same way every time.
+- **One cut list per video.** Segments, speed, color and transcript fixes go into one small file instead of new code. Two cameras with different speeds work too.
+- **Stops on a real problem.** A rough cut whose picture and sound don't line up, a quote that isn't word for word, a master that missed the loudness target: the script stops and says what to fix.
+- **Your files stay yours.** The scripts work only in your project folder and never go online.
+
 ## 1.2.0
 
 - **Eight brand tones.** Besides premium, expert, friendly and bold there are now warm (medicine, psychology, family), story (travel, hotels, architecture), tech (software and IT) and drive (shops, launches, fitness). You see all eight with what each allows, and the skill recommends the ones that fit your field.

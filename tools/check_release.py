@@ -20,9 +20,16 @@ ROOT = Path(__file__).resolve().parent.parent
 PLUGINS = ROOT / "plugins"
 CORE = "it-reelsmaker"
 
-TEXT_EXT = {".md", ".json", ".txt", ".svg"}
+TEXT_EXT = {".md", ".json", ".txt", ".svg", ".py", ".ts", ".tsx", ".js", ".mjs", ".css"}
 IMAGE_FONT_EXT = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".ttf", ".otf", ".woff", ".woff2"}
 JUNK = {".DS_Store", "Thumbs.db", "desktop.ini"}
+LOCAL_CACHE = {"__pycache__", "node_modules"}  # git ignores them, so they never ship; the scan skips them too
+# The core makes no network requests (directory policy 3.F): no network modules, no ssh/curl/wget calls.
+CORE_NETWORK = re.compile(
+    r"^\s*(?:import|from)\s+(?:requests|urllib|http\.client|httpx|aiohttp|socket|ftplib|smtplib|paramiko)\b"
+    r"|[\"'](?:ssh|scp|curl|wget)[\"']",
+    re.M,
+)
 MAX_TEXT = 256 * 1024
 MAX_FILES = 512
 CORE_FORBIDDEN = re.compile(
@@ -80,7 +87,7 @@ def check_changelog(pdir, name, version):
 
 def check_plugin(pdir, private_terms):
     name = pdir.name
-    files = [p for p in pdir.rglob("*") if p.is_file()]
+    files = [p for p in pdir.rglob("*") if p.is_file() and not LOCAL_CACHE & set(p.parts) and p.suffix != ".pyc"]
     if len(files) > MAX_FILES:
         warnings.append(f"{name}: {len(files)} files > {MAX_FILES} (held for review)")
     manifest = pdir / ".claude-plugin" / "plugin.json"
@@ -123,6 +130,9 @@ def check_plugin(pdir, private_terms):
                 json.loads(text)
             except ValueError as e:
                 errors.append(f"{rel}: invalid JSON: {e}")
+        if ext == ".md" and "skills" in f.parts and "!`" in text:  # skill text: an exclamation mark before a backtick runs a shell command
+            line = text[: text.index("!`")].count("\n") + 1
+            errors.append(f"{rel}:{line}: '!' right before a backtick (Claude Code runs it as a shell command)")
         if f.name != "README.ru.md" and CYRILLIC.search(text):
             line = next(i for i, l in enumerate(text.splitlines(), 1) if CYRILLIC.search(l))
             errors.append(f"{rel}:{line}: Cyrillic text in the English tree")
@@ -131,6 +141,10 @@ def check_plugin(pdir, private_terms):
             if m:
                 line = text[: m.start()].count("\n") + 1
                 errors.append(f"{rel}:{line}: core mentions online provider/keys: {m.group(0)!r}")
+            n = CORE_NETWORK.search(text) if ext in (".py", ".ts", ".tsx", ".js", ".mjs") else None
+            if n:
+                line = text[: n.start()].count("\n") + 1
+                errors.append(f"{rel}:{line}: network access in the core: {n.group(0).strip()!r}")
         scan = text.lower().replace(public_email, "") if public_email else text.lower()
         for term in private_terms:
             if term.lower() in scan:

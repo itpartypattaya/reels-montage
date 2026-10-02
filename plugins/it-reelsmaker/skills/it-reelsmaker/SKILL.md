@@ -18,7 +18,7 @@ description: >
 >
 > **Brands** live in the project folder: `{{PROJECT_ROOT}}/brands/<slug>/` holds the `brand.json` profile, the `rules.md` design rules and the `assets/` files (logos, LUTs, fonts). Template: `${CLAUDE_SKILL_DIR}/assets/brand-template/`. Before editing, the agent asks which brand the video is for. `{{NAME}}` placeholders are fields of the selected brand's profile (table: `references/brands.md`).
 >
-> Long sections live in `references/` (table at the end). The plugin ships no scripts: the algorithms are described so that the agent can write them for your project.
+> Long sections live in `references/` (table at the end). **Scripts** for every repeatable step (rough cut, speech mask, faces, visual plan, inserts, brands, cover, mastering) are in `${CLAUDE_SKILL_DIR}/scripts/`: run them from `{{PROJECT_ROOT}}`, don't rewrite them for a video; what differs between videos goes into the video's JSON files. Which script for which step: `references/scripts.md`.
 >
 > **Language.** Talk to the person in their language and translate any fixed labels from this file (style and tone names, question options, plan and report headings). On-screen text (hook, cards, scenes, CTA, subtitles) is in the language of the video, not of these instructions.
 
@@ -26,7 +26,7 @@ description: >
 
 ## 0. Environment, settings, brands
 
-**Environment comes first in the session.** The skill works where the agent runs commands and sees files on your computer, that is, in Claude Code. Check `ffmpeg -version`, `node --version`, `python --version` (or `py -3 --version`). No tool for commands and files (claude.ai chat, Cowork without computer access) → say it plainly: “Editing runs in Claude Code on your computer: it needs ffmpeg, Node.js with Remotion and Python 3”, and do not pretend to edit. One program missing → name what to install and what won't work without it (without Remotion: graphics and rendering; without Python: the speech mask and mastering).
+**Environment comes first in the session.** The skill works where the agent runs commands and sees files on your computer, that is, in Claude Code. Run `python "${CLAUDE_SKILL_DIR}/scripts/doctor.py"` from the project folder (or `python3`, `py -3`): it checks ffmpeg, Python, Pillow, Node.js, the Remotion project, the transcriber, the face model and rembg, and prints the install command for this OS for anything missing; exit code 1 means a required program is missing. No tool for commands and files (claude.ai chat, Cowork without computer access) → say it plainly: “Editing runs in Claude Code on your computer: it needs ffmpeg, Node.js with Remotion and Python 3”, and do not pretend to edit. One program missing → name what to install and what won't work without it (without Remotion: graphics and rendering; without Python 3.9+: every script, from the rough cut to mastering). Pillow (`pip install Pillow`) is needed for contact sheets, covers and logos; OpenCV only for face measurement.
 
 **Project settings** come from the plugin settings (Claude Code asks for them when the plugin is enabled; change them with `/config`):
 
@@ -34,21 +34,20 @@ description: >
 PROJECT_ROOT  = ${user_config.project_root}
 REMOTION_DIR  = ${user_config.remotion_dir}
 ASSETS_DIR    = ${user_config.assets_dir}      empty = no library of your own (section 11)
-HEAVY_SERVER  = ${user_config.heavy_server}    local = figure cut-out runs on this computer
 FACE_MODEL    = ${user_config.face_model}      empty = faces checked frame by frame (references/faces.md)
 ```
 
-A value that is empty or still reads `${user_config.…}` (the skill was not installed as a plugin, or the setting is not set) → take it from `it-reelsmaker.json` in the project folder (the current folder or its parent); if that is missing too, ask once (project folder, Remotion project) and write it there. Further in the text: `{{PROJECT_ROOT}}`, `{{REMOTION_DIR}}`, `{{ASSETS_DIR}}`, `{{HEAVY_SERVER}}`, `{{FACE_MODEL}}`.
+A value that is empty or still reads `${user_config.…}` (the skill was not installed as a plugin, or the setting is not set) → take it from `it-reelsmaker.json` in the project folder (the current folder or its parent); if that is missing too, ask once (project folder, Remotion project) and write it there. Further in the text: `{{PROJECT_ROOT}}`, `{{REMOTION_DIR}}`, `{{ASSETS_DIR}}`, `{{FACE_MODEL}}`.
 
 **What's new after an update.** Once the project folder is known and before the editing questions, read `version` from `${CLAUDE_SKILL_DIR}/../../.claude-plugin/plugin.json` and `last_seen_version` from `{{PROJECT_ROOT}}/it-reelsmaker.json` (create the file if needed and keep its other keys). Compare versions as numbers, part by part (1.10.0 is newer than 1.9.0). The installed version is newer → show one short block “What's new in X.Y”: at most 4 points from the `${CLAUDE_SKILL_DIR}/../../CHANGELOG.md` entries newer than the last seen version and not newer than the installed one, in the person's language and without technical detail; then write the installed version there. No `last_seen_version`: if the project already has `edit/` or `brands/`, it was used with 1.0.0, which kept no record, so take 1.0.0 as the last seen; an empty project → write the version silently. Something can't be read (no `plugin.json` at that path, as in a manual copy of the skill, no version, no CHANGELOG entry) → skip this step and write nothing. Never update the plugin yourself: how to update is in the README.
 
-**Brands**: `{{PROJECT_ROOT}}/brands/<slug>/` (`brand.json` + `rules.md` + `assets/`), as many as you like:
+**Brands**: `{{PROJECT_ROOT}}/brands/<slug>/` (`brand.json` + `rules.md` + `assets/`), as many as you like, managed with `brand.py` (`list`, `new`, `show`, `tone`, `rule`, `use`, `export`):
 - **minimum**: a name, 1–3 colors and the **brand tone**, one of eight presets from `premium` to `bold` (`references/brands.md`, with how to offer eight in a 4-option question). The tone sets the limits for the brand's videos right away: which memes are allowed, how many cutaways, how loud the techniques can be (light flash, whip, shake, full-frame scenes) and the scene tones; louder only on explicit request for a video (`tone_override`). “Change the brand tone” rewrites it in the profile at any time. The agent works out color roles, text contrast, fonts that cover your language's script and the logo search itself;
 - **older files**: a `brand.json` or `it-reelsmaker.json` with an older `schema` is brought up to date once, with a `.bak` copy and one line saying what changed (`references/migrations.md`);
 - **revisions** (yours or the client's) that apply to the brand as a whole are appended to its `rules.md` with a date: the brand's next video already knows them;
 - profiles live in your project, not in the plugin, so a plugin update does not touch them. **Moving from an old version:** if `~/.claude/skills/reels-montage/brands/<slug>/` exists (versions before 1.0 were installed by cloning), offer to move those folders to `{{PROJECT_ROOT}}/brands/`.
 
-**Video settings**: `edit/<id>/reel.json` holds the brand, style, inserts (`use_broll`, `use_generated_footage` = code scenes, `use_scenes` = designed scenes, `use_memes`, `use_local_memes`, …), intensity (`minimal` / `moderate` by default / `active`) and meme size. Everything about inserts: `references/inserts.md`. Online sources belong to the online-sources add-on `it-reelsmaker-online`: without it the related settings are ignored, and the skill does not suggest the add-on until the person asks about online sources.
+**Video settings** (`reelcfg.py show` / `save`): `edit/<id>/reel.json` holds the brand, style, inserts (`use_broll`, `use_generated_footage` = code scenes, `use_scenes` = designed scenes, `use_memes`, `use_local_memes`, …), intensity (`minimal` / `moderate` by default / `active`) and meme size. Everything about inserts: `references/inserts.md`. Online sources belong to the online-sources add-on `it-reelsmaker-online`: without it the related settings are ignored, and the skill does not suggest the add-on until the person asks about online sources.
 
 ---
 
@@ -96,9 +95,9 @@ Choosing the style is **the first question, before any editing** (step 0): the s
 
 ### Typography principle: “the person is the main subject, text is support”
 
-- 3–6 words on screen at most; large; lots of breathing room; readable within the first second;
+- 3–6 words on screen at most; large; lots of breathing room; readable within the first second; no more than 2–3 short lines at once;
 - **no outlines, glow or shadows** (a dated 2021–2022 look). Unreadable on a light background → a soft gradient darkening of the lower third, not an outline: 15–25% to start, 40–60% on light clothing or a light wall, judged by the lightest frame;
-- text at the side or bottom, aligned to an edge, not centered;
+- text at the side or bottom, aligned to an edge, not centered; text never covers hands holding an object, a screen or the product;
 - an important word gets the accent color **or** a ×1.3–1.6 size, not both;
 - hook: no more than 6 words, one accent word;
 - **a phrase is one block**: parts of one thought (lead-in and big word, heading and caption) sit tight together, 15–25 px between visible edges, on a shared axis, in one zone of the frame, moving together; short function words (prepositions, articles, negations) and numbers do not dangle at the end of a line. Details: `references/typography.md`.
@@ -111,9 +110,9 @@ By default, subtitles cover all speech: videos are often watched without sound. 
 - **“Accent”**: 2–3 words, `{{FONT_TEXT}}` 800, 64–72 px, the word being spoken in the style's accent color. Loud, for quick insights.
 - **“Typewriter”**: the whole phrase in 1–2 lines, 52–58 px; upcoming words at 30% opacity, spoken words appear as they are said, cursor `|`; color per speaker. Quieter and more premium, for skits and calm videos. Split by phrases and pauses (up to ~52 characters as a whole), not by a character limit.
 
-Hide subtitles when on-screen text replaces them: a hook with a headline, a list card, a full-screen phrase, the end card.
+Hide subtitles when on-screen text replaces them: a hook with a headline, a list card, a full-screen phrase, the end card. A card at the bottom of the frame: raise the subtitles above it or hide them for its duration.
 
-On top of subtitles, if the brief asks for them: “accent titles”, 2–4 key words per video shown larger, on a separate layer, on their word; for that time remove the word from the subtitle line, or it will appear twice.
+On top of subtitles, if the brief asks for them: “accent titles”, 2–4 key words per video shown larger, on a separate layer, on their word; for that time remove the word from the subtitle line, or it will appear twice. At most one word per video in color (usually the CTA).
 
 ## 4. Brand in motion
 
@@ -151,7 +150,7 @@ On top of subtitles, if the brief asks for them: “accent titles”, 2–4 key 
 
 Three tools in sequence: **transcription and cut plan** (locally faster-whisper, or your own transcription tool) → **the cut script `cut.py`** (segments, color, speed-up, subtitles on the finished video's timeline) → **Remotion** (camera, graphics, subtitles, render) → **audio mastering**.
 
-File layout per video: `{{PROJECT_ROOT}}/edit/<id>/` with `cut.py`, `project.md` (brief, decisions, open items), `transcripts/`, `final.mp4`, `captions.json`; in Remotion, `src/Reel<id>.tsx` and `public/<id>/video.mp4`. `<id>` is the source file number; a promo without footage gets a short name (`promo-<brand>`) and skips steps 1–6 (`references/scenes.md`, the “scenes only” format). Start a new video from a copy of the last successful one, not from scratch.
+File layout per video: `{{PROJECT_ROOT}}/edit/<id>/` with `cut.json`, `reel.json`, `project.md` (brief, decisions, open items), `transcripts/`, `final.mp4`, `captions.json`; in Remotion, `src/Reel<id>.tsx` and `public/<id>/video.mp4`. `<id>` is the source file number; a promo without footage gets a short name (`promo-<brand>`) and skips steps 1–6 (`references/scenes.md`, the “scenes only” format). Start a new video from a copy of the last successful one, not from scratch.
 
 ### Step 0. Brand, style, subtitles, inserts — the first `AskUserQuestion`
 - **Brand.** If it is clear from the prompt or the folder, take its profile; otherwise offer the 3 most recent saved brands, and a new one via “Other” (name and colors). Read the brand's `rules.md`.
@@ -168,16 +167,16 @@ Limit: 4 questions; if the brand is clear, don't ask about it. Horizontal source
 - **below 720p**: zoom no deeper than ~×1.06, get dynamics from cutaways and graphics, and say so right away.
 
 ### Step 2. Word-level transcript
-With timings for every word; for two speakers, with speaker labels (on a single microphone they get mixed up, so identify speakers by their lips). Cache the transcript and do not rerun it. By default, locally with faster-whisper medium int8 (~2.5 min per 96 s of audio); a cloud recognizer only if the person chose and connected it themselves (the video's audio then goes to that service). All recognizers drift at word boundaries by 0.1–0.8 s, which is why cut edges are set by audio (step 6).
+With timings for every word; for two speakers, with speaker labels (on a single microphone they get mixed up, so identify speakers by their lips). Cache the transcript and do not rerun it. By default, locally with faster-whisper medium int8 (~2.5 min per 96 s of audio): `transcribe.py edit/<id> <source>` (cached in `edit/<id>/transcripts/`; your own tool's output is checked with `transcribe.py check`); a cloud recognizer only if the person chose and connected it themselves (the video's audio then goes to that service). All recognizers drift at word boundaries by 0.1–0.8 s, which is why cut edges are set by audio (step 6). Audio: `edit/<id>/audio16k-<source stem>.wav` (legacy `audio16k.wav` is still a valid speech-mask input).
 
 ### Step 3. Takes and slips — before the plan
 Speakers often record their lines in several takes, and Whisper **merges a repeat into one stretched word**. A missed take in the video looks like “the video jumps back”. Signs:
-1. **a stretched word** > ~1 s (a normal one is 0.2–0.7 s), especially with ≥ 0.3 s of silence inside;
+1. **a stretched word** > ~1 s (a normal one is 0.2–0.7 s), especially with ≥ 0.3 s of silence inside; false alarms: a long first word often includes the silence before it, and a ~1 s word can include a pause before the word;
 2. **a repeat in meaning** of a phrase or its beginning;
 3. **restart words**: “so”, “I mean”, “that is”, “no”, “stop”, “let me start over”, or the same in the speaker's language; a cut-off word;
 4. **a pause > 1 s mid-thought**: often the seam between two attempts.
 
-For a suspicious spot, cut out a segment **no longer than 5 s, with a run-up from silence**, and re-transcribe it separately (`condition_on_previous_text=False`, prompt “verbatim, with all repetitions”). On a 10-second segment the repeat still collapses. Transcribing the finished video as a whole structurally cannot see repeats.
+For a suspicious spot, cut out a segment **no longer than 5 s, with a run-up from silence**, and re-transcribe it separately (`transcribe.py snip edit/<id> <source> --from … --to …`: no context of the whole video, a “verbatim, with every repeat” prompt). On a 10-second segment the repeat still collapses. Transcribing the finished video as a whole structurally cannot see repeats.
 
 **Which take to use:**
 - the speaker cancelled themselves out loud → discard the take;
@@ -185,9 +184,13 @@ For a suspicious spot, cut out a segment **no longer than 5 s, with a run-up fro
 - a whole phrase beats a broken one, even if the broken one is worded more precisely;
 - by default, the last take;
 - all broken → the most complete one; cover the joins with a shot-size change or a slide scene;
+- a slip corrected mid-phrase (“much more interesting, much more important”) → keep the corrected wording and cut the wrong one;
+- of two takes, the first goes out whole, together with its restart word (“so,”);
+- a long skit with whole trial runs and chatter between takes → take the last clean take whole and splice in good pieces from other takes only where needed;
 - clothing rustle can stay above the threshold for almost a second and look like speech; it is caught by an empty spot in the transcript and by the frames.
 
 The cut edge is the start of the next take's sound minus 30–50 ms; check on the waveform that the first sound is not clipped. Unclear which take is better → put both in the plan and let the person decide.
+In the cut plan, list the takes and slips found, with source timecodes; if none were found, say so and list the signs that were checked.
 
 **Cutting a phrase out of continuous speech** is possible only if there is ≥ 0.1 s of silence at both of its edges; no pause (a 50 ms dip) → cut it together with the neighboring phrase and say so in the plan. A **noisy background** (street, balcony, air conditioner, noise floor around −38 dBFS) is taken for speech by the speech detector, and edge-check warnings can be false; cross-check against the transcript (nothing there where the “speech” is) and by ear.
 
@@ -201,8 +204,8 @@ The cut edge is the start of the next take's sound minus 30–50 ms; check on th
 
 ### Step 4. Zoom margin and camera plan
 A shot-size change is the main source of dynamics and the best way to hide a cut. Calculate **before** the plan:
-- **by quality**: below 720p → ~×1.06; 720p → up to ×1.28 (with lanczos upscaling + light sharpening); 1080p → ~×1.3; vertical 4K → up to ×2.0 if you don't downscale to 1080 before editing; horizontal 4K with a vertical crop → ~×1.12 (the vertical crop keeps 1215 px of width);
-- **by framing**: in a close-up the top of the head is not cut off, the eyes are near the upper third, the chin is above the subtitles; with two people, two-shots only (a close-up on one cuts the other's face).
+- **by quality**: below 720p → ~×1.06; 720p → up to ×1.28 (with lanczos upscaling + light sharpening); 1080p → ~×1.3; vertical 4K → up to ~×2.0 only with a rough cut at the source size (not verified; `references/camera.md`); horizontal 4K with a vertical crop → ~×1.12 (the vertical crop keeps 1215 px of width);
+- **by framing**: in a close-up the top of the head is not cut off, the eyes are near the upper third, the chin is above the subtitles; with two people, two-shots only; a medium shot shifted toward one person is fine, a close-up on one cuts the other's face (`references/skit.md`).
 
 A limit below ~×1.15 → the camera will not give any dynamics; say so before editing.
 
@@ -211,10 +214,10 @@ In one message: phrase order (what stays, what goes, **what was rejected and why
 
 **Multiple cameras:** measure the speech rate for each source (syllables per second) and even them out with a separate speed for each. Real case: one angle sounded 27% faster (9.56 vs 7.55 syllables/s) → ×0.915 and ×1.095. No more than two segments from the same angle in a row, and two in a row must differ in shot size; a phrase comes whole from one take; show the chain of angles in the plan.
 
-### Step 6. Rough cut — `cut.py`
-Script constants: `RANGES` (source segments), `SPEED`, `GRADE` (color filter chain), `FIX` (transcription fixes), `RETIME` (exact timings of key words). Each segment is encoded separately (`-ss … -t …`, `setpts`, `fps=30`, `GRADE`, `atempo`), with 15–30 ms audio fades at every cut (otherwise clicks). Then **video and audio are joined separately**: video with the concat demuxer `-map 0:v -c copy` (starts at exactly 0); audio with the concat filter, each segment `apad,atrim=0:<segment length>,asetpts=PTS-STARTPTS`, a single AAC encode (without `apad` the audio comes out ~40 ms shorter than the video); then mux `-c copy +faststart`. A combined concat of segments with AAC audio shifts the video start by ~21 ms (AAC priming), and Remotion fails every other time with “Compositor error: No frame found at position …”, while a partial render always fails. Check: in `final.mp4` the video and audio `start_time` = 0 and the durations are equal. Output: `final.mp4`, `captions.json` (segments `src_start/src_end/out_start/out_dur` + words with `start/end` on the new timeline), `edl.json`.
+### Step 6. Rough cut — `cut.py` + `cut.json`
+The video's cut list goes into `edit/<id>/cut.json`: sources (several cameras, each with its own speed), `ranges` (source segments with a beat), `speed`, `look` (brand LUT and its strength, a color filter chain), `fix` / `fix_at` (transcription fixes), `retime` (exact timings of key words), `extract` (cutaways from the same footage); format: `references/scripts.md`. `cut.py edit/<id> --dry-run` shows segments, lengths and words; `cut.py edit/<id>` builds `final.mp4`, `captions.json` (segments `src_start/src_end/out_start/out_dur` + words with `start/end` on the new timeline) and `edl.json`. The script encodes each segment separately with 30 ms audio fades at every cut and joins **video and audio separately** (a combined concat with AAC audio shifts the video start by ~21 ms, and Remotion then fails with “No frame found at position …”); it exits with code 1 unless video and audio both start at 0 and have the same duration.
 
-**Segment edges come from the audio, not the transcript** (the “speech mask” algorithm, verified: matches a manual cut to within ±40 ms):
+**Segment edges come from the audio, not the transcript** (`speech_mask.py`; it prints the `ranges` for `cut.json`; the algorithm, verified: matches a manual cut to within ±40 ms):
 ```text
 env    = RMS over 10 ms windows, dBFS
 sdb    = rolling max of env over ±30 ms     # a dip inside a word does not become a pause
@@ -230,11 +233,11 @@ warn: pause >1 s inside a segment (seam between takes); short speech at the star
 ```
 The algorithm does not see meaningful silence (a smile at the end, a pause before a punchline); add it by hand. State the remaining silence as a number (≤ ~150 ms with “tight”).
 
-**Color (`GRADE`) in two steps:** correction for the specific source (white balance, green cast, exposure), then the “look”: your own LUT at 50–100% strength. An example look that works well on phone footage: `eq=contrast=1.07:saturation=1.05, vibrance=0.13, curves=master='0/0 0.25/0.225 0.5/0.5 0.8/0.83 1/1'`. vibrance above ~0.15 pushes skin toward orange. You can build your own LUT from an approved grade: `ffmpeg -f lavfi -i haldclutsrc=8 -frames:v 1 -vf "<look chain>" look-hald8.png`, then `haldclut` in ffmpeg (or convert the hald to `.cube` for CapCut). Strength via blending: `split[a][b];[b][1:v]haldclut[l];[a][l]blend=all_mode=normal:all_opacity=0.7`. ⟨YOURS: path to the brand LUT⟩
+**Color (`look` in `cut.json`) in two steps:** correction for the specific source (white balance, green cast, exposure; `look.correct`, applied before the LUT), then the “look”: your own LUT at 50–100% strength. An example look that works well on phone footage: `eq=contrast=1.07:saturation=1.05, vibrance=0.13, curves=master='0/0 0.25/0.225 0.5/0.5 0.8/0.83 1/1'`. vibrance above ~0.15 pushes skin toward orange. You can build your own LUT from an approved grade: `ffmpeg -f lavfi -i haldclutsrc=8 -frames:v 1 -vf "<look chain>" look-hald8.png`, then `haldclut` in ffmpeg (or convert the hald to `.cube` for CapCut). Strength via blending: `split[a][b];[b][1:v]haldclut[l];[a][l]blend=all_mode=normal:all_opacity=0.7`. ⟨YOURS: path to the brand LUT⟩
 
 After assembling the rough cut, two mandatory checks, both before rendering:
 1. output subtitles: is there an identical sequence of 3+ words at adjacent cuts (a whole missed take);
-2. **the edges of all segments by audio** (the `--edl` mode of the same speech-mask script: each segment's source is taken from `edl.json`, exit code 1 on warnings). The “edge inside a word” decision is made on the **raw** envelope, not on the mask: the mask widens speech by ±30 ms and stretches endings, so it would raise false alarms. What is checked:
+2. **the edges of all segments by audio** (`speech_mask.py --edl edit/<id>/edl.json`: each segment's source is taken from `edl.json`, exit code 1 on warnings). The “edge inside a word” decision is made on the **raw** envelope, not on the mask: the mask widens speech by ±30 ms and stretches endings, so it would raise false alarms. What is checked:
 ```text
 check window 0.3 s on the far side of the edge; “loud window” = env ≥ threshold (10 ms windows)
 edge inside a word : ≥15 loud windows within 0.3 s AND the nearest loud window ≤ 80 ms from the edge
@@ -246,7 +249,7 @@ edge too tight     : sound closer than 30 ms to the edge, with silence on the fa
 ```
 Each warning is a reason to listen and look at the waveform, not an automatic fix (“a short sound followed by silence” can also be a standalone short word, such as the Russian “A”, “and”). On verified videos: a clean cut gave 0 warnings in 7 segments; a multicamera cut gave 1 in 14, a real one (an edge tight against a “k”); the double *teryali* case is caught.
 
-Then **face measurement** on `final.mp4` (`references/faces.md`): `faces.json` (false “faces” on knees and hands dropped, with the count in the report) and zones per span. This feeds the camera plan (chin above the subtitles in close-ups), the brief (is there enough “headroom” zone for the chosen style) and the graphics layout.
+Then **face measurement** on `final.mp4` (`faces.py scan` and `zones`, `references/faces.md`): `faces.json` (false “faces” on knees and hands dropped, with the count in the report) and zones per span. This feeds the camera plan (chin above the subtitles in close-ups), the brief (is there enough “headroom” zone for the chosen style) and the graphics layout.
 
 ### Step 7. Graphics brief — one `AskUserQuestion` before the Remotion code
 The recommendation for this video goes first. Don't ask about what the prompt already says. At most 4 options per question, the most relevant ones.
@@ -256,31 +259,32 @@ The recommendation for this video goes first. Don't ask about what the prompt al
 4. **Sound**: none / sound accents on events / accents + music, with specific picks from the library (section 11).
 
 Answers go into the video's `project.md`; they are not inherited by the next video. Do not silently resolve contradictory answers.
+If after the cut the chosen style doesn't fit the frame (for example no headroom for cards), say so here and offer a replacement.
 
 ### Step 7a. Visual plan — insert decisions before rendering
 All inserts off (`use_broll`, `use_scenes`, `use_memes` all false) → skip. Otherwise (`references/inserts.md`):
-1. Spans by phrase on the rough-cut timeline + hints (segment join, long segment, number, reference to an object, emotion, hook, CTA) + intensity budget.
-2. Decide where an insert **really helps**: understanding, a cut, dynamics, the hook, or emotion for a meme. Each one gets a “what” and a “why”, with the moment given by a word. Numbers and lists go on cards or `stat` / `list` scenes; the ending and the CTA get no memes. Designed scenes (`references/scenes.md`) go in the same plan: gaps in the video suggest `scene:*`, text is verbatim from the speech or has a source, the default mode keeps the face, and the plan check enforces the reading-time floor and the brand tone's ceilings.
-3. Sources by priority: B-roll: project → library → code scene → main footage; memes: your own folder and library → none. With the online-sources add-on `it-reelsmaker-online` installed, online sources join the chain, following the add-on's rules.
-4. **Show the plan table to the person** together with the card texts and, if any, the list of downloads (source, MB) and paid actions (≈ $). Wait for a “yes”.
-5. After the “yes”: render the code scenes (and download what was approved), prepare them (1080×1920, 30 fps, no audio, exactly the required length), place the memes (size and position by the rules, faces by the measurement), validate the plan (0 errors).
+1. `visual_plan.py init edit/<id>`: spans by phrase on the rough-cut timeline + hints (segment join, long segment, number, reference to an object, emotion, hook, CTA) + intensity budget.
+2. Decide where an insert **really helps**: understanding, a cut, dynamics, the hook, or emotion for a meme. Each one gets a “what” and a “why”, with the moment given by a word (`visual_plan.py add … --at "word:resume#1"`). Numbers and lists go on cards or `stat` / `list` scenes; the ending and the CTA get no memes. Designed scenes (`references/scenes.md`) go in the same plan: gaps in the video suggest `scene:*`, text is verbatim from the speech or has a source, the default mode keeps the face, and the plan check enforces the reading-time floor and the brand tone's ceilings.
+3. Sources by priority (`footage.py plan-search edit/<id>`, `memes.py search`): B-roll: project → library → code scene → main footage; memes: your own folder and library → none. With the online-sources add-on `it-reelsmaker-online` installed, online sources join the chain, following the add-on's rules.
+4. **Show the plan table to the person** (`visual_plan.py md`) together with the card texts and, if any, the list of downloads (source, MB) and paid actions (≈ $). Wait for a “yes”.
+5. After the “yes”: take the footage (`footage.py pick`, which prepares it: 1080×1920, 30 fps, no audio, exactly the required length), make the code scenes (`codescene.py scaffold` → write the scene → `render`), prepare and place the memes (`memes.py prepare`, `place`: size and position by the rules, faces by the measurement), validate the plan (`visual_plan.py validate`, 0 errors) and hand it to Remotion (`visual_plan.py export`).
 Inserts that did not land (`pending`, `skipped`) do not go into the video: the main footage stays, and the reason goes into the report.
 
 ### Step 8. Remotion
-Camera (section 9) → B-roll → only the chosen elements → memes → subtitles. Composition 1080×1920, 30 fps. Each element enters **on its own word**, not in a batch. Card texts are written from the meaning of the line and **shown before rendering**: they almost always get edited.
+Camera (section 9) → B-roll → only the chosen elements → memes → subtitles. Composition 1080×1920, 30 fps, as long as the video (plus the end card, if any). Each element enters **on its own word**, not in a batch. Card texts are written from the meaning of the line and **shown before rendering**: they almost always get edited.
 - The brand in code comes from the profile: colors `brand.colors.*`, fonts by family name, logos from the brand's `assets/`. Do not write HEX values or font names into the video's code.
 - Graphics positions come from the face-measurement zones (with the span's camera): hook and cards in the “headroom” zone or the “chest” zone, subtitles no higher than the recommended top. Record every card, hook and CTA card over the video in the plan as a `keep_clear` zone (interval + box + the span's camera): that way it is checked against the face right away, memes do not cover it, and the render audit sees it. A list in a close-up lacks “headroom” → raise the camera all the way to the top of the source (`cy = 960 / z`).
 - **A phrase is one block** (`references/typography.md`): lead-in tight against the big word, a shared axis, one coordinate system.
 - **A cut-out figure on another scene or cutaway** (`references/figure.md`): where the figure touches the edge of its source frame (arm, elbow, lower body), that edge must coincide with the edge of our frame; **a chopped-off arm in the middle of the screen is a defect**. Arm at the left edge of the source → the figure goes only against the left edge of the video; touches both sides or the top → do not put it in a corner. A source-edge cut can be hidden only by the frame edge or an opaque element on top, not by feathering.
 
 ### Step 9. Check, render, mastering
-- stills (`npx remotion still`) at every graphics entrance and every camera shot; for designed scenes, a settled frame (postable as a picture) and a mid-transition frame (no muddy double exposure);
+- stills (`npx remotion still`) at every graphics entrance and every camera shot; for designed scenes, a settled frame (postable as a picture) and a mid-transition frame (no muddy double exposure); at the start and middle of every insert (a meme reads and is off the face, B-roll has no third-party logos);
 - render → preview to the person → revisions → only then the master. Run the render as a separate command, checking the exit code and the file time; don't chain `render | tail && master`: `tail` hides a render failure, and the master will silently be built from the old file;
-- **a late spot fix** that does not shift timing (a word in a subtitle, a card text, an element's position): not a full render but a re-render of a segment. The range is widened to the neighboring keyframes [K1, K2), Remotion draws only those (`--frames=K1-(K2-1) --muted`), and the segment is spliced in without re-encoding (if the codec parameters match) or with it; the audio is the old track, whole (if the fix touches audio, a full render is better: Remotion's audio render goes through all frames anyway, so the gain is small). Check: frame count and duration unchanged, timestamps even (every frame at n/fps; this is what catches “stutter”), frames at the joins compared with the old ones by frame number, not by time (PSNR ≥ 35 dB; for static neighboring frames the “best match” is random, so count it as a shift only if the neighboring frame is better by more than 1 dB), and the sheet of joins checked by eye. Measured on a one-minute video: full render 8–10 min, a ~100-frame patch without re-encoding 40–52 s (outside the patch, frames are bit-identical), with re-encoding ~2.5 min. Re-cutting, speed or length changes: full render only;
+- **a late spot fix** that does not shift timing (a word in a subtitle, a card text, an element's position): not a full render but a re-render of a segment (`patch_render.py out/<render>.mp4 --comp Reel<id> --from … --to …`). The range is widened to the neighboring keyframes [K1, K2), Remotion draws only those (`--frames=K1-(K2-1) --muted`), and the segment is spliced in without re-encoding (if the codec parameters match) or with it; the audio is the old track, whole (if the fix touches audio, a full render is better: Remotion's audio render goes through all frames anyway, so the gain is small). Check: frame count and duration unchanged, timestamps even (every frame at n/fps; this is what catches “stutter”), frames at the joins compared with the old ones by frame number, not by time (PSNR ≥ 35 dB; for static neighboring frames the “best match” is random, so count it as a shift only if the neighboring frame is better by more than 1 dB), and the sheet of joins checked by eye. Measured on a one-minute video: full render 8–10 min, a ~100-frame patch without re-encoding 40–52 s (outside the patch, frames are bit-identical), with re-encoding ~2.5 min. Re-cutting, speed or length changes: full render only;
 - **contact sheet** of the finished file, 12 frames in one image: `ffmpeg -i out.mp4 -vf "fps=1/<duration/12>,scale=200:356,tile=6x2" -frames:v 1 sheet.png`; it shows whether the picture changes, whether the top of the head is cut off, whether text covers the mouth;
-- **render audit** of faces before showing the video to the person (`references/faces.md`, section 5): faces after the camera against the subtitle band (where speech is heard), the `keep_clear` zones and memes, plus a cut-off top of the head; fix any overlaps and re-render;
-- **cover in frame 0** (optional): a settled frame → `cover.jpg`, replace only frame 0, frame count and duration unchanged, before mastering (`references/scenes.md`);
-- **audio mastering, always** (section 12), with an acceptance check: failing any checklist item (LUFS, true peak, duration) → non-zero exit code; do not deliver the master.
+- **render audit** of faces before showing the video to the person (`faces.py audit out/<render>.mp4 --edit edit/<id>`, `references/faces.md`, section 5): faces after the camera against the subtitle band (where speech is heard), the `keep_clear` zones and memes, plus a cut-off top of the head; fix any overlaps and re-render;
+- **cover in frame 0** (optional): a settled frame → `cover.jpg`, replace only frame 0, frame count and duration unchanged, before mastering (`poster.py pick` / `guide` / `bake`, `references/scenes.md`);
+- **audio mastering, always** (section 12, `master_audio.py`), with an acceptance check: failing any checklist item (LUFS, true peak, duration) → non-zero exit code; do not deliver the master.
 
 ### Step 10. Delivery
 Show **measurable results, not “it got better”** (format: the report in `references/examples.md`): duration, remaining silence in ms, master loudness and peak, how many cuts and takes were removed, how many inserts and from where (and which ones did not land, with the reason). Found a defect nobody asked about → say so and fix it. Update `project.md`. **On-screen facts need a source**: a number, place, price, contact or promise comes from the speaker's words or from the client; anything the agent took on its own (from a website, “from general knowledge”, by default) goes into “open items” as “to verify”. Attribution for CC files (and stock footage, if any) goes into the post description. A post caption `caption.txt` (1–3 sentences in the brand voice, the same CTA) follows `references/scenes.md`, on a “yes” from `{{APPROVER}}`.
@@ -308,7 +312,7 @@ Each only if the brief chose it; numbers, layouts and risks: `references/techniq
 
 ## 11. Your own library of sounds, music and icons (optional)
 
-An `{{ASSETS_DIR}}` folder with sounds, music, icons and memes, used through a catalog (sound start, loudness, background, brand verdict, overview sheets, a meme annotation), not by browsing files: `references/library.md`. In every video:
+An `{{ASSETS_DIR}}` folder with sounds, music, icons and memes, used through a catalog (sound start, loudness, background, brand verdict, overview sheets, a meme annotation; `library_catalog.py --dir {{ASSETS_DIR}}`), not by browsing files: `references/library.md`. In every video:
 - sound effects: no more than one every 2–3 s, placed by the start of the sound, not of the file, 12–18 dB below voice peaks;
 - icons: flat pictograms; service logos only when the service is named; `{{FORBIDDEN_IMAGES}}`, celebrities and film stills are a no; one at a time, 180–320 px, not on the face;
 - **music: license first** ⟨YOURS: `{{ACCOUNT_TYPE}}`⟩: a burned-in track needs a commercial license; the safe default is a render without music and a track picked in the app when publishing.
@@ -327,7 +331,7 @@ Without mastering, finished videos came out between −33 and −17 LUFS, some w
 ## 13. Pre-delivery checklist
 
 - [ ] The video has only what the brief chose; the brand comes from the profile (colors, fonts, logo); brand revisions are recorded in its `rules.md`
-- [ ] No text on a face: the render audit of faces shows 0 overlaps (subtitles, `keep_clear` cards, memes) + stills; nothing in the UI zones (top 220, bottom 420, right 120 px)
+- [ ] No text on a face: the render audit of faces shows 0 overlaps (subtitles, `keep_clear` cards, memes) + stills every ~2 s or the contact sheet; nothing in the UI zones (top 220, bottom 420, right 120 px)
 - [ ] Inserts (if on): each has a “why”, the intensity budget is kept, the plan was shown before rendering; B-roll has no third-party logos and no stock people “playing the client”; downloads and paid actions only after a “yes”, attribution recorded
 - [ ] Meme: on its line, rights known, no more than 460 px on the long side, at the edge of the frame, not over the face, subtitles or cards; no more than one full-frame meme
 - [ ] Graphics start on their word (±2 frames); hard cuts where there is silence
@@ -353,7 +357,7 @@ Vertical 4K with room above the head, side light, lines phrase by phrase in take
 
 ## 15. Machine limits ⟨YOURS⟩
 
-On a laptop with 8 GB: one Remotion Studio at a time, videos up to ~60–70 s; longer than 90 s or a heavy figure cut-out goes to the server. Local Whisper: medium int8, not large. Cut-out models: measure peak memory before running, and run them one at a time on the server (`references/figure.md`).
+On a laptop with 8 GB: one Remotion Studio at a time, videos up to ~60–70 s; longer than 90 s or a heavy figure cut-out needs a stronger machine (the online add-on can run the cut-out on your own server). Local Whisper: medium int8, not large. Cut-out models: measure peak memory before running, and run them one at a time (`references/figure.md`).
 
 **Remotion project dependencies:** `remotion`, `@remotion/cli`, `@remotion/google-fonts`, `@remotion/layout-utils` (text width measurement); all `@remotion/*` packages at exactly the same version as `remotion` (`npm install --save-exact @remotion/layout-utils@<remotion version>`). Measure width only after the fonts have loaded (otherwise the fallback font's width gets cached).
 
@@ -363,6 +367,7 @@ Several agent sessions in one editing folder are normal: write JSON (video setti
 
 | File | When |
 |---|---|
+| `references/scripts.md` | any step: which script does it, how to run it, the `cut.json` format |
 | `references/brands.md` | step 0 and any graphics: brand profiles, a new brand from the minimum, logos, rules from revisions, styles in brand colors, `{{…}}` placeholders |
 | `references/scenes.md` | steps 0, 7a, 8–10: designed scenes (catalog, modes, tones, fields, reading-time floor, facts, transitions, sound), promo without footage, cover, post caption; a sample component in `references/scene-sample.md` |
 | `references/inserts.md` | step 0 (inserts) and 7a: settings, intensity, when an insert is needed, priority and fallback, visual plan, modes and transitions, code scenes, memes: rights, size and placement |

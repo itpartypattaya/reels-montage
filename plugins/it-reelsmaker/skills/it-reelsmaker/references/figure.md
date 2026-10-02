@@ -8,33 +8,29 @@ Both techniques are used when the brief calls for them, not by default.
 
 ## 1. Cutting out the figure
 
-**Tool** — `rembg` (`pip install "rembg[cpu,cli]"` into a separate venv, ~810 MB), model `u2net_human_seg` (~170 MB, trained for people). Segmentation is heavy: on a laptop with 8 GB it is better run on the server (`{{HEAVY_SERVER}}`), at low priority (`nice -n 19`).
+**Tool** — `rembg` (`pip install "rembg[cpu,cli]"` into a separate venv, ~810 MB), model `u2net_human_seg` (~170 MB, trained for people). Install it yourself (best in a separate venv) and download the model once: `rembg d u2net_human_seg`; the plugin never downloads models. It runs on this computer, at low priority. Segmentation is heavy: on a laptop with 8 GB, cut out at 720 px wide where the figure is shown smaller (presenter over a scene) and keep spans short. Running the cut-out on your own server over SSH is a feature of the online add-on `it-reelsmaker-online` (it follows the same steps and adds a server-side queue and memory check).
 
-**Pipeline in one command** (the agent writes a script for the project):
-1. Frames of the span come **from `final.mp4`**, not from the source: the mask must match the cut and sped-up video frame for frame. If the speed in `cut.py` changed, rebuild the mask.
-2. Send the frames to the server **as JPG in one archive** (`-q:v 2`, `tar | ssh`). A 1080×1920 PNG uploads many times slower: real case — ~5 min per 100 frames.
-3. `rembg p -m u2net_human_seg in/ out/`.
-4. **Build the WebM with alpha on the server** and bring back one file, not a hundred PNGs. While building, clean up the mask edge:
+**Pipeline** — `matte.py cut edit/<id> --from 12.4 --to 19.0 [--width 720] [--name host]` (`--dry` gives the frame count and the time estimate; `matte.py place` computes the presenter layout, section 2). What it does:
+1. Frames of the span come **from `final.mp4`**, not from the source: the mask must match the cut and sped-up video frame for frame. If the speed in `cut.json` changed, rebuild the mask. Extract them as JPG (`-q:v 2`) into a temporary folder.
+2. `rembg p -m u2net_human_seg in/ out/`.
+3. **Build the WebM with alpha** from the cut-out frames and clean up the mask edge:
    ```text
    split[c][a];[a]alphaextract,erosion,gblur=sigma=0.8,tmix=frames=3:weights='1 2 1'[m];[c][m]alphamerge,format=yuva420p
    -c:v libvpx-vp9 -pix_fmt yuva420p -auto-alt-ref 0 -b:v 3M
    ```
    A 1 px erosion removes the gray fringe left from the old background, the blur removes the “staircase”, and averaging the alpha over 3 frames removes flicker on the hair contour. **The averaging is centered**: `tmix` averages the current frame and the two previous ones, so the mask is shifted one frame back (`…tmix…,trim=start_frame=1,setpts=PTS-STARTPTS,tpad=stop=1:stop_mode=clone`); otherwise on a fast gesture the contour lags behind the hand. `ffprobe` will show `yuv420p` + the tag `alpha_mode=1` — this is normal: VP9 alpha is stored separately. Decode such a file in ffmpeg only with `-c:v libvpx-vp9`; the built-in decoder loses the alpha.
-5. Next to it, record the figure's box from the alpha, the top of the head, and **which source edges the figure touches** (section 3) — as a frame count, not a fraction: a single frame with a source-edge cut on a long span must not get lost in rounding.
-6. Remove the temporary files on the server — on error too — and check that they are gone.
+4. Next to it, record the figure's box from the alpha, the top of the head, and **which source edges the figure touches** (section 3) — as a frame count, not a fraction: a single frame with a source-edge cut on a long span must not get lost in rounding.
+5. Remove the temporary frames — on error too.
 
-**Security and reliability of the server side:**
-- the temporary folder on the server comes only from `mktemp`; names from the command line never get into the path (the output file name is Latin letters, digits, `_` and `-` only); all paths are escaped;
-- **cut-outs run one at a time**: rembg and packaging are a single server job under `flock` (for example `flock -E 74 -w <wait> /tmp/reels-matte.lock`); memory is checked **again under the lock** — model + ~1 GB of headroom; rembg runs under `timeout`. Otherwise two sessions at once on a shared VPS would both pass the memory check;
-- **exit code** 0 only when everything is done; a server refusal, out of memory, the queue never reached the job, no alpha, edge cuts not checked, the check frame failed to build — non-zero code. “Edge-cut check not performed” ≠ “no edge cuts”: without edge-cut data, do not compute the layout.
+**Reliability:** cut-outs run one at a time under a project lock (two at once double the memory); before a run and again under the lock the script checks free memory: model + ~1 GB of headroom; the run's exit code is 0 only when everything is done (no alpha, edge cuts not checked or a failed check frame → non-zero). “Edge-cut check not performed” ≠ “no edge cuts”: without edge-cut data, do not compute the layout.
 
 **Time** (4 CPU cores): ~1 s per 1080×1920 frame, ~0.5 s at 720p, plus ~45 s for model startup and transfer. A 3 s hook at 1080 takes about 2.5 min; 1 s of presenter at 720 about a minute. State the estimate in the brief before the run.
 
-**Model memory — before launch.** There is one working model, `u2net_human_seg`; it fits in ~1.5 GB. Keep a “model → peak memory” table in the script and do not run a model that has not been measured: a new one goes first on 1–2 frames under supervision. The server is usually shared with other services, and running out of memory hits them too.
+**Model memory — before launch.** There is one working model, `u2net_human_seg`; it fits in ~1.5 GB. The script runs only measured models (a “model → peak memory” table); a new model would first be measured on 1–2 frames under supervision. Running out of memory stalls the whole computer, and on a shared machine it hits other programs too.
 
 **Check frame — mandatory.** The middle of the span over a light and a dark background side by side. A fringe shows on one of the backgrounds, while **stuck furniture, a piece of wall, a cushion** show on both. Real case: `u2net_human_seg` left the back of a gray armchair behind the shoulder in the mask — on a different scene that becomes a “ghost”. What to do: a technique where the leftover is not visible (text behind the person — the background is the same), the “window” layout (section 2), and when shooting — the speaker in front of a wall, not against the back of an armchair.
 
-**A recommendation for quality, not part of the pipeline:** if `u2net_human_seg` cut the figure out poorly (furniture, ragged hair) **and** the machine has ≥ 7 GB of free memory, you can try `birefnet-portrait` (973 MB). On CPU it takes ~6.6 GB per 720p frame: on a server with 8 GB the process was killed for lack of memory on the very first frame.
+**A manual option for quality, outside the script:** if `u2net_human_seg` cut the figure out poorly (furniture, ragged hair) **and** the machine has ≥ 7 GB of free memory, `birefnet-portrait` (973 MB) can be tried by hand with rembg. On CPU it takes ~6.6 GB per 720p frame: on a machine with 8 GB the process was killed for lack of memory on the very first frame.
 
 ## 2. Presenter over a scene
 
@@ -49,6 +45,8 @@ Both techniques are used when the brief calls for them, not by default.
 **Scale and placement — by calculation, not by eye.** Scale = target face height / the **median** face height of the presenter from the measurement (`references/faces.md`): in each sample take the largest face, over the span take the median. The union box of all faces does not work for scale: head movement and a second person inflate it, and the presenter comes out smaller. The figure's video is placed in a corner so that its **source-edge cuts coincide with the frame edges** (section 3). In “review” the figure is shifted down until the forehead reaches the bottom edge of the panel; the bottom of the video must still not be higher than the bottom of the frame. Checks: chin above the UI (y ≤ 1500), face not under the like-button column (x ≤ 960), in “review” the face does not overlap the panel. Record the figure's box in `keep_clear` so that memes and cards do not land on it.
 
 **To make the figure fit in and read well:**
+- **long segments**: estimate first (`matte.py cut … --dry`); more than ~15 min of cut-out time → cut out only where the scene is really needed, or use the “window” layout;
+- **warm speaker on a cold scene**: warm the scene slightly, not the speaker;
 - **separation by composition, not effects**: overlapping the panel edge, a darkened corner, a solid brand background. An outline, glow or shadow around the figure falls under the same ban as for text;
 - **matching light and color**: the figure already has the video's color (it comes from `final.mp4`); match the scene to it — dim a white screen recording to ~90 %, otherwise it “blows out” the face next to it;
 - **the face stays clear**: nothing closer than 60 px to the face;
@@ -67,7 +65,7 @@ Real case: in the “stream” layout the speaker's arm touched the left edge of
 **Rules:**
 - **Every edge the figure touches coincides with a frame edge.** Arm at the left edge of the source → the figure only at the left edge of the frame, the left edge of its video = x 0. At the right edge → only on the right. Bottom of the body cut off → the bottom of the figure's video is no higher than the bottom of the frame; the excess goes past the edge.
 - **Check in screen coordinates at any scale**: the figure's edge that the body touches lies on the frame edge or beyond it. This applies at ×1 scale too — in “review” the figure is shifted down, and a top cut would otherwise end up inside the frame.
-- **Count touching over all frames of the span**, not one: an arm that reached the edge during a gesture in even one frame is already a cut. Algorithm: the alpha is downscaled to 270×480; ≥ 4 opaque pixels in the outermost column or row (≈ 16 px at 1080×1920; a fingertip already counts) → the edge is touched; the result is the fraction of frames for each edge.
+- **Count touching over all frames of the span**, not one: an arm that reached the edge during a gesture in even one frame is already a cut. Algorithm: the alpha is downscaled to 270×480; ≥ 4 opaque pixels in the outermost column or row (≈ 16 px at 1080×1920; a fingertip already counts) → the edge is touched; the result is the number of frames touching each edge (older files may hold a fraction; any value above 0 means touched).
 - **The script picks the side from the cut**, not by taste; a manual side that contradicts the cut is rejected with a hint.
 - **Touching both side edges** (arms spread, a wide gesture) — do not place the figure in a corner: a cut will remain on one side. Options: a span without this gesture, a full-frame figure (×1), “window”.
 - **A top cut** (hair touches the top of the source) is always visible when the figure is scaled down — use only a span where the head is fully in frame, or “window”.

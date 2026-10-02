@@ -20,3 +20,5 @@ One CTA per video (exception: a job opening, with apply + recommend). Tone: a ca
 | `follow` | Follow for more | ⟨YOURS: what about and how often⟩ |
 
 Promises (“I'll reply within a day”, “every week”, a lead magnet) only if they are actually kept. “Link in bio” only if the link is already there.
+
+A CTA code already given in the prompt is not asked about, but the card text is shown before rendering. If the speaker says the link or address, the card enters on those words.

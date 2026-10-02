@@ -22,6 +22,26 @@ const SHOTS = [ { src: 0, cam: M, drift: 0.05 }, { src: 17.6, cam: P, whip: true
 //             transformOrigin: "0 0" }}><OffthreadVideo …/></div>
 ```
 
+## Shot rules
+
+- **Clamp the camera** so that its window never leaves the frame: `cx` within [540/z, 1080 − 540/z], `cy` within [960/z, 1920 − 960/z]. Otherwise an empty edge shows.
+- Put the frame center slightly **below the eyes** (`cy` ≈ 990–1000 with the eyes at y 960): the chin stays above the subtitles. Check with the face zones for that camera (`faces.py zones --cam z,cx,cy`), then with the render audit.
+- Use the **wide shot wherever a card is on screen**: the card needs the “headroom” zone.
+- Change shots only in a gap between words of **≥ 0.1 s**; hold one shot size **no longer than 3–4 s**; every cut on a pause gets a shot-size change. Reference density: about 13 shots in 27 s, one every ~2 s; a 20–25 s video has about 10 picture changes.
+- Meaning of the shot size: push-in on the main thought, a number, an emotion or a question to the viewer; close-up on the CTA and personal lines; wide on context and the final conclusion.
+- Put shots on seconds that stay in the video (for example a segment's `src_start`): `at()` throws on a second that was cut out.
+- If the face already fills about **half of the frame width**, there is no room to zoom: say so before editing and get the dynamics from cutaways and graphics.
+- After any crop, the hands and objects the speaker talks about stay in frame.
+- **Dynamics check:** the first 1–2 s are not a static wide shot (a detail, a close face, a push-in or the hook); the video uses at least three shot sizes.
+- **Multiple cameras:** bring both speech rates to a common middle. Slowing below ×1 repeats frames (at ×0.915 about every 11th frame); on a static head this is invisible.
+- Optional, untested and costly to render: real motion blur on a whip (ffmpeg at 180 fps averaged over 6 frames, or `@remotion/motion-blur`). Offer it only if the whip lacks punch.
+
+## Zoom margin from a 4K source
+
+The margin is counted from the resolution of `final.mp4`, not of the source. With `"scale": "auto"` (the default), `cut.py` scales a vertical 4K source down to 1080×1920, which leaves about ×1.3. To keep up to ~×2.0, build the rough cut at the source size (`"scale": "none"` in `cut.json`) and draw the video at 1080×1920 in Remotion; a 1440×2560 rough cut gives only ×1.33 without upscaling. Not verified: a 2160×3840 rough cut is heavy on an 8 GB machine (memory and render time), so offer it only when the video needs deep push-ins, and state the margin you will actually get.
+
+A 720p source upscaled with lanczos needs light sharpening in `look.grade`, for example `unsharp=5:5:0.55:5:5:0.0`.
+
 ## Graphics on the spoken word
 
 Anchor graphics **to the spoken word**, not to a second, so re-cutting shifts nothing:

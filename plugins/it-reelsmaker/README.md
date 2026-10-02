@@ -32,12 +32,12 @@ A hook set large, a quote taken verbatim from the speech, the main thought as a 
 - [Claude Code](https://code.claude.com) on your computer. The skill runs local programs and reads your video files, so claude.ai chat and Cowork without computer access can't run it; in those apps it says so instead of pretending.
 - `ffmpeg` and `ffprobe`.
 - Node.js and a [Remotion](https://www.remotion.dev/) project. Remotion has its own license terms for companies.
-- Python 3.
+- Python 3.9 or newer, for the plugin's scripts (rough cut, speech mask, visual plan, brands, cover, mastering), plus [Pillow](https://pypi.org/project/pillow/) (`pip install Pillow`) for contact sheets, covers and logos.
 - A word-level transcriber. The default is local [`faster-whisper`](https://github.com/SYSTRAN/faster-whisper).
 
 Optional:
 - the YuNet face model and OpenCV, for face-aware layout (setup in `skills/it-reelsmaker/references/faces.md`);
-- `rembg` with the `u2net_human_seg` model, for text behind the person and a presenter over a scene. It runs locally or on your own server.
+- `rembg` with the `u2net_human_seg` model, for text behind the person and a presenter over a scene. It runs on this computer; running it on your own server over SSH is part of the online add-on.
 
 ## Install
 
@@ -62,7 +62,6 @@ Claude Code asks for these settings when you enable the plugin; change them late
 | Editing project folder | Where your videos are edited: `edit/<id>/` per video and `brands/<slug>/` brand profiles |
 | Remotion project | The Remotion project used for the camera, graphics, subtitles and render |
 | Asset library | Optional folder of your sound effects, music, icons and memes |
-| Server for figure cut-outs | `local`, or the SSH host of your own server for the `rembg` step |
 | YuNet face model | Optional path to `face_detection_yunet_2023mar.onnx` |
 
 Brand profiles live in your project, not in the plugin, so updates never touch them. Start one by saying “new brand — Acme, colors #0B1F3A and #FFB800, logo logo.svg”.
@@ -111,9 +110,8 @@ What changed in each version is in [CHANGELOG.md](CHANGELOG.md). After an update
 The plugin collects nothing and has no server or telemetry. Your videos, transcripts and brand profiles stay in your project folder. Data leaves your computer only in these cases:
 
 - **Claude.** Like any Claude Code session, the conversation goes to Anthropic. That includes transcripts, file excerpts and the frames Claude looks at, under your Claude account terms.
-- **Your own server.** Only if you set one for cut-outs: frames of the rough cut are sent there over SSH and deleted after the job.
 - **A cloud transcriber.** Only if you choose one instead of local `faster-whisper`. Its own terms apply.
-- **Dependency and model downloads.** npm packages for Remotion; Python packages such as faster-whisper, OpenCV and rembg (PyPI); Google Fonts loaded by `@remotion/google-fonts` at render time; and the models for the features you use — faster-whisper (Hugging Face), the YuNet face model (GitHub) and the rembg segmentation model (downloaded by rembg on first use).
+- **Dependency and model downloads.** npm packages for Remotion and its own headless browser downloaded on the first render; Python packages such as faster-whisper, OpenCV and rembg (PyPI); Google Fonts loaded by `@remotion/google-fonts` at render time; and the models for the features you use — faster-whisper (Hugging Face), the YuNet face model (GitHub) and the rembg segmentation model (downloaded by rembg on first use).
 
 Face detection only finds face boxes for layout. It does not identify people. Get consent from the people on camera before you publish.
 
@@ -134,7 +132,7 @@ More online sources are available through the online-sources add-on `it-reelsmak
 - **Remotion fails with “No frame found at position …”.** The rough cut's video doesn't start at 0. Rebuild it with video and audio concatenated separately, as step 6 of the skill describes.
 - **The text lands on a face.** Install the YuNet model for measured layout, or ask for the face audit on the render.
 - **A cut-out shows furniture next to the person.** Check the check frame the skill renders, then use the “window” layout or reshoot against a wall.
-- **The laptop runs out of memory.** Run one Remotion Studio at a time. Videos over 90 s and cut-outs are best on a server.
+- **The laptop runs out of memory.** Run one Remotion Studio at a time. Videos over 90 s and cut-outs are best on a stronger machine; cut-outs run at 720 px wide for a presenter over a scene.
 - **Something else.** The skill keeps a table of known pitfalls with causes and fixes: [`references/pitfalls.md`](skills/it-reelsmaker/references/pitfalls.md).
 
 ## Support

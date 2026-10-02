@@ -9,3 +9,8 @@ brands/
 
 # Eval results: local, per run (tools/run_evals.py)
 evals/results/
+
+# Python and Node caches from running scripts or tests locally
+__pycache__/
+*.pyc
+node_modules/

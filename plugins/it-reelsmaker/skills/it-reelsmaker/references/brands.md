@@ -135,6 +135,8 @@ Where each one comes from in the frame:
 - **Frame corner:** `mark_on_dark` → `on_dark`.
 - **End card:** `on_dark` → `mark_on_dark`.
 - **No logo:** the brand name is typeset on the card.
+- **Corner mark** (if chosen in the brief): top left, just below the UI zone, 90–110 px, ~85 % opacity, for the whole video.
+- A logo is never stretched, never recolored beyond the variants in the profile, and never placed on a busy background without a backing plate.
 
 A variant you recolored yourself (for example white made from a dark one) goes in only with a note in `unverified` and a question to the brand owner.
 
@@ -168,6 +170,6 @@ HEX codes and font names are never written into the video's code.
 - **Music:** `music_policy`. For a business account, don't burn music in without a commercial license.
 - **Brand tone:** `tone`: memes, cutaways, how loud the techniques are, scene tones (section “Brand tone”).
 - **Memes:** `memes_policy`. With `strict`, only memes with known rights are used. Meme size is `meme_size` (no larger than the tone's ceiling): for a calm brand, `s`.
-- **Icon library verdicts.** A “no” for rights reasons (film stills, celebrities, stock people) always applies. A “no” for style reasons applies only to the brand it belongs to.
+- **Icon library verdicts.** A “no” for rights reasons (film stills, celebrities, stock people; `rights_block` in the catalog) always applies. A “no” for style reasons applies only to a brand that adopts the catalog's verdicts: `"asset_verdicts": "verdict"` in its `brand.json` (`references/library.md`).
 - **Forbidden imagery:** `forbidden_imagery` / `_en`. It applies to B-roll, code scenes and memes (and to the online sources of the online-sources add-on `it-reelsmaker-online`).
 - **Insert defaults:** `inserts`. For example, `{"use_online_footage": false}` (a key of the online-sources add-on `it-reelsmaker-online`) for a brand whose guidelines forbid stock footage.

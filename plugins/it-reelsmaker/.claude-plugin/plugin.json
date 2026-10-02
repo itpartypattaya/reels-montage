@@ -1,7 +1,7 @@
 {
   "name": "it-reelsmaker",
   "displayName": "IT Reelsmaker",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "description": "Edit vertical short videos (Reels, Shorts, TikTok) from talking-head footage in Claude Code: cut pauses and retakes by audio, virtual camera and on-brand motion graphics in Remotion, designed scenes for hooks, quotes, numbers and calls to action, word-timed subtitles, face-aware layout, loudness mastering and a 1080×1920 render. Brand profiles with a brand tone. Runs locally with ffmpeg, Node.js and Python.",
   "author": {
     "name": "IT Party Pattaya",
@@ -42,12 +42,6 @@
       "type": "directory",
       "title": "Asset library (optional)",
       "description": "Your own library of sound effects, music, icons and memes. Leave empty if you don't have one."
-    },
-    "heavy_server": {
-      "type": "string",
-      "title": "Server for figure cut-outs (optional)",
-      "description": "SSH host of your own server for the rembg cut-out step, or local to run it on this computer. Video frames are sent only to this host.",
-      "default": "local"
     },
     "face_model": {
       "type": "file",

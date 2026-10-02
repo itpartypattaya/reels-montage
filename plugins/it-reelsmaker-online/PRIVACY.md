@@ -16,5 +16,6 @@ When a source is enabled, the agent may contact it while preparing the visual pl
 | Openverse | search queries | https://openverse.org/privacy |
 | GIPHY (reference only) | search queries, your API key | https://giphy.com/privacy |
 | fal.ai | generation prompts, an optional start frame, your API key | https://fal.ai/privacy |
+| Your own server (figure cut-out) | frames of the rough cut's span (JPG), over your SSH client | your server, your policy; temporary files are deleted after each job |
 
 Your API keys are stored on your computer, in environment variables or a file you choose outside the project. Each key is sent only to its own provider, for authentication, and is never written to project files or git. Downloaded clips and images are saved in your project folder; their licenses and attribution go into `credits.json`.

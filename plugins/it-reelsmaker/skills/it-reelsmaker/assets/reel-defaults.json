@@ -1,0 +1,469 @@
+{
+ "schema": 1,
+ "_comment": "Default video settings. Layers: this file <- brand tone preset (brand_tones, from brand.json -> tone) <- brand profile (brands/<slug>/brand.json -> inserts) <- edit/<id>/reel.json <- words from the prompt (--set). All use_* false -> a plain edit without inserts. Online sources and generation are added by the it-reelsmaker-online add-on, not here.",
+ "settings": {
+  "brand": null,
+  "style": null,
+  "subtitles": null,
+  "intensity": "moderate",
+  "use_broll": true,
+  "use_project_footage": true,
+  "use_local_footage": true,
+  "use_generated_footage": true,
+  "use_memes": false,
+  "use_local_memes": true,
+  "broll_priority": [
+   "project",
+   "local",
+   "generated"
+  ],
+  "meme_priority": [
+   "local"
+  ],
+  "footage_dirs": [
+   "footage",
+   "broll"
+  ],
+  "memes_dirs": [
+   "memes"
+  ],
+  "generation_engines": [
+   "code"
+  ],
+  "library_dirs": [],
+  "meme_size": "m",
+  "scene_tone": null,
+  "use_scenes": false
+ },
+ "intensity": {
+  "minimal": {
+   "label": "minimal",
+   "broll_per_30s": 1,
+   "memes_max": 1,
+   "coverage_max": 0.1,
+   "min_gap_s": 6.0
+  },
+  "moderate": {
+   "label": "moderate",
+   "broll_per_30s": 3,
+   "memes_max": 2,
+   "coverage_max": 0.22,
+   "min_gap_s": 3.5
+  },
+  "active": {
+   "label": "active",
+   "broll_per_30s": 6,
+   "memes_max": 4,
+   "coverage_max": 0.4,
+   "min_gap_s": 2.0
+  }
+ },
+ "limits": {
+  "broll_min_s": 0.8,
+  "broll_max_s": 4.0,
+  "meme_min_s": 0.6,
+  "meme_max_s": 2.5,
+  "phrase_min_s": 1.2,
+  "phrase_max_s": 4.5,
+  "pause_split_s": 0.25
+ },
+ "meme_layout": {
+  "_comment": "Size and place of pop-up memes in a 1080x1920 frame. Checked by visual_plan.py validate, applied by memes.py place.",
+  "sizes": {
+   "s": 300,
+   "m": 380,
+   "l": 460
+  },
+  "max_side": 460,
+  "safe": {
+   "top": 220,
+   "bottom": 420,
+   "right": 120,
+   "left": 40
+  },
+  "subtitles_band": [
+   1250,
+   1430
+  ],
+  "face_margin": 60,
+  "edge_margin": 60,
+  "slots": [
+   "top-left",
+   "top-right",
+   "top-center",
+   "mid-left",
+   "mid-right",
+   "low-left",
+   "low-right"
+  ],
+  "popup_dur": [
+   0.8,
+   1.8
+  ],
+  "cutaway_dur": [
+   0.6,
+   1.2
+  ],
+  "cutaway_max": 1
+ },
+ "brand_tones": {
+  "_comment": "Brand tone (brand.json -> tone: {preset, overrides}). The preset sets the defaults of the brand layer (intensity, use_memes = memes.default, meme_size <= size_max, scene_tone) and the CEILINGS that visual_plan.py validate enforces: memes, transitions, flash/whip, full-frame scenes, scene tones. A ceiling, not a target. reel.json -> tone_override: true turns violations into warnings (going louder on explicit request for one video). Same values as references/brands.md.",
+  "premium": {
+   "label": "Premium, restrained",
+   "for": "luxury, finance, law, premium B2B",
+   "intensity": "minimal",
+   "motion": "calm",
+   "loudness": "quiet",
+   "memes": {
+    "allowed": false,
+    "default": false,
+    "max": 0,
+    "size_max": null,
+    "cutaway": false
+   },
+   "broll_default": true,
+   "transitions": [
+    "cut",
+    "fade"
+   ],
+   "flash_max": 0,
+   "whip_max": 0,
+   "shake": false,
+   "overshoot": false,
+   "full_scenes_max": 1,
+   "scene_tones": [
+    "calm",
+    "deadpan",
+    "cinematic"
+   ],
+   "scene_tone": "calm",
+   "sfx": "sparse"
+  },
+  "warm": {
+   "label": "Warm, caring",
+   "for": "medicine, psychology, wellness, children and family, nonprofits",
+   "intensity": "moderate",
+   "motion": "calm",
+   "loudness": "calm",
+   "memes": {
+    "allowed": false,
+    "default": false,
+    "max": 0,
+    "size_max": null,
+    "cutaway": false
+   },
+   "broll_default": true,
+   "transitions": [
+    "cut",
+    "fade",
+    "slide"
+   ],
+   "flash_max": 0,
+   "whip_max": 0,
+   "shake": false,
+   "overshoot": false,
+   "full_scenes_max": 1,
+   "scene_tones": [
+    "calm",
+    "feature",
+    "cinematic"
+   ],
+   "scene_tone": "calm",
+   "sfx": "sparse"
+  },
+  "expert": {
+   "label": "Expert, calm",
+   "for": "consulting, recruiting, education, B2B expertise",
+   "intensity": "moderate",
+   "motion": "calm",
+   "loudness": "calm",
+   "memes": {
+    "allowed": true,
+    "default": false,
+    "max": 1,
+    "size_max": "s",
+    "cutaway": false
+   },
+   "broll_default": true,
+   "transitions": [
+    "cut",
+    "fade",
+    "whip",
+    "slide",
+    "flash"
+   ],
+   "flash_max": 2,
+   "whip_max": 3,
+   "shake": false,
+   "overshoot": false,
+   "full_scenes_max": 2,
+   "scene_tones": [
+    "calm",
+    "feature",
+    "cinematic",
+    "deadpan"
+   ],
+   "scene_tone": "calm",
+   "sfx": "sparse"
+  },
+  "story": {
+   "label": "Atmospheric, story-led",
+   "for": "travel, hotels, architecture, crafts, personal brands",
+   "intensity": "active",
+   "motion": "calm",
+   "loudness": "calm",
+   "memes": {
+    "allowed": false,
+    "default": false,
+    "max": 0,
+    "size_max": null,
+    "cutaway": false
+   },
+   "broll_default": true,
+   "transitions": [
+    "cut",
+    "fade",
+    "slide",
+    "whip",
+    "flash"
+   ],
+   "flash_max": 1,
+   "whip_max": 2,
+   "shake": false,
+   "overshoot": false,
+   "full_scenes_max": 3,
+   "scene_tones": [
+    "cinematic",
+    "calm",
+    "deadpan"
+   ],
+   "scene_tone": "cinematic",
+   "sfx": "moderate"
+  },
+  "tech": {
+   "label": "Tech, precise",
+   "for": "SaaS, IT, fintech, software products and tools",
+   "intensity": "moderate",
+   "motion": "lively",
+   "loudness": "lively",
+   "memes": {
+    "allowed": true,
+    "default": false,
+    "max": 2,
+    "size_max": "s",
+    "cutaway": false
+   },
+   "broll_default": true,
+   "transitions": [
+    "cut",
+    "fade",
+    "slide",
+    "whip",
+    "flash"
+   ],
+   "flash_max": 1,
+   "whip_max": 4,
+   "shake": false,
+   "overshoot": false,
+   "full_scenes_max": 3,
+   "scene_tones": [
+    "feature",
+    "punchy",
+    "calm",
+    "deadpan"
+   ],
+   "scene_tone": "feature",
+   "sfx": "moderate"
+  },
+  "friendly": {
+   "label": "Lively, friendly",
+   "for": "real estate, local business, lifestyle, communities",
+   "intensity": "moderate",
+   "motion": "lively",
+   "loudness": "lively",
+   "memes": {
+    "allowed": true,
+    "default": true,
+    "max": 2,
+    "size_max": "m",
+    "cutaway": false
+   },
+   "broll_default": true,
+   "transitions": [
+    "cut",
+    "fade",
+    "whip",
+    "slide",
+    "flash"
+   ],
+   "flash_max": 2,
+   "whip_max": 4,
+   "shake": false,
+   "overshoot": true,
+   "full_scenes_max": 2,
+   "scene_tones": [
+    "punchy",
+    "feature",
+    "calm",
+    "deadpan"
+   ],
+   "scene_tone": "punchy",
+   "sfx": "moderate"
+  },
+  "drive": {
+   "label": "Energetic, sales-driven",
+   "for": "e-commerce, launches and sales, fitness, courses",
+   "intensity": "active",
+   "motion": "energetic",
+   "loudness": "loud",
+   "memes": {
+    "allowed": true,
+    "default": false,
+    "max": 1,
+    "size_max": "m",
+    "cutaway": false
+   },
+   "broll_default": true,
+   "transitions": [
+    "cut",
+    "fade",
+    "slide",
+    "whip",
+    "flash"
+   ],
+   "flash_max": 3,
+   "whip_max": 5,
+   "shake": false,
+   "overshoot": true,
+   "full_scenes_max": 3,
+   "scene_tones": [
+    "punchy",
+    "feature",
+    "cinematic",
+    "calm"
+   ],
+   "scene_tone": "punchy",
+   "sfx": "dense"
+  },
+  "bold": {
+   "label": "Bold, with humor",
+   "for": "entertainment, events, provocative and humorous content",
+   "intensity": "active",
+   "motion": "energetic",
+   "loudness": "loud",
+   "memes": {
+    "allowed": true,
+    "default": true,
+    "max": 4,
+    "size_max": "l",
+    "cutaway": true
+   },
+   "broll_default": true,
+   "transitions": [
+    "cut",
+    "fade",
+    "whip",
+    "slide",
+    "flash"
+   ],
+   "flash_max": 3,
+   "whip_max": 6,
+   "shake": true,
+   "overshoot": true,
+   "full_scenes_max": 3,
+   "scene_tones": [
+    "punchy",
+    "hype",
+    "parody",
+    "cinematic",
+    "deadpan"
+   ],
+   "scene_tone": "punchy",
+   "sfx": "dense"
+  }
+ },
+ "scene_tones": {
+  "_comment": "Pace of designed scenes (the same numbers as kit/scenes/tones.ts): entrance and exit in frames at 30 fps, hold after the last spoken word (s), entrance motion, default scene transition, overshoot (only if the brand tone allows it).",
+  "calm": {
+   "in": 14,
+   "out": 9,
+   "hold": 0.4,
+   "enter": "rise 30 px + opacity, Easing.out(cubic)",
+   "transition": "fade",
+   "overshoot": false
+  },
+  "deadpan": {
+   "in": 18,
+   "out": 12,
+   "hold": 0.6,
+   "enter": "opacity only",
+   "transition": "fade",
+   "overshoot": false
+  },
+  "cinematic": {
+   "in": 16,
+   "out": 10,
+   "hold": 0.5,
+   "enter": "scale 0.95 -> 1 + opacity",
+   "transition": "fade",
+   "overshoot": false
+  },
+  "feature": {
+   "in": 10,
+   "out": 8,
+   "hold": 0.4,
+   "enter": "slide 60 px from the side",
+   "transition": "slide",
+   "overshoot": false
+  },
+  "punchy": {
+   "in": 8,
+   "out": 6,
+   "hold": 0.3,
+   "enter": "slam: scale 1.08 -> 1, spring damping 14 (200 when the brand tone allows no overshoot)",
+   "transition": "cut",
+   "overshoot": true
+  },
+  "hype": {
+   "in": 5,
+   "out": 4,
+   "hold": 0.25,
+   "enter": "zoom 1.2 -> 1, a 2-4 px shake for 6 frames (if shake is allowed)",
+   "transition": "cut",
+   "overshoot": true
+  },
+  "parody": {
+   "in": 0,
+   "out": 0,
+   "hold": 0.5,
+   "enter": "hard cut",
+   "transition": "cut",
+   "overshoot": false
+  }
+ },
+ "scenes": {
+  "_comment": "Designed scenes (visual_plan.py, kind scene): the reading-time floor, mode limits, the \"scenes only\" format.",
+  "fps": 30,
+  "reading": {
+   "short_words": 3,
+   "short_s": 0.8,
+   "per_word_s": 0.3,
+   "min_s": 1.2,
+   "item_gap_s": 0.6
+  },
+  "hook_full_max_s": 1.5,
+  "full_gap_s": 2.0,
+  "final_s": 2.0,
+  "scenes_only": {
+   "duration": [
+    15,
+    25
+   ],
+   "optimum": [
+    18,
+    22
+   ],
+   "coverage_min": 0.95
+  }
+ }
+}
