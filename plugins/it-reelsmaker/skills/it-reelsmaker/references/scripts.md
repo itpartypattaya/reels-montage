@@ -26,6 +26,7 @@ python "${CLAUDE_SKILL_DIR}/scripts/<name>.py" <command> [args]
 | Step | Script | Commands |
 |---|---|---|
 | 0 | `doctor.py` | the environment in one command: what is missing and the install command for this OS (exit 1 if a required program is missing) |
+| 0, 8 | `kit.py` | `new <folder>` (a starter Remotion project: pinned versions, `Root.tsx` with `ReelKit`, `ReelCover` and the code scenes; prints the `npm install` command), `check --remotion <dir>` (kit version and changed files), `update --remotion <dir> [--dry-run]` (replaces only `src/ReelKit.tsx` and `src/kit/`, backup in `.kit-backup/`) |
 | 0 | `brand.py` | `list`, `show <slug>`, `new --name … --colors … [--tone …]`, `logo`, `rule`, `set`, `tone <slug> <preset>`, `use <slug> --edit edit/<id>`, `export <slug> --remotion <dir>` |
 | 0 | `reelcfg.py` | `show edit/<id> [--json]` (settings, where each comes from, what will actually turn on and why not); `save edit/<id> --set key=value …` |
 | 2, 3 | `transcribe.py` | `edit/<id> <source> [--model medium] [--language ru]` (faster-whisper, cached in `transcripts/`); `snip edit/<id> <source> --from … --to …` (a <= 5 s piece without context, for retakes); `check <file>` (your own transcriber's output) |
@@ -63,7 +64,9 @@ python "${CLAUDE_SKILL_DIR}/scripts/<name>.py" <command> [args]
 
 ## What the scripts don't do
 
-The Remotion composition code (camera, graphics, subtitles: `references/camera.md`, `references/scenes.md`) is
-written by the agent per video. A different transcriber is fine: its output only has to pass `transcribe.py check`.
+The kit (`assets/remotion-kit/`, copied into the Remotion project by `kit.py`) renders the `ReelKit` and `ReelCover`
+compositions from the props of `visual_plan.py export --props`: rough cut, subtitles, brand, inserts, designed scenes,
+cover. Anything a video needs beyond that (special camera moves, techniques, code scenes: `references/camera.md`,
+`references/techniques.md`) is written by the agent per video, on top of the kit's components. A different transcriber is fine: its output only has to pass `transcribe.py check`.
 
 Audio extraction writes `edit/<id>/audio16k-<source stem>.wav` for each source, with source identity metadata next to it. Pass that WAV to `speech_mask.py`. Older projects may still use `audio16k.wav` as a legacy input; new transcriptions never reuse it. Cut ranges must be finite, inside the source (one frame of end tolerance), and contain at least one output frame. Segment output sizes must match; SAR is normalized to 1:1. Extract and matte names must be safe local names.

@@ -31,7 +31,7 @@ A hook set large, a quote taken verbatim from the speech, the main thought as a 
 
 - [Claude Code](https://code.claude.com) on your computer. The skill runs local programs and reads your video files, so claude.ai chat and Cowork without computer access can't run it; in those apps it says so instead of pretending.
 - `ffmpeg` and `ffprobe`.
-- Node.js and a [Remotion](https://www.remotion.dev/) project. Remotion has its own license terms for companies.
+- Node.js 18+ and a [Remotion](https://www.remotion.dev/) project. No project yet: `python scripts/kit.py new reels` creates one with the plugin's Remotion kit wired in, then run `npm install` in that folder. Remotion has its own license terms for companies.
 - Python 3.9 or newer, for the plugin's scripts (rough cut, speech mask, visual plan, brands, cover, mastering), plus [Pillow](https://pypi.org/project/pillow/) (`pip install Pillow`) for contact sheets, covers and logos.
 - A word-level transcriber. The default is local [`faster-whisper`](https://github.com/SYSTRAN/faster-whisper).
 

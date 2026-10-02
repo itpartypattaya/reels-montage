@@ -95,7 +95,7 @@ claude plugin install it-reelsmaker@itparty
 **Нужно:**
 - [Claude Code](https://claude.com/claude-code);
 - `ffmpeg` / `ffprobe`;
-- Node.js и проект [Remotion](https://www.remotion.dev/);
+- Node.js 18+ и проект [Remotion](https://www.remotion.dev/); если его нет, `python scripts/kit.py new reels` создаст проект с подключённым набором компонентов плагина, дальше `npm install` в этой папке;
 - Python 3.9 или новее — для скриптов плагина (черновой монтаж, маска речи, визуальный план, бренды, обложка, мастеринг) и [Pillow](https://pypi.org/project/pillow/) (`pip install Pillow`) для обзорных листов, обложек и логотипов;
 - расшифровка по словам: локальный `faster-whisper` (облачный распознаватель — только по вашему выбору).
 
@@ -116,7 +116,7 @@ it-reelsmaker/
     SKILL.md                   конвейер, стили, правила, чек-лист
     scripts/                   скрипты на Python: проверка окружения, расшифровка, маска речи, черновой монтаж,
                                лица, визуальный план, B-roll, сцены кодом, мемы, бренды, каталог ассетов,
-                               вырезка фигуры, обложка, частичный перерендер, мастеринг
+                               вырезка фигуры, обложка, частичный перерендер, мастеринг, проект Remotion
     references/
       scripts.md               какой скрипт на каком шаге, формат cut.json
       brands.md                профили брендов, тон бренда, новый бренд из минимума, логотипы, правила по правкам
@@ -136,6 +136,8 @@ it-reelsmaker/
       migrations.md            обновление старых профилей брендов
     assets/
       reel-defaults.json       настройки роликов по умолчанию и пресеты тона бренда
+      remotion-kit/            набор компонентов Remotion: ReelKit, ReelCover, сцены, субтитры, бренд
+      remotion-starter/        стартовый проект Remotion для kit.py new
       brand-template/          brand.json, rules.md, assets/ — шаблон бренда
 ```
 

@@ -2,6 +2,16 @@
 
 What changed in IT Reelsmaker, written for the people who use it. The newest version is on top. The skill shows a short “What's new” note from this file once, on the first edit after an update.
 
+## 1.4.0
+
+- **The Remotion kit ships with the plugin**: `ReelKit` (rough cut, word-timed subtitles, brand, B-roll, memes,
+  designed scenes, end card) and `ReelCover` (the cover still), driven by the props that `visual_plan.py export --props`
+  writes. No more composition code written from scratch for every video.
+- **`kit.py`**: `new <folder>` creates a starter Remotion project with the kit wired in (pinned package versions,
+  `Root.tsx`, an empty registry for code scenes); `check` and `update` keep the kit in an existing project current,
+  backing up any file they replace. Your `Root.tsx`, brands, plans and code scenes are never touched.
+- `doctor.py` reports whether the project has the kit and whether its version matches the plugin.
+
 ## 1.3.0
 
 - **Ready-made scripts.** The plugin now ships the tools Claude used to write for each project: the rough cut, cut edges by the sound, face measurement, the visual plan with its checks, B-roll and memes from your own folders, code scenes, brand profiles, the cover and mastering. Edits go faster and work the same way every time.

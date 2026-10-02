@@ -1,0 +1,81 @@
+"""kit.py: the starter Remotion project and kit updates; no npm, no network."""
+import json
+import re
+
+import pytest
+
+from conftest import CORE, run_script, write_json
+
+PLUGIN_JSON = CORE.parents[2] / ".claude-plugin" / "plugin.json"
+KIT = CORE.parent / "assets" / "remotion-kit"
+
+
+def test_kit_version_matches_the_plugin():
+    ship = re.search(r'KIT_VERSION\s*=\s*"([^"]+)"', (KIT / "kit" / "version.ts").read_text(encoding="utf-8")).group(1)
+    assert ship == json.loads(PLUGIN_JSON.read_text(encoding="utf-8"))["version"]
+
+
+def test_new_creates_a_wired_project_and_remembers_it(project):
+    run_script("kit.py", "new", "reels", cwd=project)
+    rem = project / "reels"
+    for f in ("package.json", "tsconfig.json", "remotion.config.ts", ".gitignore", "src/index.ts", "src/Root.tsx",
+              "src/ReelKit.tsx", "src/kit/brand.ts", "src/kit/version.ts", "src/kit/scenes/index.ts", "src/gen/registry.ts"):
+        assert (rem / f).is_file(), f
+    for d in ("src/brands", "src/plans", "public"):
+        assert (rem / d).is_dir(), d
+    pkg = json.loads((rem / "package.json").read_text(encoding="utf-8"))
+    deps = {**pkg["dependencies"], **pkg["devDependencies"]}
+    assert pkg["name"] == "reels"
+    assert all(v == deps["remotion"] for k, v in deps.items() if k.startswith("@remotion/"))
+    assert not any(v.startswith(("^", "~")) for v in deps.values())
+    assert json.loads((project / "it-reelsmaker.json").read_text(encoding="utf-8"))["remotion_dir"] == "reels"
+    assert not (rem / "node_modules").exists()
+    r = run_script("kit.py", "check", "--remotion", rem, cwd=project)
+    assert "matches" in r.stdout
+
+
+def test_new_refuses_a_non_empty_folder_and_the_plugin_folder(project):
+    (project / "reels").mkdir()
+    (project / "reels" / "x.txt").write_text("mine")
+    r = run_script("kit.py", "new", "reels", cwd=project, check=False)
+    assert r.returncode != 0 and "not empty" in r.stderr
+    r = run_script("kit.py", "new", CORE.parent / "tmp-starter", cwd=project, check=False)
+    assert r.returncode != 0 and "inside the plugin" in r.stderr
+    assert not (CORE.parent / "tmp-starter").exists()
+
+
+def test_update_backs_up_and_keeps_the_persons_files(project):
+    run_script("kit.py", "new", "reels", cwd=project)
+    rem = project / "reels"
+    (rem / "src" / "kit" / "brand.ts").write_text("// edited by hand\n", encoding="utf-8")
+    (rem / "src" / "kit" / "scenes" / "Quote.tsx").unlink()
+    (rem / "src" / "Root.tsx").write_text("// mine, ReelKit\n", encoding="utf-8")
+    (rem / "src" / "gen" / "registry.ts").write_text("// my scenes\n", encoding="utf-8")
+    (rem / "src" / "kit" / "Mine.tsx").write_text("// mine\n", encoding="utf-8")
+    r = run_script("kit.py", "check", "--remotion", rem, cwd=project, check=False)
+    assert r.returncode == 1 and "differs: src/kit/brand.ts" in r.stdout and "missing: src/kit/scenes/Quote.tsx" in r.stdout
+    r = run_script("kit.py", "update", "--remotion", rem, "--dry-run", cwd=project)
+    assert (rem / "src" / "kit" / "brand.ts").read_text(encoding="utf-8") == "// edited by hand\n"
+    run_script("kit.py", "update", "--remotion", rem, cwd=project)
+    assert (rem / "src" / "kit" / "brand.ts").read_bytes() == (KIT / "kit" / "brand.ts").read_bytes()
+    assert (rem / "src" / "kit" / "scenes" / "Quote.tsx").is_file()
+    backups = list((rem / ".kit-backup").glob("*/src/kit/brand.ts"))
+    assert len(backups) == 1 and backups[0].read_text(encoding="utf-8") == "// edited by hand\n"
+    assert (rem / "src" / "Root.tsx").read_text(encoding="utf-8") == "// mine, ReelKit\n"
+    assert (rem / "src" / "gen" / "registry.ts").read_text(encoding="utf-8") == "// my scenes\n"
+    assert (rem / "src" / "kit" / "Mine.tsx").is_file()
+    assert run_script("kit.py", "check", "--remotion", rem, cwd=project).returncode == 0
+
+
+def test_update_refuses_a_folder_that_is_not_a_remotion_project(project):
+    (project / "other").mkdir()
+    r = run_script("kit.py", "update", "--remotion", project / "other", cwd=project, check=False)
+    assert r.returncode != 0 and "not a Remotion project" in r.stderr
+    assert not (project / "other" / "src").exists()
+
+
+def test_doctor_reports_the_kit_version(project):
+    run_script("kit.py", "new", "reels", cwd=project)
+    r = run_script("doctor.py", "--json", cwd=project, check=False)
+    names = {c["name"]: c for c in json.loads(r.stdout)["checks"]}
+    assert names["ReelKit in the project"]["ok"]
