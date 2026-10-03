@@ -101,7 +101,8 @@ const loadLocal = (f: BrandFont): string => {
     Array.from(new Set([...(f.files ?? []), ...(f.italic ?? [])])).map((file) => {
       const { weight, style } = localFace(file);
       const face = new FontFace(family, `url(${staticFile(file)})`, { weight, style });
-      return face.load().then((ff) => document.fonts.add(ff));
+      // FontFaceSet is set-like in browsers, but TypeScript's DOM types omit add(): typed as a Set here
+      return face.load().then((ff) => (document.fonts as unknown as Set<FontFace>).add(ff));
     }),
   )
     .catch((e) => console.warn("kit: local font failed to load", e))

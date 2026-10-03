@@ -52,7 +52,7 @@ export const CtaAction: React.FC<{ c: SceneCtx }> = ({ c }) => {
     const q = lines.map((l) => QUOTED.exec(l)).find((x) => !!x);
     const word = glue(it?.text ?? (q ? q[1] : lines[1] ?? ""));
     const headLines = it?.text || q ? lines : [lines[0]];
-    const t0 = tl.lead + tl.inF + 4;
+    const t0 = typeof it?.t === "number" ? tI : tl.lead + tl.inF + 4; // typing starts at the interaction time when the plan sets one
     const typedEnd = t0 + word.length * 2;
     const typed = Math.floor(interpolate(frame, [t0, typedEnd], [0, word.length], clamp));
     const send = typedEnd + 8;

@@ -133,7 +133,7 @@ const Clip: React.FC<{ ins: Insert; brand: Brand }> = ({ ins, brand }) => {
     body = (
       <div style={{ position: "absolute", ...place, display: "flex", alignItems: "center",
         justifyContent: "center", opacity: Math.min(l.opacity, out, interpolate(frame, [0, 4], [0, 1], clamp)),
-        transform: `scale(${pop * l.scale})`, filter: l.blur ? `blur(${l.blur}px)` : undefined }}>
+        transform: `translateX(${l.x}px) scale(${pop * l.scale})`, filter: l.blur ? `blur(${l.blur}px)` : undefined }}>
         <div style={ins.plate ? { backgroundColor: alpha(brand.colors.primary, 0.88), borderRadius: 24, padding: 18,
           width: "100%", height: "100%", boxSizing: "border-box", display: "flex", alignItems: "center", justifyContent: "center" }
           : { width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center" }}>
