@@ -31,7 +31,7 @@ from reels_common import (PROJECT_DEFAULTS, SETTING_KEYS_BOOL, edit_dir, editing
 
 KNOWN = set(SETTING_KEYS_BOOL) | {"brand", "style", "subtitles", "intensity", "broll_priority", "meme_priority",
                                   "footage_dirs", "memes_dirs", "generation_engines", "library_dirs", "meme_size",
-                                  "scene_tone", "tone_override"}
+                                  "scene_tone", "tone_override", "subtitles_lang"}
 
 
 def addon_keys(name):

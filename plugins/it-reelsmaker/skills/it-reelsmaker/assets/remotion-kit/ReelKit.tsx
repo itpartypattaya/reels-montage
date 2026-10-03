@@ -23,6 +23,8 @@ export const KIT_FPS = 30;
 export type ReelKitProps = {
   video: string; // path inside public/
   captions: Captions;
+  // subtitles in another language (subs.py → captions-<lang>.json); the speech words in captions still time the scenes
+  subtitleCaptions?: Captions | null;
   brand: Brand;
   // video style (reel.json → style, otherwise brand.style_default): marker / v2 / brand; anything else — marker with a warning
   style?: string | null;
@@ -187,13 +189,13 @@ export const ReelKit: React.FC<ReelKitProps> = (p) => {
     <AbsoluteFill style={{ backgroundColor: p.brand.colors.primary }}>
       <Footage p={p} bt={bt} />
       <BrollLayer inserts={p.inserts} brand={p.brand} />
-      <KitSubtitles captions={p.captions} brand={p.brand} font={fonts.body} mode={p.subtitles} hide={hide}
+      <KitSubtitles captions={p.subtitleCaptions ?? p.captions} brand={p.brand} font={fonts.body} mode={p.subtitles} hide={hide}
         top={p.subtitlesTop ?? 1290} look={look} shade={p.subtitlesShade ?? 0.35} part="shade" />
       <Hook p={p} look={look} font={fonts.heading} />
       <Corner p={p} />
       <SceneLayer scenes={p.scenes} brand={p.brand} look={look} words={p.captions.words} scenesOnly={!p.video} sceneTone={p.sceneTone} />
       <MemeLayer inserts={p.inserts} brand={p.brand} />
-      <KitSubtitles captions={p.captions} brand={p.brand} font={fonts.body} mode={p.subtitles} hide={hide}
+      <KitSubtitles captions={p.subtitleCaptions ?? p.captions} brand={p.brand} font={fonts.body} mode={p.subtitles} hide={hide}
         top={p.subtitlesTop ?? 1290} look={look} shade={p.subtitlesShade ?? 0.35} part="text" />
       <EndCard p={p} look={look} fonts={fonts} />
     </AbsoluteFill>

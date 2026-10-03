@@ -115,6 +115,8 @@ By default, subtitles cover all speech: videos are often watched without sound. 
 
 Hide subtitles when on-screen text replaces them: a hook with a headline, a list card, a full-screen phrase, the end card. A card at the bottom of the frame: raise the subtitles above it or hide them for its duration.
 
+**Subtitles in another language** (on request or chosen in the brief): `subs.py phrases edit/<id> --lang <code>` lists the speech by phrases; you translate each phrase in `subs/<code>.json` yourself (one phrase of translation per phrase of speech; the brand's voice and forbidden words apply; names, numbers and terms as said; as short as the speech), then `subs.py apply` checks it (reading speed: about 17 characters per second, never harder to read than the original subtitle) and writes `captions-<code>.json`, and `reel.json → "subtitles_lang"` puts it into the render. The font must cover that language's script; in a script written without spaces (Chinese, Japanese, Thai…) mark the word boundaries with `|`. Scenes still land on the spoken words. `subs.py srt [--lang <code>]` gives a `.srt` file for platforms that take one. A re-cut keeps the translations of unchanged phrases; the export refuses a translation of an older cut.
+
 On top of subtitles, if the brief asks for them: “accent titles”, 2–4 key words per video shown larger, on a separate layer, on their word; for that time remove the word from the subtitle line, or it will appear twice. At most one word per video in color (usually the CTA).
 
 ## 4. Brand in motion

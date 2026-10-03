@@ -12,7 +12,8 @@ import { measureText } from "@remotion/layout-utils";
 import { Brand, Look, alpha, styleLook } from "./brand";
 import { fitSize, useFontsReady } from "./Phrase";
 
-export type Word = { text: string; start: number; end: number; seg: number; src?: number };
+// glue: no space before the word (subs.py: a translation into a script written without spaces, word boundaries marked)
+export type Word = { text: string; start: number; end: number; seg: number; src?: number; glue?: boolean };
 export type Captions = {
   duration: number;
   segments: { i: number; src_start: number; src_end: number; out_start: number; out_dur: number }[];
@@ -67,7 +68,7 @@ const GEO = {
 type Geo = (typeof GEO)["plate"];
 type Block = Chunk & { lines: Word[][]; size: number; top: number };
 
-const text = (ws: Word[]) => ws.map((w) => w.text).join(" ");
+const text = (ws: Word[]) => ws.map((w, k) => (k && !w.glue ? " " : "") + w.text).join("");
 // height of an n-line block: in “Plate” every line is its own plate, otherwise one shared block
 const height = (g: Geo, size: number, n: number) =>
   g === GEO.plate ? n *(size * g.lh + g.padT + g.padB) + (n - 1) * g.gap : n * size * g.lh + g.padT + g.padB;
@@ -171,7 +172,7 @@ export const KitSubtitles: React.FC<{
             <div key={i} style={type}>
               {ln.map((w, k) => (
                 <span key={k} style={{ color: c.text_on_primary, opacity: said.includes(w) ? 1 : 0.3 }}>
-                  {k ? " " : ""}
+                  {k && !w.glue ? " " : ""}
                   {w.text}
                   {w === last ? <span style={{ opacity: caret ? 1 : 0 }}>|</span> : null}
                 </span>
@@ -193,7 +194,7 @@ export const KitSubtitles: React.FC<{
               const active = t >= w.start - 0.03 && (next ? t < next.start - 0.03 : true);
               return (
                 <span key={k} style={{ color: active ? l.mark : c.text_on_primary }}>
-                  {k ? " " : ""}
+                  {k && !w.glue ? " " : ""}
                   {w.text}
                 </span>
               );

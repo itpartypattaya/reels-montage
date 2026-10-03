@@ -7,7 +7,7 @@ plugin folder path contains the version):
 
     python <add-on scripts>/reels_online.py link [--project DIR]     # online_scripts -> <project>/it-reelsmaker.json
     python <add-on scripts>/reels_online.py unlink [--project DIR]   # remove that key
-    python <core scripts>/addon.py memes|gen|matte|transcribe ...    # the add-on's commands, run through the core
+    python <core scripts>/addon.py memes|gen|matte|transcribe|translate ...   # the add-on's commands, via the core
     python <add-on scripts>/reels_online.py keys list                 # which keys are set (values masked)
     python <add-on scripts>/reels_online.py keys set PEXELS_API_KEY   # in your own terminal: hidden input
     python <add-on scripts>/reels_online.py keys remove PEXELS_API_KEY
@@ -42,7 +42,7 @@ UA = f"it-reelsmaker/{_version()}"
 # --- Settings the add-on adds to the core's reel settings ----------------------------------------------------
 SETTING_KEYS_BOOL = ["use_online_footage", "generate_now", "use_online_memes"]
 SETTING_KEYS = ["online_footage_providers", "online_meme_providers", "generation_provider", "generation_model",
-                "generation_seconds", "transcription_provider"]
+                "generation_seconds", "transcription_provider", "translation_provider", "translation_model"]
 # Deep-merged by the core's load_defaults() on top of its assets/reel-defaults.json (lists are replaced whole).
 # Online sources and paid generation stay off until a video's reel.json, the brand or the prompt turns them on.
 DEFAULTS = {
@@ -61,7 +61,8 @@ DEFAULTS = {
     }
 }
 # command -> add-on module; the core runs it: python <core scripts>/addon.py <command> [args...]
-COMMANDS = {"memes": "memes_online", "gen": "genfootage", "matte": "matte_server", "transcribe": "transcribe_online"}
+COMMANDS = {"memes": "memes_online", "gen": "genfootage", "matte": "matte_server", "transcribe": "transcribe_online",
+            "translate": "translate_online"}
 
 # --- API keys: environment variables, otherwise KEYS_FILE -------------------------------------------------------
 FOOTAGE_KEYS = {"pixabay": "PIXABAY_API_KEY", "pexels": "PEXELS_API_KEY", "magnific": "MAGNIFIC_API_KEY", "coverr": "COVERR_API_KEY"}
@@ -70,6 +71,7 @@ MEME_KEYS = {"giphy": "GIPHY_API_KEY", "openverse": None}  # openverse: no key (
 GEN_KEYS = {"fal": "FAL_KEY", "replicate": "REPLICATE_API_TOKEN", "gemini": "GEMINI_API_KEY",
             "openai": "OPENAI_API_KEY", "runway": "RUNWAYML_API_SECRET"}
 TRANSCRIBE_KEYS = {"openai": "OPENAI_API_KEY"}
+TRANSLATE_KEYS = {"anthropic": "ANTHROPIC_API_KEY", "openai": "OPENAI_API_KEY", "gemini": "GEMINI_API_KEY"}
 
 _KEYS = None
 
@@ -92,7 +94,7 @@ KEY_NAME_RE = re.compile(r"^[A-Z][A-Z0-9_]{1,63}$")
 
 def known_keys():
     """Every key name the add-on reads, aliases included."""
-    names = {v for d in (FOOTAGE_KEYS, MEME_KEYS, GEN_KEYS, TRANSCRIBE_KEYS) for v in d.values() if v}
+    names = {v for d in (FOOTAGE_KEYS, MEME_KEYS, GEN_KEYS, TRANSCRIBE_KEYS, TRANSLATE_KEYS) for v in d.values() if v}
     names |= {a for v in KEY_ALIASES.values() for a in v}
     return sorted(names)
 
@@ -234,7 +236,8 @@ def effective_online(s, put, eff):
 
 # --- Safe error text: API keys never reach the output or JSON ---------------------------------------------------
 SECRET_ENVS = ["PIXABAY_API_KEY", "PEXELS_API_KEY", "MAGNIFIC_API_KEY", "FREEPIK_API_KEY", "COVERR_API_KEY", "FAL_KEY",
-               "GIPHY_API_KEY", "REPLICATE_API_TOKEN", "GEMINI_API_KEY", "OPENAI_API_KEY", "RUNWAYML_API_SECRET"]
+               "GIPHY_API_KEY", "REPLICATE_API_TOKEN", "GEMINI_API_KEY", "OPENAI_API_KEY", "RUNWAYML_API_SECRET",
+               "ANTHROPIC_API_KEY"]
 _SECRET_RES = [
     (re.compile(r"(?i)([?&;](?:api[_-]?key|key|token|access[_-]?token|sig|signature)=)[^&\s'\"#]+"), r"\1***"),
     (re.compile(r"(?i)\b(authorization|x-[\w-]*api-key|x-api-key|api[_-]?key)(['\"]?\s*[:=]\s*['\"]?)"

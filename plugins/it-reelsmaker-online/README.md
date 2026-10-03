@@ -6,6 +6,7 @@ An optional add-on for [IT Reelsmaker](../it-reelsmaker/README.md). It adds thre
 - **CC-licensed memes** from Openverse; GIPHY is used as a reference only;
 - **paid AI video generation** through fal.ai: Veo, Kling and LTX;
 - **a more accurate transcript**: OpenAI's text laid onto the local word times (fewer wrong words in subtitles);
+- **subtitle translation** through Claude, OpenAI or Gemini (by default Claude translates in the session, free);
 - **figure cut-out on your own server** over SSH, when it is too heavy for your laptop.
 
 The core plugin works without this add-on. Install the add-on only if you want these sources. Every download and every paid generation waits until you approve the visual plan, which lists the source, the size in MB and the price.
@@ -40,6 +41,8 @@ python <add-on scripts>/reels_online.py keys set PEXELS_API_KEY
 - `FAL_KEY`
 - `GIPHY_API_KEY`
 - `OPENAI_API_KEY`
+- `ANTHROPIC_API_KEY`
+- `GEMINI_API_KEY`
 
 Plugin settings can't hold these keys: Claude Code keeps protected plugin settings away from the commands Claude runs, so the add-on's scripts could not read them. Openverse needs no key. The skill never prints keys and masks them in its output and in saved errors. Without a key, that source simply switches off.
 
@@ -51,6 +54,7 @@ Enable sources per video in `edit/<id>/reel.json`, for example `"use_online_foot
 - “Generate a 6-second insert of hands sorting printed CVs. Show me the price first.”
 - “Find a CC-licensed reaction meme for the line about missed deadlines.”
 - “Transcribe video 4821 through OpenAI.”
+- “Translate the subtitles of 4821 into German through Gemini.”
 
 ## Data and network
 
@@ -59,6 +63,7 @@ When a source is enabled, these requests leave your computer:
 - **Stock and meme sites** receive your search queries.
 - **fal.ai** receives your generation prompts and, if you choose, a start frame.
 - **OpenAI**, only for a cloud transcript you asked for: the speech audio of the video.
+- **Anthropic, OpenAI or Google**, only for a subtitle translation you asked for: the subtitle text.
 - **Services that need a key** receive their own API key with each request; Openverse needs none.
 - **Your own server**, only if you set one for cut-outs: frames of the span go there over your SSH client and are deleted after the job.
 

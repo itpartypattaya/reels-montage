@@ -3,10 +3,12 @@ name: it-reelsmaker-online
 description: >
   Online sources for it-reelsmaker video edits: vertical stock footage (Pixabay, Pexels, Magnific), CC-licensed
   memes (Openverse; GIPHY as reference only), paid AI video generation (Veo, Kling, LTX via fal.ai) for B-roll,
-  a more accurate transcript (cloud text on the local word times, OpenAI) and figure cut-outs on your own server over SSH.
+  a more accurate transcript (cloud text on the local word times, OpenAI), subtitle translation through Claude,
+  OpenAI or Gemini, and figure cut-outs on your own server over SSH.
   Use only inside an it-reelsmaker edit, when the person enabled online footage, online memes, model generation or
   cloud transcription in the settings or asked for it directly: "find stock footage", "generate an insert", "online
-  memes", "transcribe it through OpenAI", "cut out the figure on my server". Every download
+  memes", "transcribe it through OpenAI", "translate the subtitles through Gemini", "cut out the figure on my
+  server". Every download
   and every paid run happens only after the person approves the visual plan with source, size and price.
 ---
 
@@ -33,6 +35,7 @@ It writes `online_scripts` into the project's `it-reelsmaker.json` (`unlink` rem
 | `python <core scripts>/addon.py gen run edit/<id> --yes` | paid generation, only after the approved price; the clip is picked up by the core's `codescene.py ingest` |
 | `python <core scripts>/addon.py matte cut edit/<id> --from … --to … [--host H]` | figure cut-out on your own server (below) |
 | `python <core scripts>/addon.py transcribe edit/<id> <source> --provider openai [--language ru] [--yes]` | a more accurate transcript (below); `--price` only names the price |
+| `python <core scripts>/addon.py translate edit/<id> --to en --provider anthropic\|openai\|gemini [--yes]` | subtitle translation through an API (below) |
 
 ## Reel settings
 
@@ -97,6 +100,19 @@ report's lines before the cut plan. The local transcript is made first if missin
   standing choice for every video.
 - **Fallback:** no key, no network, no credits, a refused request → a warning, exit code 2, the local transcript
   stays as it was; the edit goes on with it. Key: `OPENAI_API_KEY`, added by the person with `keys set`.
+
+## Subtitle translation through an API
+
+By default you translate the phrases yourself in the session (core: `subs.py`, free, nothing leaves the computer).
+`addon.py translate` is for a translation the person wants from a particular model, or a second opinion: it sends
+the phrases (text only) with the brand's `voice` and `forbidden_words`, asks for one translation per phrase within the
+characters that can be read while it is on screen, in the speaker's form of address, writes them into the empty
+phrases of `subs/<lang>.json` (`--force`: all) and runs the core check (`subs.py apply`). Read the printed pairs: a
+model may shorten away meaning. Providers and default models: `anthropic` claude-sonnet-5-5, `openai` gpt-6.1-sol,
+`gemini` gemini-3.8-flash (`--model` or the `translation_model` setting for another). A video is a few thousand
+tokens (the command prints them; the price is the model's rate); paid all the same: `--yes`, or the person's standing `translation_provider` setting. Keys:
+`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY` (the person adds them with `keys set`). A phrase the model
+skipped stays empty: translate it in the session, then `subs.py apply`.
 
 ## Figure cut-out on your own server
 
