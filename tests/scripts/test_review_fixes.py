@@ -455,3 +455,16 @@ def test_server_upload_timeout_closes_pipe_and_stops_both(online, tmp_path, monk
         engine.run(tmp_path, 30, 60, 60, tmp_path / "out.webm")
     assert processes[0].args[-1] == "." and len(processes[0].args) == 6
     assert all(p.returncode == -1 for p in processes)
+
+
+def test_camera_shot_picks_its_source_file_on_a_multicamera_cut(tmp_path):
+    # review of #8: source seconds of two cameras overlap; "source" picks the camera instead of a segment number
+    import visual_plan as vp
+    cap = {"segments": [{"i": 0, "source": "C:/x/cam-a.mov", "src_start": 10.0, "src_end": 14.0, "out_start": 0.0, "out_dur": 4.0},
+                        {"i": 1, "source": "C:/x/cam-b.mov", "src_start": 11.0, "src_end": 15.0, "out_start": 4.0, "out_dur": 4.0}],
+           "words": []}
+    write_json(tmp_path / "camera.json", {"shots": [{"src": 12.0, "z": 1.1}]})
+    with pytest.raises(SystemExit, match='add "source"'):
+        vp.camera_shots(tmp_path, {"segments": []}, cap)
+    write_json(tmp_path / "camera.json", {"shots": [{"src": 12.0, "source": "cam-b.mov", "z": 1.1}]})
+    assert vp.camera_shots(tmp_path, {"segments": []}, cap)[0]["t"] == 5.0

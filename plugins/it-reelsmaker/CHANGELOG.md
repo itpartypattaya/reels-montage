@@ -6,6 +6,11 @@ What changed in IT Reelsmaker, written for the people who use it. The newest ver
 
 - Step 2 points to the online add-on's more accurate transcript (a cloud text laid onto the local word times) for
   people who have the add-on.
+- Scene sounds also on a video without a voice (a promo of scenes only): onto the music or silence; a sound whose
+  hit comes later in its file than its cue is trimmed to land on time.
+- The visual plan follows a re-cut of the same length too, and a scene placed on a word with an offset keeps it.
+- Camera shots on a cut from several cameras name their file (`"source"`); `transcribe.py audio` creates the
+  transcripts folder it points to.
 
 ## 1.4.6
 
