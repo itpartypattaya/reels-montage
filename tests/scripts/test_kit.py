@@ -10,9 +10,13 @@ PLUGIN_JSON = CORE.parents[2] / ".claude-plugin" / "plugin.json"
 KIT = CORE.parent / "assets" / "remotion-kit"
 
 
-def test_kit_version_matches_the_plugin():
+def test_kit_version_is_not_ahead_of_the_plugin():
+    # The kit version changes only when the kit changes (a release without kit changes must not make every project
+    # look outdated), so it may lag behind the plugin version, never lead it.
     ship = re.search(r'KIT_VERSION\s*=\s*"([^"]+)"', (KIT / "kit" / "version.ts").read_text(encoding="utf-8")).group(1)
-    assert ship == json.loads(PLUGIN_JSON.read_text(encoding="utf-8"))["version"]
+    plugin = json.loads(PLUGIN_JSON.read_text(encoding="utf-8"))["version"]
+    as_tuple = lambda v: tuple(int(x) for x in v.split("."))
+    assert as_tuple(ship) <= as_tuple(plugin)
 
 
 def test_new_creates_a_wired_project_and_remembers_it(project):
