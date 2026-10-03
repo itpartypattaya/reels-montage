@@ -159,6 +159,7 @@ def cmd_audio(a):
     src = resolve_src(a.source, project, e)
     with locked(e / f"audio16k-{src.stem}.wav", stale=86400):
         wav, _, off = source_wav(e, src, a.force)
+    (e / "transcripts").mkdir(exist_ok=True)  # the folder the transcript is saved into
     print(f"{wav}: 16 kHz mono on the video timeline" + (f" (the sound track starts {off:.3f} s after the picture; "
           "aligned)" if off else "") + f". Give this file to your transcriber, save its output as "
           f"{e / 'transcripts' / (src.stem + '.json')} and run transcribe.py check on it.")

@@ -2,6 +2,13 @@
 
 What changed in IT Reelsmaker Online. The newest version is on top.
 
+## 1.3.0
+
+- **A more accurate transcript.** `addon.py transcribe` keeps the word times of the local transcript (they match the
+  audio) and lays OpenAI's text onto them: fewer wrong words in the subtitles, missed words added, and the words only
+  the local model heard listed as places to listen to (often a retake). About $0.005 per minute of speech, only after
+  your “yes” or your standing choice in the project settings. No key, no network: the local transcript stays.
+
 ## 1.2.0
 
 - **Add API keys safely.** `reels_online.py keys set <NAME>` in your own terminal: the key is typed with hidden input, never passes through the chat, and is saved to a file readable by you only. `keys list` shows what is set (masked), `keys remove` deletes a key.

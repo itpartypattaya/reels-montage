@@ -48,7 +48,8 @@ with each shot's camera.
   {"at": 41.6, "z": 1.2, "cx": 470, "cy": 960}
 ]}
 ```
-A shot starts at `src` (a source second, stable when the speed changes; `seg` when that second appears twice), or at
+A shot starts at `src` (a source second, stable when the speed changes; `"source": "cam-a.mov"` on a cut from several
+cameras whose seconds overlap; `seg` when that second appears twice in one file), or at
 `at` (a second or `word:<word>#n` of the finished video). `drift` is the push-in over the shot (+0.02–0.06), `whip`
 replaces the cut with a 7-frame move and a light motion blur. The kit clamps the window to the frame. With no
 `camera.json` the template keeps its plain slow drift. While a card sits on the chest (hook, contrast, CTA), keep `cy`

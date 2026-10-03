@@ -85,6 +85,7 @@ def test_audio_command_gives_your_own_transcriber_the_aligned_wav(project):
     r = run_script("transcribe.py", "audio", "edit/4821", "IMG_4821.MOV", cwd=project)
     wav = project / "edit" / "4821" / "audio16k-IMG_4821.wav"
     assert wav.is_file() and "video timeline" in r.stdout and "transcripts" in r.stdout
+    assert (project / "edit" / "4821" / "transcripts").is_dir()  # the advertised folder exists to save into
     assert abs(onset(speech_mask.load_env(str(wav))) - 1.1) <= 0.03
     stamp = json.loads(wav.with_suffix(".json").read_text(encoding="utf-8"))
     assert stamp["timeline"] == "video" and stamp["audio_offset"] > 0.05
