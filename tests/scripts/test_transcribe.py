@@ -73,3 +73,21 @@ def test_analysis_audio_is_on_the_video_timeline(project):
     assert abs(onset(speech_mask.load_env(str(src))) - 1.1) <= 0.03  # speech_mask --edl reads the source itself
     piece = transcribe.extract_audio(src, project / "p.wav", 0.5, 2.0)  # a snip: second 0 of the piece = 0.5 of the video
     assert abs(onset(speech_mask.load_env(str(piece))) + 0.5 - 1.1) <= 0.03
+
+
+@needs_ffmpeg
+def test_audio_command_gives_your_own_transcriber_the_aligned_wav(project):
+    # A cloud transcriber that pulls the audio out of a phone MOV itself gets every word ~0.1 s early; `audio` makes
+    # the WAV on the video timeline (no model needed), the same file full transcription and speech_mask.py use.
+    import speech_mask
+    src = late_audio_video(project / "IMG_4821.MOV")
+    (project / "edit" / "4821").mkdir(parents=True)
+    r = run_script("transcribe.py", "audio", "edit/4821", "IMG_4821.MOV", cwd=project)
+    wav = project / "edit" / "4821" / "audio16k-IMG_4821.wav"
+    assert wav.is_file() and "video timeline" in r.stdout and "transcripts" in r.stdout
+    assert abs(onset(speech_mask.load_env(str(wav))) - 1.1) <= 0.03
+    stamp = json.loads(wav.with_suffix(".json").read_text(encoding="utf-8"))
+    assert stamp["timeline"] == "video" and stamp["audio_offset"] > 0.05
+    mtime = wav.stat().st_mtime_ns
+    run_script("transcribe.py", "audio", "edit/4821", "IMG_4821.MOV", cwd=project)
+    assert wav.stat().st_mtime_ns == mtime  # the same source: the WAV is not made again

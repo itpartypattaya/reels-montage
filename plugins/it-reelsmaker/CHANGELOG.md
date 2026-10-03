@@ -2,6 +2,13 @@
 
 What changed in IT Reelsmaker, written for the people who use it. The newest version is on top. The skill shows a short “What's new” note from this file once, on the first edit after an update.
 
+## 1.4.6
+
+- **Your own transcriber gets the right audio.** `transcribe.py audio edit/<id> <source>` makes only the audio file
+  on the video's timeline, with no local model. Give that file, not the video, to a transcriber of your choice: one
+  that pulls the sound out of a phone video itself places every word about 0.1 s early, and cuts set by those words
+  clip word endings.
+
 ## 1.4.5
 
 - **Quiet consonants at phrase edges are kept**: the speech mask also listens to the high frequencies, so a final "s"
