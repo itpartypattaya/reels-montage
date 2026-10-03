@@ -98,4 +98,7 @@ def test_online_scripts_with_home_and_relative_paths(project, tmp_path, monkeypa
     write_json(project / "it-reelsmaker.json", {"online_scripts": "${user_config.online_scripts}"})
     monkeypatch.setattr(reels_common, "_ONLINE", None)
     assert reels_common.online() is None
+    write_json(project / "it-reelsmaker.json", {"online_scripts": "~no-such-user-xyz/addon"})
+    monkeypatch.setattr(reels_common, "_ONLINE", None)
+    assert reels_common.online() is None  # an unknown ~user is "not found", not a crash
     sys.modules.pop("reels_online", None)

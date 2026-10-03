@@ -287,7 +287,10 @@ def online():
         if d and str(d).startswith("${"):  # an unexpanded plugin setting counts as not set
             d = None
         if d:  # ~ is the home folder; a relative path is relative to the project folder
-            d = Path(str(d)).expanduser()
+            try:
+                d = Path(str(d)).expanduser()
+            except RuntimeError:  # ~someone for a user this computer doesn't have: reported as not found below
+                d = Path(str(d))
             d = str(d if d.is_absolute() else project_root() / d)
         if d and not Path(d, "reels_online.py").is_file():
             warn(f"the online add-on is not found in {d} (it was updated or removed); to use it again, run its "
