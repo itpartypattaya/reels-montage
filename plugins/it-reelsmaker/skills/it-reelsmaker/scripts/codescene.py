@@ -15,7 +15,7 @@ handled by the online-sources add-on `it-reelsmaker-online`; without it they sta
 Brief fields (insert.gen in visual_plan.json):
   engine (code|model), subject, action, camera, composition, lighting, mood, start, end, [setting], [style], [seconds], [use_from]
 """
-import argparse, os, re, subprocess, sys
+import argparse, math, os, re, subprocess, sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -154,7 +154,8 @@ def cmd_manifest(a):
         g = i.setdefault("gen", {})
         engine = engine_of(i, eff)
         g["engine"] = engine
-        sec = int(num(g.get("seconds"), None) or num(s.get("generation_seconds"), 6) or 6)
+        # whole seconds, rounded up: a 2.86 s clip must not become 2 s and end up shorter than its insert
+        sec = math.ceil(num(g.get("seconds"), None) or num(s.get("generation_seconds"), 6) or 6)
         g["seconds"] = sec
         errs, warns = check(i, brand)
         item = base_item(i, engine, sec, errs, warns)
@@ -300,7 +301,7 @@ def cmd_scaffold(a):
                  f"--remotion {a.remotion}")
     g = i.setdefault("gen", {})
     g["engine"] = "code"
-    sec = int(num(g.get("seconds"), 6) or 6)
+    sec = math.ceil(num(g.get("seconds"), 6) or 6)
     comp = comp_name(plan["id"], i["id"])
     f = rem / "src" / "gen" / f"{comp}.tsx"
     if f.exists() and not a.force:

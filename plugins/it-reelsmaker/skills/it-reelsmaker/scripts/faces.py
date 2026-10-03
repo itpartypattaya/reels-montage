@@ -69,7 +69,8 @@ STRONG = 0.85
 MIN_ASPECT = 1.05    # a YuNet face box is taller than wide (1.2-1.5); "square" or "landscape" means knees, hands, cloth
 SIZE_RANGE = (0.35, 1.8)  # width relative to the median of the video's confident faces (camera zoom gives up to x1.3)
 LOCAL_S = 2.0       # size comparison window, s: the camera plan and B-roll change the face size
-FILTER_V = 2         # 2: signs combined, "below a face" with a horizontal check, local median
+FILTER_V = 5         # 2: signs combined, "below a face" with a horizontal check, local median; 3: "below the chin" sign;
+                     # 4: far below a face and smaller than it; 5: "appeared once" up to score 0.8
 
 DETECT = r"""
 import cv2, json, sys
@@ -208,12 +209,17 @@ def false_reason(f, strong, med, near):
     for s in strong:  # below the chin, center within this person's "column" (face +- half its width): hands, knees
         if y > s[1] + 0.9 * s[3] and s[0] - 0.5 * s[2] <= cx <= s[0] + 1.5 * s[2]:
             return "below a face of the same person (hands, knees)"
+    for s in strong:  # far below the chin and clearly smaller than the face above: a hand or an object (26.5 s, score 0.71)
+        if y > s[1] + 1.5 * s[3] and w < 0.75 * s[2]:
+            return "far below a face and smaller than it (a hand or an object)"
     signs = []
+    if any(y > s[1] + 0.9 * s[3] for s in strong):  # a hand held out to the side is outside the column
+        signs.append("below the chin of a face in the frame")
     if w > 0 and h / w < MIN_ASPECT:
         signs.append("not face proportions")
     if med and not SIZE_RANGE[0] * med <= w <= SIZE_RANGE[1] * med:
         signs.append("size unlike the faces around it")
-    if sc < 0.7 and near is not None and not any(iou(f, n) > 0.3 for n in near):
+    if sc < 0.8 and near is not None and not any(iou(f, n) > 0.3 for n in near):  # 0.72: a sofa cushion, one sample
         signs.append("appeared in a single sample")
     return " + ".join(signs) if len(signs) >= 2 else None
 

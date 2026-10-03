@@ -164,10 +164,11 @@ A video with no talking head: the brand's texts, numbers and pictures, in scenes
 ## Cover and frame 0
 
 The preview of a video in messengers and most players is frame 0; social networks let you pick a cover on upload, but frame 0 still shows when the video is forwarded.
-1. A `cover` scene or the strongest **settled** frame (the hook fully on screen, not mid-transition) → `edit/<id>/cover.jpg`.
+1. A `cover` scene or the strongest **settled** frame (the hook fully on screen, not mid-transition) → `edit/<id>/cover.jpg`. **Not mid-word:** a face caught while speaking is distorted (an open mouth, a half-said vowel), so the frame comes from a pause in the speech (`poster.py pick` measures the pauses on the render's sound). A pause alone is not enough either, since people blink and look down between phrases: `poster.py pick --sheet` puts up to 6 pause candidates side by side; take the one with open eyes and the mouth at rest (`--t <second>`).
 2. Check the cover text against the profile-grid crop (centered in the frame) and the UI zones.
 3. Replace **only frame 0**: `ffmpeg -i <render>.mp4 -i cover.jpg -filter_complex "[0:v][1:v]overlay=0:0:enable='eq(n,0)'[v]" -map "[v]" -map 0:a? -c:v libx264 -crf 18 -preset slow -pix_fmt yuv420p -c:a copy -movflags +faststart <render>-cover.mp4`. Check: the frame count and the video and audio durations are the same before and after. Order: render → cover → mastering (mastering copies the video without re-encoding).
-4. Deliver `cover.jpg` with the master, for uploading the cover by hand.
+4. After mastering, embed the cover as cover art (`poster.py attach`): file managers show it as the thumbnail instead of a random frame.
+5. Deliver `cover.jpg` with the master, for uploading the cover by hand.
 
 ## Post caption: `caption.txt`
 

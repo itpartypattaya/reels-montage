@@ -29,7 +29,7 @@ import argparse, json, os, sys, uuid, wave
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from reels_common import edit_dir, load_json, locked, probe, project_root, run, save_json, utf8_stdio, warn
+from reels_common import ANALYSIS_AF, audio_offset, edit_dir, load_json, locked, probe, project_root, run, save_json, utf8_stdio, warn
 
 SNIP_MAX = 5.0
 SNIP_PROMPT = "Verbatim, with every repeat, slip and filler word."
@@ -44,12 +44,15 @@ def resolve_src(arg, project, e):
 
 
 def extract_audio(src, out, start=None, end=None):
-    """16 kHz mono WAV, optionally a piece [start, end) of the source."""
+    """16 kHz mono WAV on the video timeline (second t of the WAV = second t of the video, which cut.py cuts by),
+    optionally a piece [start, end) of the source. A seek before -i already aligns the streams; the whole track goes
+    through ANALYSIS_AF (a phone MOV's audio can start ~0.1 s after the video)."""
     out.parent.mkdir(parents=True, exist_ok=True)
     cut = (["-ss", f"{start:.3f}", "-to", f"{end:.3f}"] if start is not None else [])
+    af = [] if start is not None else ["-af", ANALYSIS_AF]
     tmp = out.with_name(f".{out.stem}.{os.getpid()}.{uuid.uuid4().hex}.wav")
     try:
-        run(["ffmpeg", "-v", "error", "-y", *cut, "-i", src, "-vn", "-ac", "1", "-ar", "16000", "-c:a", "pcm_s16le", tmp])
+        run(["ffmpeg", "-v", "error", "-y", *cut, "-i", src, "-vn", "-ac", "1", "-ar", "16000", *af, "-c:a", "pcm_s16le", tmp])
         os.replace(tmp, out)
     finally:
         if tmp.exists():
@@ -136,21 +139,23 @@ def cmd_full(a):
     src = resolve_src(a.source, project, e)
     out = e / "transcripts" / f"{src.stem}.json"
     identity = {"path": str(src.resolve()), "size": src.stat().st_size, "mtime_ns": src.stat().st_mtime_ns}
+    off = audio_offset(src)
+    stamp_doc = {**identity, "timeline": "video", "audio_offset": off}
+    wav = e / f"audio16k-{src.stem}.wav"
+    stamp = wav.with_suffix(".json")
     if out.exists() and not a.force and (load_json(out) or {}).get("source_identity") == identity:
         print(f"cached: {out} (--force to transcribe again)")
         return
-    wav = e / f"audio16k-{src.stem}.wav"
-    stamp = wav.with_suffix(".json")
     with locked(wav, stale=86400):
-        if not wav.exists() or a.force or load_json(stamp) != identity:
+        if not wav.exists() or a.force or load_json(stamp) != stamp_doc:
             extract_audio(src, wav)
-            save_json(stamp, identity)
+            save_json(stamp, stamp_doc)
         model = load_model(a.model, a.compute)
         dur = probe(src).get("dur") or 0
         print(f"transcribing {src.name} ({dur:.0f} s) with {a.model} {a.compute} ...", file=sys.stderr)
         lang, text, words = words_of(model, wav, a.language)
     doc = {"language_code": lang, "text": text, "words": words, "source": src.name, "source_identity": identity,
-           "model": f"faster-whisper {a.model} {a.compute}"}
+           "model": f"faster-whisper {a.model} {a.compute}", "timeline": "video", "audio_offset": off}
     save_json(out, doc)
     problems = [p for p in check_doc(doc) if not p.startswith("note:")]
     notes = [p for p in check_doc(doc) if p.startswith("note:")]

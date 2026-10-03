@@ -81,6 +81,16 @@ def test_speech_mask_finds_phrases_and_prints_cut_ranges(project):
     assert '"ranges": [' in r.stdout and '"beat": ""' in r.stdout
 
 
+
+@needs_ffmpeg
+def test_a_plosive_burst_before_a_phrase_stays_in_the_cut(project):
+    # "Podpisyval": a 40 ms "P" burst, a 120 ms closure, then the vowel; min_run alone dropped the burst and the
+    # edge cut the consonant off. The burst belongs to the phrase that follows it.
+    make_speech(project / "p.wav", [(1.0, 1.04), (1.16, 2.5)], 4)
+    r = run_script("speech_mask.py", "p.wav", "--spans", "0.6-3.0", "--json", cwd=project)
+    (s, e), = json.loads(r.stdout.strip().splitlines()[-1])["ranges"]
+    assert abs(s - 0.98) < 0.04 and abs(e - 2.53) < 0.06
+
 @needs_ffmpeg
 def test_master_audio_hits_the_loudness_target(project):
     make_video(project / "render.mp4", 360, 640, 6.0)
@@ -100,3 +110,57 @@ def test_poster_bake_replaces_only_frame_zero(project):
     assert r.returncode == 0, r.stdout + r.stderr
     before, after = probe_streams(project / "render.mp4"), probe_streams(project / "baked.mp4")
     assert abs(float(before["video"]["duration"]) - float(after["video"]["duration"])) < 0.001
+
+
+@needs_ffmpeg
+@needs_pillow
+def test_poster_attach_embeds_cover_art_without_reencoding(project):
+    # A file manager showed a random B-roll frame as the thumbnail: the cover goes into the file as cover art.
+    import subprocess
+    from PIL import Image
+    make_video(project / "master.mp4", 360, 640, 2.0)
+    Image.new("RGB", (1080, 1920), (200, 30, 30)).save(project / "cover.jpg")
+    r = run_script("poster.py", "attach", "master.mp4", "--cover", "cover.jpg", "-o", "final.mp4", cwd=project, check=False)
+    assert r.returncode == 0, r.stdout + r.stderr
+    out = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "stream=codec_type:stream_disposition=attached_pic",
+                          "-of", "json", str(project / "final.mp4")], capture_output=True, text=True).stdout
+    assert [s["disposition"]["attached_pic"] for s in json.loads(out)["streams"]] == [0, 0, 1]
+    before, after = probe_streams(project / "master.mp4"), probe_streams(project / "final.mp4")
+    assert before["video"]["duration"] == after["video"]["duration"]
+
+
+@needs_ffmpeg
+def test_poster_cover_frame_is_taken_in_a_pause(project):
+    # A face caught mid-word is distorted: the cover frame comes from a pause of the render's speech.
+    import poster
+    from conftest import ffmpeg
+    ffmpeg("-f", "lavfi", "-i", "testsrc2=size=360x640:rate=30:duration=3", "-f", "lavfi",
+           "-i", "sine=f=300:d=3,volume='if(between(t,1.6,1.9),0,1)':eval=frame", "-map", "0:v", "-map", "1:a",
+           "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", project / "r.mp4")
+    t, why = poster.in_pause(project / "r.mp4", 0.5, 2.8, "test")
+    assert 1.65 <= t <= 1.85 and "pause" in why
+    assert len(poster.candidates(project / "r.mp4", 0.5, 2.8)) >= 3
+
+
+@needs_ffmpeg
+def test_voiceless_ending_stays_in_the_cut(project):
+    # A final "s": quiet overall (under the threshold), loud in the high band. The phrase must end after it.
+    from conftest import ffmpeg
+    ffmpeg("-f", "lavfi", "-i", "sine=f=300:d=4,volume='if(between(t,1,2),1,0)':eval=frame",
+           "-f", "lavfi", "-i", "anoisesrc=d=4:c=white:a=0.02,highpass=f=4000,volume='if(between(t,2,2.15),1,0.02)':eval=frame",
+           "-filter_complex", "[0][1]amix=inputs=2:normalize=0", "-ar", 16000, "-ac", 1, project / "s.wav")
+    r = run_script("speech_mask.py", "s.wav", "--spans", "0.6-3.0", "--json", cwd=project)
+    (s, e), = json.loads(r.stdout.strip().splitlines()[-1])["ranges"]
+    assert e >= 2.15, e
+
+
+@needs_ffmpeg
+def test_master_audio_mixes_scene_sounds(project):
+    # The kit does not play scene sounds: master_audio --sfx mixes them in before the voice chain.
+    from conftest import ffmpeg
+    make_video(project / "render.mp4", 360, 640, 4.0)
+    ffmpeg("-f", "lavfi", "-i", "sine=f=1500:d=0.3", project / "hit.wav")
+    write_json(project / "sfx.json", {"sounds": [{"file": "hit.wav", "at": 2.0, "what": "test"}]})
+    r = run_script("master_audio.py", "render.mp4", "-o", "master.mp4", "--sfx", "sfx.json", cwd=project, check=False)
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert "scene sounds: 1" in r.stdout and "hit.wav at 2.00 s" in r.stdout

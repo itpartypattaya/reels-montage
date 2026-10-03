@@ -28,22 +28,22 @@ python "${CLAUDE_SKILL_DIR}/scripts/<name>.py" <command> [args]
 | Step | Script | Commands |
 |---|---|---|
 | 0 | `doctor.py` | the environment in one command: what is missing and the install command for this OS (exit 1 if a required program is missing) |
-| 0, 8 | `kit.py` | `new <folder>` (a starter Remotion project: pinned versions, `Root.tsx` with `ReelKit`, `ReelCover` and the code scenes; prints the `npm install` command), `check --remotion <dir>` (kit version and changed files), `update --remotion <dir> [--dry-run]` (replaces only `src/ReelKit.tsx` and `src/kit/`, backup in `.kit-backup/`) |
+| 0, 8 | `kit.py` | `new <folder>` (a starter Remotion project: pinned versions, `Root.tsx` with `ReelKit`, `ReelCover` and the code scenes; prints the `npm install` command), `check --remotion <dir>` (kit version and changed files), `update --remotion <dir> [--dry-run]` (replaces only `src/ReelKit.tsx` and `src/kit/`, backup in `.kit-backup/`; line endings alone are not a difference; refuses to roll back a project kit newer than the plugin's without `--force`) |
 | 0 | `brand.py` | `list`, `show <slug>` (profile, contrast, found files; the rules, video guide, CTA library and other brand documents, ✗ if missing), `new --name … --colors … [--tone …]`, `logo`, `rule <slug> "<text>"` (append a brand-level rule to `rules.md`), `set`, `tone <slug> <preset>`, `use <slug> --edit edit/<id>`, `export <slug> --remotion <dir>` |
 | 0 | `reelcfg.py` | `show edit/<id> [--json]` (settings, where each comes from: `defaults`, `project`, `overlay`, `tone:<preset>`, `brand:<slug>`, `reel.json`, `override`; what will actually turn on and why not); `save edit/<id> --set key=value …`; `defaults` (print the project defaults file `reel-defaults.json`), `defaults --set key=value …` (write `settings` keys), `defaults --unset key …` (remove keys) |
 | 2, 3 | `transcribe.py` | `edit/<id> <source> [--model medium] [--language ru]` (faster-whisper, cached in `transcripts/`); `snip edit/<id> <source> --from … --to …` (a <= 5 s piece without context, for retakes); `check <file>` (your own transcriber's output) |
 | 3, 6 | `speech_mask.py` | `<audio.wav> --spans 0.5-4.6,4.7-9.6 [--density natural]` (edges by audio → `"ranges"` for `cut.json`); `--edl edit/<id>/edl.json` (check every edge of the rough cut, exit 1 on warnings) |
 | 6 | `cut.py` | `edit/<id> --dry-run` (segments, lengths, words), then `edit/<id>` → `final.mp4`, `captions.json`, `edl.json`; the cut list format is in `--help` |
 | 6, 8, 9 | `faces.py` | `scan edit/<id>`, `zones edit/<id> [--cam z,cx,cy]`, `check edit/<id> --box x,y,w,h --from … --to …`, `audit out/<render>.mp4 --edit edit/<id>`; the model path via `--model {{FACE_MODEL}}` or `face_model` in `it-reelsmaker.json` |
-| 7a | `visual_plan.py` | `init`, `add` (B-roll, meme, designed scene), `keep-clear`, `validate` (exit 1 on errors), `md` (the table for the person), `export --remotion <dir>` |
+| 7a | `visual_plan.py` | `init`, `add` (B-roll, meme, designed scene), `keep-clear`, `validate` (exit 1 on errors), `md` (the table for the person), `export --remotion <dir> [--props <file>] [--subtitles accent\|plate\|typewriter\|none] [--card LINE [LINE] \| --sting] [--corner]` (`--sting`: the logo with `brand.tagline` at the end, no CTA; `edit/<id>/camera.json` → `props.camera`, `references/camera.md`; `reel.json → subtitles_shade` → the darkening behind “Typewriter”) |
 | 7a | `footage.py` | `index` + `describe` (the project's own footage), `search`, `plan-search edit/<id>`, `pick edit/<id> <insert>`, `prepare` |
 | 7a | `codescene.py` | `manifest`, `validate`, `scaffold edit/<id> <insert> --remotion <dir>`, `render …`, `ingest edit/<id>` |
 | 7a | `memes.py` | `index`, `set`, `search`, `prepare`, `place edit/<id> <insert>` |
 | 8 | `matte.py` | `cut edit/<id> --from … --to … [--width 720] [--dry]` (figure cut-out on this computer with your rembg → WebM with alpha, edge data, check frame); `place edit/<id> --name host --layout review` (presenter layout) |
 | 8 | `phone_screen_rect.py` | `<frame.png> [width]`: the screen rectangle of a phone mockup |
 | 9 | `patch_render.py` | `out/<render>.mp4 --comp Reel<id> --from 12.3 --to 13.1`: re-render and splice a segment (late spot fixes) |
-| 9 | `poster.py` | `pick edit/<id> --render out/x.mp4 -o cover.jpg`, `guide cover.jpg -o cover-guide.png`, `bake out/x.mp4 --cover cover.jpg -o out/x-cover.mp4` (cover in frame 0) |
-| 9 | `master_audio.py` | `out/render.mp4 -o out/master.mp4 [--music track.mp3]`, `--check`, `--find-drops` |
+| 9 | `poster.py` | `pick edit/<id> --render out/x.mp4 -o cover.jpg` (a frame in a pause of the speech; `--sheet <file>`: candidates to choose from; `--t` on speech warns), `guide cover.jpg -o cover-guide.png`, `bake out/x.mp4 --cover cover.jpg -o out/x-cover.mp4` (cover in frame 0, before mastering), `attach out/x-master.mp4 --cover cover.jpg -o out/x-final.mp4` (cover art for file manager thumbnails, after mastering, nothing re-encoded) |
+| 9 | `master_audio.py` | `out/render.mp4 -o out/master.mp4 [--music track.mp3] [--sfx edit/<id>/sfx.json]` (`--sfx`: scene sound accents, the kit does not play them: each sound placed by its sound start, 15 dB under the voice peak), `--check`, `--find-drops` |
 | 11 | `library_catalog.py` | `--dir {{ASSETS_DIR}} [--verdicts <file>] [--full]`: catalog, overview sheets and verdicts of your own asset library; only changed files are measured again, `--full` measures everything again |
 | — | `addon.py` | runs the commands of the online-sources add-on, if it is installed and linked (`addon.py` alone lists them) |
 
@@ -68,7 +68,7 @@ python "${CLAUDE_SKILL_DIR}/scripts/<name>.py" <command> [args]
 
 The kit (`assets/remotion-kit/`, copied into the Remotion project by `kit.py`) renders the `ReelKit` and `ReelCover`
 compositions from the props of `visual_plan.py export --props`: rough cut, subtitles, brand, inserts, designed scenes,
-cover. Anything a video needs beyond that (special camera moves, techniques, code scenes: `references/camera.md`,
+cover, the virtual camera from `camera.json` and the three subtitle modes. Anything a video needs beyond that (techniques, code scenes: `references/camera.md`,
 `references/techniques.md`) is written by the agent per video, on top of the kit's components. A different transcriber is fine: its output only has to pass `transcribe.py check`.
 
 Audio extraction writes `edit/<id>/audio16k-<source stem>.wav` for each source, with source identity metadata next to it. Pass that WAV to `speech_mask.py`. Older projects may still use `audio16k.wav` as a legacy input; new transcriptions never reuse it. Cut ranges must be finite, inside the source (one frame of end tolerance), and contain at least one output frame. Segment output sizes must match; SAR is normalized to 1:1. Extract and matte names must be safe local names.

@@ -43,3 +43,33 @@ def test_check_catches_a_broken_transcript(project):
     bad = write_json(project / "bad.json", {"words": [{"text": "a", "start": 2.0, "end": 1.0}, {"text": "b", "start": 0.1}]})
     r = run_script("transcribe.py", "check", bad, cwd=project, check=False)
     assert r.returncode == 1 and "end 1.0 before start 2.0" in r.stdout
+
+
+def late_audio_video(path, lead=0.1):
+    """A video whose audio track starts `lead` s after the picture (like a phone MOV); a tone burst at 1.0 s of the audio
+    track, so at 1.0 + lead s of the video."""
+    from conftest import ffmpeg
+    ffmpeg("-f", "lavfi", "-i", "testsrc2=size=360x640:rate=30:duration=3", "-itsoffset", lead, "-f", "lavfi",
+           "-i", "sine=f=440:d=3,volume='if(between(t,1,1.5),1,0)':eval=frame", "-map", "0:v", "-map", "1:a",
+           "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", path)
+    return path
+
+
+def onset(env, thr=-30.0):
+    return next(k for k, v in enumerate(env) if v > thr) * 0.01
+
+
+@needs_ffmpeg
+def test_analysis_audio_is_on_the_video_timeline(project):
+    # A phone MOV's audio started 0.1 s after the video: the extracted audio ran ahead, and every edge measured on it
+    # landed 0.1 s early in cut.py (word endings clipped in every take). Now the WAV, the --edl check and snip agree.
+    import speech_mask
+    import transcribe
+    from reels_common import audio_offset
+    src = late_audio_video(project / "IMG_4821.MOV")
+    assert 0.05 < audio_offset(src) < 0.11  # the container says 0.076 here: AAC encoder delay, hence first_pts in extraction
+    wav = transcribe.extract_audio(src, project / "a.wav")
+    assert abs(onset(speech_mask.load_env(str(wav))) - 1.1) <= 0.03
+    assert abs(onset(speech_mask.load_env(str(src))) - 1.1) <= 0.03  # speech_mask --edl reads the source itself
+    piece = transcribe.extract_audio(src, project / "p.wav", 0.5, 2.0)  # a snip: second 0 of the piece = 0.5 of the video
+    assert abs(onset(speech_mask.load_env(str(piece))) + 0.5 - 1.1) <= 0.03

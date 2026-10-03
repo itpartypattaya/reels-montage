@@ -146,3 +146,22 @@ def test_project_defaults_beat_tone_guesses_but_not_its_caps(project):
     assert s["use_memes"] is True and prov["use_memes"] == "project"   # the expert preset would say no
     assert s["intensity"] == "minimal" and prov["intensity"] == "project"
     assert s["meme_size"] == "s" and prov["meme_size"].startswith("tone:")  # expert caps memes at s
+
+
+def test_plan_follows_a_rebuilt_rough_cut(project):
+    # A recut (other edges, another length) left the plan with the old length and spans; a scene placed by a word
+    # must move with its word, and validate must not judge it against the old length.
+    e = plan_project(project, {"use_scenes": True})
+    run_script("visual_plan.py", "init", "edit/4821", cwd=project)
+    run_script("visual_plan.py", "add", "edit/4821", "--kind", "scene", "--type", "contrast", "--mode", "overlay",
+               "--at", "word:check#1", "--dur", "2.0", "--lines", "resume", "thinking", "--box", "60,250,900,200",
+               "--what", "contrast", "--why", "test", cwd=project)
+    cap = captions()
+    for w in cap["words"]:
+        w["start"], w["end"] = round(w["start"] + 0.3, 3), round(w["end"] + 0.3, 3)
+    cap["duration"] = 30.3
+    write_json(e / "captions.json", cap)
+    r = run_script("visual_plan.py", "validate", "edit/4821", cwd=project, check=False)
+    assert "the rough cut changed" in r.stdout and "moved with their words: c01" in r.stdout
+    plan = load_plan(e)
+    assert plan["duration"] == 30.3 and abs(plan["inserts"][0]["start"] - 4.1) < 0.001  # "check" 3.8 + 0.3

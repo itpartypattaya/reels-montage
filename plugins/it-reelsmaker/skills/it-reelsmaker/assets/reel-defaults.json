@@ -5,6 +5,7 @@
   "brand": null,
   "style": null,
   "subtitles": null,
+  "subtitles_shade": null,
   "intensity": "moderate",
   "use_broll": true,
   "use_project_footage": true,

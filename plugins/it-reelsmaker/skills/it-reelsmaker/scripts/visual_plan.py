@@ -1128,6 +1128,33 @@ def overlap(a, b):
     return min(a["start"] + a["dur"], b["start"] + b["dur"]) - max(a["start"], b["start"])
 
 
+def follow_rough_cut(e, plan, cap, s, prov, doc, quiet=False):
+    """The rough cut was rebuilt (captions.json has another length): the spans and the length follow it, and inserts,
+    scene items and interactions placed by a word or a span move with their words. Ones placed by seconds stay where
+    they were: the report names them, check them."""
+    old = float(plan["duration"])
+    fresh = build_plan(e, cap, s, prov, doc)
+    plan["duration"], plan["segments"] = fresh["duration"], fresh["segments"]
+    moved, by_seconds = [], []
+    for i in plan.get("inserts", []):
+        at = str(i.get("at") or "")
+        if at.startswith("word:") or re.fullmatch(r"s\d+", at):
+            t0 = resolve_at(at, plan, cap)
+            if abs(t0 - i["start"]) > 0.001:
+                moved.append(i["id"])
+                i["start"] = t0
+        else:
+            by_seconds.append(i["id"])
+        for it in [x for x in (i.get("items") or []) if isinstance(x, dict)] + [i.get("interaction") or {}]:
+            if str(it.get("at") or "").startswith("word:"):
+                it["t"] = round(resolve_at(str(it["at"]), plan, cap), 3)
+    save_json(plan_path(e), plan)
+    if not quiet:
+        print(f"the rough cut changed ({old:.2f} -> {plan['duration']:.2f} s): spans rebuilt"
+              + (f"; moved with their words: {', '.join(moved)}" if moved else "")
+              + (f"; placed by seconds, check them: {', '.join(by_seconds)}" if by_seconds else ""))
+
+
 def cmd_validate(a, quiet=False):
     e = edit_dir(a.edit)
     # settings are the current ones from reel.json (reelcfg.py save), not the plan's snapshot; the snapshot is refreshed
@@ -1137,6 +1164,10 @@ def cmd_validate(a, quiet=False):
         eff, why = effective(s)
         if not plan.get("duration"):
             plan["duration"] = plan_duration(e, plan)
+        cap0 = load_json(e / "captions.json") or {}
+        if (plan.get("format") != "scenes-only" and cap0.get("duration") and plan.get("duration")
+                and abs(float(cap0["duration"]) - float(plan["duration"])) > 0.02):
+            follow_rough_cut(e, plan, cap0, s, prov, doc, quiet)
         if snapshot(plan, s, prov, eff, why, doc):
             save_json(plan_path(e), plan)
             if not quiet:
@@ -1545,6 +1576,52 @@ def scene_export(i, e, pub, name, plan, cap, s):
     return clean(sp)
 
 
+def src_to_out(src, cap, seg=None):
+    """A source second -> the second of the finished video (captions.json segments; references/camera.md, at())."""
+    pool = [g for g in cap.get("segments", []) if seg is None or g["i"] == seg]
+    hit = [g for g in pool if g["src_start"] - 0.001 <= src <= g["src_end"] + 0.001]
+    if not hit:
+        # an edge moved by a few frames (a recut): a shot set on a segment start lands just before it; it follows
+        nxt = [g for g in pool if src < g["src_start"] <= src + 0.25]
+        if not nxt:
+            sys.exit(f"camera.json: source second {src} was cut out")
+        g = min(nxt, key=lambda x: x["src_start"])
+        print(f"camera.json: source second {src} is cut out; the shot starts with the next segment ({g['src_start']})")
+        return g["out_start"]
+    if len(hit) > 1:
+        sys.exit(f"camera.json: source second {src} is in several segments ({[g['i'] for g in hit]}): add \"seg\"")
+    g = hit[0]
+    return g["out_start"] + max(0.0, src - g["src_start"]) * g["out_dur"] / (g["src_end"] - g["src_start"])
+
+
+def camera_shots(e, plan, cap):
+    """edit/<id>/camera.json -> ReelKit props.camera: shots in seconds of the finished video, sorted.
+    {"shots": [{"src": 12.4 | "at": "word:resume#1" | 3.2, "z": 1.1, "cx": 540, "cy": 1000, "drift": 0.03, "whip": false}]}
+    src: a source second (stable when the speed changes); at: a second or a word of the finished video."""
+    doc = load_json(e / "camera.json", None)
+    if not doc:
+        return []
+    shots = []
+    for k, sh in enumerate(doc.get("shots", [])):
+        t = src_to_out(float(sh["src"]), cap, sh.get("seg")) if "src" in sh else resolve_at(str(sh.get("at", 0)), plan, cap)
+        z = float(sh.get("z", 1.0))
+        if z < 1:
+            sys.exit(f"camera.json shot {k}: z {z} < 1 would show the frame edge")
+        shots.append({"t": round(t, 3), "z": z, "cx": float(sh.get("cx", 540)), "cy": float(sh.get("cy", 960)),
+                      "drift": float(sh.get("drift", 0)), "whip": bool(sh.get("whip"))})
+    return sorted(shots, key=lambda x: x["t"])
+
+
+def chin_on_screen(y, t, shots):
+    """Where a source y lands on screen at second t: the shot's camera at its deepest drift (camera.md formula)."""
+    s = next((x for x in reversed(shots) if x["t"] <= t + 1e-6), None)
+    if not s:
+        return y
+    z = max(1.0, s["z"] * (1 + s["drift"]))
+    cy = min(max(s["cy"], 960 / z), 1920 - 960 / z)
+    return (y - cy) * z + 960
+
+
 def cmd_export(a):
     e = edit_dir(a.edit)
     errs, _ = cmd_validate(a, quiet=True)
@@ -1627,20 +1704,31 @@ def cmd_export(a):
                  "style": plan["settings"].get("style") or brand.get("style_default"),  # the current style from reel.json
                  "hideSubtitles": hide, "drift": True, "hook": {"text": a.hook, "until": 2.4} if a.hook else None,
                  "corner": bool(a.corner), "endCard": {"line1": a.card[0], "line2": a.card[1] if len(a.card) > 1 else None,
-                                                       "seconds": 2.6} if a.card else None}
+                                                       "seconds": 2.6} if a.card else
+                 {"line2": brand.get("tagline"), "seconds": 2.6} if a.sting else None}
+        cam = [] if only else camera_shots(e, plan, cap)
+        if cam:
+            props["camera"], props["drift"] = cam, False
+            print(f"camera: {len(cam)} shot(s) from camera.json")
         # subtitles below the chin: the face measurement (faces.json), allowing for the template's drift (up to x1.05
         # toward the frame center)
         import faces as fc
         fdata = fc.load(e)
         if fdata:
-            chins = [(b[1] + b[3] - 960) * 1.05 + 960 for s_ in fdata["samples"] for b in s_["faces"]]
+            chins = ([chin_on_screen(b[1] + b[3], s_["t"], cam) for s_ in fdata["samples"] for b in s_["faces"]] if cam else
+                     [(b[1] + b[3] - 960) * 1.05 + 960 for s_ in fdata["samples"] for b in s_["faces"]])
             if chins:
                 need = round(max(chins) + fc.MARGIN // 2)
                 props["subtitlesTop"] = max(1250, min(fc.SUB_MAX_TOP, need))
                 print(f"subtitles: top at y {props['subtitlesTop']} (chin down to {round(max(chins))} per faces.json)"
                       + ("; WARNING: even at 1390 the chin touches the subtitles: use a wider shot or a lower camera" if need > fc.SUB_MAX_TOP else ""))
-        if props["subtitles"] not in ("accent", "plate", "none"):
-            props["subtitles"] = "plate" if props["subtitles"] in ("v2", "plate", "Bar") else "accent"
+        if props["subtitles"] not in ("accent", "plate", "typewriter", "none"):
+            mode = {"v2": "plate", "bar": "plate", "typewriter": "typewriter", "print": "typewriter"}.get(str(props["subtitles"]).lower())
+            if not mode:
+                warn(f"subtitles '{props['subtitles']}': the kit draws accent, plate and typewriter; accent is used")
+            props["subtitles"] = mode or "accent"
+        if s.get("subtitles_shade") is not None:
+            props["subtitlesShade"] = float(s["subtitles_shade"])
         props["scenes"] = scenes  # designed scenes (the scene kit, SceneSpec); an older template ignores this prop
         props["sceneTone"] = s.get("scene_tone") or (s.get("brand_tone") or {}).get("scene_tone")
         if cover:
@@ -1693,8 +1781,10 @@ def main():
     p = sub.add_parser("md"); p.add_argument("edit"); p.set_defaults(fn=cmd_md)
     p = sub.add_parser("export"); p.add_argument("edit"); p.add_argument("--remotion", required=True); p.add_argument("--name")
     p.add_argument("--force", action="store_true"); p.add_argument("--props", help="the props file for the template composition")
-    p.add_argument("--subtitles", choices=["accent", "plate", "none"]); p.add_argument("--hook")
-    p.add_argument("--card", nargs="+", metavar="LINE", help="the end card: 1-2 CTA lines")
+    p.add_argument("--subtitles", choices=["accent", "plate", "typewriter", "none"]); p.add_argument("--hook")
+    g = p.add_mutually_exclusive_group()
+    g.add_argument("--card", nargs="+", metavar="LINE", help="the end card: 1-2 CTA lines")
+    g.add_argument("--sting", action="store_true", help="a logo sting at the end: the logo with the brand line, 2.6 s, no CTA")
     p.add_argument("--corner", action="store_true", help="the brand mark in the corner"); p.add_argument("--copy-video", action="store_true")
     p.set_defaults(fn=cmd_export)
     a = ap.parse_args()

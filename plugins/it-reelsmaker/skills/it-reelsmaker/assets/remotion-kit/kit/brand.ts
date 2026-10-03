@@ -47,7 +47,7 @@ export type Brand = {
   subtitles_default?: string;
   style_default?: string;
   // optional: the look of the brand's styles, overrides the styleLook() rules, e.g. { v2: { mark: "#F5FAA4", on_mark: "#111111" } }
-  looks?: Record<string, { mark?: string; on_mark?: string; heading?: BrandFont; body?: BrandFont }>;
+  looks?: Record<string, { mark?: string; on_mark?: string; field?: string; heading?: BrandFont; body?: BrandFont }>;
 };
 
 type FontModule = {
@@ -127,8 +127,8 @@ export const alpha = (hex: string, a: number) => {
 //     body font (typography.md: Inter only);
 //   “brand” — accent marker, text_on_accent text, brand fonts.
 // The rest (minimal, editorial, bold, glass) are not implemented in ReelKit: a console warning and “marker”.
-// brand.looks[<style>] overrides any of the fields.
-export type Look = { style: string; mark: string; onMark: string; heading: BrandFont; body: BrandFont };
+// brand.looks[<style>] overrides any of the fields; field — the color of a full-frame scene's field for this style (default: primary).
+export type Look = { style: string; mark: string; onMark: string; field?: string; heading: BrandFont; body: BrandFont };
 const warned = new Set<string>();
 
 export const styleLook = (b: Brand, style?: string | null): Look => {
@@ -146,6 +146,7 @@ export const styleLook = (b: Brand, style?: string | null): Look => {
     style: known ? s : "marker",
     mark: o.mark ?? own ?? c.accent,
     onMark: o.on_mark ?? (own ? x.on_marker ?? x.ink ?? "#111111" : c.text_on_accent),
+    field: o.field,
     heading: o.heading ?? (s === "v2" ? b.fonts.body : b.fonts.heading),
     body: o.body ?? b.fonts.body,
   };
