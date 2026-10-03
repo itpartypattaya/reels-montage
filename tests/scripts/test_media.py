@@ -196,3 +196,9 @@ def test_scene_sounds_on_a_silent_render_and_a_late_sound_start(project):
     assert "scene sounds: 1" in r.stdout and "onto silence" in r.stdout
     t = onset_s(project / "master.mp4")
     assert t is not None and abs(t - 0.5) < 0.05  # the file's head trimmed: the hit lands on its cue
+    # Codex review: three loud hits in phase over silence add up past 0 dBFS; the limiter and the true-peak check hold
+    from conftest import ffmpeg as ff
+    ff("-f", "lavfi", "-i", "sine=f=1000:d=0.3,volume=0.9", project / "loud.wav")
+    write_json(project / "sfx.json", {"sounds": [{"file": "loud.wav", "at": 1.0, "gain_db": 0} for _ in range(3)]})
+    r = run_script("master_audio.py", "render.mp4", "-o", "master2.mp4", "--sfx", "sfx.json", cwd=project, check=False)
+    assert r.returncode == 0 and "true peak" in r.stdout and "→ OK" in r.stdout, r.stdout + r.stderr

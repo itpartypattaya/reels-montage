@@ -92,16 +92,16 @@ def measure(p):
         return None, None
 
 
-def acceptance(p, d_in=None):
+def acceptance(p, d_in=None, loudness=True):
     """Acceptance check of the master by the checklist → (measurement line, list of failures). d_in: the input's video
-    duration."""
+    duration; loudness=False: no −14 LUFS requirement (scene sounds over silence), the true peak is still checked."""
     i1, tp1 = measure(p)
     dv, da = dur(p), dur(p, "a")
     fails = []
     if i1 is None or tp1 is None:
         fails.append("the ebur128 measurement failed: loudness and peak are unknown")
     else:
-        if abs(i1 - TARGET) > LUFS_TOL + 1e-6:
+        if loudness and abs(i1 - TARGET) > LUFS_TOL + 1e-6:
             fails.append(f"loudness {i1:.1f} LUFS is outside {TARGET:.0f} ±{LUFS_TOL}")
         if tp1 > TP + TP_EPS + 1e-6:
             fails.append(f"true peak {tp1:.1f} dBFS is above {TP:.0f} dBFS")
@@ -222,15 +222,18 @@ def master_no_voice(a, tmp, D, why):
         print(f"{why}: no voice and no music; the scene sounds go onto silence")
         ref = -1.0
     if sfx_sounds(a):
-        final = mix_sfx(a, tmp, D, base=final, ref=ref, below=NO_VOICE_BELOW)
+        mixed = mix_sfx(a, tmp, D, base=final, ref=ref, below=NO_VOICE_BELOW)
+        # sounds that meet in phase add up over 0 dBFS: a limiter under the true-peak ceiling, as on the voice chain
+        final = os.path.join(tmp, "final_limited.wav")
+        run(["ffmpeg", "-y", "-hide_banner", "-i", mixed, "-af", f"alimiter=limit={10 ** ((TP - 0.5) / 20):.3f}:level=false",
+             "-c:a", "pcm_s16le", final])
     run(["ffmpeg", "-y", "-hide_banner", "-i", a.input, "-i", final, "-map", "0:v:0", "-map", "1:a:0",
          "-c:v", "copy", "-c:a", "aac", "-b:a", "256k", "-ar", "48000", "-shortest", "-movflags", "+faststart",
          a.output])
-    if not a.music:  # a few accents over silence are not a −14 LUFS track
-        print(f"file: {a.output} (scene sounds only: the −14 LUFS check does not apply; add music in the app when "
-              f"publishing, or a licensed track via --music)")
-        return 0
-    code = report(*acceptance(a.output, D))
+    if not a.music:  # a few accents over silence are not a −14 LUFS track; the true peak still counts
+        print("scene sounds only: the −14 LUFS check does not apply (add music in the app when publishing, or a "
+              "licensed track via --music); the true peak and the durations are checked")
+    code = report(*acceptance(a.output, D, loudness=bool(a.music)))
     print("file:", a.output + ("" if not code else " — do not publish it; deal with the failure first"))
     return code
 

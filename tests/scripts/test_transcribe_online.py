@@ -51,6 +51,13 @@ def local_transcript(project, rows=LOCAL):
     return f
 
 
+def test_text_without_spaces_is_laid_by_characters(online):
+    # Codex review: a Chinese phrase has no spaces, so the whole cloud text was taken for one word
+    out, rep = online.lay_text(words([("你好", 1.0, 1.4), ("世姐", 1.4, 1.9)]), "你好世界。")
+    assert [(w["text"], w["start"]) for w in out] == [("你好", 1.0), ("世界。", 1.4)]
+    assert out[1]["local"] == "世姐" and rep["fixed"] == [(1.4, "世姐", "世界。")] and rep["same"] == 1
+
+
 def test_cloud_text_on_local_times(online):
     out, rep = online.lay_text(words(LOCAL), TEXT)
     assert [w["text"] for w in out] == ["Привет,", "мир.", "Чем", "конкретнее", "тем", "лучше!", "Сколько?"]

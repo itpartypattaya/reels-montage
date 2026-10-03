@@ -141,8 +141,54 @@ def pair(a, b):
     return out
 
 
+# scripts written without spaces between words: CJK ideographs, kana, Thai, Lao, Khmer, Myanmar
+NO_SPACE = re.compile("[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff\u0e00-\u0e7f\u0e80-\u0eff"
+                      "\u1780-\u17ff\u1000-\u109f]")
+
+
+def lay_chars(words, text):
+    """A text without spaces (Chinese, Japanese, Thai...): there are no words to match, so the cloud's characters are
+    matched to the local words' characters and each local word keeps its time with the cloud's characters in it
+    (a character only the cloud heard joins the word before it; punctuation follows its character)."""
+    lc, owner = [], []
+    for k, w in enumerate(words):
+        for ch in norm(w["text"]):
+            lc.append(ch); owner.append(k)
+    cc, punct = [], []
+    for ch in text or "":
+        if norm(ch):
+            cc.append(ch); punct.append("")
+        elif not ch.isspace() and cc:
+            punct[-1] += ch
+    dest = [None] * len(cc)
+    for op, i1, i2, j1, j2 in difflib.SequenceMatcher(None, lc, [norm(c) for c in cc], autojunk=False).get_opcodes():
+        for q, j in enumerate(range(j1, j2)):
+            if op in ("equal", "replace") and i2 > i1:
+                dest[j] = owner[min(i1 + q * (i2 - i1) // (j2 - j1), i2 - 1)]
+            elif owner:  # insert: into the word before (or the first word)
+                dest[j] = owner[max(0, i1 - 1)] if i1 > 0 else owner[0]
+    texts = ["" for _ in words]
+    for j, c in enumerate(cc):
+        if dest[j] is not None:
+            texts[dest[j]] += c + punct[j]
+    out, rep = [], {"same": 0, "fixed": [], "added": [], "local_only": []}
+    for w, t in zip(words, texts):
+        if not t:
+            out.append(dict(w))
+            if norm(w["text"]):
+                rep["local_only"].append((w["start"], w["text"]))
+        elif norm(t) == norm(w["text"]):
+            out.append({**w, "text": t}); rep["same"] += 1
+        else:
+            out.append({**w, "text": t, "local": w["text"]}); rep["fixed"].append((w["start"], w["text"], t))
+    return out, rep
+
+
 def lay_text(words, text):
     """(words with the text's spelling and punctuation, report). words: timed [{text, start, end, ...}] in order."""
+    letters = [ch for ch in text or "" if norm(ch)]
+    if letters and sum(bool(NO_SPACE.match(ch)) for ch in letters) >= 0.3 * len(letters):
+        return lay_chars(words, text)
     toks = tokens(text)
     a, b = [norm(w["text"]) for w in words], [norm(t) for t in toks]
     seq, rep = [], {"same": 0, "fixed": [], "added": [], "local_only": []}  # seq: timed words and untimed cloud words
