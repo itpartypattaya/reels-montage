@@ -39,6 +39,7 @@ python "${CLAUDE_SKILL_DIR}/scripts/<name>.py" <command> [args]
 | 7a | `footage.py` | `index` + `describe` (the project's own footage), `search`, `plan-search edit/<id>`, `pick edit/<id> <insert>`, `prepare` |
 | 7a | `codescene.py` | `manifest`, `validate`, `scaffold edit/<id> <insert> --remotion <dir>`, `render …`, `ingest edit/<id>` |
 | 7a | `memes.py` | `index`, `set`, `search`, `prepare`, `place edit/<id> <insert>` |
+| 8 | `subs.py` | `phrases edit/<id> --lang <code>` (the speech by phrases → `subs/<code>.json`, translations of unchanged phrases kept); `apply edit/<id> --lang <code>` (checks the translation → `captions-<code>.json`; `reel.json → subtitles_lang` makes the export use it); `srt edit/<id> [--lang <code>] [-o file]` (SubRip file) |
 | 8 | `matte.py` | `cut edit/<id> --from … --to … [--width 720] [--dry]` (figure cut-out on this computer with your rembg → WebM with alpha, edge data, check frame); `place edit/<id> --name host --layout review` (presenter layout) |
 | 8 | `phone_screen_rect.py` | `<frame.png> [width]`: the screen rectangle of a phone mockup |
 | 9 | `patch_render.py` | `out/<render>.mp4 --comp Reel<id> --from 12.3 --to 13.1`: re-render and splice a segment (late spot fixes) |

@@ -15,7 +15,9 @@ Keys are read from environment variables or from a file outside the skill and ou
 | `MAGNIFIC_API_KEY` (or `FREEPIK_API_KEY`) | Magnific (formerly Freepik, + Videvo) | paid stock with a 9:16 filter |
 | `FAL_KEY` | fal.ai | model generation: Veo / Kling / LTX |
 | `GIPHY_API_KEY` | GIPHY | meme references only |
-| `OPENAI_API_KEY` | OpenAI | cloud transcript text (gpt-transcribe; whisper-1 word times only with `--words cloud`) |
+| `OPENAI_API_KEY` | OpenAI | cloud transcript text (gpt-transcribe; whisper-1 word times only with `--words cloud`); subtitle translation |
+| `ANTHROPIC_API_KEY` | Anthropic | subtitle translation (Claude) |
+| `GEMINI_API_KEY` | Google AI Studio | subtitle translation (Gemini) |
 | — | Openverse | CC images, no key (about 100 requests a day anonymously) |
 
 Offline mode (a variable such as `REELS_OFFLINE=1`) turns the network off entirely.
@@ -35,6 +37,20 @@ Checked 2026-10-04 on a 97 s phone video in Russian against the local faster-whi
 Hence the default: the local word times with `gpt-transcribe`'s text laid onto them. Upload limit 25 MB per file
 (`mp3, mp4, mpeg, mpga, m4a, wav, webm`). Endpoint `https://api.openai.com/v1/audio/transcriptions`, multipart,
 `Authorization: Bearer`. OpenAI's API data policy: https://openai.com/policies/
+
+## Subtitle translation (language models)
+
+Model names checked 2026-10-04 on the providers' model pages; each takes `--model` for another one.
+
+| Provider | Default model | Endpoint | Key header |
+|---|---|---|---|
+| Anthropic | `claude-sonnet-5-5` | `POST https://api.anthropic.com/v1/messages` (`anthropic-version: 2023-06-01`) | `x-api-key` |
+| OpenAI | `gpt-6.1-sol` (cheaper: `gpt-6-luna`) | `POST https://api.openai.com/v1/responses`, JSON schema output | `Authorization: Bearer` |
+| Google | `gemini-3.8-flash` (cheaper: `gemini-3.5-flash-lite`) | `POST https://generativelanguage.googleapis.com/v1beta/models/<model>:generateContent`, `responseMimeType: application/json` | `x-goog-api-key` |
+
+Only the subtitle text goes out (the phrases, the brand's voice and forbidden words). Checked live with OpenAI on a
+61 s video (25 phrases, about 2,100 tokens): every phrase translated in one request; without the form-of-address
+rule the polite Russian "you" became the informal German "du", hence the rule in the prompt.
 
 ## Stock video
 
