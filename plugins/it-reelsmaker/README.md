@@ -61,7 +61,7 @@ Claude Code asks for these settings when you enable the plugin; change them late
 |---|---|
 | Editing project folder | Where your videos are edited: `edit/<id>/` per video and `brands/<slug>/` brand profiles |
 | Remotion project | The Remotion project used for the camera, graphics, subtitles and render |
-| Asset library | Optional folder of your sound effects, music, icons and memes |
+| Asset library | Optional folder of your sound effects, music, icons and memes; a starter pack of 260 CC0 sound effects is in the [releases](https://github.com/itpartypattaya/reels-montage/releases/tag/sfx-cc0-1) |
 | YuNet face model | Optional path to `face_detection_yunet_2023mar.onnx` |
 
 Brand profiles live in your project, not in the plugin, so updates never touch them. Start one by saying “new brand — Acme, colors #0B1F3A and #FFB800, logo logo.svg”.

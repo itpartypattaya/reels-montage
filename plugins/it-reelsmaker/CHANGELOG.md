@@ -2,6 +2,11 @@
 
 What changed in IT Reelsmaker, written for the people who use it. The newest version is on top. The skill shows a short “What's new” note from this file once, on the first edit after an update.
 
+## 1.4.2
+
+- A starter pack of 260 CC0 sound effects (Kenney, OpenGameArt) in the repository's releases, with how to add it to
+  your asset library: `references/library.md`.
+
 ## 1.4.1
 
 - The online add-on's folder in `it-reelsmaker.json` (`online_scripts`) may start with `~` or be relative to the

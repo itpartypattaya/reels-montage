@@ -21,6 +21,8 @@ ASSETS_DIR/
 
 An icon supports the thesis; it does not repeat the subtitle word for word. One icon style per video: don't mix flat pictograms with 3D or collage. Pictograms: white over video, black on a light card. Neon or glowing icons break the “no glow” rule: only in the “Glass” style. Shrink large PNGs to about 2× their on-screen size. A green fringe after chroma keying → raise the second `chromakey` value by 0.02–0.04 and check a still again; on black, `mixBlendMode: "screen"` or `colorkey=0x000000:0.1:0.05`. A GIF becomes a WebM VP9 with alpha the same way (`format=yuva420p`, without `chromakey`).
 
+**No sounds of your own yet?** A starter pack of 260 short CC0 sound effects (hits, whooshes, clicks, UI sounds, typing; Kenney and an OpenGameArt keyboard pack, commercial use without attribution) is in the repository's releases: https://github.com/itpartypattaya/reels-montage/releases/tag/sfx-cc0-1 (`it-reelsmaker-sfx-cc0.zip`, 2 MB, with `LICENSE.txt`). The person downloads it and unpacks the `cc0-sfx` folder into `{{ASSETS_DIR}}` (the plugin never downloads anything itself); then run `library_catalog.py`, and a folder rule `"cc0-sfx": ["ok", "CC0"]` in `verdicts.json` marks the whole pack. Bright game-like sounds from it (`casino/`, glitches) are still “caution” by taste.
+
 **Sounds for events:**
 
 | Event | Sound |
