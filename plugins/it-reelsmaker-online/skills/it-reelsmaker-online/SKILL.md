@@ -2,17 +2,17 @@
 name: it-reelsmaker-online
 description: >
   Online sources for it-reelsmaker video edits: vertical stock footage (Pixabay, Pexels, Magnific), CC-licensed
-  memes (Openverse; GIPHY as reference only), paid AI video generation (Veo, Kling, LTX via fal.ai) for B-roll, and
-  figure cut-outs on your own server over SSH.
-  Use only inside an it-reelsmaker edit, when the person enabled online footage, online memes or model generation
-  in reel.json or asked for it directly: "find stock footage", "generate an insert", "online memes", "cut out the
-  figure on my server". Every download
+  memes (Openverse; GIPHY as reference only), paid AI video generation (Veo, Kling, LTX via fal.ai) for B-roll,
+  a more accurate transcript (cloud text on the local word times, OpenAI) and figure cut-outs on your own server over SSH.
+  Use only inside an it-reelsmaker edit, when the person enabled online footage, online memes, model generation or
+  cloud transcription in the settings or asked for it directly: "find stock footage", "generate an insert", "online
+  memes", "transcribe it through OpenAI", "cut out the figure on my server". Every download
   and every paid run happens only after the person approves the visual plan with source, size and price.
 ---
 
 # Online sources for it-reelsmaker
 
-An add-on to the `it-reelsmaker` skill. It plugs three online sources into the core's visual plan (step 7a and the core skill's inserts reference): stock footage, online memes and a video model. It is never used without the core. Everything not described here follows the core's rules: why an insert is needed, the intensity budget, meme size and placement, clip preparation and plan checks.
+An add-on to the `it-reelsmaker` skill. It plugs three online sources into the core's visual plan (step 7a and the core skill's inserts reference): stock footage, online memes and a video model; and a cloud recognizer into the core's step 2 (transcript). It is never used without the core. Everything not described here follows the core's rules: why an insert is needed, the intensity budget, meme size and placement, clip preparation and plan checks.
 
 ## Connect it to the project
 
@@ -32,6 +32,7 @@ It writes `online_scripts` into the project's `it-reelsmaker.json` (`unlink` rem
 | `python <core scripts>/addon.py gen manifest\|validate edit/<id>` | model prompts (`generated/prompts.md`, `prompts.json`) with the price |
 | `python <core scripts>/addon.py gen run edit/<id> --yes` | paid generation, only after the approved price; the clip is picked up by the core's `codescene.py ingest` |
 | `python <core scripts>/addon.py matte cut edit/<id> --from … --to … [--host H]` | figure cut-out on your own server (below) |
+| `python <core scripts>/addon.py transcribe edit/<id> <source> --provider openai [--language ru] [--yes]` | a more accurate transcript (below); `--price` only names the price |
 
 ## Reel settings
 
@@ -74,6 +75,28 @@ Online sources are off until turned on for a video (`reelcfg.py save edit/<id> -
 - **Generation.** Prompt fields and template, checks, and “money is never spent twice” — `references/generation.md`.
 - **AI label.** A photorealistic insert from a model → turn on the “AI info” label when publishing (Meta rules). Stylized code graphics don't need it.
 - **Brand restrictions** (`forbidden_imagery`, `forbidden_imagery_en`) apply to stock queries and generation prompts.
+
+## Cloud transcript (core step 2)
+
+The core transcribes on this computer; its word times match the audio, its words are sometimes wrong (a case
+ending, a word dropped at a joint between takes, and wrong words become visible in burned-in subtitles). `addon.py
+transcribe` keeps the local word times and lays a cloud recognizer's text onto them: the same word gets the cloud's
+spelling and punctuation, a different word in its place is replaced (the local one kept in `local`), a word only the
+cloud heard gets a time between its neighbours (`est: true`), and words only the local model heard stay: often the
+repeat of a retake the cloud tidied away, so the report lists them as places to listen to (core step 3). Read the
+report's lines before the cut plan. The local transcript is made first if missing and kept as `<stem>.local.json`.
+
+- **Provider:** `openai`: text `gpt-transcribe` ($0.0045 per minute of audio). OpenAI's text models return no
+  word times; its `whisper-1` does, but measured on real footage they were off by more than 0.15 s for one word in
+  five, so they are used only without a local model (`--words cloud`, $0.006 per minute). Files up to 25 MB, about
+  13 minutes of the core's 16 kHz WAV.
+- **Audio:** the core's `edit/<id>/audio16k-<source stem>.wav`, on the video's timeline (never the video file).
+  It leaves the computer: say so when offering it.
+- **Paid, so only after a “yes”:** name the price (`--price`), run with `--yes`; or the person sets
+  `transcription_provider=openai` in the project defaults (`reelcfg.py defaults --set …`) once, which is their
+  standing choice for every video.
+- **Fallback:** no key, no network, no credits, a refused request → a warning, exit code 2, the local transcript
+  stays as it was; the edit goes on with it. Key: `OPENAI_API_KEY`, added by the person with `keys set`.
 
 ## Figure cut-out on your own server
 
