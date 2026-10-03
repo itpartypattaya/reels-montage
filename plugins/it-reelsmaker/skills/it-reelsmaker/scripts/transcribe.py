@@ -4,10 +4,16 @@
     python scripts/transcribe.py edit/4821 IMG_4821.MOV [--model medium] [--language ru]   # -> edit/4821/transcripts/IMG_4821.json
     python scripts/transcribe.py snip edit/4821 IMG_4821.MOV --from 12.3 --to 16.8          # re-transcribe a <= 5 s piece
     python scripts/transcribe.py check edit/4821/transcripts/IMG_4821.json                  # is a transcript in the right format
+    python scripts/transcribe.py audio edit/4821 IMG_4821.MOV                               # only the aligned WAV, for your own transcriber
 
 The transcript is cached: a second run with the same source prints "cached" and does nothing (--force redoes it).
 The audio goes into edit/<id>/audio16k-<source stem>.wav (16 kHz mono; speech_mask.py reads the same file). Everything runs on this
 computer: the audio never leaves it.
+
+Your own transcriber (a cloud one, for example): give it the WAV from `audio`, not the video file. A phone MOV's sound
+track can start ~0.1 s after the picture; a tool that pulls the audio out of the video itself gets every word ~0.1 s
+early, and edges set by those words clip word endings. Then put its output into edit/<id>/transcripts/<source stem>.json
+and run `check`.
 
 Format (the same as other common word-level tools, so you can use your own transcriber instead and only run `check`):
     {"language_code": "ru", "text": "...", "words": [{"text": "Hello", "start": 0.52, "end": 0.9, "type": "word"}, ...]}
@@ -133,23 +139,43 @@ def check_doc(doc):
     return out
 
 
+def source_wav(e, src, force=False):
+    """edit/<id>/audio16k-<stem>.wav on the video timeline, (re)made when missing, forced or made from another file
+    → (wav, identity, audio offset). Call under locked(wav)."""
+    identity = {"path": str(src.resolve()), "size": src.stat().st_size, "mtime_ns": src.stat().st_mtime_ns}
+    off = audio_offset(src)
+    stamp_doc = {**identity, "timeline": "video", "audio_offset": off}
+    wav = e / f"audio16k-{src.stem}.wav"
+    stamp = wav.with_suffix(".json")
+    if not wav.exists() or force or load_json(stamp) != stamp_doc:
+        extract_audio(src, wav)
+        save_json(stamp, stamp_doc)
+    return wav, identity, off
+
+
+def cmd_audio(a):
+    project = project_root()
+    e = edit_dir(a.edit, project, create=True)
+    src = resolve_src(a.source, project, e)
+    with locked(e / f"audio16k-{src.stem}.wav", stale=86400):
+        wav, _, off = source_wav(e, src, a.force)
+    print(f"{wav}: 16 kHz mono on the video timeline" + (f" (the sound track starts {off:.3f} s after the picture; "
+          "aligned)" if off else "") + f". Give this file to your transcriber, save its output as "
+          f"{e / 'transcripts' / (src.stem + '.json')} and run transcribe.py check on it.")
+
+
 def cmd_full(a):
     project = project_root()
     e = edit_dir(a.edit, project, create=True)
     src = resolve_src(a.source, project, e)
     out = e / "transcripts" / f"{src.stem}.json"
     identity = {"path": str(src.resolve()), "size": src.stat().st_size, "mtime_ns": src.stat().st_mtime_ns}
-    off = audio_offset(src)
-    stamp_doc = {**identity, "timeline": "video", "audio_offset": off}
     wav = e / f"audio16k-{src.stem}.wav"
-    stamp = wav.with_suffix(".json")
     if out.exists() and not a.force and (load_json(out) or {}).get("source_identity") == identity:
         print(f"cached: {out} (--force to transcribe again)")
         return
     with locked(wav, stale=86400):
-        if not wav.exists() or a.force or load_json(stamp) != stamp_doc:
-            extract_audio(src, wav)
-            save_json(stamp, stamp_doc)
+        wav, identity, off = source_wav(e, src, a.force)
         model = load_model(a.model, a.compute)
         dur = probe(src).get("dur") or 0
         print(f"transcribing {src.name} ({dur:.0f} s) with {a.model} {a.compute} ...", file=sys.stderr)
@@ -199,7 +225,7 @@ def cmd_check(a):
 def main():
     utf8_stdio()
     argv = sys.argv[1:]
-    cmds = {"snip", "check"}
+    cmds = {"snip", "check", "audio"}
     if argv and argv[0] not in cmds and not argv[0].startswith("-"):
         argv = ["full"] + argv  # the main mode needs no command word: transcribe.py edit/<id> <source>
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -217,6 +243,9 @@ def main():
     p.add_argument("edit"); p.add_argument("source")
     p.add_argument("--from", dest="start", type=float, required=True); p.add_argument("--to", dest="end", type=float, required=True)
     common(p); p.set_defaults(fn=cmd_snip)
+    p = sub.add_parser("audio", help="only edit/<id>/audio16k-<name>.wav on the video timeline, for your own transcriber")
+    p.add_argument("edit"); p.add_argument("source"); p.add_argument("--force", action="store_true")
+    p.set_defaults(fn=cmd_audio)
     p = sub.add_parser("check", help="is a transcript (yours or this script's) in the right format")
     p.add_argument("file"); p.set_defaults(fn=cmd_check)
     a = ap.parse_args(argv)
