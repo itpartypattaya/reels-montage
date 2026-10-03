@@ -110,7 +110,7 @@ characters that can be read while it is on screen, in the speaker's form of addr
 phrases of `subs/<lang>.json` (`--force`: all) and runs the core check (`subs.py apply`). Read the printed pairs: a
 model may shorten away meaning. Providers and default models: `anthropic` claude-sonnet-5-5, `openai` gpt-6.1-sol,
 `gemini` gemini-3.8-flash (`--model` or the `translation_model` setting for another). A video is a few thousand
-tokens, a cent or less; paid all the same: `--yes`, or the person's standing `translation_provider` setting. Keys:
+tokens (the command prints them; the price is the model's rate); paid all the same: `--yes`, or the person's standing `translation_provider` setting. Keys:
 `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY` (the person adds them with `keys set`). A phrase the model
 skipped stays empty: translate it in the session, then `subs.py apply`.
 

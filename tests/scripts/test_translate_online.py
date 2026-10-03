@@ -112,3 +112,22 @@ def test_parse_rejects_junk(tr):
     got, probs = tr.parse('```json\n{"phrases": [{"id": "p001", "text": "Hallo"}, {"id": "p999", "text": "x"}]}\n```',
                           ["p001", "p002"])
     assert got == {"p001": "Hallo"} and "no translation for p002" in probs and "an unknown id p999" in probs
+
+
+def test_forced_retranslation_empties_what_the_model_skipped(tr, project, monkeypatch):
+    # review of #12: with --force a skipped phrase kept its old text, so a plain rerun would never retry it
+    e = plan_project(project)
+    monkeypatch.setenv("OPENAI_API_KEY", KEY)
+    monkeypatch.setattr(tr, "post", lambda u, body, h, t, a: shaped("openai", answer_for(json.loads(body)["input"])))
+    assert run(tr, "--provider", "openai", "--yes") == 0
+    monkeypatch.setattr(tr, "post", lambda u, body, h, t, a: shaped("openai", answer_for(json.loads(body)["input"], {"p002"})))
+    assert run(tr, "--provider", "openai", "--yes", "--force") == 2
+    doc = json.loads((e / "subs" / "de.json").read_text(encoding="utf-8"))
+    assert [p["id"] for p in doc["phrases"] if not p["text"]] == ["p002"]  # left for the next run or the session
+
+
+def test_the_estimate_does_not_promise_a_price(tr, project, capsys):
+    plan_project(project)
+    assert run(tr, "--provider", "gemini", "--price") == 0
+    out = capsys.readouterr().out
+    assert "tokens" in out and "cent" not in out

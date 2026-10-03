@@ -15,7 +15,8 @@ Providers and default models (references/sources.md; --model or the setting tran
   anthropic — claude-sonnet-5-5 (Messages API, ANTHROPIC_API_KEY)
   openai    — gpt-6.1-sol (Responses API, OPENAI_API_KEY)
   gemini    — gemini-3.8-flash (generateContent, GEMINI_API_KEY)
-A video's phrases are a few thousand tokens: a cent or less; the estimate prints the tokens.
+A minute of speech is a couple of thousand tokens; the estimate prints the tokens of this request, and the price
+is the provider's rate for that model (its price page): the command does not guess it.
 
 Paid: --yes, or the person's standing choice `translation_provider` in the project defaults or reel.json; otherwise
 only the estimate. No key, no network, a refused request: a warning, exit code 2, and the core way (the agent
@@ -138,8 +139,8 @@ def cmd_run(a):
         return 0
     system, user = brief(a.to, cap.get("language") or "", brand, todo if not a.force else doc["phrases"])
     tokens = (len(system) + len(user)) // 3 + len(user) // 2
-    print(f"{len(todo)} phrase(s) → {a.to} with {provider} {model}: about {tokens} tokens (a cent or less; "
-          f"the provider's price page has the exact price)")
+    print(f"{len(todo)} phrase(s) → {a.to} with {provider} {model}: about {tokens} tokens; the price is "
+          f"the model's rate on the provider's price page")
     if a.price:
         return 0
     if not (a.yes or str(s.get("translation_provider") or "") == provider):
@@ -162,9 +163,12 @@ def cmd_run(a):
     if not got:
         warn(f"{provider} {model}: nothing usable came back; nothing written. Instead {CORE_WAY}")
         return 2
+    skipped = set(ids) - set(got)
     for p in doc["phrases"]:
         if p["id"] in got:
             p["text"] = got[p["id"]]
+        elif p["id"] in skipped:  # --force: an old translation the model skipped is not kept as if it were new
+            p["text"] = ""
     doc["translated_by"] = f"{provider} {model}"
     save_json(f, doc)
     print(f"{f}: {len(got)} of {len(todo)} phrase(s) translated by {provider} {model}")
