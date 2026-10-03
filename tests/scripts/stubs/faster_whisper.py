@@ -9,6 +9,8 @@ class WhisperModel:
 
     def transcribe(self, path, language=None, word_timestamps=True, beam_size=5, condition_on_previous_text=True,
                    initial_prompt=None):
+        if isinstance(path, (str, bytes)) or hasattr(path, "__fspath__"):
+            raise AssertionError("transcribe.py must pass decoded samples, not a file (faster-whisper's PyAV decoding)")
         words = [SimpleNamespace(word=" Hello", start=0.5, end=0.9, probability=0.98),
                  SimpleNamespace(word=" big", start=1.0, end=2.4, probability=0.7),  # stretched: a merged retake
                  SimpleNamespace(word=" world.", start=2.5, end=2.9, probability=0.95)]

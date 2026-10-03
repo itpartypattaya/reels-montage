@@ -1,7 +1,7 @@
 {
   "name": "it-reelsmaker",
   "displayName": "IT Reelsmaker",
-  "version": "1.4.2",
+  "version": "1.4.3",
   "description": "Edit vertical short videos (Reels, Shorts, TikTok) from talking-head footage in Claude Code: cut pauses and retakes by audio, virtual camera and on-brand motion graphics in Remotion, designed scenes for hooks, quotes, numbers and calls to action, word-timed subtitles, face-aware layout, loudness mastering and a 1080×1920 render. Brand profiles with a brand tone. Runs locally with ffmpeg, Node.js and Python.",
   "author": {
     "name": "IT Party Pattaya",
