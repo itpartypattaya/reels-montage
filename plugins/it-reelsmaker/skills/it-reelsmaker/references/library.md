@@ -23,7 +23,7 @@ An icon supports the thesis; it does not repeat the subtitle word for word. One 
 
 **No sounds of your own yet?** A starter pack of 260 short CC0 sound effects (hits, whooshes, clicks, UI sounds, typing; Kenney and an OpenGameArt keyboard pack, commercial use without attribution) is in the repository's releases: https://github.com/itpartypattaya/reels-montage/releases/tag/sfx-cc0-1 (`it-reelsmaker-sfx-cc0.zip`, 2 MB, with `LICENSE.txt`). The person downloads it and unpacks the `cc0-sfx` folder into `{{ASSETS_DIR}}` (the plugin never downloads anything itself); then run `library_catalog.py`, and a folder rule `"cc0-sfx": ["ok", "CC0"]` in `verdicts.json` marks the whole pack. Bright game-like sounds from it (`casino/`, glitches) are still “caution” by taste.
 
-**Sounds for events:**
+**Sounds for events:** the Remotion kit does not play the scenes' `sound`; list the chosen files in `edit/<id>/sfx.json` (`{"sounds": [{"file": …, "at": <second of the video>, "start": <sound start from the catalog>, "what": …}]}`; `at` from the plan: the scene's start, its spoken word, a tap's time) and master with `master_audio.py --sfx edit/<id>/sfx.json`: they are mixed in before the voice chain, 15 dB under the voice peak.
 
 | Event | Sound |
 |---|---|

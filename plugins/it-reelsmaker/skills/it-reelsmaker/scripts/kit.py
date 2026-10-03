@@ -15,7 +15,7 @@ replaces only the kit's own files (src/ReelKit.tsx, src/kit/**); Root.tsx, src/g
 yours. Files it replaces are copied to .kit-backup/<time>/ first. With a project folder (edit/, brands/ or
 it-reelsmaker.json), `new` writes remotion_dir into it-reelsmaker.json unless it is already set.
 """
-import argparse, filecmp, json, os, re, shutil, sys, time
+import argparse, json, os, re, shutil, sys, time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -25,12 +25,33 @@ KIT = SKILL / "assets" / "remotion-kit"
 STARTER = SKILL / "assets" / "remotion-starter"
 KIT_FILES = ("ReelKit.tsx", "kit")  # replaced by update; everything else in the project belongs to the person
 VERSION_RE = re.compile(r'KIT_VERSION\s*=\s*"([^"]+)"')
+TEXT = {".ts", ".tsx", ".js", ".jsx", ".mjs", ".json", ".css", ".md", ".txt"}
+
+
+def content(p):
+    """File bytes; text files with LF line endings, so a CRLF copy (a Windows checkout with autocrlf) is the same file."""
+    b = Path(p).read_bytes()
+    return b.replace(b"\r\n", b"\n") if Path(p).suffix.lower() in TEXT else b
+
+
+def put(src, dst):
+    """Copy a plugin file into the project, text with LF line endings."""
+    Path(dst).parent.mkdir(parents=True, exist_ok=True)
+    Path(dst).write_bytes(content(src))
 
 
 def kit_version(root):
     f = Path(root) / "kit" / "version.ts"
     m = VERSION_RE.search(f.read_text(encoding="utf-8")) if f.is_file() else None
     return m.group(1) if m else None
+
+
+def newer(a, b):
+    """Version a is newer than b (numbers part by part: 1.10.0 > 1.9.0); unknown versions compare as not newer."""
+    try:
+        return tuple(int(x) for x in str(a).split(".")) > tuple(int(x) for x in str(b).split("."))
+    except ValueError:
+        return False
 
 
 def kit_files(root):
@@ -69,16 +90,14 @@ def diff(rem):
     src = rem / "src"
     ours, theirs = set(kit_files(KIT)), set(kit_files(src))
     missing = sorted(ours - theirs)
-    changed = sorted(p for p in ours & theirs if not filecmp.cmp(KIT / p, src / p, shallow=False))
+    changed = sorted(p for p in ours & theirs if content(KIT / p) != content(src / p))  # line endings don't count
     extra = sorted(theirs - ours)
     return missing, changed, extra
 
 
 def copy_kit(dst_src, files):
     for p in files:
-        d = dst_src / p
-        d.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copyfile(KIT / p, d)
+        put(KIT / p, dst_src / p)
 
 
 def remember(rem):
@@ -115,11 +134,9 @@ def cmd_new(a):
                 pkg["name"] = name
                 d.write_text(json.dumps(pkg, indent=2) + "\n", encoding="utf-8")
             else:
-                shutil.copyfile(f, d)
+                put(f, d)
     copy_kit(rem / "src", kit_files(KIT))
-    reg = rem / "src" / "gen" / "registry.ts"
-    reg.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copyfile(KIT / "gen" / "registry.ts", reg)
+    put(KIT / "gen" / "registry.ts", rem / "src" / "gen" / "registry.ts")
     for d in ("src/brands", "src/plans", "public"):
         (rem / d).mkdir(parents=True, exist_ok=True)
     print(f"created the Remotion project {rem} (kit {kit_version(KIT)})")
@@ -136,6 +153,10 @@ def cmd_check(a):
         print(f"no kit in {rem}: kit.py update --remotion {a.remotion} copies it")
         return 1
     print(f"kit in the project: {have or 'unknown version'}; in the plugin: {ship}")
+    if newer(have, ship):
+        # an older copy of the plugin (a catalog sync not yet updated) must not suggest rolling the project back
+        print("the project's kit is newer than this plugin's: update the plugin; kit.py update would roll the kit back")
+        return 0
     for label, files in (("missing", missing), ("differs", changed), ("not in the plugin's kit", extra)):
         for p in files:
             print(f"  {label}: src/{p.as_posix()}")
@@ -148,6 +169,10 @@ def cmd_check(a):
 
 def cmd_update(a):
     rem = remotion_project(a.remotion)
+    have, ship = kit_version(rem / "src"), kit_version(KIT)
+    if newer(have, ship) and not a.force:
+        sys.exit(f"the kit in {rem} ({have}) is newer than this plugin's ({ship}): update the plugin instead; "
+                 "--force rolls the kit back (replaced files are backed up first)")
     missing, changed, extra = diff(rem)
     if not missing and not changed:
         print(f"the kit in {rem} already matches the plugin ({kit_version(KIT)})")
@@ -168,8 +193,7 @@ def cmd_update(a):
         print(f"backup of the replaced files: {bak}")
     copy_kit(rem / "src", missing + changed)
     if not (rem / "src" / "gen" / "registry.ts").exists():
-        (rem / "src" / "gen").mkdir(parents=True, exist_ok=True)
-        shutil.copyfile(KIT / "gen" / "registry.ts", rem / "src" / "gen" / "registry.ts")
+        put(KIT / "gen" / "registry.ts", rem / "src" / "gen" / "registry.ts")
         print("  add: src/gen/registry.ts")
     for p in extra:
         print(f"  left as is (not in the plugin's kit): src/{p.as_posix()}")
@@ -187,6 +211,7 @@ def main(argv=None):
     p = sub.add_parser("check", help="compare the project's kit with the plugin's"); p.add_argument("--remotion", required=True)
     p = sub.add_parser("update", help="copy the plugin's kit into the project")
     p.add_argument("--remotion", required=True); p.add_argument("--dry-run", action="store_true")
+    p.add_argument("--force", action="store_true", help="also when the project's kit is newer (rolls it back)")
     a = ap.parse_args(argv)
     return {"new": cmd_new, "check": cmd_check, "update": cmd_update}[a.cmd](a) or 0
 

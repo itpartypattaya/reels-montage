@@ -51,7 +51,7 @@ For the hook, cards, designed scenes and the end card: everything that doesn't r
 - **“Minimal”**: a dense bold grotesque (for example Manrope 800 or Inter Tight 800–900), 2–3 lines bottom left.
 - **“Editorial”**: a serif for the key words (for example Playfair Display or Cormorant Garamond) + one sans (for example Manrope); secondary words in a thin sans or in serif italic.
 - **“Bold”**: Inter Tight 900 or Onest 800, capitals; the marker bar has square corners and no shadow.
-- **“Typewriter”** subtitles: regular or medium weight; the soft shadow of the original look only on explicit choice.
+- **“Typewriter”** subtitles: regular or medium weight; the soft shadow of the original look only on explicit choice. In the kit, readability comes from a soft darkening of the lower part of the frame (`reel.json → subtitles_shade`, 0.15–0.25 to start, 0.4–0.6 over light clothing or a light wall, judged by the lightest still); it sits below the scenes, so cards are not darkened.
 - **Fonts:** at most two families per video (“Editorial”: one serif + one sans); no third font. Weights: headings 600, big numbers 800, subtitles 700–800, body text 500, small all-caps labels 600 with +0.2 em.
 
 ## Subtitles

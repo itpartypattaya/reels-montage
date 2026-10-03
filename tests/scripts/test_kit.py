@@ -10,6 +10,10 @@ PLUGIN_JSON = CORE.parents[2] / ".claude-plugin" / "plugin.json"
 KIT = CORE.parent / "assets" / "remotion-kit"
 
 
+def lf(b):
+    return b.replace(b"\r\n", b"\n")
+
+
 def test_kit_version_is_not_ahead_of_the_plugin():
     # The kit version changes only when the kit changes (a release without kit changes must not make every project
     # look outdated), so it may lag behind the plugin version, never lead it.
@@ -61,7 +65,7 @@ def test_update_backs_up_and_keeps_the_persons_files(project):
     r = run_script("kit.py", "update", "--remotion", rem, "--dry-run", cwd=project)
     assert (rem / "src" / "kit" / "brand.ts").read_text(encoding="utf-8") == "// edited by hand\n"
     run_script("kit.py", "update", "--remotion", rem, cwd=project)
-    assert (rem / "src" / "kit" / "brand.ts").read_bytes() == (KIT / "kit" / "brand.ts").read_bytes()
+    assert (rem / "src" / "kit" / "brand.ts").read_bytes() == lf((KIT / "kit" / "brand.ts").read_bytes())
     assert (rem / "src" / "kit" / "scenes" / "Quote.tsx").is_file()
     backups = list((rem / ".kit-backup").glob("*/src/kit/brand.ts"))
     assert len(backups) == 1 and backups[0].read_text(encoding="utf-8") == "// edited by hand\n"
@@ -69,6 +73,37 @@ def test_update_backs_up_and_keeps_the_persons_files(project):
     assert (rem / "src" / "gen" / "registry.ts").read_text(encoding="utf-8") == "// my scenes\n"
     assert (rem / "src" / "kit" / "Mine.tsx").is_file()
     assert run_script("kit.py", "check", "--remotion", rem, cwd=project).returncode == 0
+
+
+def test_line_endings_alone_are_not_a_difference(project):
+    # A kit copied from a Windows checkout (autocrlf) has CRLF; the plugin from the marketplace has LF. Same files:
+    # check must say they match and update must not replace (and back up) them.
+    run_script("kit.py", "new", "reels", cwd=project)
+    rem = project / "reels"
+    kit = sorted((rem / "src" / "kit").rglob("*.ts*")) + [rem / "src" / "ReelKit.tsx"]
+    assert all(b"\r\n" not in p.read_bytes() for p in kit)  # new projects get LF whatever the checkout has
+    for p in kit:
+        p.write_bytes(p.read_bytes().replace(b"\n", b"\r\n"))
+    r = run_script("kit.py", "check", "--remotion", rem, cwd=project)
+    assert r.returncode == 0 and "matches" in r.stdout
+    r = run_script("kit.py", "update", "--remotion", rem, cwd=project)
+    assert "already matches" in r.stdout and not (rem / ".kit-backup").exists()
+    assert b"\r\n" in (rem / "src" / "ReelKit.tsx").read_bytes()  # the person's copy is left as it is
+
+
+def test_an_older_plugin_does_not_roll_the_kit_back(project):
+    # Claude Desktop can still run an older catalog copy of the plugin while the project already has a newer kit.
+    run_script("kit.py", "new", "reels", cwd=project)
+    rem = project / "reels"
+    ver = rem / "src" / "kit" / "version.ts"
+    ver.write_text(re.sub(r'"[^"]+"', '"99.0.0"', ver.read_text(encoding="utf-8"), count=1), encoding="utf-8")
+    r = run_script("kit.py", "check", "--remotion", rem, cwd=project)
+    assert r.returncode == 0 and "newer than this plugin" in r.stdout
+    r = run_script("kit.py", "update", "--remotion", rem, cwd=project, check=False)
+    assert r.returncode != 0 and "newer than this plugin" in r.stderr
+    assert "99.0.0" in ver.read_text(encoding="utf-8")
+    run_script("kit.py", "update", "--remotion", rem, "--force", cwd=project)
+    assert "99.0.0" not in ver.read_text(encoding="utf-8")
 
 
 def test_update_refuses_a_folder_that_is_not_a_remotion_project(project):

@@ -6,10 +6,17 @@
         [--music-start 12.4 | --drop-at 24.1 --drop-in-track 61.0]
     python scripts/master_audio.py track.mp3 --find-drops          # where the drops are in a track (candidates)
     python scripts/master_audio.py out/master.mp4 --check          # only the acceptance check of a finished master
+    python scripts/master_audio.py out/render.mp4 -o out/master.mp4 --sfx edit/<id>/sfx.json   # + scene sound accents
 
 Voice chain (the render's audio, together with the sound effects):
   measure the noise floor → noise reduction ONLY if the floor is louder than −50 dBFS (on a clean recording it causes
   artifacts) → highpass 80 Hz → two-pass loudnorm to −14 LUFS, TP −1.5, headroom for AAC (single-pass drifts off target).
+Scene sounds (--sfx, if any): the kit does not play them (types.ts: "sound is chosen at mixing"); they are mixed into the
+  render's audio before the voice chain, each placed by the start of its sound, not of the file, with its peak
+  `below_voice_db` (15) under the voice peak unless `gain_db` is set:
+    {"below_voice_db": 15, "sounds": [{"file": "<library>/hit.ogg", "at": 0.10, "start": 0.0, "what": "hook enters"}]}
+  at: the second of the video; start: the sound start in the file (the library catalog's "sound start" column); file:
+  absolute or relative to the project folder (or to the sfx.json folder).
 Music (if any): the bed is normalized to an absolute target (gap 15 dB → −24 LUFS, 13 → −22,
   17 → −26), ducks under the voice with a sidechain (ratio 3, threshold 0.10, attack 20, release 380),
   and the final mix is brought to −14 LUFS again. The track is cut by meaning: the drop lands on the final phrase.
@@ -157,6 +164,7 @@ def main():
     ap.add_argument("--find-drops", action="store_true")
     ap.add_argument("--check", action="store_true", help="only the acceptance check of a finished master, no processing")
     ap.add_argument("--no-denoise", action="store_true")
+    ap.add_argument("--sfx", help="edit/<id>/sfx.json: scene sound accents mixed in before mastering")
     a = ap.parse_args()
     if a.find_drops:
         find_drops(a.input)
@@ -213,6 +221,46 @@ def master_no_voice(a, tmp, D, why):
     return code
 
 
+def peak_db(p):
+    m = re.search(r"max_volume: (-?[\d.]+) dB", run(["ffmpeg", "-hide_banner", "-nostats", "-i", p, "-af", "volumedetect",
+                                                      "-f", "null", "-"]).stderr)
+    return float(m.group(1)) if m else None
+
+
+def mix_sfx(a, tmp, D):
+    """The render's audio with the scene sounds of --sfx mixed in (a WAV), or the input itself without --sfx."""
+    if not a.sfx:
+        return a.input
+    doc = json.load(open(a.sfx, encoding="utf-8"))
+    sounds = doc.get("sounds", []) if isinstance(doc, dict) else doc
+    if not sounds:
+        return a.input
+    voice = peak_db(a.input)
+    below = float((doc.get("below_voice_db") if isinstance(doc, dict) else None) or 15)
+    base = [Path.cwd(), Path(a.sfx).resolve().parent]
+    ins, chains = ["-i", a.input], []
+    for k, s in enumerate(sounds, 1):
+        f = next((b / s["file"] for b in base if (b / s["file"]).is_file()), Path(s["file"]))
+        if not f.is_file():
+            sys.exit(f"--sfx: no sound file {s['file']}")
+        at, start = float(s["at"]), float(s.get("start") or 0)
+        if not 0 <= at < D:
+            sys.exit(f"--sfx: {f.name} at {at} s is outside the video (0–{D:.2f} s)")
+        gain = s.get("gain_db")
+        if gain is None:
+            gain = (voice - below) - (peak_db(str(f)) or 0)
+        ins += ["-i", str(f)]
+        chains.append(f"[{k}:a]aresample=48000,aformat=channel_layouts=stereo,"
+                      f"adelay=delays={max(0, round((at - start) * 1000))}:all=1,volume={float(gain):.1f}dB[s{k}]")
+        print(f"sound: {f.name} at {at:.2f} s ({s.get('what') or ''}), gain {float(gain):+.1f} dB")
+    out = os.path.join(tmp, "with_sfx.wav")
+    fc = (";".join(chains) + f";[0:a]aresample=48000,aformat=channel_layouts=stereo[v];[v]" + "".join(f"[s{k}]" for k in range(1, len(sounds) + 1))
+          + f"amix=inputs={len(sounds) + 1}:normalize=0:duration=first[a]")
+    run(["ffmpeg", "-y", "-hide_banner", *ins, "-filter_complex", fc, "-map", "[a]", "-c:a", "pcm_s16le", out])
+    print(f"scene sounds: {len(sounds)}, {below:.0f} dB under the voice peak ({voice:.1f} dBFS)")
+    return out
+
+
 def master(a, tmp):
     D = dur(a.input)
     if dur(a.input, "a") is None:
@@ -230,7 +278,7 @@ def master(a, tmp):
     print(f"input: {i0:.1f} LUFS, peak {tp0:.1f} dBFS, noise floor {nf:.1f} dBFS → noise reduction {'YES' if denoise else 'no'}")
 
     voice = os.path.join(tmp, "voice.wav")
-    loudnorm_2pass(a.input, voice, pre, TARGET)
+    loudnorm_2pass(mix_sfx(a, tmp, D), voice, pre, TARGET)
     mix = voice
 
     if a.music:

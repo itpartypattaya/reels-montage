@@ -1,6 +1,8 @@
 // Subtitles in brand colors: “Accent” — 2–3 words on a backing in the primary color, the spoken word in the style's
 // marker color; “Plate” — the phrase on the style's marker plate (like the v2 “yellow plate”), words are added as they
-// are spoken; “none” — no subtitles. Marker colors come from styleLook() in brand.ts.
+// are spoken; “Typewriter” — the whole phrase in 1–2 lines, words not yet spoken at 30 %, a caret after the last spoken
+// word, over a soft darkening of the lower part of the frame (no outline, no shadow); “none” — no subtitles. Marker
+// colors come from styleLook() in brand.ts.
 // Geometry: lines are computed in advance by measuring the font (@remotion/layout-utils) — the plate grows word by word,
 // lines do not jump. The block's bottom is never below y 1500 (the UI is below): two lines that do not fit from top are
 // shown one at a time.
@@ -16,6 +18,7 @@ export type Captions = {
   segments: { i: number; src_start: number; src_end: number; out_start: number; out_dur: number }[];
   words: Word[];
 };
+export type SubtitleMode = "accent" | "plate" | "typewriter" | "none";
 type Chunk = { words: Word[]; start: number; end: number };
 
 // Russian short words not left at the end of a chunk: i, s, do, po, no, ot, ikh, vy, to, da, nu, v, na, a, k, o, u.
@@ -54,16 +57,18 @@ export const SUB_BOTTOM = 1500; // subtitle bottom: below it are 420 px of UI (f
 const LEFT = 60;
 const MAX_W = 880; // block width including plate padding
 const TRACK = 0.3; // letterSpacing, px
+const RAMP = 0.25; // s: the typewriter darkening fades in and out around the windows without subtitles
 // line geometry: font size, weight, line height, plate padding (top, bottom, side), gap between plate lines
 const GEO = {
   plate: { size: 60, weight: 700, lh: 1.15, padT: 5, padB: 8, padH: 22, gap: 6 },
   accent: { size: 66, weight: 800, lh: 1.15, padT: 6, padB: 10, padH: 22, gap: 0 },
+  typewriter: { size: 56, weight: 500, lh: 1.22, padT: 0, padB: 0, padH: 0, gap: 0 },
 };
 type Geo = (typeof GEO)["plate"];
 type Block = Chunk & { lines: Word[][]; size: number; top: number };
 
 const text = (ws: Word[]) => ws.map((w) => w.text).join(" ");
-// height of an n-line block: in “Plate” every line is its own plate, in “Accent” there is one shared backing
+// height of an n-line block: in “Plate” every line is its own plate, otherwise one shared block
 const height = (g: Geo, size: number, n: number) =>
   g === GEO.plate ? n *(size * g.lh + g.padT + g.padB) + (n - 1) * g.gap : n * size * g.lh + g.padT + g.padB;
 
@@ -88,21 +93,26 @@ export const KitSubtitles: React.FC<{
   captions: Captions;
   brand: Brand;
   font: string;
-  mode: "accent" | "plate" | "none";
+  mode: SubtitleMode;
   hide?: [number, number][]; // windows (s) without subtitles: plates carry the text there, so the component draws nothing in them
   top?: number; // block top; two lines that do not fit above y 1500 are shown one line at a time
   look?: Look; // style (styleLook); defaults to the brand's default style
-}> = ({ captions, brand, font, mode, hide = [], top = 1290, look }) => {
+  shade?: number; // “Typewriter”: darkening of the lower part, 0..1 (0.15–0.25 to start, 0.4–0.6 over light clothing or a light wall)
+  // "shade": only the darkening (a layer below the scenes, so a card is not darkened), "text": only the words
+  part?: "all" | "shade" | "text";
+}> = ({ captions, brand, font, mode, hide = [], top = 1290, look, shade = 0.35, part = "all" }) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
   const ready = useFontsReady([font]);
   const plate = mode === "plate";
-  const g = plate ? GEO.plate : GEO.accent;
+  const tw = mode === "typewriter";
+  const g = plate ? GEO.plate : tw ? GEO.typewriter : GEO.accent;
   const hideKey = JSON.stringify(hide);
   const blocks = React.useMemo(() => {
     const words = captions.words.filter((w) => !hide.some(([a, b]) => w.start >= a && w.start < b));
     const out: Block[] = [];
-    buildChunks(words, plate ? 4 : 3, plate ? 26 : 20).forEach((c) => {
+    // “Typewriter” splits by phrases and pauses (up to ~52 characters as a whole), not by a short character limit
+    buildChunks(words, plate ? 4 : tw ? 10 : 3, plate ? 26 : tw ? 52 : 20).forEach((c) => {
       const lines = toLines(c.words, g, font, ready);
       // a single long word wider than the frame shrinks the font size (fitSize) instead of running past the edge
       const size = Math.min(g.size, ...lines.map((l) => fitSize({ text: text(l), size: g.size, font, weight: g.weight,
@@ -116,13 +126,20 @@ export const KitSubtitles: React.FC<{
     });
     return out;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [captions, hideKey, plate, font, ready, top]);
+  }, [captions, hideKey, plate, tw, font, ready, top]);
   if (mode === "none") return null;
   const t = frame / fps;
+  // the darkening stays between phrases (no flicker) and fades out around the windows without subtitles and at the end
+  const near = Math.min(t, captions.duration - t, ...hide.map(([a, b]) => (t < a ? a - t : t >= b ? t - b : 0)));
+  const shadeEl = tw && part !== "text" && shade > 0 && near > 0 ? (
+    <div style={{ position: "absolute", left: 0, right: 0, top: top - 220, bottom: 0, opacity: Math.min(1, near / RAMP),
+      background: `linear-gradient(to bottom, rgba(0,0,0,0) 0%, rgba(0,0,0,${shade}) 40%, rgba(0,0,0,${shade}) 100%)` }} />
+  ) : null;
+  if (part === "shade") return shadeEl;
   if (t >= captions.duration) return null;
   if (hide.some(([a, b]) => t >= a && t < b)) return null; // a group's tail and its extension never enter a hide window
   const b = blocks.find((c) => t >= c.start - 0.05 && t < c.end);
-  if (!b) return null;
+  if (!b) return shadeEl;
   const l = look ?? styleLook(brand);
   const type: React.CSSProperties = { fontFamily: font, fontWeight: g.weight, fontSize: b.size, lineHeight: g.lh,
     letterSpacing: TRACK, whiteSpace: "pre" };
@@ -141,6 +158,30 @@ export const KitSubtitles: React.FC<{
     );
   }
   const c = brand.colors;
+  if (tw) {
+    // the whole phrase is placed at once; spoken words come up to full strength, the caret blinks after the last one
+    const said = b.words.filter((w) => t >= w.start - 0.03);
+    const last = said[said.length - 1];
+    const caret = Math.floor(t * 2) % 2 === 0;
+    return (
+      <>
+        {shadeEl}
+        <div style={{ position: "absolute", left: LEFT, top: b.top }}>
+          {b.lines.map((ln, i) => (
+            <div key={i} style={type}>
+              {ln.map((w, k) => (
+                <span key={k} style={{ color: c.text_on_primary, opacity: said.includes(w) ? 1 : 0.3 }}>
+                  {k ? " " : ""}
+                  {w.text}
+                  {w === last ? <span style={{ opacity: caret ? 1 : 0 }}>|</span> : null}
+                </span>
+              ))}
+            </div>
+          ))}
+        </div>
+      </>
+    );
+  }
   return (
     <div style={{ position: "absolute", left: LEFT, top: b.top }}>
       <div style={{ ...type, display: "inline-block", backgroundColor: alpha(c.primary, 0.92), padding: pad }}>

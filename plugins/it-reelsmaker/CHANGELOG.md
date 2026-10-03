@@ -2,6 +2,32 @@
 
 What changed in IT Reelsmaker, written for the people who use it. The newest version is on top. The skill shows a short “What's new” note from this file once, on the first edit after an update.
 
+## 1.4.5
+
+- **Quiet consonants at phrase edges are kept**: the speech mask also listens to the high frequencies, so a final "s"
+  or an initial "ch" (quiet in overall loudness) stays in the cut; the edge check names an edge that cuts one.
+- **Word endings are no longer clipped on phone footage.** An iPhone video's sound track can start about 0.1 s after
+  the picture; the audio the plugin analyzed ignored that, so every cut landed 0.1 s early and ate the end of the
+  last word of each take. The analysis audio is now on the video's timeline, and a short consonant burst before a
+  phrase (the "p" in a word that starts with a stop) stays in the cut.
+- **Scene sounds get mixed in**: `master_audio.py --sfx edit/<id>/sfx.json` places each sound by its sound start,
+  under the voice, before mastering (the template never played them).
+- **The cover is not taken mid-word**: the frame comes from a pause in the speech, and `poster.py pick --sheet` shows the
+  candidates so the one with open eyes can be chosen.
+- **The file's thumbnail is your cover**: `poster.py attach` embeds the cover as cover art after mastering, so a file
+  manager no longer shows a random frame.
+- **The visual plan follows a rebuilt rough cut**: a new length and spans, and inserts placed by a word move with it.
+- **The virtual camera is in the template.** Shot sizes, punch-ins and whips no longer need code of your own: list the
+  shots in `edit/<id>/camera.json` (by a word, a second of the video or a source second), and the subtitles drop
+  under the chin for every shot (kit 1.4.5).
+- **“Typewriter” subtitles in the template**: the whole phrase, spoken words light up, a caret, a soft darkening
+  behind it that you can make stronger over light clothing. Before, this mode quietly turned into “Accent”.
+- **A cleaner ending**: a logo sting with the brand line (`export --sting`), a CTA card with a large main line and a
+  small muted clarifier, end-card lines that never run past the frame.
+- Fixes: a word stretched across a removed pause no longer shows twice in the subtitles, and short words with zero
+  length no longer vanish from them; a hand held out to the side is no longer taken for a face; a code scene's clip
+  length rounds up; `kit.py` ignores line endings and refuses to roll a newer project kit back to an older plugin.
+
 ## 1.4.4
 
 - **Your own settings live in your project, not in the plugin.** `<project>/reel-defaults.json` holds your defaults

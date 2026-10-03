@@ -13,7 +13,7 @@ import { AbsoluteFill, CalculateMetadataFunction, Easing, Img, OffthreadVideo, i
 import { Brand, Look, alpha, fullLogoOnDark, logoOnDark, styleLook, useLookFonts } from "./kit/brand";
 import { neutralBrand } from "./kit/defaultBrand";
 import { BrollLayer, Insert, MemeLayer } from "./kit/Inserts";
-import { Captions, KitSubtitles } from "./kit/Subtitles";
+import { Captions, KitSubtitles, SubtitleMode } from "./kit/Subtitles";
 import { breakLines, fitSize, useFontsReady } from "./kit/Phrase";
 import { COVER_ZONE, COVER_ZONE_LOW, Cover, CoverText, ResolvedTone, SceneLayer, SceneSpec, resolveBrandTone, sceneActivity, sceneHideIntervals, speakerRectAt,
   withRollTone } from "./kit/scenes";
@@ -27,13 +27,18 @@ export type ReelKitProps = {
   // video style (reel.json → style, otherwise brand.style_default): marker / v2 / brand; anything else — marker with a warning
   style?: string | null;
   inserts: Insert[];
-  subtitles: "accent" | "plate" | "none";
+  subtitles: SubtitleMode;
+  subtitlesShade?: number; // “typewriter”: darkening of the lower part 0..1 (reel.json → subtitles_shade)
   subtitlesTop?: number; // top of the subtitles (y); from the face measurement — visual_plan.py export --props: chin + 30 px, ≤ 1390
   hideSubtitles?: [number, number][];
-  drift?: boolean; // slow scale drift per segment (when there is no custom virtual camera)
+  drift?: boolean; // slow scale drift per segment (when there is no camera)
+  // virtual camera (references/camera.md): shots in output seconds, from edit/<id>/camera.json via visual_plan.py export;
+  // { z, cx, cy } — the scale and the source point that ends up in the frame center; drift — a slow push-in over the shot
+  // (+0.02–0.06); whip — a 7-frame move from the previous shot with a light motion blur instead of a cut
+  camera?: Shot[] | null;
   hook?: { text: string; until: number } | null;
   corner?: boolean; // brand mark in the corner
-  endCard?: { line1: string; line2?: string; seconds?: number } | null;
+  endCard?: { line1?: string; line2?: string; seconds?: number } | null; // no line1: a logo sting (logo with the tagline)
   scenes?: SceneSpec[] | null; // designed scenes (visual_plan.py export --props → scenes); absent — the video renders as before
   sceneTone?: string | null; // the video's scene tone (reel.json → tone, otherwise the brand tone): for scenes without their own tone
   cover?: SceneSpec | null; // cover scene (not part of the video — the ReelCover composition takes it with the same props)
@@ -41,6 +46,31 @@ export type ReelKitProps = {
 
 const clamp = { extrapolateLeft: "clamp", extrapolateRight: "clamp" } as const;
 const easeOut = Easing.out(Easing.cubic);
+
+export type Shot = { t: number; z: number; cx: number; cy: number; drift?: number; whip?: boolean };
+type Cam = { z: number; cx: number; cy: number; blur: number };
+const WHIP = 7; // frames
+// the camera window never leaves the frame: cx within [540/z, 1080 − 540/z], cy within [960/z, 1920 − 960/z]
+const fit = (z: number, cx: number, cy: number): Cam => {
+  const zz = Math.max(1, z);
+  return { z: zz, cx: Math.min(Math.max(cx, 540 / zz), 1080 - 540 / zz), cy: Math.min(Math.max(cy, 960 / zz), 1920 - 960 / zz), blur: 0 };
+};
+const shotAt = (s: Shot, next: Shot | undefined, t: number, end: number): Cam => {
+  const k = interpolate(t, [s.t, Math.max(s.t + 0.01, next ? next.t : end)], [0, 1], clamp);
+  return fit(s.z * (1 + (s.drift ?? 0) * k), s.cx, s.cy);
+};
+export const cameraAt = (shots: Shot[], t: number, end: number, fps: number): Cam => {
+  let i = -1;
+  shots.forEach((s, k) => { if (s.t <= t + 1e-6) i = k; });
+  if (i < 0) return fit(1, 540, 960);
+  const cam = shotAt(shots[i], shots[i + 1], t, end);
+  const p = (t - shots[i].t) * fps / WHIP;
+  if (!shots[i].whip || i === 0 || p >= 1) return cam;
+  const prev = shotAt(shots[i - 1], shots[i], shots[i].t, end); // where the previous shot ended (with its drift)
+  const e = easeOut(Math.max(0, p));
+  return { z: prev.z + (cam.z - prev.z) * e, cx: prev.cx + (cam.cx - prev.cx) * e, cy: prev.cy + (cam.cy - prev.cy) * e,
+    blur: Math.sin(Math.PI * Math.max(0, p)) * 6 };
+};
 
 export const reelKitMetadata: CalculateMetadataFunction<ReelKitProps> = ({ props }) => ({
   durationInFrames: Math.max(1, Math.round(props.captions.duration * KIT_FPS) +
@@ -58,12 +88,15 @@ const Footage: React.FC<{ p: ReelKitProps; bt: ResolvedTone }> = ({ p, bt }) => 
     z = seg.i % 2 === 0 ? 1 + 0.05 * k : 1.05 - 0.05 * k;
   }
   if (!p.video) return null;
+  const cam = p.camera?.length ? cameraAt(p.camera, t, p.captions.duration, KIT_FPS) : null;
   // speaker frame from the scenes (split/panel/window); without scenes — the whole frame. The markup is the same on every frame: the video
   // is not remounted and the audio is not interrupted; under a full field the video keeps playing too (voice)
   const r = speakerRectAt(p.scenes, frame, KIT_FPS, p.captions.words, bt);
   return (
     <div style={{ position: "absolute", left: r.x, top: r.y, width: r.w, height: r.h, overflow: "hidden", borderRadius: r.r }}>
-      <div style={{ position: "absolute", left: r.ox, top: r.oy, width: 1080 * r.k, height: 1920 * r.k, transform: `scale(${z})` }}>
+      <div style={{ position: "absolute", left: r.ox, top: r.oy, width: 1080 * r.k, height: 1920 * r.k,
+        ...(cam ? { transform: `translate(${(540 - cam.cx * cam.z) * r.k}px, ${(960 - cam.cy * cam.z) * r.k}px) scale(${cam.z})`,
+          transformOrigin: "0 0", filter: cam.blur > 0.05 ? `blur(${cam.blur}px)` : undefined } : { transform: `scale(${z})` }) }}>
         <OffthreadVideo src={staticFile(p.video)} style={{ width: "100%", height: "100%" }} />
       </div>
     </div>
@@ -108,23 +141,36 @@ const Corner: React.FC<{ p: ReelKitProps }> = ({ p }) => {
 
 const EndCard: React.FC<{ p: ReelKitProps; look: Look; fonts: { heading: string; body: string } }> = ({ p, look, fonts }) => {
   const frame = useCurrentFrame();
+  const ready = useFontsReady([fonts.heading, fonts.body]); // before the early return
   const v = Math.round(p.captions.duration * KIT_FPS);
   if (!p.endCard || frame < v) return null;
   const k = frame - v;
   const bg = interpolate(k, [0, 8], [0, 1], clamp);
   const a = interpolate(k, [3, 15], [0, 1], { ...clamp, easing: easeOut });
-  const logo = fullLogoOnDark(p.brand);
+  // a logo sting (no line1): the logo centered, under it the brand line (line2, visual_plan.py export --sting takes
+  // brand.tagline); with no line2 the logo variant that carries the tagline; otherwise the logo above the CTA lines
+  const sting = !p.endCard.line1;
+  const own = sting && !p.endCard.line2;
+  const logo = own ? p.brand.logos.on_dark_tagline ?? fullLogoOnDark(p.brand) : fullLogoOnDark(p.brand);
+  const box = own ? { top: 610, left: 140, width: 800, height: 700 } : sting ? { top: 640, left: 190, width: 700, height: 360 }
+    : { top: 520, left: 240, width: 600, height: 300 };
+  // CTA lines never run past the frame: the size shrinks to fit x 60–1020 (the plate adds 0.2 em on each side)
+  // references/cta.md: the main line 52–60 px (here up to 64, the card is the whole frame), the clarifier 34–38 px in a muted color
+  const s1 = p.endCard.line1 ? fitSize({ text: p.endCard.line1, size: 64, font: fonts.heading, weight: 800, maxWidth: 960, padEm: 0.2, ready }) : 64;
+  const s2 = p.endCard.line2 ? fitSize({ text: p.endCard.line2, size: sting ? 52 : 38, font: fonts.body, weight: sting ? 600 : 500, maxWidth: 960, ready }) : 38;
   const c = p.brand.colors;
   return (
     <AbsoluteFill style={{ backgroundColor: c.primary, opacity: bg }}>
-      {logo ? <Img src={staticFile(logo)} style={{ position: "absolute", top: 520, left: 240, width: 600, height: 300, objectFit: "contain", opacity: a }} />
+      {logo ? <Img src={staticFile(logo)} style={{ position: "absolute", ...box, objectFit: "contain", opacity: a }} />
         : <div style={{ position: "absolute", top: 600, width: "100%", textAlign: "center", fontFamily: fonts.heading, fontWeight: 800, fontSize: 96, color: c.text_on_primary, opacity: a }}>{p.brand.name}</div>}
-      <div style={{ position: "absolute", top: 900, width: "100%", textAlign: "center" }}>
-        <Mark look={look} font={fonts.heading} size={72} p={interpolate(k, [10, 19], [0, 1], { ...clamp, easing: easeOut })}>{p.endCard.line1}</Mark>
-      </div>
+      {p.endCard.line1 ? (
+        <div style={{ position: "absolute", top: 900, width: "100%", textAlign: "center" }}>
+          <Mark look={look} font={fonts.heading} size={s1} p={interpolate(k, [10, 19], [0, 1], { ...clamp, easing: easeOut })}>{p.endCard.line1}</Mark>
+        </div>
+      ) : null}
       {p.endCard.line2 ? (
-        <div style={{ position: "absolute", top: 1030, width: "100%", textAlign: "center", fontFamily: fonts.body, fontWeight: 600, fontSize: 58,
-          color: c.text_on_primary, opacity: interpolate(k, [16, 26], [0, 1], clamp) }}>{p.endCard.line2}</div>
+        <div style={{ position: "absolute", top: sting ? 1080 : 1000, width: "100%", textAlign: "center", fontFamily: fonts.body, fontWeight: sting ? 600 : 500, fontSize: s2,
+          color: c.text_on_primary, opacity: interpolate(k, [16, 26], [0, sting ? 1 : 0.72], clamp) }}>{p.endCard.line2}</div>
       ) : null}
     </AbsoluteFill>
   );
@@ -141,12 +187,14 @@ export const ReelKit: React.FC<ReelKitProps> = (p) => {
     <AbsoluteFill style={{ backgroundColor: p.brand.colors.primary }}>
       <Footage p={p} bt={bt} />
       <BrollLayer inserts={p.inserts} brand={p.brand} />
+      <KitSubtitles captions={p.captions} brand={p.brand} font={fonts.body} mode={p.subtitles} hide={hide}
+        top={p.subtitlesTop ?? 1290} look={look} shade={p.subtitlesShade ?? 0.35} part="shade" />
       <Hook p={p} look={look} font={fonts.heading} />
       <Corner p={p} />
       <SceneLayer scenes={p.scenes} brand={p.brand} look={look} words={p.captions.words} scenesOnly={!p.video} sceneTone={p.sceneTone} />
       <MemeLayer inserts={p.inserts} brand={p.brand} />
       <KitSubtitles captions={p.captions} brand={p.brand} font={fonts.body} mode={p.subtitles} hide={hide}
-        top={p.subtitlesTop ?? 1290} look={look} />
+        top={p.subtitlesTop ?? 1290} look={look} shade={p.subtitlesShade ?? 0.35} part="text" />
       <EndCard p={p} look={look} fonts={fonts} />
     </AbsoluteFill>
   );

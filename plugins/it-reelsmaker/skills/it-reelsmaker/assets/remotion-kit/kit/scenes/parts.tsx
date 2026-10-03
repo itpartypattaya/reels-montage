@@ -45,11 +45,15 @@ const distinct = (a: string, b: string): boolean => {
 export const surfaces = (b: Brand, look: Look): { field: Surface; card: Surface; mark: Surface } => {
   const c = b.colors;
   const markOnCard = distinct(look.mark, c.light);
+  // the field: primary by default; brand.looks[<style>].field sets another one (a light field: text in the primary color)
+  const fbg = look.field ?? c.primary;
+  const ftx = look.field ? (contrast(c.primary, fbg) >= 4.5 ? c.primary : c.text_on_primary) : c.text_on_primary;
+  const markOnField = !look.field || distinct(look.mark, fbg);
   return {
     field: {
-      kind: "field", bg: c.primary, text: c.text_on_primary, hiBg: look.mark, hiText: look.onMark,
-      accent: contrast(look.mark, c.primary) >= 3 ? look.mark : c.text_on_primary,
-      muted: alpha(c.text_on_primary, 0.64), soft: alpha(c.text_on_primary, 0.1), line: alpha(c.text_on_primary, 0.24),
+      kind: "field", bg: fbg, text: ftx, hiBg: markOnField ? look.mark : ftx, hiText: markOnField ? look.onMark : fbg,
+      accent: contrast(look.mark, fbg) >= 3 ? look.mark : ftx,
+      muted: alpha(ftx, 0.64), soft: alpha(ftx, 0.1), line: alpha(ftx, 0.24),
     },
     card: {
       kind: "card", bg: c.light, text: c.primary, hiBg: markOnCard ? look.mark : c.primary,

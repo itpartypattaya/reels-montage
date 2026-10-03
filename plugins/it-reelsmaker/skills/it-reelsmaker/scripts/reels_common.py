@@ -624,6 +624,28 @@ def run(args, check=True, quiet=False):
     return r
 
 
+def audio_offset(p):
+    """Seconds by which the audio track starts after the video track (negative: before), from the container; for
+    the record only (extraction uses ANALYSIS_AF). A phone MOV often has 0.08-0.10 s: audio extracted without
+    ANALYSIS_AF runs ahead of the video by that much, and every edge measured on it lands that much early in cut.py,
+    which cuts by the video timeline (a real case: word endings clipped in every take)."""
+    r = run(["ffprobe", "-v", "error", "-show_entries", "stream=codec_type,start_time", "-of", "json", str(p)], check=False)
+    try:
+        st = {}
+        for s in json.loads(r.stdout or "{}").get("streams", []):
+            if s.get("codec_type") in ("video", "audio") and s.get("codec_type") not in st and s.get("start_time") not in (None, "N/A"):
+                st[s["codec_type"]] = float(s["start_time"])
+        return round(st["audio"] - st["video"], 6) if "audio" in st and "video" in st else 0.0
+    except (ValueError, KeyError, TypeError):
+        return 0.0
+
+
+# Extracting a whole track for analysis: second t of the WAV = second t of the video. first_pts=0 pads (or trims) the
+# start by the audio's real decoded timestamps, so the encoder delay of AAC is accounted for too (the start_time from
+# audio_offset alone was 24 ms off on an ffmpeg-made file); 16 kHz mono is what speech_mask.py and Whisper read.
+ANALYSIS_AF = "aresample=16000:async=1:first_pts=0"
+
+
 def probe(p):
     """w, h, dur, fps, has_audio, vcodec, pix_fmt (the phone rotation tag applied)."""
     r = run(["ffprobe", "-v", "error", "-show_streams", "-show_format", "-of", "json", str(p)], check=False)

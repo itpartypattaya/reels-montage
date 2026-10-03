@@ -11,6 +11,9 @@ The agent does not pick the CTA on its own.
 2. For each, one line on why it fits this video, and the exact text of both card lines.
 3. The other answers, as the last option or through “Other”: **CTA by voice in the last line** (the speaker says it, no card), **no CTA**, or a **logo sting** (an outro with the logo, 2–3 s, no CTA) when the brand wants recognition without a call.
 4. A CTA code already given in the prompt is not asked about, but the card text is shown before rendering.
+5. **Where** is part of the answer: on the end card (after the video), on a card over the video on the spoken words, or only by voice. These are places for the one CTA, not extra CTAs: a call spoken in the speech plus the same call on a card is one CTA; a different call on the end card replaces the card over the video, unless the person asks for both (then say once that it breaks the one-CTA rule, and record it in `project.md`). A spoken call is never a reason to leave the end-card options out: the person may still want the end card with a call from the library.
+6. The logo question decides only where the logo goes; it does not choose a logo sting over an end card with a CTA.
+7. Texts come from the library word for word. If a clarifier was written for another audience (for companies, and the video speaks to candidates), offer the adaptation next to the original and say it is adapted.
 
 ## On the card
 

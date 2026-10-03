@@ -129,9 +129,18 @@ export const CtaAction: React.FC<{ c: SceneCtx }> = ({ c }) => {
   const btn = glue(it?.text ?? lines[1] ?? "");
   // button width: text + 1 em padding on each side + 14 px outer margin on each side — all within c.inner.w
   const btnSize = fitSize({ text: btn, size: card ? 46 : 58, font: fonts.body, weight: 700, maxWidth: c.inner.w - 28, padEm: 1, ready });
+  // the second CTA line (when the button has its own text) is the clarifier: smaller and muted, so a long clarifier does
+  // not shrink the main line (references/cta.md: main 52–60 px, clarifier 34–38 px)
+  const sub = it?.text && lines[1] ? glue(lines[1]) : "";
+  const subSize = Math.min(Math.round(headSize * 0.64), fitSize({ text: sub, size: Math.round(headSize * 0.64), font: fonts.body, weight: 500,
+    maxWidth: c.inner.w, ready }));
   return (
     <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", width: c.inner.w }}>
-      {head(it?.text && lines[1] ? [lines[0], lines[1]] : [lines[0]])}
+      {head([lines[0]])}
+      {sub ? (
+        <div style={{ marginTop: 14, fontFamily: fonts.body, fontWeight: 500, fontSize: subSize, lineHeight: 1.2, whiteSpace: "pre", color: surf.text,
+          opacity: 0.72 * m2.opacity, transform: m2.transform }}>{sub}</div>
+      ) : null}
       {btn ? (
         <div style={{ position: "relative", marginTop: 38, padding: 14, opacity: m2.opacity, transform: m2.transform, transformOrigin: "0% 50%" }}>
           <div style={{ fontFamily: fonts.body, fontWeight: 700, fontSize: btnSize, lineHeight: 1.1, whiteSpace: "pre", color: surf.hiText,

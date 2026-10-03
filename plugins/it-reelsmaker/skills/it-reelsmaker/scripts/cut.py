@@ -57,6 +57,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from reels_common import brand_file, edit_dir, inside, load_config, load_json, probe, project_root, run, safe_slug, save_json, utf8_stdio, warn
 
 FADE = 0.03
+MIN_WORD = 0.08  # s: the shortest word on the subtitle timeline
 LUT_MIX = 0.6
 
 
@@ -224,6 +225,8 @@ def load_words(c):
             for r in c["retime"]:
                 if w["text"] == r["text"] and abs(w["start"] - float(r["at"])) < 0.02:
                     w["start"], w["end"] = float(r["start"]), float(r["end"])
+            if w["end"] - w["start"] < MIN_WORD:  # Whisper gives some short words zero length; they would vanish
+                w["end"] = w["start"] + MIN_WORD
         out[name] = words
     return out
 
@@ -254,10 +257,11 @@ def timeline(c, words):
             if not 0 <= k < len(c["ranges"]):
                 continue
             x = c["ranges"][k]
-            # A restart in the source is a new occurrence, even when it overlaps the old one.
+            # A restart in the source is a new occurrence, even when it overlaps the old one. The next span forward in
+            # the source is the same occurrence, touching or not: a word the transcript stretches across the gap
+            # between them goes to the span that holds more of it, not to both.
             earlier, later = (x, r) if k < i else (r, x)
-            if (x["source"] == r["source"] and later["start"] > earlier["start"]
-                    and later["end"] > earlier["end"] and later["start"] <= earlier["end"]):
+            if x["source"] == r["source"] and later["start"] > earlier["start"] and later["end"] > earlier["end"]:
                 same.append((k, x))
         for w in words[r["source"]]:
             ov = [(min(w["end"], x["end"]) - max(w["start"], x["start"]), k) for k, x in same]

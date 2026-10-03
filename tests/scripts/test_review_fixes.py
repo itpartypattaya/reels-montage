@@ -83,6 +83,67 @@ def test_touching_ranges_assign_boundary_once():
     assert len(words) == 1
 
 
+def test_word_across_a_removed_pause_is_shown_once():
+    # The transcript put "signed" at 43.46-43.94, but the speech starts at 43.68; the cut drops the pause 43.50-43.67.
+    c = plan_for(None, [(40, 43.5), (43.667, 44.433)])
+    _, words, _ = cut.timeline(c, {"main": [{"text": "signed", "start": 43.46, "end": 43.94}]})
+    assert [w["seg"] for w in words] == [1]
+
+
+def test_hand_held_out_to_the_side_is_not_a_face():
+    import faces
+    face = [218, 496, 281, 403, 0.94]
+    hand = [680, 1214, 364, 406, 0.61]  # a seated speaker's hand to the right, seen in one sample only
+    keep, rej = faces.clean_frames([[face], [face, hand], [face]], times=[32.5, 32.75, 33.0], step=0.25)
+    assert keep[1] == [face[:5]] and "below the chin" in rej[1][0][5]
+    # a second person seated lower, seen in consecutive samples, stays
+    other = [680, 1000, 280, 390, 0.8]
+    keep, rej = faces.clean_frames([[face, other]] * 3, times=[1.0, 1.25, 1.5], step=0.25)
+    assert keep[1] == [face[:5], other[:5]]
+    # a small box far below the chin, score just over 0.7 (a hand on the knee, 26.5 s of a real video)
+    small = [555, 1439, 158, 210, 0.71]
+    face2 = [207, 485, 280, 432, 0.94]
+    keep, rej = faces.clean_frames([[face2], [face2, small], [face2]], times=[26.25, 26.5, 26.75], step=0.25)
+    assert keep[1] == [face2[:5]] and "far below" in rej[1][0][5]
+    # a sofa cushion to the side, score 0.72, one sample
+    cushion = [831, 1164, 226, 277, 0.72]
+    face3 = [186, 464, 284, 411, 0.94]
+    keep, rej = faces.clean_frames([[face3], [face3, cushion], [face3]], times=[39.0, 39.25, 39.5], step=0.25)
+    assert keep[1] == [face3[:5]]
+
+
+def test_camera_shots_from_source_seconds_words_and_seconds(tmp_path):
+    import visual_plan as vp
+    cap = {"segments": [{"i": 0, "src_start": 10.0, "src_end": 14.0, "out_start": 0.0, "out_dur": 2.0},
+                        {"i": 1, "src_start": 20.0, "src_end": 24.0, "out_start": 2.0, "out_dur": 2.0}],
+           "words": [{"text": "Numbers,", "start": 3.1, "end": 3.5}]}
+    write_json(tmp_path / "camera.json", {"shots": [{"src": 21.0, "z": 1.2, "cy": 820},
+                                                    {"at": "word:numbers#1", "z": 1.28, "whip": True},
+                                                    {"at": 0, "z": 1.0}]})
+    shots = vp.camera_shots(tmp_path, {"segments": []}, cap)
+    assert [s["t"] for s in shots] == [0.0, 2.5, 3.1]  # src 21.0 -> 2.0 + 1.0 * (2.0 / 4.0)
+    assert shots[2]["whip"] and shots[1]["cx"] == 540
+    # the chin on screen follows the shot's camera: (911 - 820) * 1.2 + 960
+    assert round(vp.chin_on_screen(911, 2.6, shots), 1) == 1069.2
+    write_json(tmp_path / "camera.json", {"shots": [{"src": 19.9, "z": 1.1}]})  # just before a segment start: follows it
+    assert vp.camera_shots(tmp_path, {"segments": []}, cap)[0]["t"] == 2.0
+    write_json(tmp_path / "camera.json", {"shots": [{"src": 16.0, "z": 1.1}]})
+    with pytest.raises(SystemExit, match="cut out"):
+        vp.camera_shots(tmp_path, {"segments": []}, cap)
+
+
+def test_zero_length_word_keeps_its_subtitle(tmp_path):
+    # Whisper sometimes returns a short word with start == end ("какой" 14.70-14.70 before "результат" 14.70-15.18).
+    write_json(tmp_path / "t.json", {"words": [{"text": "which", "start": 14.7, "end": 14.7},
+                                               {"text": "result", "start": 14.7, "end": 15.18}]})
+    c = plan_for(None, [(14, 16)])
+    c["sources"]["main"]["transcript"] = tmp_path / "t.json"
+    c["retime"] = []
+    _, words, _ = cut.timeline(c, cut.load_words(c))
+    assert [w["text"] for w in words] == ["which", "result"]
+    assert words[0]["end"] > words[0]["start"]
+
+
 @pytest.mark.parametrize("start,end", [(-1, 1), (0, 11), (0, 0.001), (math.nan, 1), (0, math.inf), (2, 1)])
 def test_range_validation(start, end):
     with pytest.raises(SystemExit):
