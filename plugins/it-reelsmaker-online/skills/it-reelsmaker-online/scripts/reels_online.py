@@ -107,8 +107,9 @@ def _keys_lines():
 def _write_keys(lines):
     """Atomic write of the keys file, readable by its owner only (POSIX mode 600; on Windows the file stays in your
     user profile, which other users can't read by default)."""
+    created = not KEYS_FILE.parent.exists()
     KEYS_FILE.parent.mkdir(parents=True, exist_ok=True)
-    if os.name != "nt":
+    if created and os.name != "nt":  # only a folder made here; an existing one (a project, /tmp) keeps its rights
         os.chmod(KEYS_FILE.parent, 0o700)
     tmp = KEYS_FILE.with_name(f".{KEYS_FILE.name}.{os.getpid()}.{uuid.uuid4().hex}.tmp")
     try:

@@ -158,3 +158,22 @@ def test_keys_set_refuses_without_a_terminal_and_bad_names(monkeypatch, tmp_path
     assert "terminal" in str(ex.value) and not ro.KEYS_FILE.exists()
     with pytest.raises(SystemExit):
         ro.cmd_keys_set(SimpleNamespace(name="fal key; rm"))
+
+
+def test_keys_set_leaves_an_existing_folder_alone(monkeypatch, tmp_path):
+    import getpass, os, stat, sys
+    from types import SimpleNamespace
+    ro = _keys_module(monkeypatch, tmp_path)
+    shared = tmp_path / "shared"
+    shared.mkdir()
+    if os.name != "nt":
+        os.chmod(shared, 0o755)
+    monkeypatch.setattr(ro, "KEYS_FILE", shared / "keys.env")
+    monkeypatch.setattr(sys, "stdin", _Tty())
+    monkeypatch.setattr(sys.stdout, "isatty", lambda: True, raising=False)
+    monkeypatch.setattr(getpass, "getpass", lambda prompt: "fal-secret-value-5678")
+    ro.cmd_keys_set(SimpleNamespace(name="FAL_KEY"))
+    assert ro.api_key("FAL_KEY") == "fal-secret-value-5678"
+    if os.name != "nt":
+        assert stat.S_IMODE(shared.stat().st_mode) == 0o755  # an existing folder keeps its rights
+        assert stat.S_IMODE(ro.KEYS_FILE.stat().st_mode) == 0o600
