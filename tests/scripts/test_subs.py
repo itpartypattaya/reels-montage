@@ -82,6 +82,41 @@ def test_reading_speed(project):
     assert "characters per second" in r.stderr  # a warning only
 
 
+def test_repeated_phrases_keep_their_own_translations(project):
+    # Codex review: two identical phrases translated differently collapsed into the last one on the next `phrases`
+    e = plan_project(project)
+    cap = captions()  # the first line said twice: segment 1 repeats segment 0
+    s0 = [w for w in cap["words"] if w["seg"] == 0]
+    dup = [{**w, "seg": 1, "start": round(w["start"] + 3.0, 3), "end": round(w["end"] + 3.0, 3)} for w in s0]
+    cap["words"] = sorted([w for w in cap["words"] if w["seg"] != 1] + dup, key=lambda w: w["start"])
+    write_json(e / "captions.json", cap)
+    run_script("subs.py", "phrases", "edit/4821", "--lang", "de", cwd=project)
+    f = e / "subs" / "de.json"
+    doc = json.loads(f.read_text(encoding="utf-8"))
+    assert doc["phrases"][0]["src"] == doc["phrases"][1]["src"]
+    doc["phrases"][0]["text"], doc["phrases"][1]["text"] = "Los.", "Gehen."
+    f.write_text(json.dumps(doc, ensure_ascii=False), encoding="utf-8")
+    run_script("subs.py", "phrases", "edit/4821", "--lang", "de", cwd=project)
+    doc = json.loads(f.read_text(encoding="utf-8"))
+    assert [p["text"] for p in doc["phrases"][:2]] == ["Los.", "Gehen."]
+
+
+def test_export_refuses_subtitles_of_a_changed_translation(project):
+    # Codex review: after a refused apply the old captions-<lang>.json was still taken by the export
+    e = plan_project(project)
+    run_script("subs.py", "phrases", "edit/4821", "--lang", "de", cwd=project)
+    translate(e)
+    run_script("subs.py", "apply", "edit/4821", "--lang", "de", cwd=project)
+    import visual_plan
+    assert visual_plan.subtitles_in(e, "de")
+    doc = json.loads((e / "subs" / "de.json").read_text(encoding="utf-8"))
+    doc["phrases"][0]["text"] = ""  # an edit that the next apply refuses
+    (e / "subs" / "de.json").write_text(json.dumps(doc, ensure_ascii=False), encoding="utf-8")
+    assert run_script("subs.py", "apply", "edit/4821", "--lang", "de", cwd=project, check=False).returncode != 0
+    with pytest.raises(SystemExit, match="translation in subs/de.json changed"):
+        visual_plan.subtitles_in(e, "de")
+
+
 def test_bad_language_code(project):
     plan_project(project)
     r = run_script("subs.py", "phrases", "edit/4821", "--lang", "../x", cwd=project, check=False)

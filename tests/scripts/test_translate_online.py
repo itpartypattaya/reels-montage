@@ -126,6 +126,24 @@ def test_forced_retranslation_empties_what_the_model_skipped(tr, project, monkey
     assert [p["id"] for p in doc["phrases"] if not p["text"]] == ["p002"]  # left for the next run or the session
 
 
+def test_nothing_to_translate_still_rebuilds_the_subtitles(tr, project, monkeypatch):
+    # Codex review: after a timing-only re-cut every phrase kept its translation, so the command exited without apply
+    from test_plan import captions
+    from conftest import write_json
+    e = plan_project(project)
+    monkeypatch.setenv("OPENAI_API_KEY", KEY)
+    monkeypatch.setattr(tr, "post", lambda u, body, h, t, a: shaped("openai", answer_for(json.loads(body)["input"])))
+    assert run(tr, "--provider", "openai", "--yes") == 0
+    cap = captions()
+    for w in cap["words"]:
+        w["start"], w["end"] = round(w["start"] + 0.5, 3), round(w["end"] + 0.5, 3)
+    write_json(e / "captions.json", cap)
+    monkeypatch.setattr(tr, "post", lambda *a: pytest.fail("nothing new to translate: no paid request"))
+    assert run(tr, "--provider", "openai", "--yes") == 0
+    de = json.loads((e / "captions-de.json").read_text(encoding="utf-8"))
+    assert de["words"][0]["start"] == 0.7  # rebuilt on the new times
+
+
 def test_the_estimate_does_not_promise_a_price(tr, project, capsys):
     plan_project(project)
     assert run(tr, "--provider", "gemini", "--price") == 0

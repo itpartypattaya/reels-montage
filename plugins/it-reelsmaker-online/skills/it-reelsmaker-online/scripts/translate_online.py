@@ -134,8 +134,9 @@ def cmd_run(a):
         subs.cmd_phrases(argparse.Namespace(edit=a.edit, lang=a.to))
         doc = load_json(f)
     todo = [p for p in doc["phrases"] if a.force or not str(p.get("text") or "").strip()]
-    if not todo:
+    if not todo:  # nothing to send; the phrase times may still be new (a re-cut): the core check rebuilds the subtitles
         print(f"{f}: every phrase is translated already (--force to translate all again)")
+        subs.cmd_apply(argparse.Namespace(edit=a.edit, lang=a.to))
         return 0
     system, user = brief(a.to, cap.get("language") or "", brand, todo if not a.force else doc["phrases"])
     tokens = (len(system) + len(user)) // 3 + len(user) // 2

@@ -77,6 +77,11 @@ def fingerprint(cap):
     return hashlib.sha1(repr((cap.get("duration"), segs, words)).encode()).hexdigest()[:12]
 
 
+def translation_id(doc):
+    """Which translation: the phrases' words and their translations (subs/<lang>.json)."""
+    return hashlib.sha1(repr([(p.get("src"), p.get("text")) for p in (doc or {}).get("phrases", [])]).encode()).hexdigest()[:12]
+
+
 def subs_file(e, lang):
     if not LANG.match(lang or ""):
         sys.exit(f"--lang {lang!r}: a language code like en, de, pt-BR")
@@ -94,11 +99,13 @@ def cmd_phrases(a):
     e = edit_dir(a.edit)
     cap = load_cap(e)
     f = subs_file(e, a.lang)
-    old = {p["src"]: p.get("text", "") for p in (load_json(f) or {}).get("phrases", []) if p.get("text")}
+    old = {}  # the same phrase said twice may be translated twice differently: kept in order, one each
+    for p in (load_json(f) or {}).get("phrases", []):
+        old.setdefault(p["src"], []).append(str(p.get("text") or ""))
     ps = phrases_of(cap)
     kept, todo = 0, []
     for p in ps:
-        p["text"] = old.get(p["src"], "")
+        p["text"] = old[p["src"]].pop(0) if old.get(p["src"]) else ""
         kept += bool(p["text"])
         if not p["text"]:
             todo.append(p)
@@ -185,7 +192,8 @@ def cmd_apply(a):
     words = [w for p in ps for w in timed_words(p)]
     out = e / f"captions-{a.lang}.json"
     save_json(out, {"duration": cap.get("duration"), "segments": cap.get("segments", []), "words": words,
-                    "language": a.lang, "captions": fingerprint(cap)})
+                    "language": a.lang, "captions": fingerprint(cap),
+                    "translation": translation_id(load_json(subs_file(e, a.lang)))})
     print(f"{out}: {len(ps)} phrase(s), {len(words)} word(s)" + (f"; {len(warns)} warning(s)" if warns else "")
           + f". For the render: reel.json \"subtitles_lang\": \"{a.lang}\", then visual_plan.py export")
 

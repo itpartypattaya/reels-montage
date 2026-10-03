@@ -1630,6 +1630,9 @@ def subtitles_in(e, lang):
     if doc.get("captions") != subs.fingerprint(cap):
         sys.exit(f"subtitles_lang={lang}: the rough cut changed after the translation: subs.py phrases {e} --lang {lang} "
                  f"(unchanged phrases keep their translation), translate the emptied ones, subs.py apply")
+    if doc.get("translation") != subs.translation_id(load_json(subs.subs_file(e, lang))):
+        sys.exit(f"subtitles_lang={lang}: the translation in subs/{lang}.json changed after {f.name} was made (or the "
+                 f"last apply refused it): subs.py apply {e} --lang {lang}")
     print(f"subtitles: {lang} ({f.name})")
     return doc
 
