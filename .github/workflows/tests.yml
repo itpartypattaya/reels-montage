@@ -36,7 +36,7 @@ jobs:
         if: runner.os == 'Windows'
         run: choco install ffmpeg -y --no-progress
       - name: Install Python packages
-        run: python -m pip install pytest Pillow
+        run: python -m pip install pytest Pillow numpy
       - name: Run the script tests
         run: python -m pytest tests/scripts -q
 

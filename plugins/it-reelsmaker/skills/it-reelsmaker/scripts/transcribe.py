@@ -25,7 +25,7 @@ Needs faster-whisper (`pip install faster-whisper`). The model is not downloaded
 computer yet, the script prints the one command that downloads it. Defaults: medium, int8, CPU (~2.5 min per 96 s of
 audio on a laptop); small is faster and less accurate; large does not fit a laptop with 8 GB.
 """
-import argparse, json, os, sys, uuid
+import argparse, json, os, sys, uuid, wave
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -71,9 +71,20 @@ def load_model(name, compute):
                  f"then run this command again.")
 
 
+def read_wav(wav):
+    """The 16 kHz mono 16-bit WAV that ffmpeg made -> float32 samples. faster-whisper gets samples, not a file, so it
+    never decodes audio itself: its PyAV decoder breaks with some PyAV versions (faster-whisper 1.2.1 + PyAV 19)."""
+    import numpy as np  # installed with faster-whisper
+    with wave.open(str(wav), "rb") as w:
+        if (w.getframerate(), w.getnchannels(), w.getsampwidth()) != (16000, 1, 2):
+            sys.exit(f"{wav}: expected 16 kHz mono 16-bit audio")
+        data = w.readframes(w.getnframes())
+    return np.frombuffer(data, dtype="<i2").astype(np.float32) / 32768.0
+
+
 def words_of(model, wav, language, snip=False, offset=0.0):
     """faster-whisper -> (language, text, words) with times shifted by offset."""
-    segments, info = model.transcribe(str(wav), language=language, word_timestamps=True, beam_size=5,
+    segments, info = model.transcribe(read_wav(wav), language=language, word_timestamps=True, beam_size=5,
                                       condition_on_previous_text=not snip, initial_prompt=SNIP_PROMPT if snip else None)
     words, texts, last = [], [], 0.0
     for seg in segments:

@@ -2,6 +2,13 @@
 
 What changed in IT Reelsmaker, written for the people who use it. The newest version is on top. The skill shows a short “What's new” note from this file once, on the first edit after an update.
 
+## 1.4.3
+
+- **Transcription no longer breaks on some installs.** `transcribe.py` reads the audio itself and hands it to
+  faster-whisper, so a faster-whisper and PyAV version mismatch (for example faster-whisper 1.2.1 with PyAV 19) can't
+  stop it.
+- Step 8 names `brand.py export` before `visual_plan.py export`.
+
 ## 1.4.2
 
 - A starter pack of 260 CC0 sound effects (Kenney, OpenGameArt) in the repository's releases, with how to add it to
