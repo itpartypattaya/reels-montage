@@ -2,6 +2,12 @@
 
 What changed in IT Reelsmaker Online. The newest version is on top.
 
+## 1.4.0
+
+- **Subtitle translation through an API**: Claude, OpenAI or Gemini translate the video's phrases in the brand's
+  voice, within the time each phrase is on screen, and the core checks the result (needs the core 1.5.0). Only the
+  subtitle text is sent. By default Claude still translates in the session, for free.
+
 ## 1.3.0
 
 - **A more accurate transcript.** `addon.py transcribe` keeps the word times of the local transcript (they match the
