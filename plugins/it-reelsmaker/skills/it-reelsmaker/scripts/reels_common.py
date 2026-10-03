@@ -284,6 +284,11 @@ def online():
     if _ONLINE is None:
         _ONLINE = False
         d = os.environ.get("REELS_ONLINE_SCRIPTS") or project_settings().get("online_scripts")
+        if d and str(d).startswith("${"):  # an unexpanded plugin setting counts as not set
+            d = None
+        if d:  # ~ is the home folder; a relative path is relative to the project folder
+            d = Path(str(d)).expanduser()
+            d = str(d if d.is_absolute() else project_root() / d)
         if d and not Path(d, "reels_online.py").is_file():
             warn(f"the online add-on is not found in {d} (it was updated or removed); to use it again, run its "
                  f"link command in this project: python <add-on scripts>/reels_online.py link")

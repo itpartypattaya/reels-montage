@@ -75,3 +75,27 @@ def test_core_without_add_on_turns_online_off_with_a_reason(project, tmp_path):
     r = run_script("reelcfg.py", "show", "edit/4821", cwd=project, env=env(tmp_path))
     line = next(l for l in r.stdout.splitlines() if "online footage" in l)
     assert " no " in line and "the online add-on is not installed" in line
+
+
+def test_online_scripts_with_home_and_relative_paths(project, tmp_path, monkeypatch):
+    import sys
+    from pathlib import Path
+    import reels_common
+    home = tmp_path / "home"
+    (home / "addon").mkdir(parents=True)
+    (home / "addon" / "reels_online.py").write_text("DEFAULTS = {}\n", encoding="utf-8")
+    (project / "local-addon").mkdir()
+    (project / "local-addon" / "reels_online.py").write_text("DEFAULTS = {}\n", encoding="utf-8")
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("USERPROFILE", str(home))
+    for value, where in (("~/addon", home / "addon"), ("local-addon", project / "local-addon")):
+        write_json(project / "it-reelsmaker.json", {"online_scripts": value})
+        monkeypatch.setattr(reels_common, "_ONLINE", None)
+        sys.modules.pop("reels_online", None)  # a fake add-on: never left behind for the other tests
+        mod = reels_common.online()
+        assert mod is not None and Path(mod.__file__).parent.samefile(where)
+        sys.path.remove(str(where if value.startswith("~") else project / value))
+    write_json(project / "it-reelsmaker.json", {"online_scripts": "${user_config.online_scripts}"})
+    monkeypatch.setattr(reels_common, "_ONLINE", None)
+    assert reels_common.online() is None
+    sys.modules.pop("reels_online", None)

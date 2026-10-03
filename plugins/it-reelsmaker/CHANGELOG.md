@@ -2,6 +2,11 @@
 
 What changed in IT Reelsmaker, written for the people who use it. The newest version is on top. The skill shows a short “What's new” note from this file once, on the first edit after an update.
 
+## 1.4.1
+
+- The online add-on's folder in `it-reelsmaker.json` (`online_scripts`) may start with `~` or be relative to the
+  project folder; before, only a full path worked (the add-on's `link` command always wrote one).
+
 ## 1.4.0
 
 - **The Remotion kit ships with the plugin**: `ReelKit` (rough cut, word-timed subtitles, brand, B-roll, memes,
