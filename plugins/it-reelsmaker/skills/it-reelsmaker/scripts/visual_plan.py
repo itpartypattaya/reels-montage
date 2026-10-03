@@ -1594,6 +1594,21 @@ def src_to_out(src, cap, seg=None):
     return g["out_start"] + max(0.0, src - g["src_start"]) * g["out_dur"] / (g["src_end"] - g["src_start"])
 
 
+def subtitles_in(e, lang):
+    """captions-<lang>.json (subs.py apply) for the subtitles, checked against the current rough cut."""
+    import subs
+    f = e / f"captions-{lang}.json"
+    doc = load_json(f)
+    cap = load_json(e / "captions.json") or {}
+    if not doc:
+        sys.exit(f"subtitles_lang={lang}: no {f}; translate first: subs.py phrases {e} --lang {lang}, then subs.py apply")
+    if doc.get("captions") != subs.fingerprint(cap):
+        sys.exit(f"subtitles_lang={lang}: the rough cut changed after the translation: subs.py phrases {e} --lang {lang} "
+                 f"(unchanged phrases keep their translation), translate the emptied ones, subs.py apply")
+    print(f"subtitles: {lang} ({f.name})")
+    return doc
+
+
 def camera_shots(e, plan, cap):
     """edit/<id>/camera.json -> ReelKit props.camera: shots in seconds of the finished video, sorted.
     {"shots": [{"src": 12.4 | "at": "word:resume#1" | 3.2, "z": 1.1, "cx": 540, "cy": 1000, "drift": 0.03, "whip": false}]}
@@ -1697,8 +1712,11 @@ def cmd_export(a):
             vid.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(src_v, vid)
             print(f"video: {src_v} -> public/{name}/video.mp4" + (" (updated)" if dt else ""))
+        lang = plan["settings"].get("subtitles_lang")
+        subs_cap = None if only or not lang else subtitles_in(e, lang)
         props = {"video": "" if only else f"{name}/video.mp4",
-                 "captions": {"duration": plan["duration"], "segments": [], "words": []} if only else load_json(e / "captions.json"),
+                 "captions": {"duration": plan["duration"], "segments": [], "words": []} if only else
+                 subs_cap or load_json(e / "captions.json"),
                  "brand": brand, "inserts": out,
                  "subtitles": a.subtitles or plan["settings"].get("subtitles") or brand.get("subtitles_default") or "accent",
                  "style": plan["settings"].get("style") or brand.get("style_default"),  # the current style from reel.json

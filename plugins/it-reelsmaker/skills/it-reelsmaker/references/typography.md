@@ -71,4 +71,6 @@ For the hook, cards, designed scenes and the end card: everything that doesn't r
 - check brand terms separately. Russian example: on a sped-up version the recognizer heard “sledov” (“traces”) instead of “lidov” (“leads”);
 - restore letters and diacritics that the recognizer drops, everywhere (Russian example: the letter yo in vsyo, yeshchyo, poymyote, which the recognizer writes as ye).
 
+**Subtitles in another language** (`subs.py`): the translation goes phrase for phrase, so each translated phrase keeps the time of the spoken one and the kit's modes work unchanged; inside the phrase the words are spread by length, so a translated word does not land exactly on its spoken one (the languages differ; “Bar” and “Accent” still read naturally, “Typewriter” best). Reading speed: up to 17 characters per second is comfortable, above 25 nobody reads it; a fast speaker is fast in the original too (a real video ran at 20–33 characters per second in its own language), so the check compares the translation with the original subtitle and asks to shorten only what reads harder than it. Check that the font covers the new script (Cyrillic, Greek, Vietnamese diacritics; Thai, Arabic, Hindi and CJK need another font family).
+
 **Color emoji** (especially flags) are not set as characters: Chrome on Windows doesn't draw flags. Use SVG or PNG.
