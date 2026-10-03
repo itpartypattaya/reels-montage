@@ -86,3 +86,47 @@ def test_bad_language_code(project):
     plan_project(project)
     r = run_script("subs.py", "phrases", "edit/4821", "--lang", "../x", cwd=project, check=False)
     assert r.returncode != 0 and "language code" in r.stderr
+
+
+def test_a_recut_of_timing_only_takes_the_new_times_and_length(project):
+    # review: the fingerprint saw only the words, so a new length or segment timeline kept an old captions-<lang>.json
+    e = plan_project(project, {"subtitles_lang": "de"})
+    run_script("subs.py", "phrases", "edit/4821", "--lang", "de", cwd=project)
+    translate(e)
+    run_script("subs.py", "apply", "edit/4821", "--lang", "de", cwd=project)
+    import visual_plan
+    cap = captions()
+    cap["duration"] = 31.5  # only the length changed
+    write_json(e / "captions.json", cap)
+    with pytest.raises(SystemExit, match="rough cut changed"):
+        visual_plan.subtitles_in(e, "de")
+    for w in cap["words"]:  # and every word 0.5 s later, the same words
+        w["start"], w["end"] = round(w["start"] + 0.5, 3), round(w["end"] + 0.5, 3)
+    write_json(e / "captions.json", cap)
+    run_script("subs.py", "apply", "edit/4821", "--lang", "de", cwd=project)  # no new translation needed
+    de = json.loads((e / "captions-de.json").read_text(encoding="utf-8"))
+    assert de["duration"] == 31.5 and de["words"][0]["start"] == 0.7  # the current times, not the old phrase file's
+    assert visual_plan.subtitles_in(e, "de")["duration"] == 31.5
+
+
+def test_scripts_without_spaces_need_word_marks(project):
+    e = plan_project(project)
+    run_script("subs.py", "phrases", "edit/4821", "--lang", "zh", cwd=project)
+    zh = {src: "好" for src in EN_TO_DE}
+    zh["So today we talk about hiring"] = "我们今天来聊聊招聘这件事情吧"
+    f = e / "subs" / "zh.json"
+    doc = json.loads(f.read_text(encoding="utf-8"))
+    for p in doc["phrases"]:
+        p["text"] = zh[p["src"]]
+    f.write_text(json.dumps(doc, ensure_ascii=False), encoding="utf-8")
+    r = run_script("subs.py", "apply", "edit/4821", "--lang", "zh", cwd=project, check=False)
+    assert r.returncode != 0 and "mark the word boundaries with |" in r.stdout
+    doc["phrases"][0]["text"] = "我们|今天|来|聊聊|招聘|这件|事情|吧"
+    f.write_text(json.dumps(doc, ensure_ascii=False), encoding="utf-8")
+    run_script("subs.py", "apply", "edit/4821", "--lang", "zh", cwd=project)
+    words = json.loads((e / "captions-zh.json").read_text(encoding="utf-8"))["words"]
+    first = [w for w in words if w["seg"] == 0]
+    assert [w["text"] for w in first][:3] == ["我们", "今天", "来"] and len(first) == 8
+    assert "glue" not in first[0] and all(w.get("glue") for w in first[1:])  # shown without spaces between them
+    run_script("subs.py", "srt", "edit/4821", "--lang", "zh", cwd=project)
+    assert "我们今天来聊聊招聘这件事情吧" in (e / "subtitles.zh.srt").read_text(encoding="utf-8")

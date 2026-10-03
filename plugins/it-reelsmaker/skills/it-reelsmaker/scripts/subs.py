@@ -16,7 +16,12 @@ phrases — the speech of the finished rough cut (captions.json) split into phra
 apply   — checks the translation (every phrase translated, the source still matches captions.json, reading speed) and
           writes captions-<lang>.json in the captions.json format: the phrase's time is shared among its translated
           words by their length, so every subtitle mode of the kit shows the translation on the same rhythm (a
-          translated word does not land exactly on its spoken word: the languages differ). Reading speed, counted
+          translated word does not land exactly on its spoken word: the languages differ). The phrase times always
+          come from the current captions.json, so a re-cut that only shifted the words needs just apply again.
+          Languages written without spaces (Chinese, Japanese, Thai, Lao, Khmer, Burmese): mark the word boundaries
+          with "|" in the translation ("我们|今天|聊聊"); the words are then shown without spaces between them, one
+          by one with the speech. Without the marks such a phrase is refused: it would come up all at once.
+          Reading speed, counted
           over the time the phrase is on screen: a warning when the translation is over 17 characters per second and
           harder to read than the original subtitle; an error over 25 and 15 % over the original (fast speech is fast
           in any language, so only a translation slower to read than the original counts).
@@ -33,6 +38,10 @@ from reels_common import edit_dir, load_json, save_json, utf8_stdio, warn
 SENTENCE_END = re.compile(r"[.!?…]['\")»”]*$")
 MAX_WORDS, PAUSE = 16, 0.5
 CPS_WARN, CPS_MAX = 17.0, 25.0
+# scripts written without spaces between words: CJK ideographs, kana, Thai, Lao, Khmer, Myanmar
+NO_SPACE = re.compile("[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff\u0e00-\u0e7f\u0e80-\u0eff"
+                      "\u1780-\u17ff\u1000-\u109f]")
+UNMARKED = 12  # characters of such a script in a row with no "|" or space: an unmarked phrase
 LANG = re.compile(r"^[a-z]{2,3}(-[A-Za-z0-9]{2,8})?$")
 
 
@@ -61,7 +70,11 @@ def phrases_of(cap):
 
 
 def fingerprint(cap):
-    return hashlib.sha1(repr([(w.get("text"), w.get("start"), w.get("end")) for w in cap.get("words", [])]).encode()).hexdigest()[:12]
+    """The rough cut a translation belongs to: the words with their times, the length and the segments (the kit takes
+    the render length from the duration)."""
+    segs = [(s.get("out_start"), s.get("out_dur"), s.get("src_start"), s.get("src_end")) for s in cap.get("segments", [])]
+    words = [(w.get("text"), w.get("start"), w.get("end")) for w in cap.get("words", [])]
+    return hashlib.sha1(repr((cap.get("duration"), segs, words)).encode()).hexdigest()[:12]
 
 
 def subs_file(e, lang):
@@ -98,22 +111,27 @@ def cmd_phrases(a):
 
 
 def check(e, f, cap):
-    """(phrases, errors, warnings) of a translation file against the current captions.json."""
+    """(phrases, errors, warnings): the phrases of the CURRENT captions.json (their times) with the translations of the
+    file, matched by their words in order; a phrase whose words changed in a re-cut has no translation."""
     doc = load_json(f)
     if not doc:
         sys.exit(f"no {f}: run subs.py phrases first")
-    ps, errs, warns = doc.get("phrases", []), [], []
-    cur = {p["src"]: p for p in phrases_of(cap)}
-    if doc.get("captions") != fingerprint(cap):
-        stale = [p["id"] for p in ps if p["src"] not in cur]
-        if stale or len(ps) != len(cur):
-            errs.append(f"the rough cut changed since the phrases were made ({', '.join(stale[:8]) or 'other phrases'}):"
-                        f" run subs.py phrases again (unchanged phrases keep their translation)")
+    errs, warns = [], []
+    pool = {}
+    for p in doc.get("phrases", []):
+        pool.setdefault(p["src"], []).append(str(p.get("text") or "").strip())
+    ps = phrases_of(cap)
+    for p in ps:
+        p["text"] = pool[p["src"]].pop(0) if pool.get(p["src"]) else ""
     for k, p in enumerate(ps):
-        t = str(p.get("text") or "").strip()
+        t = p["text"].replace("|", "")
         if not t:
-            errs.append(f"{p['id']} is not translated: {p['src']}")
+            errs.append(f"{p['id']} is not translated: {p['src']}" + ("" if doc.get("captions") == fingerprint(cap) else
+                        f" (the rough cut changed: subs.py phrases {e} --lang {doc.get('lang')} lists what to translate)"))
             continue
+        if re.search(f"(?:{NO_SPACE.pattern}){{{UNMARKED},}}", t) and "|" not in p["text"]:
+            errs.append(f"{p['id']}: a script written without spaces: mark the word boundaries with | so the words "
+                        f"follow the speech (otherwise the whole phrase comes up at once): '{t}'")
         # on screen from its first word until the next phrase (at most 0.4 s after its last word), as the kit shows it
         nxt = ps[k + 1]["start"] if k + 1 < len(ps) else p["end"] + 0.4
         dur = max(0.3, min(nxt, p["end"] + 0.4) - p["start"])
@@ -128,15 +146,29 @@ def check(e, f, cap):
     return ps, errs, warns
 
 
+def units(text):
+    """[(word, glue)]: the words of a translation; glue = no space before it ("|" marks a boundary inside a run of a
+    script written without spaces)."""
+    out = []
+    for chunk in str(text).split():
+        for k, w in enumerate(x for x in chunk.split("|") if x):
+            out.append((w, k > 0))
+    return out
+
+
+def plain(text):
+    return " ".join("".join(chunk.split("|")) for chunk in str(text).split())
+
+
 def timed_words(p):
     """The translated phrase's words over the phrase's time, by length (+1 for the space)."""
-    ws = str(p["text"]).split()
-    tot = sum(len(w) + 1 for w in ws)
+    ws = units(p["text"])
+    tot = sum(len(w) + 1 for w, _ in ws)
     t, out = p["start"], []
-    for w in ws:
+    for w, glue in ws:
         d = (p["end"] - p["start"]) * (len(w) + 1) / tot
         out.append({"text": w, "start": round(t, 3), "end": round(t + d, 3), "type": "word",
-                    **({"seg": p["seg"]} if p.get("seg") is not None else {})})
+                    **({"glue": True} if glue else {}), **({"seg": p["seg"]} if p.get("seg") is not None else {})})
         t += d
     return out
 
@@ -164,7 +196,7 @@ def srt_time(t):
 
 
 def two_lines(t, width=42):
-    if len(t) <= width:
+    if len(t) <= width or " " not in t:
         return [t]
     ws, best = t.split(), None
     for k in range(1, len(ws)):  # the most even split into two lines, rather after a comma or a colon
@@ -183,7 +215,7 @@ def cmd_srt(a):
         if errs:
             print("\n".join(f"  error: {x}" for x in errs))
             sys.exit(f"{len(errs)} problem(s): fix the translation first (subs.py apply shows the same)")
-        texts = [p["text"].strip() for p in ps]
+        texts = [plain(p["text"]) for p in ps]
     else:
         ps = phrases_of(cap)
         texts = [p["src"] for p in ps]

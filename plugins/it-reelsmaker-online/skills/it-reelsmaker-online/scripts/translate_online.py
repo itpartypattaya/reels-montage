@@ -54,6 +54,8 @@ def brief(lang, src_lang, brand, ps):
         "Keep the speaker's form of address: a polite or plural 'you' in the source stays polite in the translation "
         "(German Sie, French vous), an informal one stays informal; keep the meaning of every phrase.",
         "Spoken, natural language for a short vertical video, not a literal translation.",
+        "In a language written without spaces (Chinese, Japanese, Thai, Lao, Khmer, Burmese) put | between the "
+        "words, so the subtitles can follow the speech word by word: 我们|今天|聊聊|招聘.",
     ]
     if voice:
         rules.append(f"Brand voice: {voice}.")

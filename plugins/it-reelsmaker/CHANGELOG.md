@@ -9,6 +9,9 @@ What changed in IT Reelsmaker, written for the people who use it. The newest ver
   translation on the same rhythm as the speech; one setting (`subtitles_lang`) burns it into the video. A re-cut
   keeps the translations of the phrases that did not change.
 - **Subtitle files for the platforms**: `subs.py srt` makes a `.srt` of the original or the translation.
+- Languages written without spaces (Chinese, Japanese, Thai…) are shown word by word too: the translation marks the
+  word boundaries. Designed scenes keep landing on the spoken words when the subtitles are translated.
+- The kit is 1.5.0 (translated subtitles, words without spaces): `kit.py update` in your Remotion project.
 
 ## 1.4.7
 

@@ -1714,9 +1714,11 @@ def cmd_export(a):
             print(f"video: {src_v} -> public/{name}/video.mp4" + (" (updated)" if dt else ""))
         lang = plan["settings"].get("subtitles_lang")
         subs_cap = None if only or not lang else subtitles_in(e, lang)
+        # the speech words stay in captions (scenes land on them, the render length is its duration); a translation
+        # goes only to the subtitles
         props = {"video": "" if only else f"{name}/video.mp4",
-                 "captions": {"duration": plan["duration"], "segments": [], "words": []} if only else
-                 subs_cap or load_json(e / "captions.json"),
+                 "captions": {"duration": plan["duration"], "segments": [], "words": []} if only else load_json(e / "captions.json"),
+                 **({"subtitleCaptions": subs_cap} if subs_cap else {}),
                  "brand": brand, "inserts": out,
                  "subtitles": a.subtitles or plan["settings"].get("subtitles") or brand.get("subtitles_default") or "accent",
                  "style": plan["settings"].get("style") or brand.get("style_default"),  # the current style from reel.json
