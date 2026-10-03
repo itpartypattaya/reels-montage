@@ -165,3 +165,23 @@ def test_plan_follows_a_rebuilt_rough_cut(project):
     assert "the rough cut changed" in r.stdout and "moved with their words: c01" in r.stdout
     plan = load_plan(e)
     assert plan["duration"] == 30.3 and abs(plan["inserts"][0]["start"] - 4.1) < 0.001  # "check" 3.8 + 0.3
+
+
+def test_a_recut_of_the_same_length_is_followed_and_offsets_kept(project):
+    # review of #8: only a new length triggered the refresh, and a scene added with --offset lost it
+    e = plan_project(project, {"use_scenes": True})
+    run_script("visual_plan.py", "init", "edit/4821", cwd=project)
+    run_script("visual_plan.py", "add", "edit/4821", "--kind", "scene", "--type", "quote", "--mode", "split",
+               "--at", "word:speed#1", "--offset", "-0.2", "--dur", "2.0", "--lines", "Remember this: speed wins",
+               "--source", "speech", "--what", "the key line", "--why", "the main idea", cwd=project)
+    sc = next(i for i in load_plan(e)["inserts"] if i["kind"] == "scene")
+    assert sc["offset"] == -0.2
+    start0 = sc["start"]
+    cap = captions()
+    for w in cap["words"]:  # the same length, the words of the 5th line 0.5 s later
+        if w["seg"] == 4:
+            w["start"], w["end"] = round(w["start"] + 0.5, 3), round(w["end"] + 0.5, 3)
+    write_json(e / "captions.json", cap)
+    run_script("visual_plan.py", "validate", "edit/4821", cwd=project, check=False)
+    sc = next(i for i in load_plan(e)["inserts"] if i["kind"] == "scene")
+    assert abs(sc["start"] - (start0 + 0.5)) < 0.001  # moved with its word, the -0.2 offset kept

@@ -46,7 +46,7 @@ overlay/split/window scenes to keep_clear (faces.py audit sees them).
 The "scenes only" format (init --scenes-only --duration N): no speech spans, --at in seconds only, every scene is full,
 scene coverage >= 95 %; export --props: video "", empty captions with the duration, subtitles none.
 """
-import argparse, contextlib, datetime, filecmp, json, math, re, shutil, sys
+import argparse, contextlib, datetime, filecmp, hashlib, json, math, re, shutil, sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -276,6 +276,14 @@ def phrases(cap, lim):
     return merged
 
 
+def cut_id(cap):
+    """Which rough cut: the length, the segment timeline and the word times (a re-cut of the same length counts)."""
+    segs = [(g.get("source"), g.get("src_start"), g.get("src_end"), g.get("out_start"), g.get("out_dur"))
+            for g in cap.get("segments", [])]
+    words = [(w.get("text"), w.get("start"), w.get("end")) for w in cap.get("words", [])]
+    return hashlib.sha1(repr((cap.get("duration"), segs, words)).encode()).hexdigest()[:12]
+
+
 def build_plan(e, cap, s, prov, doc):
     """A plan from captions.json: spans by phrases, no inserts. cap=None: a minimal plan (keep_clear only), when cards
     are registered before the rough cut with subtitles, or without inserts."""
@@ -314,7 +322,8 @@ def build_plan(e, cap, s, prov, doc):
         plan_segs.append({"id": f"s{n + 1:02d}", "start": start, "end": end, "text": text, "cut_segs": cuts,
                           "main": "main shot", "camera": "", "graphics": "", "hints": hints, "notes": ""})
     plan = {"schema": 1, "id": e.name, "created": datetime.datetime.now().isoformat(timespec="minutes"),
-            "duration": dur, "segments": plan_segs, "inserts": [], "keep_clear": []}
+            "duration": dur, "segments": plan_segs, "inserts": [], "keep_clear": [],
+            **({"captions_id": cut_id(cap)} if cap.get("words") is not None else {})}
     snapshot(plan, s, prov, eff, why, doc)
     return plan
 
@@ -719,7 +728,7 @@ def add_scene(a):
         n = 1 + max([int(i["id"][1:]) for i in plan["inserts"] if i["id"].startswith("c") and i["id"][1:].isdigit()] or [0])
         seg = next((g for g in plan["segments"] if g["start"] <= start < g["end"]), None)
         sc = {"id": f"c{n:02d}", "kind": "scene", "type": a.type, "mode": mode, "variant": a.variant,
-              "segment": seg["id"] if seg else None, "start": start, "dur": a.dur, "at": a.at, "tone": a.tone,
+              "segment": seg["id"] if seg else None, "start": start, "dur": a.dur, "at": a.at, **({"offset": a.offset} if a.offset else {}), "tone": a.tone,
               "text": {"lines": a.lines or [], "accent": a.accent, "label": a.label},
               "items": items, "value": value, "media": media, "interaction": inter,
               "box": [int(float(x)) for x in a.box.split(",")] if a.box else None, "side": a.side,
@@ -1129,17 +1138,18 @@ def overlap(a, b):
 
 
 def follow_rough_cut(e, plan, cap, s, prov, doc, quiet=False):
-    """The rough cut was rebuilt (captions.json has another length): the spans and the length follow it, and inserts,
+    """The rough cut was rebuilt (another length, segment timeline or word times): the spans and the length follow it, and inserts,
     scene items and interactions placed by a word or a span move with their words. Ones placed by seconds stay where
     they were: the report names them, check them."""
     old = float(plan["duration"])
     fresh = build_plan(e, cap, s, prov, doc)
     plan["duration"], plan["segments"] = fresh["duration"], fresh["segments"]
+    plan["captions_id"] = cut_id(cap)
     moved, by_seconds = [], []
     for i in plan.get("inserts", []):
         at = str(i.get("at") or "")
         if at.startswith("word:") or re.fullmatch(r"s\d+", at):
-            t0 = resolve_at(at, plan, cap)
+            t0 = round(resolve_at(at, plan, cap) + float(i.get("offset") or 0), 3)  # --offset is kept
             if abs(t0 - i["start"]) > 0.001:
                 moved.append(i["id"])
                 i["start"] = t0
@@ -1165,9 +1175,13 @@ def cmd_validate(a, quiet=False):
         if not plan.get("duration"):
             plan["duration"] = plan_duration(e, plan)
         cap0 = load_json(e / "captions.json") or {}
-        if (plan.get("format") != "scenes-only" and cap0.get("duration") and plan.get("duration")
-                and abs(float(cap0["duration"]) - float(plan["duration"])) > 0.02):
-            follow_rough_cut(e, plan, cap0, s, prov, doc, quiet)
+        if plan.get("format") != "scenes-only" and cap0.get("duration") and plan.get("duration"):
+            if (abs(float(cap0["duration"]) - float(plan["duration"])) > 0.02
+                    or plan.get("captions_id", cut_id(cap0)) != cut_id(cap0)):  # a re-cut of the same length too
+                follow_rough_cut(e, plan, cap0, s, prov, doc, quiet)
+            elif "captions_id" not in plan:  # a plan from before captions_id: it follows the cut it was checked on
+                plan["captions_id"] = cut_id(cap0)
+                save_json(plan_path(e), plan)
         if snapshot(plan, s, prov, eff, why, doc):
             save_json(plan_path(e), plan)
             if not quiet:
@@ -1576,9 +1590,19 @@ def scene_export(i, e, pub, name, plan, cap, s):
     return clean(sp)
 
 
-def src_to_out(src, cap, seg=None):
-    """A source second -> the second of the finished video (captions.json segments; references/camera.md, at())."""
-    pool = [g for g in cap.get("segments", []) if seg is None or g["i"] == seg]
+def same_source(a, b):
+    """A shot's "source" names a segment's source file: the same path, file name or stem."""
+    a, b = str(a or ""), str(b or "")
+    return bool(a and b) and (a == b or Path(a).name == Path(b).name or Path(a).stem == Path(b).stem)
+
+
+def src_to_out(src, cap, seg=None, source=None):
+    """A source second -> the second of the finished video (captions.json segments; references/camera.md, at()).
+    source: the shot's file, for a cut from several cameras whose source seconds overlap."""
+    pool = [g for g in cap.get("segments", []) if (seg is None or g["i"] == seg)
+            and (source is None or same_source(source, g.get("source")))]
+    if source is not None and not pool:
+        sys.exit(f"camera.json: no segment of the rough cut comes from {source}")
     hit = [g for g in pool if g["src_start"] - 0.001 <= src <= g["src_end"] + 0.001]
     if not hit:
         # an edge moved by a few frames (a recut): a shot set on a segment start lands just before it; it follows
@@ -1589,7 +1613,8 @@ def src_to_out(src, cap, seg=None):
         print(f"camera.json: source second {src} is cut out; the shot starts with the next segment ({g['src_start']})")
         return g["out_start"]
     if len(hit) > 1:
-        sys.exit(f"camera.json: source second {src} is in several segments ({[g['i'] for g in hit]}): add \"seg\"")
+        sys.exit(f"camera.json: source second {src} is in several segments ({[g['i'] for g in hit]}): add \"source\" "
+                 f"(the file) or \"seg\"")
     g = hit[0]
     return g["out_start"] + max(0.0, src - g["src_start"]) * g["out_dur"] / (g["src_end"] - g["src_start"])
 
@@ -1612,13 +1637,15 @@ def subtitles_in(e, lang):
 def camera_shots(e, plan, cap):
     """edit/<id>/camera.json -> ReelKit props.camera: shots in seconds of the finished video, sorted.
     {"shots": [{"src": 12.4 | "at": "word:resume#1" | 3.2, "z": 1.1, "cx": 540, "cy": 1000, "drift": 0.03, "whip": false}]}
-    src: a source second (stable when the speed changes); at: a second or a word of the finished video."""
+    src: a source second (stable when the speed changes), with "source": "cam-a.mov" on a cut from several
+    files; at: a second or a word of the finished video."""
     doc = load_json(e / "camera.json", None)
     if not doc:
         return []
     shots = []
     for k, sh in enumerate(doc.get("shots", [])):
-        t = src_to_out(float(sh["src"]), cap, sh.get("seg")) if "src" in sh else resolve_at(str(sh.get("at", 0)), plan, cap)
+        t = (src_to_out(float(sh["src"]), cap, sh.get("seg"), sh.get("source")) if "src" in sh
+             else resolve_at(str(sh.get("at", 0)), plan, cap))
         z = float(sh.get("z", 1.0))
         if z < 1:
             sys.exit(f"camera.json shot {k}: z {z} < 1 would show the frame edge")

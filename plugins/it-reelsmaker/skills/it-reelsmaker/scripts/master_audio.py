@@ -190,32 +190,46 @@ def music_start(a):
 
 
 def master_no_voice(a, tmp, D, why):
-    """A render without sound (the "scenes only" format without effects): loudnorm fails on silence (measured_I = −inf).
-    Without --music: skipped with a message, the file is copied as is; with --music: the music alone is mastered to
-    −14 LUFS."""
-    if not a.music:
+    """A render without sound (the "scenes only" format): loudnorm fails on silence (measured_I = −inf).
+    Without --music and --sfx: skipped with a message, the file is copied as is; with --music: the music is mastered
+    to −14 LUFS; scene sounds (--sfx) go onto the music, or onto silence, NO_VOICE_BELOW dB under its peak."""
+    if not a.music and not sfx_sounds(a):
         run(["ffmpeg", "-y", "-hide_banner", "-i", a.input, "-map", "0", "-c", "copy", "-movflags", "+faststart", a.output])
         print(f"{why}: no voice and no effects, mastering skipped, the file is copied as is (+faststart): {a.output}")
         print("the −14 LUFS check does not apply to a video without sound: add music in the app when publishing, or a "
               "track with a commercial license via --music; with scene sounds, mastering goes the usual way")
         return 0
-    start = music_start(a)
-    mcut, final = os.path.join(tmp, "music_cut.wav"), os.path.join(tmp, "final.wav")
-    # the track can end before the video: fade out at the end of the music itself, then silence up to D (apad);
-    # otherwise -shortest in the mix would cut the video at the end of the track
-    mlen = max(0.0, min(D, (dur(a.music, "a") or D) - start))
-    if mlen < D - 0.05:
-        print(f"⚠ the track from {start:.2f} s ends after {mlen:.1f} s, but the video is {D:.1f} s: silence at the end "
-              f"(take a longer track or start earlier: --music-start)")
-    fade = min(1.2, mlen)
-    run(["ffmpeg", "-y", "-hide_banner", "-ss", f"{start:.3f}", "-t", f"{D:.3f}", "-i", a.music, "-af",
-         f"afade=t=in:d=0.5,afade=t=out:st={max(0, mlen - fade):.3f}:d={fade:.3f},apad=whole_dur={D:.3f}",
-         "-ar", "48000", "-ac", "2", mcut])
-    loudnorm_2pass(mcut, final, "", TARGET)
-    print(f"{why}: no voice; the music from {start:.2f} s of the track is the only audio, at {TARGET:.0f} LUFS")
+    final = os.path.join(tmp, "final.wav")
+    if a.music:
+        start = music_start(a)
+        mcut = os.path.join(tmp, "music_cut.wav")
+        # the track can end before the video: fade out at the end of the music itself, then silence up to D (apad);
+        # otherwise -shortest in the mix would cut the video at the end of the track
+        mlen = max(0.0, min(D, (dur(a.music, "a") or D) - start))
+        if mlen < D - 0.05:
+            print(f"⚠ the track from {start:.2f} s ends after {mlen:.1f} s, but the video is {D:.1f} s: silence at the end "
+                  f"(take a longer track or start earlier: --music-start)")
+        fade = min(1.2, mlen)
+        run(["ffmpeg", "-y", "-hide_banner", "-ss", f"{start:.3f}", "-t", f"{D:.3f}", "-i", a.music, "-af",
+             f"afade=t=in:d=0.5,afade=t=out:st={max(0, mlen - fade):.3f}:d={fade:.3f},apad=whole_dur={D:.3f}",
+             "-ar", "48000", "-ac", "2", mcut])
+        loudnorm_2pass(mcut, final, "", TARGET)
+        print(f"{why}: no voice; the music from {start:.2f} s of the track, at {TARGET:.0f} LUFS")
+        ref = peak_db(final)
+    else:
+        run(["ffmpeg", "-y", "-hide_banner", "-f", "lavfi", "-i", "anullsrc=r=48000:cl=stereo", "-t", f"{D:.3f}",
+             "-c:a", "pcm_s16le", final])
+        print(f"{why}: no voice and no music; the scene sounds go onto silence")
+        ref = -1.0
+    if sfx_sounds(a):
+        final = mix_sfx(a, tmp, D, base=final, ref=ref, below=NO_VOICE_BELOW)
     run(["ffmpeg", "-y", "-hide_banner", "-i", a.input, "-i", final, "-map", "0:v:0", "-map", "1:a:0",
          "-c:v", "copy", "-c:a", "aac", "-b:a", "256k", "-ar", "48000", "-shortest", "-movflags", "+faststart",
          a.output])
+    if not a.music:  # a few accents over silence are not a −14 LUFS track
+        print(f"file: {a.output} (scene sounds only: the −14 LUFS check does not apply; add music in the app when "
+              f"publishing, or a licensed track via --music)")
+        return 0
     code = report(*acceptance(a.output, D))
     print("file:", a.output + ("" if not code else " — do not publish it; deal with the failure first"))
     return code
@@ -227,18 +241,30 @@ def peak_db(p):
     return float(m.group(1)) if m else None
 
 
-def mix_sfx(a, tmp, D):
-    """The render's audio with the scene sounds of --sfx mixed in (a WAV), or the input itself without --sfx."""
+NO_VOICE_BELOW = 6.0  # no voice: an accent sits this much under the music's peak (or under −1 dBFS over silence)
+
+
+def sfx_sounds(a):
+    """The sounds of --sfx (a list, empty without --sfx)."""
     if not a.sfx:
-        return a.input
+        return []
     doc = json.load(open(a.sfx, encoding="utf-8"))
-    sounds = doc.get("sounds", []) if isinstance(doc, dict) else doc
+    return (doc.get("sounds", []) if isinstance(doc, dict) else doc) or []
+
+
+def mix_sfx(a, tmp, D, base=None, ref=None, below=None):
+    """The audio (the render's, or base) with the scene sounds of --sfx mixed in (a WAV), or it unchanged without
+    --sfx. Each sound's peak: `below` dB under the reference peak (the voice's; ref when given)."""
+    src = base or a.input
+    sounds = sfx_sounds(a)
     if not sounds:
-        return a.input
-    voice = peak_db(a.input)
-    below = float((doc.get("below_voice_db") if isinstance(doc, dict) else None) or 15)
+        return src
+    doc = json.load(open(a.sfx, encoding="utf-8"))
+    voice = ref if ref is not None else peak_db(src)
+    if below is None:
+        below = float((doc.get("below_voice_db") if isinstance(doc, dict) else None) or 15)
     base = [Path.cwd(), Path(a.sfx).resolve().parent]
-    ins, chains = ["-i", a.input], []
+    ins, chains = ["-i", src], []
     for k, s in enumerate(sounds, 1):
         f = next((b / s["file"] for b in base if (b / s["file"]).is_file()), Path(s["file"]))
         if not f.is_file():
@@ -250,14 +276,16 @@ def mix_sfx(a, tmp, D):
         if gain is None:
             gain = (voice - below) - (peak_db(str(f)) or 0)
         ins += ["-i", str(f)]
-        chains.append(f"[{k}:a]aresample=48000,aformat=channel_layouts=stereo,"
-                      f"adelay=delays={max(0, round((at - start) * 1000))}:all=1,volume={float(gain):.1f}dB[s{k}]")
+        # the file's sound start lands on `at`: delayed when it comes later, the file's head trimmed when earlier
+        place = (f"adelay=delays={round((at - start) * 1000)}:all=1" if at >= start else
+                 f"atrim=start={start - at:.3f},asetpts=PTS-STARTPTS")
+        chains.append(f"[{k}:a]aresample=48000,aformat=channel_layouts=stereo,{place},volume={float(gain):.1f}dB[s{k}]")
         print(f"sound: {f.name} at {at:.2f} s ({s.get('what') or ''}), gain {float(gain):+.1f} dB")
     out = os.path.join(tmp, "with_sfx.wav")
     fc = (";".join(chains) + f";[0:a]aresample=48000,aformat=channel_layouts=stereo[v];[v]" + "".join(f"[s{k}]" for k in range(1, len(sounds) + 1))
           + f"amix=inputs={len(sounds) + 1}:normalize=0:duration=first[a]")
     run(["ffmpeg", "-y", "-hide_banner", *ins, "-filter_complex", fc, "-map", "[a]", "-c:a", "pcm_s16le", out])
-    print(f"scene sounds: {len(sounds)}, {below:.0f} dB under the voice peak ({voice:.1f} dBFS)")
+    print(f"scene sounds: {len(sounds)}, {below:.0f} dB under the reference peak ({voice:.1f} dBFS)")
     return out
 
 

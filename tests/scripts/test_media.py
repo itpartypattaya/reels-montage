@@ -164,3 +164,35 @@ def test_master_audio_mixes_scene_sounds(project):
     r = run_script("master_audio.py", "render.mp4", "-o", "master.mp4", "--sfx", "sfx.json", cwd=project, check=False)
     assert r.returncode == 0, r.stdout + r.stderr
     assert "scene sounds: 1" in r.stdout and "hit.wav at 2.00 s" in r.stdout
+
+
+def onset_s(path, thr=-30.0):
+    """The first 10 ms window above thr dBFS in a file's audio, in seconds."""
+    import math
+    import subprocess
+    import wave
+    from array import array
+    w = path.with_suffix(".probe.wav")
+    subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", str(path), "-vn", "-ac", "1", "-ar", "16000", str(w)], check=True)
+    with wave.open(str(w), "rb") as f:
+        data = array("h", f.readframes(f.getnframes()))
+    for k in range(0, len(data) - 160, 160):
+        rms = math.sqrt(sum(v * v for v in data[k:k + 160]) / 160) / 32768
+        if rms > 0 and 20 * math.log10(rms) > thr:
+            return k / 16000
+    return None
+
+
+@needs_ffmpeg
+def test_scene_sounds_on_a_silent_render_and_a_late_sound_start(project):
+    # review of #8: a render with no voice skipped --sfx; a sound whose start in its file is later than its cue landed late
+    from conftest import ffmpeg
+    make_video(project / "render.mp4", 360, 640, 4.0, audio=False)
+    ffmpeg("-f", "lavfi", "-i", "anullsrc=r=48000:cl=mono", "-f", "lavfi", "-i", "sine=f=1500:d=0.3",
+           "-filter_complex", "[0]atrim=0:1[s];[s][1]concat=n=2:v=0:a=1", project / "late.wav")  # the hit at 1.0 s
+    write_json(project / "sfx.json", {"sounds": [{"file": "late.wav", "at": 0.5, "start": 1.0, "what": "hook"}]})
+    r = run_script("master_audio.py", "render.mp4", "-o", "master.mp4", "--sfx", "sfx.json", cwd=project, check=False)
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert "scene sounds: 1" in r.stdout and "onto silence" in r.stdout
+    t = onset_s(project / "master.mp4")
+    assert t is not None and abs(t - 0.5) < 0.05  # the file's head trimmed: the hit lands on its cue
