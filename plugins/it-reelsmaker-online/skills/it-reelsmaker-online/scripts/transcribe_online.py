@@ -154,6 +154,11 @@ def lay_text(words, text):
         pairs = pair(a[i1:i2], b[j1:j2])
         i, j = i1, j1
         for pi, pj in pairs + [(i2 - i1, j2 - j1)]:
+            if i1 + pi - i == j1 + pj - j:  # as many words on each side between matched neighbours: one-for-one
+                while i < i1 + pi:          # replacements, however different ("four" heard as "five")
+                    seq.append({**words[i], "text": toks[j], "local": words[i]["text"]})
+                    rep["fixed"].append((words[i]["start"], words[i]["text"], toks[j]))
+                    i += 1; j += 1
             while i < i1 + pi:  # only the local model heard it: kept (often the repeat of a retake)
                 seq.append(dict(words[i]))
                 if a[i]:  # a lone dash the local model wrote as a word is not worth listening to
@@ -271,10 +276,11 @@ def cmd_run(a):
              f"{p['key']}. The edit goes on with the local transcriber: {LOCAL}")
         return 2
     base = None if cloud_words else local_words(e, src, identity, a)
-    if base is None and not cloud_words:  # no local model: fall back to the cloud's own word times
-        cloud_words, model = True, p["words_model"]
-        label = f"{a.provider} {model}"
-        print(f"→ {label}, ≈ ${secs / 60 * p['words_usd_min']:.3f}")
+    if base is None and not cloud_words:  # no local model: the cloud's own word times cost more, so ask again
+        print(f"no local transcript, so the word times would come from {a.provider} {p['words_model']} at "
+              f"≈ ${secs / 60 * p['words_usd_min']:.3f} instead of ≈ ${price:.3f}: nothing was sent. After the "
+              f"person agrees: --words cloud --yes; or install the local transcriber (doctor.py)")
+        return 2
     try:
         raw = openai_call(wav, key, model, a.language, a.prompt, words=cloud_words)
     except NoService as ex:
