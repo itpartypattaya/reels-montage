@@ -63,6 +63,11 @@ def test_cloud_text_on_local_times(online):
     assert len(out) == 8 and rep["local_only"] and rep["local_only"][0][1] == "Чем"
     starts = [w["start"] for w in out]
     assert starts == sorted(starts)
+    # a word heard as a completely different one between matching neighbours is replaced, not doubled
+    out, rep = online.lay_text(words([("I", 0.1, 0.2), ("have", 0.25, 0.4), ("four", 0.45, 0.7), ("apples", 0.75, 1.1)]),
+                               "I have five apples.")
+    assert [w["text"] for w in out] == ["I", "have", "five", "apples."] and out[2]["start"] == 0.45
+    assert rep["fixed"] == [(0.45, "four", "five")] and not rep["added"] and not rep["local_only"]
 
 
 @needs_ffmpeg
@@ -106,6 +111,17 @@ def test_cloud_word_times_without_a_local_model(online, project, monkeypatch):
     doc = json.loads((project / "edit" / "4821" / "transcripts" / "IMG_4821.json").read_text(encoding="utf-8"))
     assert doc["model"] == "openai whisper-1" and doc["language_code"] == "ru"
     assert [w["text"] for w in doc["words"]][:2] == ["Привет,", "мир."]
+
+
+@needs_ffmpeg
+def test_no_local_model_asks_again_for_the_dearer_word_times(online, project, monkeypatch, capsys):
+    late_audio_video(project / "IMG_4821.MOV")
+    monkeypatch.setenv("OPENAI_API_KEY", KEY)
+    monkeypatch.setattr(online.core, "cmd_full", lambda a: (_ for _ in ()).throw(SystemExit("faster-whisper is not installed")))
+    monkeypatch.setattr(online, "openai_call", lambda *a, **k: pytest.fail("nothing is sent at a price not agreed"))
+    assert run(online, "--yes") == 2
+    out = capsys.readouterr().out
+    assert "whisper-1" in out and "--words cloud --yes" in out and "nothing was sent" in out
 
 
 @needs_ffmpeg
