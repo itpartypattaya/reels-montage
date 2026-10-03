@@ -122,6 +122,9 @@ def test_no_local_model_asks_again_for_the_dearer_word_times(online, project, mo
     assert run(online, "--yes") == 2
     out = capsys.readouterr().out
     assert "whisper-1" in out and "--words cloud --yes" in out and "nothing was sent" in out
+    # a local transcript with no words is no skeleton either: no made-up times from zero
+    local_transcript(project, rows=[])  # found as the local transcript: the local model is not run
+    assert run(online, "--yes") == 2 and "--words cloud --yes" in capsys.readouterr().out
 
 
 @needs_ffmpeg

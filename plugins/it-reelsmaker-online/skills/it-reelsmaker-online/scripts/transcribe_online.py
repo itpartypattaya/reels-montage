@@ -276,8 +276,11 @@ def cmd_run(a):
              f"{p['key']}. The edit goes on with the local transcriber: {LOCAL}")
         return 2
     base = None if cloud_words else local_words(e, src, identity, a)
+    if base is not None and not any(w.get("type", "word") == "word" and str(w.get("text", "")).strip()
+                                    for w in base.get("words", [])):
+        base = None  # the local model heard no words: no times to lay the text on (they would be made up)
     if base is None and not cloud_words:  # no local model: the cloud's own word times cost more, so ask again
-        print(f"no local transcript, so the word times would come from {a.provider} {p['words_model']} at "
+        print(f"no local word times, so they would come from {a.provider} {p['words_model']} at "
               f"≈ ${secs / 60 * p['words_usd_min']:.3f} instead of ≈ ${price:.3f}: nothing was sent. After the "
               f"person agrees: --words cloud --yes; or install the local transcriber (doctor.py)")
         return 2
