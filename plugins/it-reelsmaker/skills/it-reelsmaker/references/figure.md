@@ -34,13 +34,15 @@ Both techniques are used when the brief calls for them, not by default.
 
 ## 2. Presenter over a scene
 
+**Status:** tested on a 1 s piece, not yet verified in a finished video; check the stills of every layout with extra care.
+
 **When to offer it.** The speaker talks about something that can be shown: “look at this résumé”, “this is what the page looks like”, “let's break down this video”. The scene must exist. Not on the hook (a large face matters more there), 3–15 s at a time, 1–3 times per video. The background behind the speaker is calm and does not blend with their hair and clothing.
 
 | Layout | What it looks like | Presenter | When |
 |---|---|---|---|
 | **“Review”** | the scene in a rounded panel at the top (~x 40, y 230, 1000×900, radius ~36), below it a background in the brand color | cut out, at the edge, face 230–300 px; **forehead at the panel's bottom edge**, the hair slightly overlaps the panel — this shows depth; the body goes off the bottom of the frame | the scene needs to be examined: a document, a website, someone else's video |
 | **“Stream”** | the scene fills the frame | cut out, small, in a bottom corner, face 150–190 px; the corner of the scene under it is darkened with a soft radial gradient (~38 %) | a dynamic scene that is not read in fine detail |
-| **“Window”** | the scene fills the frame | **no cut-out**: the speaker's video in a rounded window ~360×460 in a bottom corner (position set separately, by default above the UI), framed on the face, optionally a thin ring in the brand color | busy background, furniture in the mask, a long segment, the server is busy. Free and instant |
+| **“Window”** | the scene fills the frame | **no cut-out**: the speaker's video in a rounded window 360×480 in a bottom corner (position set separately, by default above the UI), framed on the face, optionally a thin ring in the brand color | busy background, furniture in the mask, a long segment, the server is busy. Free and instant |
 
 **Scale and placement — by calculation, not by eye.** Scale = target face height / the **median** face height of the presenter from the measurement (`references/faces.md`): in each sample take the largest face, over the span take the median. The union box of all faces does not work for scale: head movement and a second person inflate it, and the presenter comes out smaller. The figure's video is placed in a corner so that its **source-edge cuts coincide with the frame edges** (section 3). In “review” the figure is shifted down until the forehead reaches the bottom edge of the panel; the bottom of the video must still not be higher than the bottom of the frame. Checks: chin above the UI (y ≤ 1500), face not under the like-button column (x ≤ 960), in “review” the face does not overlap the panel. Record the figure's box in `keep_clear` so that memes and cards do not land on it.
 

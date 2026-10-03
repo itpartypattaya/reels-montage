@@ -7,10 +7,11 @@ Inserts are an optional layer on top of the regular edit. If everything is off, 
 ## Settings
 
 Stored in the video's `edit/<id>/reel.json`. Layers apply in order, and each one overrides the previous:
-1. skill defaults (below);
-2. `brand.json → inserts` of the selected brand;
-3. the video's `reel.json`;
-4. words from the prompt.
+1. skill defaults (below), then your project's `reel-defaults.json` (`references/brands.md`, “Your settings in the project”);
+2. the brand tone preset;
+3. `brand.json → inserts` of the selected brand;
+4. the video's `reel.json`;
+5. words from the prompt.
 
 ```json
 {
@@ -67,7 +68,7 @@ An insert goes in only if it answers the question “why” in one of five ways:
 1. **Understanding.** It shows the object, action or place being talked about.
 2. **Cut.** It hides the seam between takes or a ragged spot. The B-roll starts before the cut and ends after it.
 3. **Pace.** It changes the picture in a long segment (> 6 s without a cut) where a shot-size change has already been used.
-4. **Hook.** A detail instead of the talking head in the first 1.5 s.
+4. **Hook.** A detail instead of the talking head in the first 1.5 s; it should make the viewer ask “what is going on?”.
 5. **Meme.** It amplifies a joke, irony, an emotion or the recognition of a specific line.
 
 When an insert is not needed:
@@ -189,7 +190,7 @@ Geometry (`cover`/`contain`, focus point) and color correction apply in every br
 
 Footage of your own that the agent writes itself as a Remotion component: motion graphics, diagrams, cards, interfaces, 3D objects, abstractions, symbolic objects in brand colors. It is free: rendering on a laptop takes ≈ 20 s per 6 s clip. A Remotion project is required. Photorealism (hands, places, atmosphere) is not done in code; that comes from main footage, project material or, with the online-sources add-on `it-reelsmaker-online`, online sources.
 
-**Scene fields** (`gen` on the insert): `subject`, `action`, `composition`, `mood`, `start`, `end` describe what is in frame and how it moves; the optional `seconds` (default 6) and `use_from` set the second of the clip from which the insert is taken, default 0.3.
+**Scene fields** (`gen` on the insert, `engine`: `code`): eight required fields, each a non-empty string: `subject`, `action`, `camera`, `composition`, `lighting`, `mood`, `start`, `end` describe what is in frame, how it moves and how it is lit (`codescene.py validate` reports any that are empty). Optional: `setting` and `style` (strings), `seconds` (clip length, default 6) and `use_from` (the second of the clip from which the insert is taken, default 0.3); the clip must be at least as long as the insert plus `use_from`.
 
 **A good scene:**
 - one action and one camera move;
@@ -245,6 +246,7 @@ A meme is a side remark, not the main shot.
 | `m` | 380 px | ≈ 35 % |
 | `l` | 460 px | ≈ 43 % |
 
+- **Which size:** `s` for a calm brand tone or on a close-up, `m` by default, `l` on a wide shot; never above the brand tone's `size_max`.
 - **The ceiling is 460 px**, about 10 % of the frame area: a meme never grows to half the screen.
 - **A narrow or wide meme** (aspect ratio < 0.6 or > 1.67) gets its long side ×1.3, no higher than the ceiling.
 - **Full-frame** is only `cutaway`.
@@ -259,7 +261,7 @@ A meme is a side remark, not the main shot.
 
 Margins: left 60, right 140 (likes zone 120 + 20).
 
-**Selection order.** The side opposite the face is tried first, the top before the middle and the bottom. If there is no room at the needed size, the meme shrinks. If there is no room even at `s`, no meme goes on this line.
+**Selection order.** The side opposite the face is tried first, the top before the middle and the bottom. If there is no room at the needed size, the meme shrinks. If there is no room even at `s`, no meme goes on this line. No meme on the CTA line.
 
 **What a meme must not cover:**
 

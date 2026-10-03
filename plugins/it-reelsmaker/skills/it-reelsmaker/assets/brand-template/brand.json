@@ -1,5 +1,5 @@
 {
- "_comment": "Brand profile template. Copy this folder to <PROJECT_ROOT>/brands/<slug>/ and fill it in. Only name, colors.primary/accent and tone.preset are required; the agent infers the rest itself (references/brands.md). motion and meme_size are null: the brand tone sets them, and explicit values override it. Paths are relative to the brand folder (assets/…) or to the project.",
+ "_comment": "Brand profile template. Copy this folder to <PROJECT_ROOT>/brands/<slug>/ and fill it in. Only name, colors.primary/accent and tone.preset are required; the agent infers the rest itself (references/brands.md). motion and meme_size are null: the brand tone sets them, and explicit values override it. Paths are relative to the brand folder (assets/…) or to the project. Your own documents live here too: rules.md (rules, bans, voice), guide.md (the brand's video guide, set guide to it), cta.md (your CTA texts, set cta_library to it), other .md files linked from rules.md. ink (or on_marker) is the text color on the marker.",
  "schema": 2,
  "slug": "<slug>",
  "name": "⟨YOURS: brand name⟩",
@@ -33,6 +33,8 @@
  },
  "lut": {"hald": null, "cube": null, "strength": 0.7},
  "rules": "rules.md",
+ "guide": null,
+ "cta_library": null,
  "styles": {"default": "marker", "allowed": ["marker", "brand", "minimal", "editorial", "bold", "glass"]},
  "subtitles_default": "accent",
  "motion": null,

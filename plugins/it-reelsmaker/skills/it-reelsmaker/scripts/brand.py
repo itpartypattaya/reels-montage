@@ -39,7 +39,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from reels_common import (BRAND_SCHEMA, SKILL, TONE_PRESETS, migrate_brand, brand_file, brand_roots, editing_json, find_brand, inside, list_brands,
-                          parse_value, project_root, safe_slug, save_json, tone_rules, tone_summary, utf8_stdio, warn)
+                          parse_value, project_root, safe_slug, save_json, save_text, tone_rules, tone_summary, utf8_stdio, warn)
 
 TODAY = datetime.date.today().isoformat()
 DEFAULT_FONTS = {"heading": {"family": "Manrope", "weights": [600, 800], "source": "google"},
@@ -265,10 +265,19 @@ def cmd_show(a):
         print("  brand insert defaults: " + ", ".join(f"{k}={v}" for k, v in b["inserts"].items()))
     if b.get("forbidden_imagery"):
         print("  not allowed in the frame: " + ", ".join(b["forbidden_imagery"]))
-    for k in ("guide", "rules"):
+    shown = set()
+    for k, label in (("rules", "rules"), ("guide", "video guide"), ("cta_library", "CTA library")):
         if b.get(k):
             p = brand_file(b[k], d)
-            print(f"  {k}: {p or b[k] + ' ✗'}")
+            print(f"  {label}: {p or b[k] + ' ✗'}")
+            if p:
+                shown.add(Path(p).resolve())
+    others = sorted(p for p in Path(d).glob("*.md") if p.resolve() not in shown)
+    if others:
+        print("  other brand documents: " + ", ".join(p.name for p in others) + " (linked from rules.md)")
+    if not b.get("guide") or not b.get("cta_library"):
+        print("  the brand's own video guide and CTA library: guide.md / cta.md in the brand folder, set in brand.json "
+              "-> guide / cta_library")
     print(f"  last used: {b.get('last_used') or '-'}; profile updated: {b.get('updated')}")
 
 
@@ -290,7 +299,28 @@ RULES_TMPL = """# Brand design rules: {name}
 - (to fill in: tone, forbidden imagery, words the brand does not use)
 
 ## Rules from revisions
+<!-- revisions: brand.py rule adds dated rules at the end of this section; the heading may be in any language -->
 """
+
+REVISIONS_MARK = "<!-- revisions"
+REVISIONS_HEAD = "## Rules from revisions"
+
+
+def add_rule(text, line):
+    """Add a rule line at the end of the revisions section: the one marked with <!-- revisions ... --> (any heading
+    language), else the "## Rules from revisions" heading, else a new section at the end of the file."""
+    lines = text.rstrip("\n").split("\n")
+    start = next((k for k, l in enumerate(lines) if l.strip().startswith(REVISIONS_MARK)), None)
+    if start is None:
+        start = next((k for k, l in enumerate(lines) if l.strip() == REVISIONS_HEAD), None)
+    if start is None:
+        lines += ["", REVISIONS_HEAD, line]
+        return "\n".join(lines) + "\n"
+    end = next((k for k in range(start + 1, len(lines)) if lines[k].startswith("## ")), len(lines))
+    while end > start + 1 and not lines[end - 1].strip():
+        end -= 1
+    lines.insert(end, line)
+    return "\n".join(lines) + "\n"
 
 
 def sha256(p):
@@ -536,10 +566,7 @@ def cmd_rule(a):
     with editing_brand(a.slug) as (d, b):  # the profile lock also covers rules.md: two sessions won't overwrite each other's rules
         p = inside(d, d / (b.get("rules") or "rules.md"), "rules file")
         text = p.read_text(encoding="utf-8") if p.exists() else f"# Brand design rules: {b.get('name')}\n"
-        if "## Rules from revisions" not in text:
-            text = text.rstrip() + "\n\n## Rules from revisions\n"
-        text = text.rstrip() + f"\n- {TODAY}: {a.text.strip()}\n"
-        p.write_text(text, encoding="utf-8")
+        save_text(p, add_rule(text, f"- {TODAY}: {a.text.strip()}"))
     print(f"rule added to {p}")
 
 

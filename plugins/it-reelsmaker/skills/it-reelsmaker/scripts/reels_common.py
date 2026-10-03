@@ -14,6 +14,9 @@ DEFAULTS_FILE = SKILL / "assets" / "reel-defaults.json"
 # the published plugin has no such file.
 DEFAULTS_LOCAL = SKILL / "assets" / "reel-defaults.local.json"
 SETTINGS_FILE = "it-reelsmaker.json"
+# Your own defaults for a project: <project>/reel-defaults.json, the same format, only the keys you change. It lives
+# in the project, never in the plugin folder (an update replaces that folder).
+PROJECT_DEFAULTS = "reel-defaults.json"
 
 VIDEO_EXT = {".mp4", ".mov", ".m4v", ".webm", ".mkv"}
 IMAGE_EXT = {".png", ".jpg", ".jpeg", ".webp"}
@@ -144,16 +147,31 @@ def _merge(base, over):
     return out
 
 
-def load_defaults():
-    """The skill's defaults (assets/reel-defaults.json), then the online add-on's defaults if it is installed, then a
-    personal overlay if one exists: assets/reel-defaults.local.json, then the file named in REELS_DEFAULTS_OVERLAY."""
-    doc = load_json(DEFAULTS_FILE, {}) or {}
+def defaults_layers(project=None):
+    """The defaults as (label, doc) layers, left to right: the skill's assets/reel-defaults.json; the online add-on's
+    DEFAULTS if it is installed; a personal copy's assets/reel-defaults.local.json; the project's own
+    <project>/reel-defaults.json ("project"); the file named in REELS_DEFAULTS_OVERLAY ("overlay")."""
+    layers = [("defaults", load_json(DEFAULTS_FILE, {}) or {})]
     ext = online()
     if ext and isinstance(getattr(ext, "DEFAULTS", None), dict):
-        doc = _merge(doc, ext.DEFAULTS)
-    for f in (DEFAULTS_LOCAL, os.environ.get("REELS_DEFAULTS_OVERLAY")):
+        layers.append(("defaults", ext.DEFAULTS))
+    project = Path(project or project_root())
+    for label, f in (("defaults", DEFAULTS_LOCAL), ("project", project / PROJECT_DEFAULTS),
+                     ("overlay", os.environ.get("REELS_DEFAULTS_OVERLAY"))):
         if f and Path(f).is_file():
-            doc = _merge(doc, load_json(f, {}) or {})
+            doc = load_json(f, {})
+            if not isinstance(doc, dict):
+                warn(f"{f}: expected a JSON object like assets/reel-defaults.json; ignored")
+                continue
+            layers.append((label, doc))
+    return layers
+
+
+def load_defaults(project=None):
+    """The merged defaults (see defaults_layers)."""
+    doc = {}
+    for _, layer in defaults_layers(project):
+        doc = _merge(doc, layer)
     return doc
 
 
@@ -475,14 +493,17 @@ def tone_summary(rules):
 
 
 def load_config(edit=None, overrides=None, project=None):
-    """Layers: skill defaults <- brand tone preset (brand.json -> tone) <- brand profile (inserts) <-
-    edit/<id>/reel.json <- overrides (words from the prompt). settings["brand_tone"] is the resolved brand tone (the
+    """Layers: skill defaults <- brand tone preset defaults (brand.json -> tone) <- the project's reel-defaults.json <-
+    brand profile (inserts) <- edit/<id>/reel.json <- overrides (words from the prompt). settings["brand_tone"] is the resolved brand tone (the
     ceilings for visual_plan.py validate); it comes only from the profile, reel.json can't change it (going louder
     takes tone_override). Returns (settings, provenance, defaults_doc, brand_dir, brand)."""
     project = project or project_root()
-    doc = load_defaults()
+    doc, prov = {}, {}
+    for label, layer in defaults_layers(project):
+        doc = _merge(doc, layer)
+        for k in (layer.get("settings") or {}):
+            prov[k] = label
     settings = dict(doc.get("settings", {}))
-    prov = {k: "defaults" for k in settings}
     reel = load_json(Path(edit) / "reel.json", {}) if edit else {}
     overrides = overrides or {}
     slug = overrides.get("brand") or reel.get("brand") or settings.get("brand")
@@ -494,6 +515,8 @@ def load_config(edit=None, overrides=None, project=None):
     if note:
         warn_once(note)
     for k, v in tone_settings(rules, doc).items():
+        if prov.get(k) in ("project", "overlay") and k != "meme_size":
+            continue  # your own project defaults beat the preset's guesses; meme_size is already capped by the tone
         settings[k], prov[k] = v, f"tone:{rules['preset']}"
     for k, v in ((brand or {}).get("inserts") or {}).items():
         settings[k], prov[k] = v, f"brand:{slug}"

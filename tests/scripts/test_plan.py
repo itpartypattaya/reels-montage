@@ -107,3 +107,42 @@ def test_export_refuses_a_folder_that_is_not_a_remotion_project(project):
     r = run_script("visual_plan.py", "export", "edit/4821", "--remotion", wrong, "--force", cwd=project, check=False)
     assert r.returncode != 0 and "not a Remotion project" in (r.stdout + r.stderr)
     assert not (wrong / "src").exists() and not (wrong / "public").exists()
+
+
+def test_project_defaults_layer_and_command(project):
+    plan_project(project)
+    (project / "edit" / "4821" / "reel.json").write_text('{"intensity": "active"}', encoding="utf-8")
+    run_script("reelcfg.py", "defaults", "--set", "brand=acme", "use_memes=true", "intensity=minimal", cwd=project)
+    doc = json.loads((project / "reel-defaults.json").read_text(encoding="utf-8"))
+    assert doc["settings"] == {"brand": "acme", "use_memes": True, "intensity": "minimal"}
+    r = run_script("reelcfg.py", "show", "edit/4821", "--json", cwd=project)
+    shown = json.loads(r.stdout[r.stdout.index("{"):])
+    assert shown["settings"]["brand"] == "acme" and shown["provenance"]["brand"] in ("project", "reel.json")
+    assert shown["provenance"]["intensity"] == "reel.json"  # the video's reel.json still wins
+    assert shown["provenance"]["use_scenes"] == "defaults"
+    run_script("reelcfg.py", "defaults", "--unset", "use_memes", cwd=project)
+    doc = json.loads((project / "reel-defaults.json").read_text(encoding="utf-8"))
+    assert "use_memes" not in doc["settings"]
+    out = run_script("reelcfg.py", "defaults", cwd=project).stdout
+    assert "reel-defaults.json" in out and '"brand": "acme"' in out
+
+
+def test_project_defaults_labels_reach_brand_tones(project):
+    write_json(project / "reel-defaults.json", {"brand_tones": {"expert": {"label": "Expert (mine)"}}})
+    import importlib, reels_common
+    importlib.reload(reels_common)
+    doc = reels_common.load_defaults(project)
+    assert doc["brand_tones"]["expert"]["label"] == "Expert (mine)"
+    assert doc["brand_tones"]["expert"].get("for")  # the rest of the preset is kept (deep merge)
+
+
+def test_project_defaults_beat_tone_guesses_but_not_its_caps(project):
+    plan_project(project)
+    (project / "edit" / "4821" / "reel.json").write_text('{"brand": "acme"}', encoding="utf-8")
+    run_script("reelcfg.py", "defaults", "--set", "use_memes=true", "intensity=minimal", "meme_size=l", cwd=project)
+    r = run_script("reelcfg.py", "show", "edit/4821", "--json", cwd=project)
+    shown = json.loads(r.stdout[r.stdout.index("{"):])
+    s, prov = shown["settings"], shown["provenance"]
+    assert s["use_memes"] is True and prov["use_memes"] == "project"   # the expert preset would say no
+    assert s["intensity"] == "minimal" and prov["intensity"] == "project"
+    assert s["meme_size"] == "s" and prov["meme_size"].startswith("tone:")  # expert caps memes at s

@@ -14,9 +14,9 @@ description: >
 
 # Editing vertical videos — IT Reelsmaker
 
-> **How to use.** A Claude Code plugin: a depersonalized version of a working skill built on real videos, with its techniques, styles and verified numbers kept. You don't need to edit SKILL.md: your own choices go into the plugin settings and the brand profile. The **⟨YOURS: …⟩** marks below are places taken from the brand profile (`brand.json`, `rules.md`) or decided in the brief.
+> **How to use.** A Claude Code plugin: a depersonalized version of a working skill built on real videos, with its techniques, styles and verified numbers kept. You don't need to edit SKILL.md: your own choices go into the plugin settings, the project defaults (`reel-defaults.json`) and the brand folder. The **⟨YOURS: …⟩** marks below are places taken from the brand profile (`brand.json`, `rules.md`) or decided in the brief.
 >
-> **Brands** live in the project folder: `{{PROJECT_ROOT}}/brands/<slug>/` holds the `brand.json` profile, the `rules.md` design rules and the `assets/` files (logos, LUTs, fonts). Template: `${CLAUDE_SKILL_DIR}/assets/brand-template/`. Before editing, the agent asks which brand the video is for. `{{NAME}}` placeholders are fields of the selected brand's profile (table: `references/brands.md`).
+> **Brands** live in the project folder: `{{PROJECT_ROOT}}/brands/<slug>/` holds the `brand.json` profile, the `rules.md` design rules, the `assets/` files (logos, LUTs, fonts) and, if the brand has them, its video guide `guide.md`, CTA library `cta.md` and other documents. Template: `${CLAUDE_SKILL_DIR}/assets/brand-template/`. Before editing, the agent asks which brand the video is for. `{{NAME}}` placeholders are fields of the selected brand's profile (table: `references/brands.md`).
 >
 > Long sections live in `references/` (table at the end). **Scripts** for every repeatable step (rough cut, speech mask, faces, visual plan, inserts, brands, cover, mastering) are in `${CLAUDE_SKILL_DIR}/scripts/`: run them from `{{PROJECT_ROOT}}`, don't rewrite them for a video; what differs between videos goes into the video's JSON files. Which script for which step: `references/scripts.md`.
 >
@@ -44,10 +44,13 @@ A value that is empty or still reads `${user_config.…}` (the skill was not ins
 **Brands**: `{{PROJECT_ROOT}}/brands/<slug>/` (`brand.json` + `rules.md` + `assets/`), as many as you like, managed with `brand.py` (`list`, `new`, `show`, `tone`, `rule`, `use`, `export`):
 - **minimum**: a name, 1–3 colors and the **brand tone**, one of eight presets from `premium` to `bold` (`references/brands.md`, with how to offer eight in a 4-option question). The tone sets the limits for the brand's videos right away: which memes are allowed, how many cutaways, how loud the techniques can be (light flash, whip, shake, full-frame scenes) and the scene tones; louder only on explicit request for a video (`tone_override`). “Change the brand tone” rewrites it in the profile at any time. The agent works out color roles, text contrast, fonts that cover your language's script and the logo search itself;
 - **older files**: a `brand.json` or `it-reelsmaker.json` with an older `schema` is brought up to date once, with a `.bak` copy and one line saying what changed (`references/migrations.md`);
-- **revisions** (yours or the client's) that apply to the brand as a whole are appended to its `rules.md` with a date: the brand's next video already knows them;
+- **brand documents**: `rules.md` (rules in words, bans, voice), `guide.md` (the brand's video guide: palette roles, typography, signature elements, motion, imagery bans; `brand.json → guide`), `cta.md` (the brand's CTA library with exact texts; `brand.json → cta_library`), other `.md` documents linked from `rules.md`; `brand.py show <slug>` lists what it finds;
+- **revisions** (yours or the client's) and anything the person says about the brand as a whole go into the brand folder, not into one video's notes: a rule or ban → `rules.md` with a date (`brand.py rule`), a CTA → `cta.md`, a visual decision → `guide.md` (`references/brands.md`); the brand's next video already knows them;
 - profiles live in your project, not in the plugin, so a plugin update does not touch them. **Moving from an old version:** if `~/.claude/skills/reels-montage/brands/<slug>/` exists (versions before 1.0 were installed by cloning), offer to move those folders to `{{PROJECT_ROOT}}/brands/`.
 
 **Video settings** (`reelcfg.py show` / `save`): `edit/<id>/reel.json` holds the brand, style, inserts (`use_broll`, `use_generated_footage` = code scenes, `use_scenes` = designed scenes, `use_memes`, `use_local_memes`, …), intensity (`minimal` / `moderate` by default / `active`) and meme size. Everything about inserts: `references/inserts.md`. Online sources belong to the online-sources add-on `it-reelsmaker-online`: without it the related settings are ignored, and the skill does not suggest the add-on until the person asks about online sources.
+
+**Your own settings live in your project, never in the plugin folder** (an update replaces it). Project defaults: `{{PROJECT_ROOT}}/reel-defaults.json`, the format of the plugin's `assets/reel-defaults.json` with only the keys you change (default brand `settings.brand`, inserts on/off, intensity, `library_dirs`, your labels for intensity and brand tones…), edited with `reelcfg.py defaults [--set key=value …] [--unset key …]`; layers: plugin ← add-on ← brand tone defaults ← project ← `REELS_DEFAULTS_OVERLAY` ← brand `inserts` ← `reel.json` ← prompt; the brand tone's ceilings still apply (`references/brands.md`, “Your settings in the project”). Project-wide notes (folder layout, which Python to run, servers, lessons from past videos, the person's ready prompts) go into the project's `CLAUDE.md`, which Claude Code reads by itself.
 
 ---
 
@@ -150,10 +153,10 @@ On top of subtitles, if the brief asks for them: “accent titles”, 2–4 key 
 
 Three tools in sequence: **transcription and cut plan** (locally faster-whisper, or your own transcription tool) → **the cut script `cut.py`** (segments, color, speed-up, subtitles on the finished video's timeline) → **Remotion** (camera, graphics, subtitles, render) → **audio mastering**.
 
-File layout per video: `{{PROJECT_ROOT}}/edit/<id>/` with `cut.json`, `reel.json`, `project.md` (brief, decisions, open items), `transcripts/`, `final.mp4`, `captions.json`; in Remotion, `src/Reel<id>.tsx` and `public/<id>/video.mp4`. `<id>` is the source file number; a promo without footage gets a short name (`promo-<brand>`) and skips steps 1–6 (`references/scenes.md`, the “scenes only” format). Start a new video from a copy of the last successful one, not from scratch.
+File layout per video: `{{PROJECT_ROOT}}/edit/<id>/` with `cut.json`, `reel.json`, `project.md` (session · strategy · brief · decisions · open items), `transcripts/`, `final.mp4`, `captions.json`; in Remotion, `src/Reel<id>.tsx` and `public/<id>/video.mp4`. `<id>` is the source file number; a promo without footage gets a short name (`promo-<brand>`) and skips steps 1–6 (`references/scenes.md`, the “scenes only” format). Start a new video from a copy of the last successful one, not from scratch.
 
 ### Step 0. Brand, style, subtitles, inserts — the first `AskUserQuestion`
-- **Brand.** If it is clear from the prompt or the folder, take its profile; otherwise offer the 3 most recent saved brands, and a new one via “Other” (name and colors). Read the brand's `rules.md`.
+- **Brand.** If it is clear from the prompt, the folder or the project defaults (`settings.brand`), take its profile; otherwise offer the 3 most recent saved brands, and a new one via “Other” (name and colors). Read the brand's `rules.md` and its video guide `guide.md` (if set) before any graphics.
 - **Style.** Show the style table, 3–4 options (the tool's limit), with the recommendation for this video first and a one-line explanation.
 - **Subtitle mode.**
 - **Inserts** (`multiSelect`, if the prompt says nothing): B-roll from project materials and the library · code scenes in Remotion (diagram, interface, symbolic object; free) · designed scenes (hook, quote, number, list, CTA; `references/scenes.md`) · memes from your own folder and the library (if the brand tone allows them; `friendly` and `bold` recommend this option, but it is still the person's choice). With the online-sources add-on `it-reelsmaker-online` installed, online sources are added as well (with a price where they cost money). Nothing chosen → no inserts. Intensity and scene tone follow the brand tone unless stated otherwise.
@@ -210,7 +213,7 @@ A shot-size change is the main source of dynamics and the best way to hide a cut
 A limit below ~×1.15 → the camera will not give any dynamics; say so before editing.
 
 ### Step 5. Cut plan → “yes”
-In one message: phrase order (what stays, what goes, **what was rejected and why**), takes and slips, **pacing** (“tight”: pauses up to 50 ms; “natural”: up to 220 ms), **filler words** (keep / remove), speed-up via atempo with pitch preserved (insight monologue ×1.15–1.25, skit and calm delivery ×1.1–1.15; above ×1.3 sounds rushed), final length, zoom margin, transcription fixes. **No cutting without a “yes”.** The message looks like the cut plan in `references/examples.md`.
+In one message: phrase order (what stays, what goes, **what was rejected and why**), takes and slips, **pacing** (“tight”: pauses up to 50 ms; “natural”: up to 220 ms) and **filler words** (keep / remove; by default keep: speech sounds livelier), each with a recommendation, speed-up via atempo with pitch preserved (insight monologue ×1.15–1.25, skit and calm delivery ×1.1–1.15; above ×1.3 sounds rushed), final length, zoom margin, transcription fixes. **No cutting without a “yes”.** The message looks like the cut plan in `references/examples.md`.
 
 **Multiple cameras:** measure the speech rate for each source (syllables per second) and even them out with a separate speed for each. Real case: one angle sounded 27% faster (9.56 vs 7.55 syllables/s) → ×0.915 and ×1.095. No more than two segments from the same angle in a row, and two in a row must differ in shot size; a phrase comes whole from one take; show the chain of angles in the plan.
 
@@ -254,11 +257,11 @@ Then **face measurement** on `final.mp4` (`faces.py scan` and `zones`, `referenc
 ### Step 7. Graphics brief — one `AskUserQuestion` before the Remotion code
 The recommendation for this video goes first. Don't ask about what the prompt already says. At most 4 options per question, the most relevant ones.
 1. **Logo**, every time: none / mark in the corner for the whole video / only on the end card / both.
-2. **End card and CTA**: 3 options from the CTA library (section 8) with exact wording, or a logo sting without a CTA. The agent does not pick the CTA on its own.
+2. **End card and CTA**: up to 3 CTAs chosen by format, transcript and audience, the brand's own library (`cta.md`) first, then the plugin's (section 8), with exact wording; the other answers: CTA by voice in the last line, no CTA, or a logo sting (2–3 s, no CTA) when the brand wants recognition without a call. The agent does not pick the CTA on its own.
 3. **Techniques** (`multiSelect`): hook headline · text behind the person (needs a figure cut-out; give a time estimate) · presenter over a scene (overview, review, stream; only if there is something to show) · thesis cards · focus brackets · role tags · verdict scale · “save” bookmark · punch-in · icons for theses · phone mockup on the CTA · light flash · slide scene · full-screen phrase. Recommend only what follows from the content. B-roll, code scenes, designed scenes and memes are not asked about here: they are turned on in step 0 and decided in the visual plan (step 7a); with designed scenes on, the hook, full-screen phrase, list and CTA are made as `hook` / `slogan` / `list` / `cta` scenes.
 4. **Sound**: none / sound accents on events / accents + music, with specific picks from the library (section 11).
 
-Answers go into the video's `project.md`; they are not inherited by the next video. Do not silently resolve contradictory answers.
+Answers go into the video's `project.md`; they are not inherited by the next video. An answer about the brand as a whole (a ban, a preferred CTA, a format) goes into the brand folder instead (section 0). Do not silently resolve contradictory answers.
 If after the cut the chosen style doesn't fit the frame (for example no headroom for cards), say so here and offer a replacement.
 
 ### Step 7a. Visual plan — insert decisions before rendering
@@ -271,7 +274,7 @@ All inserts off (`use_broll`, `use_scenes`, `use_memes` all false) → skip. Oth
 Inserts that did not land (`pending`, `skipped`) do not go into the video: the main footage stays, and the reason goes into the report.
 
 ### Step 8. Remotion
-Start from the kit's `ReelKit` composition: `brand.py export <slug> --remotion {{REMOTION_DIR}}` (the brand into the Remotion project, once per brand and after brand edits), then `visual_plan.py export edit/<id> --remotion {{REMOTION_DIR}} --props edit/<id>/reelkit-props.json` (copies the rough cut to `public/`, writes brand, captions, inserts and scenes as props), then `npx remotion render ReelKit out/<name>.mp4 --props=…` in the Remotion project; the cover is `ReelCover` with the same props. Write a per-video composition only for what the kit does not cover, and reuse the kit's components in it.
+Start from the kit's `ReelKit` composition: `brand.py export <slug> --remotion {{REMOTION_DIR}}` (the brand into the Remotion project, once per brand and after brand edits), then `visual_plan.py export edit/<id> --remotion {{REMOTION_DIR}} --props edit/<id>/reelkit-props.json` (copies the rough cut to `public/`, writes brand, captions, inserts and scenes as props), then `npx remotion render ReelKit out/<name>.mp4 --props=…` in the Remotion project; the cover is `ReelCover` with the same props. Write a per-video composition only for what the kit does not cover, and reuse the kit's components in it. The kit draws the “Marker” (and `v2`) and “Brand” styles itself; “Minimal”, “Editorial”, “Bold” and “Glass” fall back to “Marker” with a warning, so they need a per-video composition (`references/brands.md`, “In Remotion”: styles, `looks`, fonts).
 Camera (section 9) → B-roll → only the chosen elements → memes → subtitles. Composition 1080×1920, 30 fps, as long as the video (plus the end card, if any). Each element enters **on its own word**, not in a batch. Card texts are written from the meaning of the line and **shown before rendering**: they almost always get edited.
 - The brand in code comes from the profile: colors `brand.colors.*`, fonts by family name, logos from the brand's `assets/`. Do not write HEX values or font names into the video's code.
 - Graphics positions come from the face-measurement zones (with the span's camera): hook and cards in the “headroom” zone or the “chest” zone, subtitles no higher than the recommended top. Record every card, hook and CTA card over the video in the plan as a `keep_clear` zone (interval + box + the span's camera): that way it is checked against the face right away, memes do not cover it, and the render audit sees it. A list in a close-up lacks “headroom” → raise the camera all the way to the top of the source (`cy = 960 / z`).
@@ -296,7 +299,7 @@ Role tags above the heads, a verdict scale, subtitles colored per speaker, a “
 
 ## 8. CTA library ⟨YOURS: fill in contacts, remove what you don't need⟩
 
-One CTA per video (exception: a job opening, with apply + recommend), a calm invitation with no “Urgent” or “Hurry up”, two lines on the card: the main line (52–60 px) and a clarifier (34–38 px, in a muted color). The codes (`dm`, `dm-word`, `comment-word`, `site`, `bio`, `apply`, `save`, `follow`, …) and their texts: `references/cta.md`. Promises only if they are kept; “Link in bio” only if the link is already there.
+One CTA per video (exception: a job opening, with apply + recommend), a calm invitation with no “Urgent” or “Hurry up”, two lines on the card: the main line (52–60 px) and a clarifier (34–38 px, in a muted color). The codes (`dm`, `dm-word`, `comment-word`, `site`, `bio`, `apply`, `save`, `follow`, …), their texts, audiences and formats: `references/cta.md`; a brand's own library (`brands/<slug>/cta.md`) is offered first. Promises only if they are kept; “Link in bio” only if the link is already there.
 
 ## 9. Virtual camera and word anchoring (Remotion)
 
@@ -307,7 +310,7 @@ The camera is `{ z, cx, cy }` (scale and the frame point in the center), with sh
 
 ## 10. Special techniques (all per the brief)
 
-Each only if the brief chose it; numbers, layouts and risks: `references/techniques.md` (the cut-out itself: `references/figure.md`). **Cut-out figure**; **text behind the person** (only when the headroom can't hold the hook; the main risk is contrast); **presenter over a scene** (review, stream, window); the **“framed” format** for a horizontal source (a ~1030×1240 window); a **phone mockup on the CTA**; a **light flash** instead of a transition (within the brand tone's ceiling); a **slide scene** to cover choppy speech; a **full-screen key phrase** (1–2 per video, not on the hook or the CTA). **LUT**: see step 6.
+Each only if the brief chose it; numbers, layouts, risks and which ones are not yet verified in a finished video: `references/techniques.md` (the cut-out itself: `references/figure.md`). **Cut-out figure**; **text behind the person** (only when the headroom can't hold the hook; the main risk is contrast); **presenter over a scene** (review, stream, window); the **“framed” format** for a horizontal source (a ~1030×1240 window); a **phone mockup on the CTA**; a **light flash** instead of a transition (within the brand tone's ceiling); a **slide scene** to cover choppy speech; a **full-screen key phrase** (1–2 per video, not on the hook or the CTA). **LUT**: see step 6.
 
 **Designed scenes** (`references/scenes.md`): hook, quote, slogan, number, list, before → after, message thread, interface, CTA, cover, drawn in code in brand colors, on a spoken word; the `overlay` / `split` / `panel` / `window` modes keep the face, `full` within the brand tone's ceiling (1–3). **A promo without footage** is the “scenes only” format: 15–25 s, hook → reveal → 2–3 strong moments → ending/CTA, with no source analysis, transcript or cut.
 
@@ -331,7 +334,7 @@ Without mastering, finished videos came out between −33 and −17 LUFS, some w
 
 ## 13. Pre-delivery checklist
 
-- [ ] The video has only what the brief chose; the brand comes from the profile (colors, fonts, logo); brand revisions are recorded in its `rules.md`
+- [ ] The video has only what the brief chose; the brand comes from the profile (colors, fonts, logo); brand-level revisions are recorded in the brand folder (`rules.md`, `cta.md`, `guide.md`)
 - [ ] No text on a face: the render audit of faces shows 0 overlaps (subtitles, `keep_clear` cards, memes) + stills every ~2 s or the contact sheet; nothing in the UI zones (top 220, bottom 420, right 120 px)
 - [ ] Inserts (if on): each has a “why”, the intensity budget is kept, the plan was shown before rendering; B-roll has no third-party logos and no stock people “playing the client”; downloads and paid actions only after a “yes”, attribution recorded
 - [ ] Meme: on its line, rights known, no more than 460 px on the long side, at the edge of the frame, not over the face, subtitles or cards; no more than one full-frame meme
@@ -339,17 +342,18 @@ Without mastering, finished videos came out between −33 and −17 LUFS, some w
 - [ ] The picture changes every 1.5–3.5 s; close-ups are not blurry; the top of the head is not cut off
 - [ ] One style and one accent color; ≤ 6 words in a card or hook headline (designed scenes follow the reading-time floor); no outline or glow (unless the style calls for it)
 - [ ] A phrase is one block: parts of one thought tight together, shared axis, one zone; on a still at 25% size it reads as a single mass
-- [ ] Text is readable on a phone
-- [ ] The logo is not distorted; there is one CTA and it works
+- [ ] Text is readable on a phone: headings ≥ 92–96 px, subtitles ≥ 54–64 px
+- [ ] The logo is not distorted; on a dark background, the light (white) variant; there is one CTA and it works
 - [ ] No leftover takes or slips; no repeats at cuts; the first sound is not clipped; remaining silence stated as a number
 - [ ] All segment edges checked by audio (`--edl`): no edge inside a word, no fragments of neighboring words, no edges tight against sound
 - [ ] Audio has no clicks; master at −14 ±0.7 LUFS, peak ≤ −1 dBFS, duration = video, `+faststart`; the mastering acceptance check passed (code 0); in the rough cut, video and audio `start_time` = 0
-- [ ] Sound effects on their events; burned-in music only with a commercial license
+- [ ] Sound effects on their events; burned-in music only with a commercial license; with music, the voice is always louder
 - [ ] No icons with a “no” verdict; service logos only when the service is named
-- [ ] Special techniques: text behind the person reads without an outline, lead-in tight against the word; the mask check frame was reviewed (no furniture or wall); cut-out figure on a scene: not a single chopped-off arm inside the frame, face above the UI; skin looks natural after the LUT; no third-party data on the phone screen or in the scene
+- [ ] Special techniques: ≤ 2 light flashes (and within the brand tone's ceiling); text behind the person reads without an outline, lead-in tight against the word; the mask check frame was reviewed (no furniture or wall); cut-out figure on a scene: not a single chopped-off arm inside the frame, face above the UI; skin looks natural after the LUT; no third-party data on the phone screen or in the scene
 - [ ] On-screen facts come from the speaker or the client; anything the agent sourced itself is in “open items”
 - [ ] Designed scenes (if any): within the brand tone; quotes verbatim, numbers sourced; reading-time floor kept; the face is not covered in `overlay` / `split`; settled and mid-transition frames reviewed
 - [ ] The video makes sense without sound
+- [ ] `edit/<id>/project.md` is up to date: session · strategy · brief · decisions · open items
 - [ ] Consent from the people on screen; **publishing only after a “yes” from `{{APPROVER}}`**
 
 ## 14. Shooting that makes editing possible (a memo for the speaker)
@@ -369,7 +373,7 @@ Several agent sessions in one editing folder are normal: write JSON (video setti
 | File | When |
 |---|---|
 | `references/scripts.md` | any step: which script does it, how to run it, the `cut.json` format |
-| `references/brands.md` | step 0 and any graphics: brand profiles, a new brand from the minimum, logos, rules from revisions, styles in brand colors, `{{…}}` placeholders |
+| `references/brands.md` | step 0 and any graphics: your settings in the project (`reel-defaults.json`, layers, `CLAUDE.md`), brand profiles and documents (rules, video guide, CTA library), a new brand from the minimum, logos, rules from revisions, styles in brand colors and in the kit, fonts, `{{…}}` placeholders |
 | `references/scenes.md` | steps 0, 7a, 8–10: designed scenes (catalog, modes, tones, fields, reading-time floor, facts, transitions, sound), promo without footage, cover, post caption; a sample component in `references/scene-sample.md` |
 | `references/inserts.md` | step 0 (inserts) and 7a: settings, intensity, when an insert is needed, priority and fallback, visual plan, modes and transitions, code scenes, memes: rights, size and placement |
 | `references/faces.md` | steps 6, 8, 9: face measurement with the YuNet model, false “faces” and the filter, zones for the hook, cards and subtitles accounting for the camera, card checks, render audit |
@@ -377,7 +381,7 @@ Several agent sessions in one editing folder are normal: write JSON (video setti
 | `references/typography.md` | any on-screen text: a phrase as one block, gaps and line breaks, subtitles (contrast, splitting, when to hide), transcription |
 | `references/camera.md` | step 8: code for shots in source time (`at`) and graphics on the spoken word (`atWord`) |
 | `references/techniques.md` | step 7 techniques: text behind the person, presenter over a scene, framed format, phone mockup, light flash, slide scene, full-screen phrase |
-| `references/skit.md`, `references/cta.md` | a two-person skit; the CTA library for the end card and the `cta` scene |
+| `references/skit.md`, `references/cta.md` | a two-person skit; the CTA library for the end card and the `cta` scene (how to offer it, audience and format per CTA) |
 | `references/library.md` | section 11: your own library, its catalog, sounds for events, music in the mix |
 | `references/shooting.md` | before the shoot: the memo for the speaker |
 | `references/examples.md` | steps 5 and 10: what the cut plan and the delivery report look like |

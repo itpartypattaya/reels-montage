@@ -2,6 +2,8 @@
 
 Each one only if the brief chose it (step 7). The cut-out figure itself is in `references/figure.md`; designed scenes are in `references/scenes.md`.
 
+**Verification status.** Not yet verified in a finished video: the “framed” format, the light flash and the slide scene; presenter over a scene was tested on a 1 s piece only. The numbers for them are starting values: check stills and the preview with extra care, and say in the plan that the technique is new.
+
 **Cut-out figure**: everything is in `references/figure.md`: `rembg` cut-out with `matte.py` on this computer, or on your own server with the online add-on (frames from `final.mp4` as JPG; the WebM with alpha and edge cleanup; a check frame on a light and a dark background shows furniture in the mask right away), source-edge cuts, layouts.
 
 **Text behind the person (hook).** A big word behind the figure but in front of the background, like a magazine cover. Offer it only if there is no room above the head for the whole hook: with a free “headroom” zone, a regular hook above the head reads better. Needs a calm, contrasting background behind the head; 1.5–3 s. In Remotion, three layers **inside one camera div**: video → word → `<OffthreadVideo src="person.webm" transparent muted />`. The word is ≤ 960 px wide, the figure covers only the bottom or the middle of the letters (≤ ~30%), the lead-in sits tight above the word. **The main risk is contrast:** light letters on a light wall disappear. The “antithesis” variant: the word is crossed out during a pause and replaced by a second word when that word is spoken.

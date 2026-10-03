@@ -2,13 +2,14 @@
 """Edit settings of a video: brand, style, inserts (B-roll, code scenes, memes), intensity, and what will actually
 turn on.
 
-Layers (the right one overrides the left): assets/reel-defaults.json ← brand tone (brand.json → tone, a brand_tones
-preset) ← brand profile (inserts) ← edit/<id>/reel.json ← --set. The brand tone also sets the ceilings (memes,
+Layers (the right one overrides the left): assets/reel-defaults.json ← brand tone defaults (brand.json → tone, a
+brand_tones preset) ← the project's own reel-defaults.json ← brand profile (inserts) ← edit/<id>/reel.json ← --set. The brand tone also sets the ceilings (memes,
 transitions, full scenes); to go beyond them on explicit request: reelcfg.py save edit/<id> --set tone_override=true
 (violations become warnings).
 
     python scripts/reelcfg.py show edit/4821 [--set use_memes=true intensity=active] [--json]
     python scripts/reelcfg.py save edit/4821 --set brand=acme style=v2 use_broll=false use_memes=false
+    python scripts/reelcfg.py defaults [--set brand=acme use_memes=false] [--unset use_memes]   # the project's defaults
 
 `show` prints the resulting settings, where each key comes from, and the fallback: what turns off by itself (for
 example online sources when the online-sources add-on `it-reelsmaker-online` is not installed) and why. This is not an
@@ -16,13 +17,17 @@ error: editing continues with what is available.
 `save` adds keys to edit/<id>/reel.json (only the ones given; defaults are not copied there); it creates the folder
 edit/<id> if it doesn't exist yet. reel.json is the only source of the video's settings: visual_plan.py takes them
 from here.
+`defaults` shows or edits <project>/reel-defaults.json: your defaults for every video of the project (default brand,
+inserts, library folders, ...), in the same format as the plugin's assets/reel-defaults.json, only the keys you change.
+--set/--unset touch the "settings" keys; other sections (intensity and brand tone labels in your language, ...) are
+edited in the file by hand. The file stays in the project: plugin updates never touch it.
 """
 import argparse, json, sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from reels_common import (SETTING_KEYS_BOOL, edit_dir, editing_json, effective, load_config, online, parse_sets,
-                          tone_summary, utf8_stdio, warn)
+from reels_common import (PROJECT_DEFAULTS, SETTING_KEYS_BOOL, edit_dir, editing_json, effective, is_project,
+                          load_config, load_json, online, parse_sets, project_root, tone_summary, utf8_stdio, warn)
 
 KNOWN = set(SETTING_KEYS_BOOL) | {"brand", "style", "subtitles", "intensity", "broll_priority", "meme_priority",
                                   "footage_dirs", "memes_dirs", "generation_engines", "library_dirs", "meme_size",
@@ -88,6 +93,36 @@ def cmd_save(a):
         print("the settings snapshot in visual_plan.json is updated")
 
 
+def cmd_defaults(a):
+    project = project_root()
+    f = project / PROJECT_DEFAULTS
+    if not (a.set or a.unset):
+        doc = load_json(f, None)
+        if doc is None:
+            print(f"{f}: no project defaults yet (the plugin's defaults apply); create: reelcfg.py defaults --set key=value")
+        else:
+            print(f"{f}:")
+            print(json.dumps(doc, ensure_ascii=False, indent=1))
+        return
+    if not is_project(project):
+        sys.exit(f"no editing project here ({project}: no edit/, brands/ or it-reelsmaker.json); run it from the project "
+                 f"folder or set REELS_PROJECT")
+    over = parse_sets(a.set or [])
+    known = KNOWN | set(addon_keys("SETTING_KEYS_BOOL")) | set(addon_keys("SETTING_KEYS"))
+    for k in list(over) + list(a.unset or []):
+        if k not in known:
+            warn(f"unknown key {k}, saving it as is")
+    with editing_json(f, {}) as doc:
+        s = doc.setdefault("settings", {})
+        s.update(over)
+        gone = [k for k in (a.unset or []) if s.pop(k, None) is not None]
+    if over:
+        print(f"{f}: " + ", ".join(f"{k}={v}" for k, v in over.items()))
+    if gone:
+        print(f"{f}: removed {', '.join(gone)} (the plugin's defaults apply again)")
+    print("the brand profile, the brand tone and each video's reel.json still override these defaults")
+
+
 def main():
     utf8_stdio()
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -95,6 +130,8 @@ def main():
     p = sub.add_parser("show"); p.add_argument("edit", nargs="?"); p.add_argument("--set", nargs="*")
     p.add_argument("--json", action="store_true"); p.set_defaults(fn=cmd_show)
     p = sub.add_parser("save"); p.add_argument("edit"); p.add_argument("--set", nargs="+", required=True); p.set_defaults(fn=cmd_save)
+    p = sub.add_parser("defaults", help="show or edit the project's own defaults (<project>/reel-defaults.json)")
+    p.add_argument("--set", nargs="+"); p.add_argument("--unset", nargs="+"); p.set_defaults(fn=cmd_defaults)
     a = ap.parse_args()
     a.fn(a)
 

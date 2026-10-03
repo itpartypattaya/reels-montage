@@ -2,6 +2,18 @@
 
 What changed in IT Reelsmaker, written for the people who use it. The newest version is on top. The skill shows a short “What's new” note from this file once, on the first edit after an update.
 
+## 1.4.4
+
+- **Your own settings live in your project, not in the plugin.** `<project>/reel-defaults.json` holds your defaults
+  for every video (default brand, inserts, library folders, labels in your language): `reelcfg.py defaults --set …`.
+  Plugin updates never touch it; the brand profile and each video's settings still override it.
+- **Brand documents next to the profile.** Besides `rules.md`, a brand folder can hold its own video guide
+  (`guide.md`), its own CTA library with exact texts (`cta.md`) and any other brand documents linked from `rules.md`;
+  `brand.py show` lists them, and the skill reads them before graphics and at the brief.
+- Fixes: code scenes list all 8 required fields; the marker text color `ink` from the brand template now reaches the
+  Remotion kit (kit 1.4.4); styles ReelKit draws itself are named; CTA, meme size, library catalog and verification
+  notes filled in.
+
 ## 1.4.3
 
 - **Transcription no longer breaks on some installs.** `transcribe.py` reads the audio itself and hands it to

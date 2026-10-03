@@ -123,7 +123,7 @@ export const alpha = (hex: string, a: number) => {
 
 // Video style (brand.json → styles; the style prop ← visual_plan.py export). kit implements two kinds of plate:
 //   “marker” / “v2” — text on a marker plate: color is colors.extra.marker (or extra.marker_yellow), otherwise accent;
-//     text on its own marker is extra.on_marker or #111111, on accent it is text_on_accent. “v2” sets everything in the
+//     text on its own marker is extra.on_marker (or extra.ink) or #111111, on accent it is text_on_accent. “v2” sets everything in the
 //     body font (typography.md: Inter only);
 //   “brand” — accent marker, text_on_accent text, brand fonts.
 // The rest (minimal, editorial, bold, glass) are not implemented in ReelKit: a console warning and “marker”.
@@ -145,7 +145,7 @@ export const styleLook = (b: Brand, style?: string | null): Look => {
   return {
     style: known ? s : "marker",
     mark: o.mark ?? own ?? c.accent,
-    onMark: o.on_mark ?? (own ? x.on_marker ?? "#111111" : c.text_on_accent),
+    onMark: o.on_mark ?? (own ? x.on_marker ?? x.ink ?? "#111111" : c.text_on_accent),
     heading: o.heading ?? (s === "v2" ? b.fonts.body : b.fonts.heading),
     body: o.body ?? b.fonts.body,
   };

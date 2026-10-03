@@ -2,23 +2,33 @@
 
 The call-to-action codes and their texts for the end card and the `cta` scene. ⟨YOURS: fill in contacts, remove what you don't need.⟩
 
-One CTA per video (exception: a job opening, with apply + recommend). Tone: a calm invitation, no “Urgent” or “Hurry up”. Two lines on the card: the main line (52–60 px) and a clarifier (34–38 px, in a muted color).
+**The brand's own library comes first.** A brand can keep its CTAs with exact texts in `brands/<slug>/cta.md`, set in `brand.json → cta_library` (`references/brands.md`). It uses the same columns as the table below; this file gives the structure and generic templates. When the person names a preferred CTA or an exact wording for the brand, it goes into the brand's `cta.md`, not into one video's notes.
 
-| Code | Main line | Clarifier |
-|---|---|---|
-| `dm` | Send me a DM | I'll reply personally |
-| `dm-word` | DM me “`{{CODE_WORD}}`” | I'll send ⟨what exactly⟩ |
-| `comment-word` | Comment “+” below | I'll DM you ⟨what exactly⟩ |
-| `site` | `{{SITE}}` | ⟨YOURS: what's there⟩ |
-| `bio` | Link in bio | ⟨where it leads⟩ |
-| `messenger` | ⟨messenger⟩: `{{HANDLE}}` | Message me directly |
-| `apply` | Apply via DM | ⟨what to send⟩ |
-| `recommend` | Know someone like this? | Recommend them: link in bio |
-| `brief` | ⟨YOURS: question to the client⟩ | Describe your task: `{{SITE}}` |
-| `save` | Save this so you don't lose it | Useful ⟨when⟩ |
-| `share` | Send this to someone who ⟨who⟩ | — |
-| `follow` | Follow for more | ⟨YOURS: what about and how often⟩ |
+## How to offer it (brief, step 7)
+
+The agent does not pick the CTA on its own.
+1. Choose by the video's format, the transcript and the audience (“For whom”): up to **3 fitting CTAs**, the recommended one first; from the brand's library first, then from the table below.
+2. For each, one line on why it fits this video, and the exact text of both card lines.
+3. The other answers, as the last option or through “Other”: **CTA by voice in the last line** (the speaker says it, no card), **no CTA**, or a **logo sting** (an outro with the logo, 2–3 s, no CTA) when the brand wants recognition without a call.
+4. A CTA code already given in the prompt is not asked about, but the card text is shown before rendering.
+
+## On the card
+
+One CTA per video (exception: a job opening, with apply + recommend). Tone: a calm invitation, no “Urgent” or “Hurry up”. Two lines: the **main line** (SemiBold, 52–60 px) and a **clarifier** (Medium, 34–38 px, in the style's muted color). Under the main line, the chosen style's accent: a marker bar or focus brackets in “Brand”, a marker bar on the key word or symbol in “Marker”. If the speaker says the link or address, the card enters on those words.
+
+| Code | For whom | Main line | Clarifier | Fits the format |
+|---|---|---|---|---|
+| `dm` | everyone | Send me a DM | I'll reply personally | insight, case study |
+| `dm-word` | everyone | DM me “`{{CODE_WORD}}`” | I'll send ⟨what exactly⟩ | insight with a lead magnet |
+| `comment-word` | everyone | Comment “+” below | I'll DM you ⟨what exactly⟩ | insight, checklist |
+| `site` | companies | `{{SITE}}` | ⟨YOURS: what's there⟩ | case study, insight for clients |
+| `bio` | everyone | Link in bio | ⟨where it leads⟩ | any |
+| `messenger` | everyone | ⟨messenger⟩: `{{HANDLE}}` | Message me directly | any |
+| `apply` | candidates, customers | Apply via DM | ⟨what to send⟩ | job opening / offer |
+| `recommend` | everyone | Know someone like this? | Recommend them: link in bio | job opening |
+| `brief` | companies | ⟨YOURS: question to the client⟩ | Describe your task: `{{SITE}}` | case study, testimonial |
+| `save` | everyone | Save this so you don't lose it | Useful ⟨when⟩ | insight with a list |
+| `share` | everyone | Send this to someone who ⟨who⟩ | — | insight |
+| `follow` | everyone | Follow for more | ⟨YOURS: what about and how often⟩ | insight, series |
 
 Promises (“I'll reply within a day”, “every week”, a lead magnet) only if they are actually kept. “Link in bio” only if the link is already there.
-
-A CTA code already given in the prompt is not asked about, but the card text is shown before rendering. If the speaker says the link or address, the card enters on those words.

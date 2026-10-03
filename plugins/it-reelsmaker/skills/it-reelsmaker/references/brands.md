@@ -9,8 +9,13 @@ A brand is a folder `<PROJECT_ROOT>/brands/<slug>/` in the editing project (the 
 | What | Why |
 |---|---|
 | `brand.json` | the machine part: colors by role, fonts, logos, LUT, default style and subtitles, bans, meme policy, meme size, insert defaults, who approves, account type |
-| `rules.md` | design rules in words + a log of rules from revisions |
+| `rules.md` | rules in words: what is allowed and what is not, bans, voice + a log of brand-level revisions (`brand.py rule`) |
+| `guide.md` | the brand's video guide: palette roles, typography, signature elements, motion, imagery bans, where video departs from the static guidelines; set in `brand.json → guide` |
+| `cta.md` | the brand's own CTA library with exact texts; set in `brand.json → cta_library`; structure and generic templates: `references/cta.md` |
+| other `.md` | any other brand document (a recurring skit format, a series template), linked from `rules.md` |
 | `assets/` | logos, LUT, font files: the brand is self-contained and moves as one folder |
+
+`brand.py show <slug>` lists the rules, the video guide, the CTA library and the other documents it finds (✗: set in the profile, but the file is missing). The agent reads `rules.md` and `guide.md` before any graphics and `cta.md` at the brief's CTA question.
 
 Profiles live in the project, not in the plugin: a plugin update doesn't touch them, and you can keep the brand folder in your own git. Profiles from the old version (`~/.claude/skills/reels-montage/brands/`, before 1.0) move into `<PROJECT_ROOT>/brands/` as they are.
 
@@ -20,20 +25,46 @@ Profiles live in the project, not in the plugin: a plugin update doesn't touch t
 |---|---|
 | `{{BRAND}}`, `{{VOICE}}`, `{{TAGLINE}}` | `name`, `voice`, `tagline` |
 | `{{DARK}}`, `{{ACCENT}}`, `{{LIGHT}}` | `colors.primary`, `colors.accent`, `colors.light` |
-| `{{MUTED}}`, `{{MARKER}}`, `{{INK}}` | `colors.extra.muted`, `colors.extra.marker`, `colors.extra.ink`; if the brand doesn't set marker and ink, `{{MARKER}}` = `colors.accent` and `{{INK}}` = `colors.text_on_accent` |
+| `{{MUTED}}`, `{{MARKER}}`, `{{INK}}` | `colors.extra.muted`; `colors.extra.marker` (the marker color); `colors.extra.ink`, alias `on_marker` (text on the marker). If the brand doesn't set a marker, `{{MARKER}}` = `colors.accent` and `{{INK}}` = `colors.text_on_accent`; its own marker without `ink` gets near-black `#111111` text |
 | `{{FONT_HEADING}}`, `{{FONT_TEXT}}`, `{{FONT_SERIF}}` | `fonts.heading`, `fonts.body`, `fonts.serif` |
 | `{{LOGO_DARK_BG}}`, `{{LOGO_LIGHT_BG}}`, `{{LOGO_MARK}}` | `logos.on_dark`, `logos.on_light`, `logos.mark_on_dark` |
 | `{{FORBIDDEN_IMAGES}}`, `{{FORBIDDEN_WORDS}}` | `forbidden_imagery` (+ `_en`, for English-language searches and prompts), `forbidden_words` |
 | `{{SITE}}`, `{{HANDLE}}`, `{{CODE_WORD}}` | `cta.site`, `cta.handle`, `cta.code_word` |
 | `{{APPROVER}}`, `{{ACCOUNT_TYPE}}` | `approver`, `account` |
 
+## Your settings in the project
+
+The plugin folder is replaced on every update, so nothing personal is written there. Your choices live in the project:
+
+| What | Where | How |
+|---|---|---|
+| defaults for every video of the project: default brand (`settings.brand`), inserts on/off, `library_dirs`, your own labels for intensity and brand tones in your language, … | `{{PROJECT_ROOT}}/reel-defaults.json` | `reelcfg.py defaults` |
+| everything about one brand: profile, rules, video guide, CTA library, other documents | `{{PROJECT_ROOT}}/brands/<slug>/` | `brand.py`, the files themselves |
+| project-wide notes: folder layout, which Python to run, servers, lessons from past videos, the person's ready prompts | the project's `CLAUDE.md` | by hand; Claude Code reads it by itself |
+
+**Project defaults.** `reel-defaults.json` has the same format as the plugin's `assets/reel-defaults.json`, but holds only the keys you change. It is deep-merged over the plugin's file: nested objects key by key, lists replaced whole. For example:
+
+```json
+{"settings": {"brand": "acme", "use_scenes": true, "library_dirs": ["library"]},
+ "intensity": {"moderate": {"label": "⟨your word for “moderate”⟩"}},
+ "brand_tones": {"expert": {"label": "⟨your name for the expert tone⟩"}}}
+```
+
+- `reelcfg.py defaults`: print the project defaults file (or say there is none yet);
+- `reelcfg.py defaults --set brand=acme use_scenes=true`: write `settings` keys (the file is created if needed);
+- `reelcfg.py defaults --unset use_scenes`: remove keys, so the plugin's default applies again;
+- `--set` and `--unset` touch only the `settings` keys; labels and other sections are edited in the file by hand;
+- `reelcfg.py show edit/<id>` marks the keys that come from this file as `project`.
+
+**Layers** (the right one overrides the left): plugin defaults ← online add-on defaults (if installed) ← the brand tone preset's defaults (`intensity`, `use_broll`, `use_memes`, `scene_tone`) ← the project's `reel-defaults.json` ← the file named in `REELS_DEFAULTS_OVERLAY` ← brand profile `inserts` ← `edit/<id>/reel.json` ← words in the prompt. Your project defaults beat the preset's guesses, but not its ceilings: `meme_size` stays capped by the tone, and `visual_plan.py validate` still enforces the tone's limits (number of memes, transitions, full-frame scenes).
+
 ## Step 0: choose the brand
 
 1. List the saved brands. The most recently used come first (`last_used`).
-2. If the brand is clear from the prompt or the folder, don't ask.
+2. If the brand is clear from the prompt or the folder, don't ask. A default brand in the project defaults (`settings.brand`) counts as clear unless the prompt names another one.
 3. If it isn't clear, make the first question of the step 0 `AskUserQuestion` offer the 3 most recent brands. A new brand comes in through “Other”: a name and 1–3 colors, then the **brand tone** (section below).
 4. Write the brand to `edit/<id>/reel.json` and update `last_used` in the profile.
-5. Read the brand's `rules.md` before doing any graphics.
+5. Read the brand's `rules.md` and its video guide (`guide.md`, if set) before doing any graphics; its CTA library (`cta.md`) at the brief.
 
 ## A new brand from a minimum
 
@@ -104,7 +135,7 @@ The presets in full (exact values, for the plan check):
 
 How it works:
 - **A ceiling, not a target.** The preset sets the defaults (intensity, meme size, scene tone; `memes.default` only says whether step 0 recommends memes: they go into a video only if the person chooses them there or asks in the prompt) and the ceilings the visual plan check enforces: number and size of memes, a full-frame meme, allowed transitions, number of light flashes and whips, number of full-frame scenes, scene tone. A violation is an error.
-- **Settings layers:** skill defaults ← tone preset ← the profile's `inserts` ← the video's `reel.json` ← words from the prompt. Ceilings: the preset plus `tone.overrides`.
+- **Settings layers:** skill defaults (with the add-on's) ← tone preset defaults ← the project's `reel-defaults.json` (section “Your settings in the project”) ← the profile's `inserts` ← the video's `reel.json` ← words from the prompt. Ceilings: the preset plus `tone.overrides`, whatever the layers say.
 - **Louder than the brand tone** only on the person's explicit request for this video: `reel.json → "tone_override": true`; violations become warnings and go into the report.
 - **A custom tone** (“Other” in the question, described in words): the nearest preset plus field changes in `tone.overrides`.
 - `memes_policy` (meme rights) and `motion`, if set explicitly in the profile, override the preset. A profile without a tone gets `expert` when it is brought up to date (`references/migrations.md`), with one line saying so and how to change it.
@@ -142,13 +173,23 @@ A variant you recolored yourself (for example white made from a dark one) goes i
 
 ## Rules from revisions
 
-A revision that applies to the brand rather than to one video is appended to `rules.md` → “Rules from revisions” with a date. Examples of such revisions: “cards only on the left”, “the mark goes on the card, not in the corner”, “accent only on numbers”. The brand's next video already knows it. Revisions for a single video stay in `edit/<id>/project.md`. If it's unclear what a revision applies to, ask in one line.
+A revision that applies to the brand rather than to one video is appended to `rules.md` → “Rules from revisions” with a date (`brand.py rule <slug> "…"`). Examples of such revisions: “cards only on the left”, “the mark goes on the card, not in the corner”, “accent only on numbers”. The brand's next video already knows it. Revisions for a single video stay in `edit/<id>/project.md`. If it's unclear what a revision applies to, ask in one line.
+
+Whatever the person says about the brand as a whole goes into the brand folder, not into one video's notes:
+
+| What was said | Where it goes |
+|---|---|
+| a rule or a ban (“never show money”, “no red”) | `rules.md`, via `brand.py rule` |
+| a preferred CTA, an exact CTA text | the brand's `cta.md` (create it and set `brand.json → cta_library` if there is none) |
+| a visual decision: palette roles, type, signature elements, motion | `guide.md` (set `brand.json → guide`) |
+| a recurring format: a skit, a series template | its own `.md` in the brand folder, linked from `rules.md` |
+| something for every video of the project, whatever the brand | `reel-defaults.json` (settings) or the project's `CLAUDE.md` (notes) |
 
 ## Styles for any brand
 
 | Style | For the brand |
 |---|---|
-| **“Marker”** | `{{INK}}` text on a `{{MARKER}}` marker bar (`colors.extra.ink` on `colors.extra.marker`; if the brand doesn't set them, `text_on_accent` on `accent`), the bar draws in from left to right; the default style for a new brand |
+| **“Marker”** | `{{INK}}` text on a `{{MARKER}}` marker bar (`colors.extra.ink`, alias `on_marker`, on `colors.extra.marker`; without a marker of its own, `text_on_accent` on `accent`), the bar draws in from left to right; the default style for a new brand |
 | **“Brand”** | `primary` backings, `accent` highlights, brand fonts |
 | **“Minimal” / “Editorial” / “Bold”** | their own fonts and layout; the style's accent color is replaced with the brand's `accent` |
 | **“Glass”** | glass `primary` cards, only for skits and only when chosen explicitly |
@@ -163,6 +204,10 @@ The profile is copied into the Remotion project: the JSON to `src/brands/<slug>.
 - logos: `staticFile(brand.logos.on_dark)`.
 
 HEX codes and font names are never written into the video's code.
+
+**Styles the kit draws.** `ReelKit` draws “Marker” (`marker`, and its variant `v2`, which sets every line in the body font) and “Brand” (`brand`) itself. `minimal`, `editorial`, `bold` and `glass` are drawn as “Marker” in brand colors with a console warning: for those styles, write a per-video composition that reuses the kit's components (`Phrase`, subtitles, inserts, scenes). `brand.json → looks.<style>` overrides a style's look for this brand: `mark` (the marker color), `on_mark` (text on it), `heading` and `body` (fonts, in the `fonts` format), for example `"looks": {"marker": {"mark": "#F5FAA4", "on_mark": "#111111"}}`.
+
+**Fonts in the kit.** `src/kit/brand.ts` loads Google fonts by family name from its `GOOGLE` map, which knows 14 families: Inter, Manrope, Oswald, Montserrat, Onest, Inter Tight, Playfair Display, Roboto, Rubik, Unbounded, Golos Text, Nunito, Open Sans, PT Sans. An unknown family falls back to Inter with a warning. Another Google family is an import plus one entry in the `GOOGLE` map; `kit.py check` lists that file as changed, and `kit.py update` replaces `src/kit/` (backup in `.kit-backup/`), so add the entry again after an update. The kit requests only the `latin` and `cyrillic` subsets of a Google font: for another script (for example Vietnamese or Greek), add its subset in that loader or use font files. The brand's own font files: `"source": "local"` with `files` (upright faces) and `italic` (italic faces) in `brand.json → fonts`; the weight and style come from the file name (Thin 100 … Black 900; Italic, Oblique or `-It`).
 
 ## What else depends on the brand
 

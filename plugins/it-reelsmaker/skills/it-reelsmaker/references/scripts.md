@@ -16,7 +16,9 @@ python "${CLAUDE_SKILL_DIR}/scripts/<name>.py" <command> [args]
   (`pip install opencv-python-headless`) only for face measurement.
 - Run from the project folder: the scripts find it as the current folder or above (the nearest folder with `edit/` or
   `brands/`, or `it-reelsmaker.json -> project_root`), or from `REELS_PROJECT`. `edit/<id>` arguments are relative to it.
-- The scripts write only into the project (and the Remotion project you name), never into the plugin folder.
+- The scripts write only into the project (and the Remotion project you name), never into the plugin folder: an
+  update replaces it. Your own defaults go into `{{PROJECT_ROOT}}/reel-defaults.json` (`reelcfg.py defaults`; layers:
+  `references/brands.md`, “Your settings in the project”).
 - Exit codes: `0` done (warnings start with an exclamation mark and don't stop the edit); `1` a check failed (plan errors, a
   rough cut whose video and audio don't line up, a master that missed the target): fix it before going on.
 - Several sessions in one project are safe: shared JSON is written atomically under a lock.
@@ -27,8 +29,8 @@ python "${CLAUDE_SKILL_DIR}/scripts/<name>.py" <command> [args]
 |---|---|---|
 | 0 | `doctor.py` | the environment in one command: what is missing and the install command for this OS (exit 1 if a required program is missing) |
 | 0, 8 | `kit.py` | `new <folder>` (a starter Remotion project: pinned versions, `Root.tsx` with `ReelKit`, `ReelCover` and the code scenes; prints the `npm install` command), `check --remotion <dir>` (kit version and changed files), `update --remotion <dir> [--dry-run]` (replaces only `src/ReelKit.tsx` and `src/kit/`, backup in `.kit-backup/`) |
-| 0 | `brand.py` | `list`, `show <slug>`, `new --name … --colors … [--tone …]`, `logo`, `rule`, `set`, `tone <slug> <preset>`, `use <slug> --edit edit/<id>`, `export <slug> --remotion <dir>` |
-| 0 | `reelcfg.py` | `show edit/<id> [--json]` (settings, where each comes from, what will actually turn on and why not); `save edit/<id> --set key=value …` |
+| 0 | `brand.py` | `list`, `show <slug>` (profile, contrast, found files; the rules, video guide, CTA library and other brand documents, ✗ if missing), `new --name … --colors … [--tone …]`, `logo`, `rule <slug> "<text>"` (append a brand-level rule to `rules.md`), `set`, `tone <slug> <preset>`, `use <slug> --edit edit/<id>`, `export <slug> --remotion <dir>` |
+| 0 | `reelcfg.py` | `show edit/<id> [--json]` (settings, where each comes from: `defaults`, `project`, `overlay`, `tone:<preset>`, `brand:<slug>`, `reel.json`, `override`; what will actually turn on and why not); `save edit/<id> --set key=value …`; `defaults` (print the project defaults file `reel-defaults.json`), `defaults --set key=value …` (write `settings` keys), `defaults --unset key …` (remove keys) |
 | 2, 3 | `transcribe.py` | `edit/<id> <source> [--model medium] [--language ru]` (faster-whisper, cached in `transcripts/`); `snip edit/<id> <source> --from … --to …` (a <= 5 s piece without context, for retakes); `check <file>` (your own transcriber's output) |
 | 3, 6 | `speech_mask.py` | `<audio.wav> --spans 0.5-4.6,4.7-9.6 [--density natural]` (edges by audio → `"ranges"` for `cut.json`); `--edl edit/<id>/edl.json` (check every edge of the rough cut, exit 1 on warnings) |
 | 6 | `cut.py` | `edit/<id> --dry-run` (segments, lengths, words), then `edit/<id>` → `final.mp4`, `captions.json`, `edl.json`; the cut list format is in `--help` |
@@ -42,7 +44,7 @@ python "${CLAUDE_SKILL_DIR}/scripts/<name>.py" <command> [args]
 | 9 | `patch_render.py` | `out/<render>.mp4 --comp Reel<id> --from 12.3 --to 13.1`: re-render and splice a segment (late spot fixes) |
 | 9 | `poster.py` | `pick edit/<id> --render out/x.mp4 -o cover.jpg`, `guide cover.jpg -o cover-guide.png`, `bake out/x.mp4 --cover cover.jpg -o out/x-cover.mp4` (cover in frame 0) |
 | 9 | `master_audio.py` | `out/render.mp4 -o out/master.mp4 [--music track.mp3]`, `--check`, `--find-drops` |
-| 11 | `library_catalog.py` | `--dir {{ASSETS_DIR}}`: catalog, overview sheets and verdicts of your own asset library |
+| 11 | `library_catalog.py` | `--dir {{ASSETS_DIR}} [--verdicts <file>] [--full]`: catalog, overview sheets and verdicts of your own asset library; only changed files are measured again, `--full` measures everything again |
 | — | `addon.py` | runs the commands of the online-sources add-on, if it is installed and linked (`addon.py` alone lists them) |
 
 ## The rough cut list (`edit/<id>/cut.json`)
