@@ -15,9 +15,26 @@ Keys are read from environment variables or from a file outside the skill and ou
 | `MAGNIFIC_API_KEY` (or `FREEPIK_API_KEY`) | Magnific (formerly Freepik, + Videvo) | paid stock with a 9:16 filter |
 | `FAL_KEY` | fal.ai | model generation: Veo / Kling / LTX |
 | `GIPHY_API_KEY` | GIPHY | meme references only |
+| `OPENAI_API_KEY` | OpenAI | cloud transcript text (gpt-transcribe; whisper-1 word times only with `--words cloud`) |
 | — | Openverse | CC images, no key (about 100 requests a day anonymously) |
 
 Offline mode (a variable such as `REELS_OFFLINE=1`) turns the network off entirely.
+
+## Speech recognition (transcript)
+
+Checked 2026-10-04 on a 97 s phone video in Russian against the local faster-whisper medium transcript:
+
+| Model | Word times | Text on the test video | Price |
+|---|---|---|---|
+| OpenAI `gpt-transcribe` | no (json / text only) | the cleanest: fixed a case ending and a wrong word, caught 2 words the local model dropped | $0.0045 / min |
+| OpenAI `gpt-4o-transcribe` | no | 3 errors the others did not make | ~$0.006 / min |
+| OpenAI `whisper-1` | yes (`verbose_json`, `timestamp_granularities[]=word`) | 1 wrong word; heard one retake repeat the others merged; times off by > 0.15 s for 40 of 187 words | $0.006 / min |
+| Google Gemini | guessed by the model, not measured | — | — |
+| Anthropic Claude | no audio input in the API | — | — |
+
+Hence the default: the local word times with `gpt-transcribe`'s text laid onto them. Upload limit 25 MB per file
+(`mp3, mp4, mpeg, mpga, m4a, wav, webm`). Endpoint `https://api.openai.com/v1/audio/transcriptions`, multipart,
+`Authorization: Bearer`. OpenAI's API data policy: https://openai.com/policies/
 
 ## Stock video
 

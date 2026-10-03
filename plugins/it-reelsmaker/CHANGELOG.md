@@ -2,6 +2,11 @@
 
 What changed in IT Reelsmaker, written for the people who use it. The newest version is on top. The skill shows a short “What's new” note from this file once, on the first edit after an update.
 
+## 1.4.7
+
+- Step 2 points to the online add-on's more accurate transcript (a cloud text laid onto the local word times) for
+  people who have the add-on.
+
 ## 1.4.6
 
 - **Your own transcriber gets the right audio.** `transcribe.py audio edit/<id> <source>` makes only the audio file
