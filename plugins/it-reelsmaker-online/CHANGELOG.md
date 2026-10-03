@@ -2,6 +2,10 @@
 
 What changed in IT Reelsmaker Online. The newest version is on top.
 
+## 1.2.0
+
+- **Add API keys safely.** `reels_online.py keys set <NAME>` in your own terminal: the key is typed with hidden input, never passes through the chat, and is saved to a file readable by you only. `keys list` shows what is set (masked), `keys remove` deletes a key.
+
 ## 1.1.0
 
 - **Works through the core's scripts.** Link the add-on to your project once; stock footage then shows up in the core's footage search, and the add-on's own commands (online memes, paid generation, server cut-out) run through the core.

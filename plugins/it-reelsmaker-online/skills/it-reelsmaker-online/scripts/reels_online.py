@@ -8,9 +8,14 @@ plugin folder path contains the version):
     python <add-on scripts>/reels_online.py link [--project DIR]     # online_scripts -> <project>/it-reelsmaker.json
     python <add-on scripts>/reels_online.py unlink [--project DIR]   # remove that key
     python <core scripts>/addon.py memes|gen|matte ...               # the add-on's commands, run through the core
+    python <add-on scripts>/reels_online.py keys list                 # which keys are set (values masked)
+    python <add-on scripts>/reels_online.py keys set PEXELS_API_KEY   # in your own terminal: hidden input
+    python <add-on scripts>/reels_online.py keys remove PEXELS_API_KEY
 
 API keys: environment variables, otherwise the file in REELS_KEYS_FILE or ~/.config/it-reelsmaker/keys.env
-(KEY=value lines; keep it outside the project and git). Keys are never printed: every error passes through scrub().
+(KEY=value lines; keep it outside the project and git). Put keys there with `keys set` in your own terminal: the value
+is typed hidden, never passes through the chat, and the file is readable by you only. Keys are never printed: every
+error passes through scrub().
 REELS_OFFLINE=1: no network at all (cached answers still work).
 link and unlink use the standard library only and do not import the core.
 """
@@ -79,6 +84,98 @@ def _load_keys():
                     k, v = line.split("=", 1)
                     _KEYS[k.strip()] = v.strip().strip('"').strip("'")
     return _KEYS
+
+
+KEY_NAME_RE = re.compile(r"^[A-Z][A-Z0-9_]{1,63}$")
+
+
+def known_keys():
+    """Every key name the add-on reads, aliases included."""
+    names = {v for d in (FOOTAGE_KEYS, MEME_KEYS, GEN_KEYS) for v in d.values() if v}
+    names |= {a for v in KEY_ALIASES.values() for a in v}
+    return sorted(names)
+
+
+def _mask(v):
+    return f"set, ends ...{v[-4:]}" if len(v) >= 12 else "set"
+
+
+def _keys_lines():
+    return KEYS_FILE.read_text(encoding="utf-8").splitlines() if KEYS_FILE.is_file() else []
+
+
+def _write_keys(lines):
+    """Atomic write of the keys file, readable by its owner only (POSIX mode 600; on Windows the file stays in your
+    user profile, which other users can't read by default)."""
+    KEYS_FILE.parent.mkdir(parents=True, exist_ok=True)
+    if os.name != "nt":
+        os.chmod(KEYS_FILE.parent, 0o700)
+    tmp = KEYS_FILE.with_name(f".{KEYS_FILE.name}.{os.getpid()}.{uuid.uuid4().hex}.tmp")
+    try:
+        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as f:
+            f.write("\n".join(lines) + ("\n" if lines else ""))
+        os.replace(tmp, KEYS_FILE)
+    finally:
+        if tmp.exists():
+            tmp.unlink()
+    if os.name != "nt":
+        os.chmod(KEYS_FILE, 0o600)
+
+
+def _key_name(name):
+    if not KEY_NAME_RE.match(name or ""):
+        sys.exit(f"{name!r} is not a key name (capital letters, digits and _, like PEXELS_API_KEY)")
+    if name not in known_keys():
+        print(f"note: the add-on does not read {name}; known keys: {', '.join(known_keys())}")
+    return name
+
+
+def cmd_keys_list(a):
+    file_keys = _load_keys()
+    print(f"keys file: {KEYS_FILE}" + ("" if KEYS_FILE.is_file() else " (not created yet)"))
+    for n in sorted(set(known_keys()) | set(file_keys)):
+        env, fv = os.environ.get(n), file_keys.get(n)
+        state = (_mask(env) + " (environment)") if env else (_mask(fv) + " (file)") if fv else "not set"
+        print(f"  {n:24} {state}")
+
+
+def cmd_keys_set(a):
+    name = _key_name(a.name)
+    if not (sys.stdin.isatty() and sys.stdout.isatty()):
+        sys.exit("keys set reads the key with hidden input, so run it yourself in a terminal (not through Claude): "
+                 f"python {Path(__file__).resolve()} keys set {name}. This way the key never passes through the chat.")
+    import getpass
+    value = getpass.getpass(f"{name} (input hidden, Enter to cancel): ").strip()
+    if not value:
+        sys.exit("nothing typed: the key was not changed")
+    if any(c in value for c in "\r\n"):
+        sys.exit("the key contains a line break: not saved")
+    with file_lock(KEYS_FILE):
+        lines = [l for l in _keys_lines() if l.split("=", 1)[0].strip() != name]
+        lines.append(f"{name}={value}")
+        _write_keys(lines)
+    global _KEYS
+    _KEYS = None
+    print(f"{name}: saved to {KEYS_FILE} ({_mask(value)})")
+    if os.environ.get(name):
+        print(f"note: the environment variable {name} is also set and takes precedence over the file")
+
+
+def cmd_keys_remove(a):
+    name = _key_name(a.name)
+    with file_lock(KEYS_FILE):
+        lines = _keys_lines()
+        kept = [l for l in lines if l.split("=", 1)[0].strip() != name]
+        if len(kept) == len(lines):
+            print(f"{name}: not in {KEYS_FILE}")
+            return
+        _write_keys(kept)
+    global _KEYS
+    _KEYS = None
+    print(f"{name}: removed from {KEYS_FILE}")
+    if os.environ.get(name):
+        print(f"note: the environment variable {name} is still set")
 
 
 def api_key(name):
@@ -426,6 +523,14 @@ def main(argv=None):
         p = sub.add_parser(name, help=what)
         p.add_argument("--project", help="the project folder (default: found from the current folder)")
         p.set_defaults(fn=fn)
+    kp = sub.add_parser("keys", help="API keys in the keys file: list, set (hidden input), remove")
+    ks = kp.add_subparsers(dest="keys_cmd", required=True)
+    ks.add_parser("list", help="which keys are set; values are masked").set_defaults(fn=cmd_keys_list)
+    for name, fn, what in (("set", cmd_keys_set, "type a key with hidden input (run it in your own terminal)"),
+                           ("remove", cmd_keys_remove, "delete a key from the keys file")):
+        q = ks.add_parser(name, help=what)
+        q.add_argument("name", help="the key name, like PEXELS_API_KEY or FAL_KEY")
+        q.set_defaults(fn=fn)
     a = ap.parse_args(argv)
     a.fn(a)
 

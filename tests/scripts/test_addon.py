@@ -2,6 +2,8 @@
 every run sets REELS_OFFLINE=1 and an empty keys file."""
 import json
 
+import pytest
+
 from conftest import ADDON, make_video, needs_ffmpeg, run_script, write_json
 
 OFF = {"REELS_OFFLINE": "1"}
@@ -102,3 +104,57 @@ def test_online_scripts_with_home_and_relative_paths(project, tmp_path, monkeypa
     monkeypatch.setattr(reels_common, "_ONLINE", None)
     assert reels_common.online() is None  # an unknown ~user is "not found", not a crash
     sys.modules.pop("reels_online", None)
+
+
+def _keys_module(monkeypatch, tmp_path):
+    import sys
+    monkeypatch.syspath_prepend(str(ADDON))
+    import reels_online
+    monkeypatch.setattr(reels_online, "KEYS_FILE", tmp_path / "cfg" / "keys.env")
+    monkeypatch.setattr(reels_online, "_KEYS", None)
+    for n in reels_online.known_keys():
+        monkeypatch.delenv(n, raising=False)
+    return reels_online
+
+
+class _Tty:
+    def isatty(self):
+        return True
+
+
+def test_keys_set_list_remove_keep_other_lines(monkeypatch, tmp_path, capsys):
+    import getpass, os, stat, sys
+    from types import SimpleNamespace
+    ro = _keys_module(monkeypatch, tmp_path)
+    ro.KEYS_FILE.parent.mkdir(parents=True)
+    ro.KEYS_FILE.write_text("# my keys\nGIPHY_API_KEY=giphy-0000000000\n", encoding="utf-8")
+    monkeypatch.setattr(sys, "stdin", _Tty())
+    monkeypatch.setattr(sys.stdout, "isatty", lambda: True, raising=False)
+    monkeypatch.setattr(getpass, "getpass", lambda prompt: "  pexels-secret-value-1234  ")
+    ro.cmd_keys_set(SimpleNamespace(name="PEXELS_API_KEY"))
+    text = ro.KEYS_FILE.read_text(encoding="utf-8")
+    assert "# my keys" in text and "GIPHY_API_KEY=giphy-0000000000" in text and "PEXELS_API_KEY=pexels-secret-value-1234" in text
+    assert ro.api_key("PEXELS_API_KEY") == "pexels-secret-value-1234"
+    out = capsys.readouterr().out
+    assert "pexels-secret-value-1234" not in out and "...1234" in out
+    ro.cmd_keys_list(SimpleNamespace())
+    out = capsys.readouterr().out
+    assert "secret" not in out and "PEXELS_API_KEY" in out and "(file)" in out
+    if os.name != "nt":
+        assert stat.S_IMODE(ro.KEYS_FILE.stat().st_mode) == 0o600
+    ro.cmd_keys_remove(SimpleNamespace(name="PEXELS_API_KEY"))
+    text = ro.KEYS_FILE.read_text(encoding="utf-8")
+    assert "PEXELS" not in text and "GIPHY_API_KEY=giphy-0000000000" in text and ro.api_key("PEXELS_API_KEY") is None
+
+
+def test_keys_set_refuses_without_a_terminal_and_bad_names(monkeypatch, tmp_path):
+    import getpass, io, sys
+    from types import SimpleNamespace
+    ro = _keys_module(monkeypatch, tmp_path)
+    monkeypatch.setattr(sys, "stdin", io.StringIO("piped-secret\n"))
+    monkeypatch.setattr(getpass, "getpass", lambda prompt: pytest.fail("must not read a key without a terminal"))
+    with pytest.raises(SystemExit) as ex:
+        ro.cmd_keys_set(SimpleNamespace(name="FAL_KEY"))
+    assert "terminal" in str(ex.value) and not ro.KEYS_FILE.exists()
+    with pytest.raises(SystemExit):
+        ro.cmd_keys_set(SimpleNamespace(name="fal key; rm"))

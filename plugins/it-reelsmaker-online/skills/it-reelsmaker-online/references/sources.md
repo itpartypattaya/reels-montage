@@ -6,7 +6,7 @@ Research as of 2026-10-01, based on the services' documentation. Prices and term
 
 ## Keys
 
-Keys are read from environment variables or from a file outside the skill and outside the project, for example `~/.config/it-reelsmaker/keys.env` with `NAME=value` lines. Keys are never printed and never go into the repository.
+Keys are read from environment variables or from a file outside the skill and outside the project, for example `~/.config/it-reelsmaker/keys.env` with `NAME=value` lines. The person adds a key in their own terminal: `reels_online.py keys set <NAME>` (hidden input, the file readable by its owner only); `keys list` shows what is set with values masked, `keys remove <NAME>` deletes one. Keys are never printed and never go into the repository.
 
 | Variable | Service | Used for |
 |---|---|---|

@@ -25,7 +25,13 @@ Then link the add-on to your editing project, once and again after each add-on u
 
 ## Keys
 
-Put your own API keys in environment variables or in a file outside your project, such as `~/.config/it-reelsmaker/keys.env`:
+Add your own API keys in your terminal, one at a time. The key is typed with hidden input, never passes through the chat, and goes into `~/.config/it-reelsmaker/keys.env` (readable by you only; `REELS_KEYS_FILE` picks another file):
+
+```bash
+python <add-on scripts>/reels_online.py keys set PEXELS_API_KEY
+```
+
+`keys list` shows which keys are set (values masked), `keys remove <NAME>` deletes one. Environment variables work too and take precedence over the file. The keys:
 
 - `PIXABAY_API_KEY`
 - `PEXELS_API_KEY`
@@ -33,7 +39,7 @@ Put your own API keys in environment variables or in a file outside your project
 - `FAL_KEY`
 - `GIPHY_API_KEY`
 
-Openverse needs no key. The skill never prints keys and masks them in its output and in saved errors. Without a key, that source simply switches off.
+Plugin settings can't hold these keys: Claude Code keeps protected plugin settings away from the commands Claude runs, so the add-on's scripts could not read them. Openverse needs no key. The skill never prints keys and masks them in its output and in saved errors. Without a key, that source simply switches off.
 
 Enable sources per video in `edit/<id>/reel.json`, for example `"use_online_footage": true`, or just ask: “find stock footage for the coffee scene”.
 

@@ -1,7 +1,7 @@
 {
   "name": "it-reelsmaker-online",
   "displayName": "IT Reelsmaker Online",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "Optional add-on for IT Reelsmaker: vertical stock footage (Pixabay, Pexels, Magnific), CC-licensed memes (Openverse) and paid AI video generation (Veo, Kling, LTX via fal.ai) for B-roll, plus figure cut-outs on your own server over SSH. Every download and paid run only after you approve the visual plan.",
   "author": {
     "name": "IT Party Pattaya",
