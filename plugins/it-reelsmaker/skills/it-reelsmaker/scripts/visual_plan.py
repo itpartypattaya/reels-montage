@@ -2207,6 +2207,11 @@ def cmd_shade(a):
         span, what = (a.start if a.start is not None else 0.0, a.end if a.end is not None else end), "the zone"
     target = a.target or (3.0 if zone else SHADE_TARGET)
     top = a.top or (plan.get("subtitles_band") or [None])[0] or subtitle_top(e, s, shots, quiet=True)[0]
+    fr = framed_at(e)
+    if fr and not a.top:  # "framed": the block inside the window's text area, as export puts it (Codex review: before
+        # the first export a short window [25,340,1030,800] was measured at y 1290, below the window, "no frame")
+        a0, a1 = framed_area(fr)[1], framed_area(fr)[3]
+        top = max(a0, min(top, a1 - SUB_BLOCK_H["typewriter"]))
     bottom = min(1500, top + SHADE_LINES)
     hidden = ([(i["start"], i["start"] + i["dur"]) for i in plan.get("inserts", []) if i.get("kind") == "scene"
                and i.get("status") == "ready" and i.get("type") != "cover" and hides_subtitles(i)]

@@ -173,7 +173,9 @@ What changed in IT Reelsmaker, written for the people who use it. The newest ver
   word; `structure.py` keeps to the source cut.json names and skips a broken cut.json in another folder; a short
   re-transcription takes the language code of any transcriber (“rus”, “en-US”); the render audit no longer reports a
   face cut at the side under B-roll or a cutaway; picking project footage goes on without the look when the raw
-  source has moved; the burned-in subtitles and the `.srt` break lines by the same short words.
+  source has moved; the burned-in subtitles and the `.srt` break lines by the same short words; translated subtitles
+  are rebuilt when only the speakers change; the darkening of a framed video is measured where its subtitles go;
+  a silent master mastered again with music loses its “no sound” tag, so the loudness is checked.
 
 ## 1.5.0
 

@@ -266,3 +266,15 @@ def test_translated_subtitles_keep_the_speakers():
     # a phrase too short to read alone does not join another speaker's
     short = words[:2] + words[4:]
     assert [p["speaker"] for p in subs.phrases_of({"words": short})] == ["B", "A"]
+
+
+def test_fingerprint_sees_the_speakers_and_keeps_the_old_value_without_them():
+    # Codex review: speakers corrected in cut.json with the words unchanged kept the fingerprint, and the translated
+    # captions kept the old colors; a caption file without speakers keeps the 1.5.0 value (its translation stays valid)
+    import hashlib
+    import subs
+    cap = {"duration": 2.0, "segments": [], "words": [{"text": "hi", "start": 0.1, "end": 0.4}]}
+    assert subs.fingerprint(cap) == hashlib.sha1(repr((2.0, [], [("hi", 0.1, 0.4)])).encode()).hexdigest()[:12]
+    a = dict(cap, words=[dict(cap["words"][0], speaker="A")], speakers=["A", "B"])
+    b = dict(cap, words=[dict(cap["words"][0], speaker="B")], speakers=["A", "B"])
+    assert len({subs.fingerprint(cap), subs.fingerprint(a), subs.fingerprint(b)}) == 3

@@ -3,7 +3,7 @@ to the window in every script, export props, the checks that keep text inside th
 in faces.py only: no reel.json key, export wrote nothing, the scripts clamped the camera to the full frame."""
 import json
 
-from conftest import run_script, write_json
+from conftest import needs_ffmpeg, run_script, write_json
 from test_plan import load_plan, plan_project
 
 SRC = (1080, 608)  # a horizontal rough cut, as in T7 (1080x608): the cover in the default window is x2.04
@@ -172,3 +172,16 @@ def test_scan_and_load_take_the_window_from_reel_json(project):
     assert d["frame"] == [40, 400, 1000, 1100] and faces.window(d) == [40, 400, 1000, 1100]
     k = max(1000 / 1080, 1100 / 608)
     assert abs(d["map"]["scale"] - round(k, 5)) < 1e-6
+
+
+@needs_ffmpeg
+def test_shade_in_a_short_window_before_the_export(project):
+    # Codex review: before the first export the shade was measured at y 1290, below a [25,340,1030,800] window, and
+    # stopped with "no frame with subtitles on"; export puts the block inside the window's text area
+    from conftest import make_video
+    e = framed_project(project, window=[25, 340, 1030, 800])
+    write_json(e / "captions.json", {"duration": 2.0, "segments": [], "words": [
+        {"text": "light", "start": 0.2, "end": 0.8, "seg": 0}, {"text": "shirt", "start": 0.9, "end": 1.6, "seg": 0}]})
+    make_video(e / "final.mp4", w=1920, h=1080, dur=2.0, audio=False, color="0xB4B4B4")
+    r = run_script("visual_plan.py", "shade", "edit/4821", cwd=project, check=False)
+    assert r.returncode == 0 and "subtitles_shade: " in r.stdout, r.stdout + r.stderr

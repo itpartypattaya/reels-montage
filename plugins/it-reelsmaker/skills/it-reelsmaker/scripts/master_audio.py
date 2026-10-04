@@ -297,7 +297,9 @@ def master_no_voice(a, tmp, D, why):
         final = os.path.join(tmp, "final_limited.wav")
         run(["ffmpeg", "-y", "-hide_banner", "-i", mixed, "-af", f"alimiter=limit={10 ** ((TP - 0.5) / 20):.3f}:level=false",
              "-c:a", "pcm_s16le", final])
-    tag = [] if a.music else ["-metadata", f"comment={TAG_NO_VOICE}"]  # --check reads it: the same rule as here
+    # --check reads the tag: the same rule as here. With music the master needs -14 LUFS: a tag the input carries
+    # (a silent master made earlier) is cleared, or ffmpeg copies it over and --check skips the loudness (Codex review)
+    tag = (["-metadata", "comment="] if master_tag(a.input) else []) if a.music else ["-metadata", f"comment={TAG_NO_VOICE}"]
     run(["ffmpeg", "-y", "-hide_banner", "-i", a.input, "-i", final, "-map", "0:v:0", "-map", "1:a:0",
          "-c:v", "copy", "-c:a", "aac", "-b:a", "256k", "-ar", "48000", "-shortest", *tag, "-movflags", "+faststart",
          a.output])
@@ -410,8 +412,9 @@ def master(a, tmp):
         mix = final
         print(f"music: from {start:.2f} s of the track, bed {mtarget:.0f} LUFS, gap ~{a.gap:.0f} dB, sidechain 3:1")
 
+    clear = ["-metadata", "comment="] if master_tag(a.input) else []  # a voice master is checked for -14 LUFS
     run(["ffmpeg", "-y", "-hide_banner", "-i", a.input, "-i", mix, "-map", "0:v:0", "-map", "1:a:0",
-         "-c:v", "copy", "-c:a", "aac", "-b:a", "256k", "-ar", "48000", "-shortest", "-movflags", "+faststart",
+         "-c:v", "copy", "-c:a", "aac", "-b:a", "256k", "-ar", "48000", "-shortest", *clear, "-movflags", "+faststart",
          a.output])
     code = report(*acceptance(a.output, D))
     print("file:", a.output + ("" if not code else " — do not publish it; deal with the failure first"))

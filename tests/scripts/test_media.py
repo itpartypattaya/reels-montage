@@ -593,3 +593,18 @@ def test_master_check_applies_the_no_voice_rule(project):
     run_script("master_audio.py", "render.mp4", "-o", "silent.mp4", cwd=project)
     r = run_script("master_audio.py", "silent.mp4", "--check", cwd=project, check=False)
     assert r.returncode == 0 and "no audio track" in r.stdout, r.stdout + r.stderr
+
+
+@needs_ffmpeg
+def test_music_clears_the_no_voice_tag(project):
+    # Codex review: a silent master tagged "no sound track" and mastered again with --music kept the tag (ffmpeg copies
+    # the first input's metadata), and --check then skipped the -14 LUFS rule for a master with music
+    import master_audio
+    from conftest import ffmpeg
+    make_video(project / "render.mp4", 360, 640, 4.0, audio=False)
+    run_script("master_audio.py", "render.mp4", "-o", "silent.mp4", cwd=project)
+    assert master_audio.master_tag(str(project / "silent.mp4"))
+    ffmpeg("-f", "lavfi", "-i", "sine=f=300:d=9,volume=0.5", project / "track.wav")
+    r = run_script("master_audio.py", "silent.mp4", "-o", "music.mp4", "--music", "track.wav", cwd=project, check=False)
+    assert (project / "music.mp4").exists(), r.stdout + r.stderr
+    assert master_audio.master_tag(str(project / "music.mp4")) is None
