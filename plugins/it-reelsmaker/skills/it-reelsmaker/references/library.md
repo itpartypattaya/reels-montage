@@ -49,10 +49,10 @@ Loud or game-like sounds (glitch, error, heavy hits, dice, chips) count as “ca
 
 **Music, if burned in** (not yet verified in a finished video; listen to the whole master before delivery):
 - mix music only with `master_audio.py`, never inside Remotion: Remotion has no sidechain, so a static bed either buries the voice or disappears;
-- the key line goes out in near silence: dip the music (or drop it) for the phrase before the CTA or the punchline; match the music's tempo to the pace of the edit;
+- **duck the music under the key line**: the phrase before the CTA or the punchline goes out in near silence, `master_audio.py … --duck 21.3-23.9` (seconds of the render, −14 dB by default, `:-20` for deeper, 0.2 s fades; repeatable), applied to the music only; match the music's tempo to the pace of the edit;
 - set the level **by the gap to the voice**, not by a percentage of track volume: a 15 dB gap → bed at −24 LUFS (13 → −22, 17 → −26);
 - sidechain on the voice: `sidechaincompress=threshold=0.10:ratio=3:attack=20:release=380`;
 - trap: `sidechaincompress` outputs about a second less than it received, so the final hit silently disappears. `apad` both inputs, `atrim` the output, check the duration;
 - `amix` only with `normalize=0`, otherwise the voice quietly drops;
-- **cut the track to the meaning**: find the drop (the sharpest rise in short-term loudness over 1.5 s, not in the first 4 s) and land it on the final phrase: offset = drop time − phrase time;
+- **cut the track to the meaning**: find **the track's drop**, its loud moment (the sharpest rise in short-term loudness over 1.5 s, not in the first 4 s: `--find-drops`), and land it on the final phrase: `--drop-at <phrase second> --drop-in-track <drop second>` (offset = drop time − phrase time). Not the same as ducking: the drop is the music getting louder where the track does, the duck is the music held down under a line;
 - bring the final mix to −14 LUFS again.

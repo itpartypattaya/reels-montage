@@ -9,13 +9,16 @@
            face height (faces.json), side from the source-edge cuts, the figure's and the face's box on screen,
            checks -> props for the Presenter component.
 
-    python scripts/matte.py cut edit/<id> --from 12.4 --to 19.0 [--width 720] [--name host] [--video <file>] [--rembg <command>] [--dry]
+    python scripts/matte.py cut edit/<id> --from 12.4 --to 19.0 [--width 1080] [--name host] [--video <file>] [--rembg <command>] [--dry]
     python scripts/matte.py place edit/<id> --name host --layout review [--side auto|left|right] [--face 260]
 
 Exit code: 0 - done (or --dry); 1 - no cut-out, a check not performed, or the layout breaks the rules.
---width: 1080 for the hook (a full-frame figure), 720 for a presenter over a scene (the figure is scaled down to
-x0.4-0.7, so more pixels are not needed, and rembg works twice as fast). Speed: about 1 s per 1080x1920 frame on a
-CPU, plus about 45 s to start the model; --dry prints the estimate.
+--width: 1080 (default) for the hook and for a presenter over a scene. place never scales the figure above its
+size in the 1080x1920 frame (x1.0: an upscaled cut-out has soft, stepped edges), and the Presenter component shows
+the WebM at 1080 x scale whatever its pixel width: a 720 cut-out at x1.0 is upscaled x1.5. 720 only when place gives
+a scale of 0.66 or less (the face in the rough cut at least 1.5 x the layout's target, a close-up); place warns when
+a cut-out is shown above its own pixels. Speed: about 1 s per 1080x1920 frame on a CPU (about 0.5 s at 720), plus
+about 45 s to start the model; --dry prints the estimate.
 
 rembg is yours to install, best in a separate venv (about 810 MB): pip install "rembg[cpu,cli]". The command:
 --rembg, else the REELS_MATTE_REMBG environment variable, else it-reelsmaker.json -> matte.rembg
@@ -83,7 +86,10 @@ def edge_touch(webm, w=270, h=480, min_px=4):
     Where the figure touches the edge, the cut-out has a straight cut: in the layout it must coincide with a frame
     edge, otherwise a chopped-off arm shows in the middle of the screen. min_px is on a 270x480 mask (4 px is about
     16 px at 1080x1920: a fingertip already counts).
-    -> ({left, right, top, bottom: the number of frames touching it, frames}, None) or (None, reason): no check."""
+    Also a cut inside the frame (inner_cut): inner = frames with it, inner_y = [where the bottom contour starts,
+    the lowest point] in 1080x1920 source rows.
+    -> ({left, right, top, bottom: the number of frames touching it, frames, inner[, inner_y]}, None) or (None,
+    reason): no check."""
     r = subprocess.run(local_media_args(["ffmpeg", "-v", "error", "-c:v", "libvpx-vp9", "-i", str(webm), "-vf",
                         f"alphaextract,scale={w}:{h}:flags=area", "-f", "rawvideo", "-pix_fmt", "gray", "-"]),
                        capture_output=True)
@@ -92,8 +98,13 @@ def edge_touch(webm, w=270, h=480, min_px=4):
     if r.returncode != 0 or not n:
         return None, (r.stderr.decode("utf-8", "replace").strip()[-300:] or "ffmpeg produced no alpha frames")
     cnt = {"left": 0, "right": 0, "top": 0, "bottom": 0}
+    inner, opaque = [], bytes(255 if v > 128 else 0 for v in range(256))
     for k in range(n):
         f = data[k * size:(k + 1) * size]
+        g = f.translate(opaque)
+        cut = inner_cut([g.count(255, y * w, (y + 1) * w) for y in range(h)], h)
+        if cut:
+            inner.append(cut)
         if sum(1 for y in range(h) if f[y * w] > 128) >= min_px:
             cnt["left"] += 1
         if sum(1 for y in range(h) if f[y * w + w - 1] > 128) >= min_px:
@@ -102,7 +113,33 @@ def edge_touch(webm, w=270, h=480, min_px=4):
             cnt["top"] += 1
         if sum(1 for v in f[size - w:] if v > 128) >= min_px:
             cnt["bottom"] += 1
+    cnt["inner"] = 0
+    if inner and not cnt["bottom"]:  # the figure's bottom cut inside the source: the rows in 1080x1920
+        cnt["inner"] = len(inner)
+        cnt["inner_y"] = [round(min(c[0] for c in inner) * H / h), round(max(c[1] for c in inner) * H / h)]
     return {**cnt, "frames": n}, None
+
+
+INNER_GAP = 8       # rows of the 270x480 mask (about 32 px at 1920): a figure ending this far above the source bottom
+INNER_WIDE = 0.6    # ... and still this wide (of its widest row) near its bottom is cut by something in the frame
+
+
+def inner_cut(rows, h):
+    """A cut INSIDE the source frame: the figure ends well above the source bottom while still wide near its bottom
+    (the bottom 20% of its height) - a table or a laptop in front of a seated speaker, not the narrow end of a body.
+    rows: opaque pixels per row of one frame. -> (the row where the contour starts: the last row going down at 80% of
+    the widest, the lowest opaque row) or None. Real case (T2): touch 0/0/0/0, yet the body ended at the table line,
+    and in the review layout that line stood in the middle of the frame."""
+    ys = [y for y in range(h) if rows[y] >= 4]
+    if not ys or h - 1 - ys[-1] < INNER_GAP:
+        return None
+    top, low = ys[0], ys[-1]
+    band = rows[max(top, low - (low - top) // 5): low + 1]
+    widest = max(rows)
+    if max(band) < INNER_WIDE * widest:
+        return None
+    y0 = max(y for y in range(rows.index(widest), low + 1) if rows[y] >= 0.8 * widest)
+    return y0, low
 
 
 def touched(touch, edge):
@@ -318,13 +355,9 @@ def cmd_cut(a, engine=None):
     if touch is None:
         errors.append(f"the source-edge check was not performed ({terr}): place will not work without it")
     # check frame: the middle of the span over a light and a dark background; a fringe shows on one of them, stuck
-    # furniture or a piece of wall on both (the libvpx-vp9 decoder is required: the built-in vp9 decoder loses alpha)
+    # furniture or a piece of wall on both
     chk = out / f"{a.name}-check.png"
-    mid = dur / 2
-    r = run(["ffmpeg", "-v", "error", "-y", "-c:v", "libvpx-vp9", "-ss", f"{mid:.2f}", "-i", dst, "-f", "lavfi",
-             "-i", "color=c=0xF4F4F2:s=540x960", "-f", "lavfi", "-i", "color=c=0x0B1A33:s=540x960", "-filter_complex",
-             "[0:v]scale=540:960,split[p1][p2];[1:v][p1]overlay=shortest=1[l];[2:v][p2]overlay=shortest=1[d];[l][d]hstack",
-             "-frames:v", "1", chk], check=False)
+    r = check_frame(dst, dur / 2, chk)
     if r.returncode == 0 and chk.exists():
         print(f"check frame: {chk}: look at it before the layout: a fringe, furniture or wall in the mask, cut-off fingers")
     else:
@@ -334,10 +367,25 @@ def cmd_cut(a, engine=None):
         if cut:
             print("source-edge cuts, the figure touches the edge: " + ", ".join(cut) + ". In the layout these edges of "
                   "the figure must coincide with the frame edges (matte.py place picks the side itself)")
+        if touch.get("inner"):
+            print(f"\u26a0 the figure ends inside its frame (a table or a laptop in front of it) in {touch['inner']} of "
+                  f"{touch['frames']} frames, source y {touch['inner_y'][0]}-{touch['inner_y'][1]}: a straight cut that "
+                  f"no source edge hides; matte.py place says where it lands on screen")
     for x in errors:
         print("✗ " + x)
     if errors:
         sys.exit(1)
+
+
+def check_frame(webm, at, chk):
+    """The figure at second `at` of the WebM over a light and a dark background, side by side (540x960 each).
+    setpts=PTS-STARTPTS: after -ss the figure's first frame arrives a few ms after 0 (WebM keeps milliseconds, the
+    span rarely starts on the frame grid), the color backgrounds start at 0, and overlay's first frame had only the
+    backgrounds (T2: an empty check frame). The libvpx-vp9 decoder is required: the built-in vp9 decoder loses alpha."""
+    return run(["ffmpeg", "-v", "error", "-y", "-c:v", "libvpx-vp9", "-ss", f"{at:.2f}", "-i", webm, "-f", "lavfi",
+                "-i", "color=c=0xF4F4F2:s=540x960", "-f", "lavfi", "-i", "color=c=0x0B1A33:s=540x960", "-filter_complex",
+                "[0:v]setpts=PTS-STARTPTS,scale=540:960,split[p1][p2];[1:v][p1]overlay=shortest=1[l];"
+                "[2:v][p2]overlay=shortest=1[d];[l][d]hstack", "-frames:v", "1", chk], check=False)
 
 
 def presenter_face(fdata, t0, t1):
@@ -380,14 +428,16 @@ def cmd_place(a):
     else:
         b = meta["bbox"] or [0, 0, W, H]
         s = 0.62 * H / (b[3] - b[1]) * (0.75 if a.layout == "review" else 0.5)
+    want = s
     s = round(min(s, 1.0), 3)
     # Source-edge cuts. Where the figure touches the edge of its own frame (an arm, an elbow, the bottom of the body),
     # the cut-out has a straight cut. It is allowed only on an edge of our frame: the corner's side follows the cut.
     touch = meta.get("touch")
-    if touch is None and meta.get("webm") and Path(meta["webm"]).exists():
-        touch, terr = edge_touch(meta["webm"])
-        if touch:
-            meta["touch"] = touch
+    if (touch is None or "inner" not in touch) and meta.get("webm") and Path(meta["webm"]).exists():
+        # no data, or an older file without the inner-cut check
+        new, terr = edge_touch(meta["webm"])
+        if new:
+            touch = meta["touch"] = new
     if touch is None:
         sys.exit("✗ the source-edge check was not performed (no touch data and the webm can't be read): the layout is "
                  "not computed; rebuild with matte.py cut")
@@ -428,10 +478,28 @@ def cmd_place(a):
     bb = meta["bbox"]
     fig = to([bb[0], bb[1], bb[2] - bb[0], bb[3] - bb[1]]) if bb else None
     fscr = to(face) if face else None
+    # the face on screen is face_h x s: with the scale capped at x1.0 the target is not reached (T2 printed "216 ->
+    # 260 px" while the face stayed 216)
     print(f"layout {a.layout} ({L['note']}), side {side}"
           + (" (picked by the source-edge cut)" if a.side == "auto" and (tl or tr) else "") + f": figure scale x{s}"
-          + (f" (presenter's face {face_h} px -> {target} px)" if face_h else ""))
+          + (f" (presenter's face {face_h} px -> {round(face_h * s)} px on screen"
+             + (f"; the target {target} px needs x{want:.2f}, the figure is never scaled above x1.0" if want > s + 1e-3
+                else "") + ")" if face_h else ""))
     print(f"  figure on screen {fig}; face area {fscr}")
+    notes = []
+    up = s * W / (meta.get("width") or W)
+    if up > 1.02:
+        notes.append(f"the cut-out is {meta.get('width')} px wide and is shown at {round(W * s)} px: x{up:.2f} of its "
+                     f"own pixels, soft edges; cut it at --width 1080")
+    inner = touch.get("inner_y") if touch.get("inner") else None
+    line = None
+    if inner:
+        line = [round(oy + inner[0] * s), round(oy + inner[1] * s)]
+        if line[0] < H - 0.5:
+            notes.append(f"the figure ends inside its own frame (a table or a laptop: source y {inner[0]}-{inner[1]}, no "
+                         f"source edge there): that cut shows on screen at y {line[0]}-{min(line[1], H)}. Hide it behind "
+                         f"an opaque element across the whole width from y {line[0]} down (a plate in the background "
+                         f"color, a lower third, the panel), or use the window layout")
     if fscr:
         if fscr[1] + fscr[3] > H - UI_BOTTOM:
             issues.append(f"the chin at {fscr[1] + fscr[3]} is in the UI zone (> {H - UI_BOTTOM}): a smaller --face, "
@@ -443,17 +511,23 @@ def cmd_place(a):
                               f"or a smaller --face")
         if side == "right" and fscr[0] + fscr[2] > W - UI_RIGHT:
             issues.append("the face is under the like-button column on the right: side left")
-    for x in issues:
+    for x in issues + notes:
         print("  ⚠ " + x)
     props = {"src": f"<id>/{a.name}.webm", "from": meta["from"], "dur": round(meta["to"] - meta["from"], 3),
              "layout": a.layout, "side": side, "scale": s, "x": round(ox), "y": round(oy), "panel": L["panel"] if a.layout == "review" else None}
-    keep = {"start": meta["from"], "end": meta["to"], "box": fig, "what": f"presenter ({a.name})"}
-    meta["place"] = {"props": props, "keep_clear": keep, "face_screen": fscr, "issues": issues}
+    # the zone of the presenter layer: its own face is not a no-go for it (validate and faces.py audit skip it), the
+    # span counts in the inserts' coverage, and export copies the WebM to public/<id>/
+    keep = {"start": meta["from"], "end": meta["to"], "box": fig, "what": f"presenter ({a.name})", "matte": a.name}
+    if fscr:
+        keep["own_face"] = fscr
+    meta["place"] = {"props": props, "keep_clear": keep, "face_screen": fscr, "issues": issues, "notes": notes,
+                     "inner_cut_screen": line}
     save_json(e / "matte" / f"{a.name}.json", meta)
     print(f"  Presenter props: {json.dumps(props, ensure_ascii=False)}")
     if fig:
         print(f"  keep-clear: python scripts/visual_plan.py keep-clear {a.edit} --from {meta['from']} --to {meta['to']} "
-              f"--box {','.join(map(str, fig))} --what \"presenter\"")
+              f"--box {','.join(map(str, fig))} --what \"presenter\" --matte {a.name}"
+              + (f" --own-face {','.join(map(str, fscr))}" if fscr else ""))
     if issues:
         sys.exit(1)
 
@@ -464,7 +538,8 @@ def parser(prog=None, doc=__doc__):
     sub = ap.add_subparsers(dest="cmd", required=True)
     p = cut = sub.add_parser("cut"); p.add_argument("edit")
     p.add_argument("--from", dest="start", type=float, required=True); p.add_argument("--to", dest="end", type=float, required=True)
-    p.add_argument("--width", type=int, default=1080); p.add_argument("--fps", type=float)
+    p.add_argument("--width", type=int, default=1080, help="1080 (default); 720 only when place gives a scale <= 0.66")
+    p.add_argument("--fps", type=float)
     p.add_argument("--name", default="person"); p.add_argument("--video"); p.add_argument("--model", default="u2net_human_seg")
     p.add_argument("--wait", type=float, default=20, help="minutes to wait for the cut-out queue (one at a time)")
     p.add_argument("--rembg", help="the rembg command or its path (default: REELS_MATTE_REMBG, then matte.rembg in "

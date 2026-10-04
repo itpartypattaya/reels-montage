@@ -1,7 +1,7 @@
 // Scene tones: entry and exit pace (references/scenes.md; the same numbers are in reel-defaults.json → scene_tones).
 // enter()/exit() → { opacity, transform } for a scene element. Bounce (spring with low damping) only if the brand tone
 // allows overshoot; hype shake only with brand.tone.shake. Otherwise a calm ease-out with no bounce
-// (brand.md, calm motion: Easing.out(cubic) or spring with damping 200).
+// (references/brands.md, calm motion: Easing.out(cubic) or spring with damping 200).
 import { Easing, interpolate, spring } from "remotion";
 import type { Brand } from "../brand";
 import type { Word } from "../Subtitles";
@@ -130,10 +130,11 @@ export const progress = (frame: number, start: number, dur: number): number =>
   dur <= 0 ? (frame >= start ? 1 : 0) : interpolate(frame, [start, start + dur], [0, 1], { ...clamp, easing: easeOut });
 
 // Layout change (speaker shrinks/returns, field, shutter) follows the scene transition. fade/slide follow the tone, but
-// within effects.md §6: entry 8–14 frames, return 6–10 (faster than entry).
+// within references/techniques.md (slide scene) and scenes.md: entry 8–14 frames, return 6–10 (faster than entry).
+// flash: a hard cut under the light flash (LightFlash.tsx, centered on the cut).
 export const layoutFrames = (t: SceneTransition, tone: SceneTone, dir: "in" | "out"): number => {
   if (t === "cut") return 0;
-  if (t === "flash") return 3;
+  if (t === "flash") return 0;
   if (t === "whip") return 5;
   const row = SCENE_TONES[tone];
   return dir === "in" ? Math.min(14, Math.max(8, row.in)) : Math.min(10, Math.max(6, row.out));
@@ -141,15 +142,21 @@ export const layoutFrames = (t: SceneTransition, tone: SceneTone, dir: "in" | "o
 
 const speaking = (words: Word[], a: number, b: number) => words.some((w) => w.start < b && w.end > a);
 
-/** Scene timing. Rule effects.md §8 “cut on a pause”: if no word is spoken within the transition window, a smooth change
- *  (fade/slide/whip) becomes a cut. In the “scenes only” format (no words) transitions are left as they are. */
-export const sceneTimeline = (spec: SceneSpec, tone: SceneTone, mode: SceneMode, fps: number, words: Word[]): Timeline => {
+/** Scene timing. Rule “cut on a pause” (references/techniques.md, “Hard cut on silence”; scenes.md, transitions): if no word is spoken within the transition window, a smooth change
+ *  (fade/slide/whip) becomes a cut. In the “scenes only” format (scenesOnly: no video, no speech) every smooth change is a cut:
+ *  there is no speaker to move and the field is the background, so the text enters from the scene's first frame and has left by
+ *  its last, and the tone's own entrance and exit carry the change. T6: with the fade's lead and tail, every join of two
+ *  back-to-back scenes showed 14–15 frames of bare field. visual_plan.py scene_timeline computes the same. */
+export const sceneTimeline = (spec: SceneSpec, tone: SceneTone, mode: SceneMode, fps: number, words: Word[], scenesOnly = false): Timeline => {
   const row = SCENE_TONES[tone];
   const n = Math.max(1, Math.round(spec.dur * fps));
   let tin: SceneTransition = spec.transition_in ?? row.transition;
   let tout: SceneTransition = spec.transition_out ?? row.transition;
   const smooth = (t: SceneTransition) => t === "fade" || t === "slide" || t === "whip";
-  if (words.length) {
+  if (scenesOnly) {
+    if (smooth(tin)) tin = "cut";
+    if (smooth(tout)) tout = "cut";
+  } else if (words.length) {
     const a = spec.start;
     const b = spec.start + spec.dur;
     if (smooth(tin) && !speaking(words, a, a + layoutFrames(tin, tone, "in") / fps)) tin = "cut";

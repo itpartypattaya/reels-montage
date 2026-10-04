@@ -1,5 +1,5 @@
 // Scene quote: a verbatim quote (from the speech: visual_plan.py validate checks it against captions.json) + an all-caps label above it.
-// On the left, a bar in the marker color grows from top to bottom together with the text (the brand's signature “marker”, brand.md).
+// On the left, a bar in the marker color grows from top to bottom together with the text (the brand's signature “marker”, references/brands.md).
 // overlay: a light card in the box; split/full/window: on the field, the accent word on a plate.
 import React from "react";
 import { LABEL_SIZE, TextBlock } from "./parts";

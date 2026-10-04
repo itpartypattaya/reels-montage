@@ -1,4 +1,5 @@
-// Scene slogan: the main idea as a “punch” (effects.md §7): a field in the style's marker color slides in as a shutter (SceneLayer),
+// Scene slogan: the main idea as a “punch” (references/techniques.md, “Full-screen key phrase”; scenes.md): a field slides in as a shutter (SceneLayer): the style's field
+// (brand.looks[style].field), the primary color in the “brand” style, otherwise the marker color;
 // words rise from below one by one on their spoken words (not found in the speech → evenly), left-aligned, 80–110 px.
 // The icon (media, an image) sits above the text and is “drawn in” by a mask from top to bottom. Once or twice per video, not on the hook or CTA.
 import React from "react";

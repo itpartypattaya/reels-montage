@@ -9,6 +9,7 @@ transitions, full scenes); to go beyond them on explicit request: reelcfg.py sav
 
     python scripts/reelcfg.py show edit/4821 [--set use_memes=true intensity=active] [--json]
     python scripts/reelcfg.py save edit/4821 --set brand=acme style=v2 use_broll=false use_memes=false
+    python scripts/reelcfg.py save edit/4821 --set format=framed label="CANDIDATE INTERVIEW" [window=[25,340,1030,1240]]
     python scripts/reelcfg.py defaults [--set brand=acme use_memes=false] [--unset use_memes]   # the project's defaults
 
 `show` prints the resulting settings, where each key comes from, and the fallback: what turns off by itself (for
@@ -17,6 +18,9 @@ error: editing continues with what is available.
 `save` adds keys to edit/<id>/reel.json (only the ones given; defaults are not copied there); it creates the folder
 edit/<id> if it doesn't exist yet. reel.json is the only source of the video's settings: visual_plan.py takes them
 from here.
+format=framed: a horizontal source in a rounded window on the style's field, with an optional caps label above it
+(references/techniques.md); window (x, y, w, h on the 1080x1920 screen) and label are its options. The kit draws it
+from the props that visual_plan.py export writes; faces.py and visual_plan.py read the same window.
 `defaults` shows or edits <project>/reel-defaults.json: your defaults for every video of the project (default brand,
 inserts, library folders, ...), in the same format as the plugin's assets/reel-defaults.json, only the keys you change.
 --set/--unset touch the "settings" keys; other sections (intensity and brand tone labels in your language, ...) are
@@ -26,12 +30,14 @@ import argparse, json, sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from reels_common import (PROJECT_DEFAULTS, SETTING_KEYS_BOOL, edit_dir, editing_json, effective, is_project,
-                          load_config, load_json, online, parse_sets, project_root, tone_summary, utf8_stdio, warn)
+from reels_common import (PROJECT_DEFAULTS, SETTING_KEYS_BOOL, edit_dir, editing_json, effective, framed_issues,
+                          framed_of, is_project, load_config, load_json, online, parse_sets, project_root, tone_summary,
+                          utf8_stdio, warn)
 
 KNOWN = set(SETTING_KEYS_BOOL) | {"brand", "style", "subtitles", "intensity", "broll_priority", "meme_priority",
                                   "footage_dirs", "memes_dirs", "generation_engines", "library_dirs", "meme_size",
-                                  "scene_tone", "tone_override", "subtitles_lang"}
+                                  "scene_tone", "tone_override", "subtitles_lang", "subtitles_shade",
+                                  "format", "window", "label"}  # format: "framed" (window, label) or "full"
 
 
 def addon_keys(name):
@@ -51,6 +57,10 @@ def cmd_show(a):
     print(f"brand: {s['brand']} ({brand.get('name') if brand else 'NOT FOUND'})"
           f"   style: {s.get('style') or (brand or {}).get('styles', {}).get('default') or '—'}"
           f"   subtitles: {s.get('subtitles') or (brand or {}).get('subtitles_default') or '—'}")
+    fr = framed_of(s)
+    print("format: " + (f"framed, window {fr['window']}" + (f", label “{fr['label']}”" if fr["label"] else ", no label")
+                        + " (the kit draws the window)" if fr else "full frame (vertical)")
+          + "".join("\n  ⚠ " + m for m in framed_issues(s)))
     bt = s.get("brand_tone") or {}
     print(f"brand tone: {tone_summary(bt)}" + ("  [tone_override: the tone's ceilings are only warnings]" if s.get("tone_override") else ""))
     st = s.get("scene_tone")
@@ -69,7 +79,7 @@ def cmd_show(a):
     rows = [("B-roll", "broll"), ("  from project footage", "project_footage"), ("  from the local library", "local_footage"),
             ("  online footage (add-on)", "online_footage"), ("  code scenes (Remotion)", "generated_code"),
             ("  add-on footage: prompts", "generated_prompts"), ("  add-on footage: run", "generate_now"), ("memes", "memes"), ("  local folder", "local_memes"),
-            ("  online (add-on)", "online_memes")]
+            ("  online (add-on)", "online_memes"), ("designed scenes (kit)", "scenes")]
     for label, k in rows:
         mark = "yes" if eff.get(k) else "no "
         print(f"  {label:<28} {mark} {('— ' + why[k]) if k in why and not eff.get(k) else ''}")
@@ -85,9 +95,23 @@ def cmd_save(a):
         if k not in known:
             warn(f"unknown key {k}, saving it as is")
     e = edit_dir(a.edit, create=True)  # step 0 of a new video: the edit/<id> folder doesn't exist yet
+    if {"format", "window", "label"} & set(over):  # the framed format's keys are checked together, before saving
+        bad = framed_issues({**(load_json(e / "reel.json", {}) or {}), **over})
+        if bad:
+            sys.exit("not saved: " + "; ".join(bad))
+        new = {**(load_json(e / "reel.json", {}) or {}), **over}
+        if new.get("format") != "framed" and (new.get("window") is not None or new.get("label")):
+            warn("window and label are options of format framed: without format=framed the kit ignores them")
     with editing_json(e / "reel.json", {}) as reel:
         reel.update(over)
     print(f"{e / 'reel.json'}: " + ", ".join(f"{k}={v}" for k, v in over.items()))
+    if "style" in over:  # the brand's allowed styles are its rule (references/brands.md): saved, but said aloud
+        _, _, _, _, brand = load_config(e)
+        allowed = ((brand or {}).get("styles") or {}).get("allowed") or []
+        if allowed and str(over["style"]) not in allowed:
+            warn(f"style {over['style']} is not in the brand's allowed styles ({', '.join(allowed)}; brand.json -> "
+                 f"styles.allowed): a brand rule. Saved as asked; confirm it with the brand owner or pick an allowed one, "
+                 f"and note the choice in project.md")
     from visual_plan import refresh_plan
     if refresh_plan(e):
         print("the settings snapshot in visual_plan.json is updated")

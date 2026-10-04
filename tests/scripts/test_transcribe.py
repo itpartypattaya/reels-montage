@@ -29,6 +29,27 @@ def test_snip_times_are_on_the_source_timeline(project):
 
 
 @needs_ffmpeg
+def test_snip_prompt_is_in_the_transcript_language(project):
+    # T5: an English "verbatim" prompt with --language ru came back as "Verbatim, 1 000 EUR" instead of the Russian
+    # words. The prompt is now in the language of the piece (--language, else the cached transcript's), or none
+    import transcribe
+    make_video(project / "IMG_4821.MOV", 360, 640, 8.0)
+    write_json(project / "edit" / "4821" / "transcripts" / "IMG_4821.json", {"language_code": "ru", "words": []})
+
+    def snip(*extra):
+        run_script("transcribe.py", "snip", "edit/4821", "IMG_4821.MOV", "--from", "3.0", "--to", "6.0", *extra,
+                   cwd=project, env=STUBS)
+        return json.loads((project / "edit" / "4821" / "snip" / "IMG_4821_3.00-6.00.json").read_text(encoding="utf-8"))
+    doc = snip()
+    assert doc["language_code"] == "ru" and doc["prompt"] == transcribe.snip_prompt("ru")
+    assert doc["prompt"].startswith("Ну") and not any("a" <= ch.lower() <= "z" for ch in doc["prompt"])
+    assert snip("--language", "en")["prompt"] == transcribe.snip_prompt("en")
+    assert snip("--language", "de")["prompt"] is None  # no sample for German: no prompt rather than an English one
+    assert snip("--no-prompt")["prompt"] is None
+    assert transcribe.snip_prompt("en-US") == transcribe.snip_prompt("en") and transcribe.snip_prompt(None) is None
+
+
+@needs_ffmpeg
 def test_missing_model_is_not_downloaded(project):
     make_video(project / "IMG_4821.MOV", 360, 640, 2.0)
     r = run_script("transcribe.py", "edit/4821", "IMG_4821.MOV", "--model", "missing", cwd=project, env=STUBS, check=False)
@@ -92,3 +113,68 @@ def test_audio_command_gives_your_own_transcriber_the_aligned_wav(project):
     mtime = wav.stat().st_mtime_ns
     run_script("transcribe.py", "audio", "edit/4821", "IMG_4821.MOV", cwd=project)
     assert wav.stat().st_mtime_ns == mtime  # the same source: the WAV is not made again
+
+
+def test_hyphen_parts_join_into_one_word():
+    import transcribe  # conftest puts the core scripts on the path
+    w = lambda t, s, e: {"text": t, "start": s, "end": e, "type": "word", "p": 0.9}
+    out = transcribe.join_hyphen_parts([w("no", 1.0, 1.2), w("-no", 1.2, 1.4), w("-no.", 1.4, 1.6), w("Well", 1.9, 2.1),
+                                        w("-", 2.15, 2.2), w("then", 2.25, 2.4), w("-ish", 3.0, 3.2)])
+    assert [(x["text"], x["start"], x["end"]) for x in out] == [("no-no-no.", 1.0, 1.6), ("Well", 1.9, 2.1), ("-", 2.15, 2.2),
+                                                                ("then", 2.25, 2.4), ("-ish", 3.0, 3.2)]
+
+
+@needs_ffmpeg
+def test_rate_counts_vowels_over_the_speech_of_the_cut(project):
+    # T2: SKILL.md compared "syllables per second" of two cameras without defining it, and the agent wrote its own
+    # script; rate measures it on the rough cut: vowels of the words / speech time by the speech mask, per source
+    from conftest import ffmpeg, make_speech, write_json
+    e = project / "edit" / "4821"
+    make_speech(project / "speech.wav", [(0.2, 1.2), (2.2, 2.7)], 3.0)
+    e.mkdir(parents=True)
+    ffmpeg("-f", "lavfi", "-i", "color=c=gray:s=180x320:r=30:d=3", "-i", project / "speech.wav", "-shortest",
+           "-c:v", "libx264", "-c:a", "aac", e / "final.mp4")
+    write_json(e / "captions.json", {"duration": 3.0, "segments": [
+        {"i": 0, "source": "front", "out_start": 0.0, "out_dur": 2.0, "beat": "one"},
+        {"i": 1, "source": "side", "out_start": 2.0, "out_dur": 1.0, "beat": "two"}], "words": [
+        {"text": "banana", "start": 0.2, "end": 0.7, "seg": 0}, {"text": "papaya,", "start": 0.7, "end": 1.2, "seg": 0},
+        {"text": "мама", "start": 2.2, "end": 2.7, "seg": 1}]})  # Cyrillic "mama": 2 vowels
+    r = run_script("transcribe.py", "rate", "edit/4821", "--json", cwd=project)
+    doc = json.loads(r.stdout.strip().splitlines()[-1])
+    front, side = doc["sources"]["front"], doc["sources"]["side"]
+    assert front["vowels"] == 6 and 0.95 <= front["speech_s"] <= 1.15 and 5.2 <= front["rate"] <= 6.3
+    assert side["vowels"] == 2 and 0.45 <= side["speech_s"] <= 0.65
+    only = run_script("transcribe.py", "rate", "edit/4821", "--source", "side", cwd=project)
+    assert "side:" in only.stdout and "front:" not in only.stdout
+
+
+@needs_ffmpeg
+def test_rate_leaves_numbers_in_digits_out_of_vowels_and_time(project):
+    # T5: "1", "270", "100", "26" counted as words with 0 vowels but with their time: a segment with a price read
+    # 2.18 syllables/s at the video's usual pace. A number in digits is left out of both, and the output says so
+    from conftest import ffmpeg, make_speech, write_json
+    e = project / "edit" / "4821"
+    make_speech(project / "speech.wav", [(0.2, 0.7), (0.8, 1.8)], 2.5)
+    e.mkdir(parents=True)
+    ffmpeg("-f", "lavfi", "-i", "color=c=gray:s=180x320:r=30:d=2.5", "-i", project / "speech.wav", "-shortest",
+           "-c:v", "libx264", "-c:a", "aac", e / "final.mp4")
+    write_json(e / "captions.json", {"duration": 2.5, "segments": [
+        {"i": 0, "source": "main", "out_start": 0.0, "out_dur": 2.5, "beat": "price"}], "words": [
+        {"text": "мама", "start": 0.2, "end": 0.7, "seg": 0}, {"text": "1 270", "start": 0.8, "end": 1.8, "seg": 0}]})
+    r = run_script("transcribe.py", "rate", "edit/4821", "--json", cwd=project)
+    doc = json.loads(r.stdout.strip().splitlines()[-1])
+    main = doc["sources"]["main"]
+    assert main["vowels"] == 2 and main["numbers"] == 1 and 0.85 <= main["numbers_s"] <= 1.1
+    assert 0.4 <= main["speech_s"] <= 0.65 and main["rate"] >= 3.0  # only "mama" over its own time
+    assert doc["segments"][0]["numbers"] == ["1 270"] and "numbers in digits are left out" in r.stdout
+
+
+def test_snip_language_as_faster_whisper_takes_it(tmp_path):
+    # review: "rus" from another transcriber (or "en-US", or the online add-on's "swedish") went to faster-whisper as
+    # is and stopped it with "not a valid language code"; main passed None (detect)
+    import transcribe
+    assert transcribe.whisper_language("rus") == "ru" and transcribe.whisper_language("en-US") == "en"
+    assert transcribe.whisper_language("swedish") is None and transcribe.whisper_language(None) is None
+    write_json(tmp_path / "transcripts" / "A.json", {"language_code": "eng", "words": []})
+    assert transcribe.snip_language(None, tmp_path, "A.MOV") == "en"
+    assert transcribe.snip_language("ru-RU", tmp_path, "A.MOV") == "ru"

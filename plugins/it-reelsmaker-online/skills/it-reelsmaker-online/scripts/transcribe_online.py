@@ -13,7 +13,8 @@ while the local faster-whisper times matched the audio. Subtitles and edges need
 (--words local) the local transcript stays the skeleton and the cloud text is laid onto it:
   - the same word: local time, the cloud's spelling and punctuation;
   - a different word in the same place: local time, the cloud's word (the local one is kept in "local");
-  - a word only the cloud heard: a time between its neighbours, marked "est": true;
+  - a word only the cloud heard: a time between its neighbours, marked "est": true (before the first matched word:
+    just before it, or in its head when the local model put it at 0.00; never 0.00-0.00);
   - words only the local model has: kept as they are (often a repeat of a retake the cloud tidied away: SKILL.md
     step 3), listed in the report as places to listen to.
 --words cloud: whisper-1's own word times (when there is no local model); slower and less precise subtitles.
@@ -226,11 +227,18 @@ def lay_text(words, text):
         while e < len(seq) and "start" not in seq[e]:
             e += 1
         n = e - k
-        lo = seq[k - 1]["end"] if k else (seq[e]["start"] - 0.3 * n if e < len(seq) else 0.0)
+        lo = seq[k - 1]["end"] if k else (max(0.0, seq[e]["start"] - 0.3 * n) if e < len(seq) else 0.0)
         hi = seq[e]["start"] if e < len(seq) else lo + 0.3 * n
         if hi - lo < 0.06 * n and k:  # no gap: the cloud word sits in the previous word's tail
             lo = max(seq[k - 1]["start"], hi - 0.2 * n)
             seq[k - 1]["end"] = round(max(seq[k - 1]["start"], lo), 3)
+        elif hi - lo < 0.06 * n and e < len(seq):
+            # before the first matched word with no room (the local model put that word at 0.00): the cloud words take
+            # the head of it, short, and it starts after them; before, they got 0.00-0.00 (T2: a phrase at the start)
+            first = seq[e]
+            lo, hi = first["start"], first["start"] + min(0.2 * n, max(0.08 * n, (first["end"] - first["start"]) / 2))
+            first["start"] = round(hi, 3)
+            first["end"] = round(max(first["end"], hi + 0.06), 3)
         lo = max(0.0, lo)
         step = max(0.0, hi - lo) / n
         for q in range(n):
@@ -262,6 +270,16 @@ def approved(e, provider):
     return str(s.get("transcription_provider") or "").lower() == provider
 
 
+NOTED = set()  # starts of the long words the core's local run has just warned about (see cmd_run)
+
+
+def long_starts(doc):
+    """Starts of the words longer than 1 s: check_doc's note about a merged retake."""
+    return {round(float(w["start"]), 2) for w in (doc or {}).get("words", []) if isinstance(w, dict)
+            and w.get("type", "word") == "word" and isinstance(w.get("start"), (int, float))
+            and isinstance(w.get("end"), (int, float)) and w["end"] - w["start"] > 1.0}
+
+
 def local_words(e, src, identity, a):
     """The local transcript of this source (made now if missing) → doc, or None when there is no local model."""
     keep = e / "transcripts" / f"{src.stem}.local.json"
@@ -284,10 +302,13 @@ def local_words(e, src, identity, a):
             prev.replace(out)
         return None
     shutil.copyfile(out, keep)
-    return load_json(keep)
+    doc = load_json(keep)
+    NOTED.update(long_starts(doc))  # the core printed its note on these words
+    return doc
 
 
 def cmd_run(a):
+    NOTED.clear()
     project = project_root()
     e = edit_dir(a.edit, project, create=True)
     src = resolve_src(a.source, project, e)
@@ -346,7 +367,11 @@ def cmd_run(a):
         words, rep = lay_text(timed, text)
         lang = a.language or LANG_CODES.get(str(raw.get("language") or "").lower(), raw.get("language") or "")
     else:
-        words, rep = lay_text([w for w in base["words"] if w.get("type", "word") == "word"], text)
+        local = [w for w in base["words"] if w.get("type", "word") == "word"]
+        # a hyphenated word split by the local model ("no" "-no" "-no.") is one word again before the cloud text lays on
+        # it, or its tails stay as "local only" and show twice; a local transcript cached by an older core has them split
+        join = getattr(core, "join_hyphen_parts", None)
+        words, rep = lay_text(join(local) if join else local, text)
         lang = a.language or base.get("language_code") or ""
     doc = {"language_code": lang, "text": text, "words": words, "source": src.name, "source_identity": identity,
            "model": label, "timeline": "video", "audio_offset": off}
@@ -362,6 +387,9 @@ def cmd_run(a):
         out.replace(out.with_name(f"{src.stem}.prev.json"))
     save_json(out, doc)
     for n in problems:
+        # the same long words on the same times: the local run has just named them, once is enough (the note came twice)
+        if "longer than 1 s" in n and long_starts(doc) <= NOTED:
+            continue
         warn(n[6:])
     print(f"{out}: {len(words)} words, language {lang}, {label}, ≈ ${price:.3f}")
     if not cloud_words:

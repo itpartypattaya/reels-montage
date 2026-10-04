@@ -12,7 +12,8 @@ For each one the script:
   • refines the edges: first speech − 20 ms, last speech + 30 ms;
   • compresses inner pauses ≥160 ms to 50 ms (natural pacing: ≥400 → 220 ms);
   • warns about a pause >1 s inside (a seam between two takes of the phrase), about an edge that cuts through
-    speech, and about short speech at the start/end with a pause after it (the tail of another phrase);
+    speech, about short speech at the start/end with a pause after it (the tail of another phrase), and about a short
+    pause with a sound just under the threshold (a quiet syllable would be cut out as a pause: listen);
   • prints ready "ranges" for cut.json (points on the frame grid) and the remaining silence as a number.
 Without --spans it prints every speech span in the file.
 
@@ -91,6 +92,15 @@ def load_envs(path):
 
 VL_ABOVE = 15.0   # dB above the high-band noise floor: a voiceless consonant (measured: a final "s" 22 dB over cafe noise)
 VL_TAIL, VL_HEAD = 0.250, 0.200   # how far a phrase may extend into a voiceless sound after it / before it
+# --edl: hiss at an edge is a consonant only near the speech's own high-band level (its 95th percentile). Measured: a
+# final "s" and an initial "ch" averaged -2 dB and +7 dB against it, breaths at an edge -8.6 and -10.4 dB (a breath
+# -51...-55 dBFS overall, under a -46 threshold, was reported as "cuts a voiceless sound"). 6 dB sits between them.
+VL_SPEECH = 6.0
+
+
+def hiss_ref(hf):
+    """The speech's high-band level: the 95th percentile of the high-band envelope (None: no audio)."""
+    return sorted(hf)[int(len(hf) * 0.95)] if hf else None
 
 
 def voiceless(hf):
@@ -202,12 +212,14 @@ NEAR = 8         # windows: a loud sound closer than 80 ms past the edge means t
 FADE = 3         # windows: sound closer than 30 ms to the edge means the cut.py fade (30 ms) will eat a consonant
 
 
-def edge_warnings(env, mask, thr, s, e, vl=None):
+def edge_warnings(env, mask, thr, s, e, vl=None, hf=None):
     """Problems at the edges of segment [s, e] of the source.
 
     env is the raw envelope (dBFS), used for "where there really is sound"; mask is the speech mask, used for fragments.
     The mask widens speech by ±30 ms and extends voiceless endings, so "an edge inside a mask span" is a false alarm
-    by itself; the raw level on the other side of the edge decides.
+    by itself; the raw level on the other side of the edge decides. hf: the high-band envelope; with it, hiss cut off
+    at an edge counts as a consonant only when its mean is within VL_SPEECH of the speech's high band (a breath is
+    quieter there).
     """
     out = []
     n = len(env)
@@ -218,6 +230,12 @@ def edge_warnings(env, mask, thr, s, e, vl=None):
     si, ei = max(0, min(n - 1, int(round(s / HOP)))), max(0, min(n - 1, int(round(e / HOP))))
     loud = lambda i: 0 <= i < n and env[i] >= thr
     hiss = lambda i: bool(vl) and 0 <= i < len(vl) and vl[i]
+    ref = hiss_ref(hf)
+
+    def consonant(a, b):
+        """The hiss in windows [a, b) is a consonant, not a breath: near the speech's high-band level."""
+        part = hf[max(0, a): min(len(hf), b)] if hf else []
+        return not part or ref is None or sum(part) / len(part) >= ref - VL_SPEECH
 
     # ── start ──
     before = [i for i in range(max(0, si - 30), si) if loud(i)]
@@ -242,7 +260,8 @@ def edge_warnings(env, mask, thr, s, e, vl=None):
         k = si
         while k > 0 and hiss(k - 1) and si - k < 25:
             k -= 1
-        out.append(f"start {s:.2f} cuts a voiceless sound (s, sh, ch, f) that begins at {k * HOP:.2f}: start ≈ {k * HOP - 0.03:.2f}")
+        if consonant(k, si + 1):
+            out.append(f"start {s:.2f} cuts a voiceless sound (s, sh, ch, f) that begins at {k * HOP:.2f}: start ≈ {k * HOP - 0.03:.2f}")
 
     # ── end ──
     if e > n * HOP + HOP:
@@ -269,8 +288,29 @@ def edge_warnings(env, mask, thr, s, e, vl=None):
         k = ei
         while hiss(k + 1) and k - ei < 25:
             k += 1
-        out.append(f"end {e:.2f} cuts a voiceless sound (s, sh, ch, f) that lasts until {(k + 1) * HOP:.2f}: end ≈ {(k + 1) * HOP + 0.04:.2f}")
+        if consonant(ei, k + 1):
+            out.append(f"end {e:.2f} cuts a voiceless sound (s, sh, ch, f) that lasts until {(k + 1) * HOP:.2f}: end ≈ {(k + 1) * HOP + 0.04:.2f}")
     return out
+
+
+NEAR_DB = 3.0       # dB under the threshold: a sound this close to it may be a quiet syllable
+QUIET_PAUSE = 0.6   # s: only a short pause (a syllable's room) is checked for one
+QUIET_RUN = 0.05    # s: an unbroken run this long near the threshold
+
+
+def quiet_syllable(env, thr, g0, g1, pmin):
+    """ms of the longest unbroken run within NEAR_DB under the threshold inside a short pause that the compression
+    removes (pmin..QUIET_PAUSE; 30 ms off each edge, which the ±30 ms rolling max widens), or 0. A quiet syllable
+    sits there as a pause (T4: a two-letter word at -35..-40 dBFS under a -33.6 threshold was cut out, 50 ms of it
+    within 3 dB); so does a breath, so this is a reason to listen, not a fix. Over five test recordings (about 700 s) it
+    fired 7 times, one of them the real syllable; cut.py names the transcript words such a pause drops."""
+    if not pmin <= g1 - g0 <= QUIET_PAUSE:
+        return 0
+    run = best = 0
+    for x in env[int(g0 / HOP) + 3:max(int(g0 / HOP) + 3, int(g1 / HOP) - 3)]:
+        run = run + 1 if x >= thr - NEAR_DB else 0
+        best = max(best, run)
+    return best * 10 if best * HOP >= QUIET_RUN - 1e-9 else 0
 
 
 def check_edl(path, thr_arg):
@@ -284,9 +324,9 @@ def check_edl(path, thr_arg):
             srt = sorted(x for x in sdb if x > -90)
             p95 = srt[int(len(srt) * 0.95)] if srt else -20
             thr = thr_arg if thr_arg is not None else min(-30.0, p95 - 20)
-            cache[src] = (env, speech_mask(sdb, thr, vl=vl), thr, vl)
-        env, mask, thr, vl = cache[src]
-        w = edge_warnings(env, mask, thr, r["start"], r["end"], vl)
+            cache[src] = (env, speech_mask(sdb, thr, vl=vl), thr, vl, hf)
+        env, mask, thr, vl, hf = cache[src]
+        w = edge_warnings(env, mask, thr, r["start"], r["end"], vl, hf)
         bad += bool(w)
         print(f"{k:2d} {src} {r['start']:.2f}–{r['end']:.2f}" + ("  ok" if not w else "".join("\n    ⚠ " + x for x in w)))
     print(f"\nedges with warnings: {bad} of {len(edl['ranges'])}")
@@ -343,9 +383,15 @@ def main():
         for g0, g1 in gaps:
             if g1 - g0 > 1.0:
                 warn.append(f"pause {g1 - g0:.2f} s inside at {g0:.2f}: possibly a seam between two takes of the phrase")
+        for g0, g1 in gaps:
+            near = quiet_syllable(env, thr, g0, g1, pmin)
+            if near:
+                warn.append(f"pause {g0:.2f}-{g1:.2f}: {near} ms of it within {NEAR_DB:g} dB under the threshold: a quiet "
+                            f"syllable or a breath. If the transcript has a word there, these ranges drop it: check by "
+                            f"ear; lower --thr, or keep the pause with one range across it in cut.json")
         if len(segs) > 1 and segs[0][1] - segs[0][0] < 0.8 and segs[1][0] - segs[0][1] > 0.6:
             warn.append(f"short speech at the start {segs[0][0]:.2f}–{segs[0][1]:.2f} and a pause after it: the tail of another take?")
-        warn += edge_warnings(env, mask, thr, s0, e0, vl)  # an edge cuts speech / a 0.2–0.35 s fragment (missed by the rule above)
+        warn += edge_warnings(env, mask, thr, s0, e0, vl, hf)  # an edge cuts speech / a 0.2–0.35 s fragment (missed by the rule above)
         # pause compression: from a pause ≥pmin keep `keep` (half on each side)
         pieces, cur_s = [], segs[0][0] - 0.020
         for (g0, g1) in gaps:

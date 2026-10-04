@@ -11,37 +11,113 @@ import { continueRender, delayRender } from "remotion";
 import { measureText } from "@remotion/layout-utils";
 
 const NB = " ";
-// Never left hanging at the end of a line: prepositions, conjunctions, particles (typography.md, “Line breaks”).
-// Russian short words kept with the next word: v, vo, k, ko, s, so, u, o, ob, i, a, no, ne, ni, na, po, za, ot,
-// do, iz, bez, dlya, pri, pro, chto, kak, eto, to, vy, my, ya, on, ona, ikh.
-const SHORT = new Set(["\u0432", "\u0432\u043e", "\u043a", "\u043a\u043e", "\u0441", "\u0441\u043e", "\u0443", "\u043e", "\u043e\u0431", "\u0438", "\u0430", "\u043d\u043e", "\u043d\u0435", "\u043d\u0438", "\u043d\u0430", "\u043f\u043e", "\u0437\u0430", "\u043e\u0442",
-  "\u0434\u043e", "\u0438\u0437", "\u0431\u0435\u0437", "\u0434\u043b\u044f", "\u043f\u0440\u0438", "\u043f\u0440\u043e", "\u0447\u0442\u043e", "\u043a\u0430\u043a", "\u044d\u0442\u043e", "\u0442\u043e", "\u0432\u044b", "\u043c\u044b", "\u044f", "\u043e\u043d", "\u043e\u043d\u0430", "\u0438\u0445"]);
+// Never left hanging at the end of a line: prepositions, conjunctions, particles (typography.md, "Line breaks").
+// Russian short words kept with the next word: v, vo, k, ko, s, so, u, o, ob, obo, i, a, no, ne, ni, na, po, za,
+// ot, do, iz, bez, dlya, pri, pro, chto, kak, eto, to, vy, my, ya, on, ona, ikh, ee, ego, nad, pod, cherez, ili, da;
+// and English articles, prepositions, conjunctions and short pronouns. The same list as reels_common.SHORT_WORDS
+// (subs.py srt breaks the .srt lines by it; tests/scripts/test_kit.py compares them). Another language: add its
+// words in both places.
+const SHORT = new Set(["\u0432", "\u0432\u043e", "\u043a", "\u043a\u043e", "\u0441", "\u0441\u043e", "\u0443", "\u043e",
+  "\u043e\u0431", "\u0438", "\u0430", "\u043d\u043e", "\u043d\u0435", "\u043d\u0438", "\u043d\u0430",
+  "\u043f\u043e", "\u0437\u0430", "\u043e\u0442", "\u0434\u043e", "\u0438\u0437", "\u0431\u0435\u0437",
+  "\u0434\u043b\u044f", "\u043f\u0440\u0438", "\u043f\u0440\u043e", "\u0447\u0442\u043e", "\u043a\u0430\u043a",
+  "\u044d\u0442\u043e", "\u0442\u043e", "\u0432\u044b", "\u043c\u044b", "\u044f", "\u043e\u043d",
+  "\u043e\u043d\u0430", "\u0438\u0445", "\u043e\u0431\u043e", "\u0435\u0435", "\u0435\u0433\u043e",
+  "\u043d\u0430\u0434", "\u043f\u043e\u0434", "\u0447\u0435\u0440\u0435\u0437", "\u0438\u043b\u0438", "\u0434\u0430",
+  "a", "an", "the", "to", "of", "in", "on", "at", "by", "for", "with", "from", "into", "and", "or", "but",
+  "nor", "as", "if", "so", "not", "no", "my", "our", "your", "its", "his", "her", "their", "this", "that",
+  "i", "we", "you", "he", "she", "it"]);
 // Russian particles: li, zhe, by, l', zh, b.
 const AFTER = new Set(["\u043b\u0438", "\u0436\u0435", "\u0431\u044b", "\u043b\u044c", "\u0436", "\u0431"]); // glued to the previous word
+// Number words in every form, compared after yo -> ye (a number is not torn from its word: "five years"; the same list
+// as reels_common.NUMBER_WORDS in the scripts): English, Russian 1-10, the tens and hundreds, one and a half, several
+const NUM_WORDS = new Set([
+  "billion", "billions", "couple", "dozen", "dozens", "eight", "eighteen", "eighty", "eleven", "fifteen",
+  "fifty", "five", "forty", "four", "fourteen", "half", "hundred", "hundreds", "million", "millions", "nine",
+  "nineteen", "ninety", "one", "seven", "seventeen", "seventy", "several", "six", "sixteen", "sixty", "ten",
+  "thirteen", "thirty", "thousand", "thousands", "three", "twelve", "twenty", "two", "zero",
+  "\u0432\u043e\u0441\u0435\u043c\u044c", "\u0432\u043e\u0441\u0435\u043c\u044c\u0434\u0435\u0441\u044f\u0442",
+  "\u0432\u043e\u0441\u0435\u043c\u044c\u0441\u043e\u0442", "\u0432\u043e\u0441\u0435\u043c\u044c\u044e",
+  "\u0432\u043e\u0441\u044c\u043c\u0438",
+  "\u0432\u043e\u0441\u044c\u043c\u0438\u0434\u0435\u0441\u044f\u0442\u0438", "\u0434\u0432\u0430",
+  "\u0434\u0432\u0430\u0434\u0446\u0430\u0442\u0438", "\u0434\u0432\u0430\u0434\u0446\u0430\u0442\u044c",
+  "\u0434\u0432\u0435", "\u0434\u0432\u0435\u0441\u0442\u0438", "\u0434\u0432\u0443\u043c",
+  "\u0434\u0432\u0443\u043c\u044f", "\u0434\u0432\u0443\u0445", "\u0434\u0432\u0443\u0445\u0441\u043e\u0442",
+  "\u0434\u0435\u0432\u044f\u043d\u043e\u0441\u0442\u0430",
+  "\u0434\u0435\u0432\u044f\u043d\u043e\u0441\u0442\u043e", "\u0434\u0435\u0432\u044f\u0442\u0438",
+  "\u0434\u0435\u0432\u044f\u0442\u044c", "\u0434\u0435\u0432\u044f\u0442\u044c\u0441\u043e\u0442",
+  "\u0434\u0435\u0432\u044f\u0442\u044c\u044e", "\u0434\u0435\u0441\u044f\u0442\u0438",
+  "\u0434\u0435\u0441\u044f\u0442\u044c", "\u0434\u0435\u0441\u044f\u0442\u044c\u044e",
+  "\u043d\u0435\u0441\u043a\u043e\u043b\u044c\u043a\u0438\u0445",
+  "\u043d\u0435\u0441\u043a\u043e\u043b\u044c\u043a\u043e", "\u043e\u0434\u0438\u043d",
+  "\u043e\u0434\u043d\u0430", "\u043e\u0434\u043d\u0438", "\u043e\u0434\u043d\u0438\u043c",
+  "\u043e\u0434\u043d\u043e", "\u043e\u0434\u043d\u043e\u0433\u043e", "\u043e\u0434\u043d\u043e\u0439",
+  "\u043e\u0434\u043d\u043e\u043c", "\u043e\u0434\u043d\u043e\u043c\u0443", "\u043e\u0434\u043d\u0443",
+  "\u043f\u0430\u0440\u0430", "\u043f\u0430\u0440\u0443", "\u043f\u043e\u043b\u0442\u043e\u0440\u0430",
+  "\u043f\u043e\u043b\u0442\u043e\u0440\u044b", "\u043f\u043e\u043b\u0443\u0442\u043e\u0440\u0430",
+  "\u043f\u044f\u0442\u0438", "\u043f\u044f\u0442\u0438\u0434\u0435\u0441\u044f\u0442\u0438",
+  "\u043f\u044f\u0442\u044c", "\u043f\u044f\u0442\u044c\u0434\u0435\u0441\u044f\u0442",
+  "\u043f\u044f\u0442\u044c\u0441\u043e\u0442", "\u043f\u044f\u0442\u044c\u044e", "\u0441\u0435\u043c\u0438",
+  "\u0441\u0435\u043c\u0438\u0434\u0435\u0441\u044f\u0442\u0438", "\u0441\u0435\u043c\u044c",
+  "\u0441\u0435\u043c\u044c\u0434\u0435\u0441\u044f\u0442", "\u0441\u0435\u043c\u044c\u0441\u043e\u0442",
+  "\u0441\u043e\u0440\u043e\u043a", "\u0441\u043e\u0440\u043e\u043a\u0430", "\u0441\u043e\u0442\u0435\u043d",
+  "\u0441\u043e\u0442\u043d\u0438", "\u0441\u043e\u0442\u043d\u044f", "\u0441\u0442\u0430",
+  "\u0441\u0442\u043e", "\u0442\u0440\u0435\u043c", "\u0442\u0440\u0435\u043c\u044f",
+  "\u0442\u0440\u0435\u0445", "\u0442\u0440\u0435\u0445\u0441\u043e\u0442", "\u0442\u0440\u0438",
+  "\u0442\u0440\u0438\u0434\u0446\u0430\u0442\u0438", "\u0442\u0440\u0438\u0434\u0446\u0430\u0442\u044c",
+  "\u0442\u0440\u0438\u0441\u0442\u0430", "\u0447\u0435\u0442\u044b\u0440\u0435",
+  "\u0447\u0435\u0442\u044b\u0440\u0435\u043c", "\u0447\u0435\u0442\u044b\u0440\u0435\u0441\u0442\u0430",
+  "\u0447\u0435\u0442\u044b\u0440\u0435\u0445", "\u0447\u0435\u0442\u044b\u0440\u0435\u0445\u0441\u043e\u0442",
+  "\u0447\u0435\u0442\u044b\u0440\u044c\u043c\u044f", "\u0448\u0435\u0441\u0442\u0438",
+  "\u0448\u0435\u0441\u0442\u0438\u0434\u0435\u0441\u044f\u0442\u0438", "\u0448\u0435\u0441\u0442\u044c",
+  "\u0448\u0435\u0441\u0442\u044c\u0434\u0435\u0441\u044f\u0442",
+  "\u0448\u0435\u0441\u0442\u044c\u0441\u043e\u0442", "\u0448\u0435\u0441\u0442\u044c\u044e"]);
+// Russian 11-19, thousand, million, billion in every case
+const NUM_STEM = /^(?:[\u0430-\u044f]+\u043d\u0430\u0434\u0446\u0430\u0442[\u044c\u0438\u044e]|\u0442\u044b\u0441\u044f\u0447[\u0430-\u044f]*|\u043c\u0438\u043b\u043b\u0438(?:\u043e\u043d|\u0430\u0440\u0434)[\u0430-\u044f]*)$/;
+// a number of its own: digits with separators, a sign, a currency, %, an ordinal ending ("3rd", Russian "5-ti"); not
+// the digits inside a name ("B2B", "MP3")
+const NUM_TOKEN = /^[+\-\u2212~\u2248]?[$\u20ac\u00a3\u20bd\u00a5\u20b8]?\d+(?:[.,:/'\u2009]\d+)*(?:%|\u2030|[$\u20ac\u00a3\u20bd\u00a5\u20b8]|\+|[x\u00d7]|[kmb]|st|nd|rd|th|-?[\u0430-\u044f\u0451]{1,3})?$/i;
+
+/** A number of its own (a token): digits ("12", "60%", "$100", "3rd") or a number word ("five", Russian "pyati"). A
+ *  token ending in a comma or a period is the end of a clause, not a number glued to its word. */
+export const isNumber = (token: string): boolean => {
+  const t = token.replace(/^[\u00ab"(\u201c\u201e]+/, "");
+  const w = t.toLowerCase().replace(/\u0451/g, "\u0435");
+  return NUM_TOKEN.test(t) || NUM_WORDS.has(w) || NUM_STEM.test(w);
+};
+
+/** True: a line (or a subtitle chunk) must not end between these two words — after a short function word or a number
+ *  (it goes with its unit or word: "12 days", "five years"), before a dash, a percent sign or a particle that leans
+ *  back. glue() puts a no-break space there; the subtitles never split a chunk or a line there. */
+export const noBreak = (prev: string, next: string): boolean => {
+  const prevLast = prev.split(NB).pop() ?? prev; // in a glued token, the last word is what matters
+  // a word ending in punctuation (a comma, a period) always allows the break, as reels_common.no_break does
+  if (/[,.;:!?\u2026)\u00bb\u201d]$/.test(prevLast.trim())) return false;
+  // without the punctuation around it, Russian yo as ye (the list holds the ye spelling), as reels_common.bare
+  const bare = prevLast.toLowerCase().replace(/^[\u00ab"'(\[\u201c\u201e\u2018]+|[\u00bb"')\]\u201d\u2019]+$/g, "").replace(/\u0451/g, "\u0435");
+  return (
+    SHORT.has(bare) || // "v rabote" (at work), "ne znayu" (don't know), "the result"
+    isNumber(prevLast) || // "12 days", "60% growth", "five years"
+    prevLast === "%" || /^[%\u2014\u2013-]/.test(next) || // "60 % growth" - same as "60% growth"; before a dash
+    AFTER.has(next.toLowerCase().replace(/[.,!?\u2026]/g, ""))
+  );
+};
 
 const glueLine = (line: string): string => {
   // ordinary spaces collapse, existing NBSPs are kept; dashes and ellipses are normalized before splitting into words
-  const t = line.replace(/[ \t]+/g, " ").trim().replace(/ [-–—] /g, " — ").replace(/\.\.\./g, "…");
+  const t = line.replace(/[ \t]+/g, " ").trim().replace(/ [-\u2013\u2014] /g, " \u2014 ").replace(/\.\.\./g, "\u2026");
   if (!t) return t;
   const w = t.split(" ");
   let out = w[0];
-  for (let k = 1; k < w.length; k++) {
-    const word = w[k];
-    const prev = w[k - 1];
-    const prevLast = prev.split(NB).pop() ?? prev; // in a glued token, the last word is what matters
-    const bare = prevLast.toLowerCase().replace(/[«"(]/g, "");
-    const nb =
-      SHORT.has(bare) || // “v rabote” (at work), “ne znayu” (don't know)
-      /^\d[\d.,]*%?$/.test(prevLast) || // “12 days”, “60% growth”
-      prevLast === "%" || word === "%" || // “60 % growth” — same as “60% growth”
-      word === "—" || // before a dash
-      AFTER.has(word.toLowerCase().replace(/[.,!?…]/g, ""));
-    out += (nb ? NB : " ") + word;
-  }
+  for (let k = 1; k < w.length; k++) out += (noBreak(w[k - 1], w[k]) ? NB : " ") + w[k];
   return out;
 };
 
-/** No-break spaces by the rules of Russian typography. Manual line breaks (\n) and existing NBSPs are kept. */
+/** No-break spaces by the rules of Russian typography (and English short words). Manual line breaks (\n) and existing
+ *  NBSPs are kept. The result is no longer split by " ": a glued pair is ONE token with a no-break space inside
+ *  ("v\u00a0rabote"). A per-video composition that takes words out of a glued line with text.split(" ") (to color the
+ *  accent word or time each word to the speech) silently loses that accent and that timing — the word is not found.
+ *  Split the raw text into words first and glue only what you draw, or split on /[ \u00a0]/ (typography.md). */
 export const glue = (text: string): string => text.split("\n").map(glueLine).join("\n");
 
 /** Lines of up to maxChars characters; what glue() joined is never split, \n forces a break.

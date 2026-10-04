@@ -165,3 +165,104 @@ def test_scripts_without_spaces_need_word_marks(project):
     assert "glue" not in first[0] and all(w.get("glue") for w in first[1:])  # shown without spaces between them
     run_script("subs.py", "srt", "edit/4821", "--lang", "zh", cwd=project)
     assert "我们今天来聊聊招聘这件事情吧" in (e / "subtitles.zh.srt").read_text(encoding="utf-8")
+
+
+def long_sentence_captions():
+    """One 18-word sentence in a segment (the 16-word limit leaves its last two words alone), then a short sentence of
+    its own before the next phrase."""
+    text = ("I have filled roles in many fields like sales and marketing and finance and many other business areas. "
+            "Yes. We help companies hire the right people").split()
+    words, t = [], 0.0
+    for w in text:
+        words.append({"text": w, "start": round(t, 3), "end": round(t + 0.3, 3), "seg": 0})
+        t += 0.33
+    return {"duration": 12.0, "segments": [{"i": 0, "src_start": 0, "src_end": 12, "out_start": 0, "out_dur": 12}],
+            "words": words}
+
+
+def test_a_phrase_too_short_to_read_joins_its_neighbor():
+    # T3: the 16-word limit left "areas." and "business." alone: one-word translations and 0.46-0.59 s subtitles
+    import subs
+    ps = subs.phrases_of(long_sentence_captions())
+    assert [len(p["src"].split()) for p in ps] == [18, 8]  # the tail joins its sentence, "Yes." joins the next phrase
+    assert ps[0]["src"].endswith("business areas.") and ps[1]["src"].startswith("Yes. We help")
+    # translations made for the old split are joined, not lost
+    old = [{"src": " ".join(ps[0]["src"].split()[:16]), "text": "Ich habe Stellen in vielen Bereichen besetzt"},
+           {"src": "business areas.", "text": "und mehr."}, {"src": ps[1]["src"], "text": "Ja. Wir helfen."}]
+    got = subs.take_translations(subs.phrases_of(long_sentence_captions()), old)
+    assert [p["text"] for p in got] == ["Ich habe Stellen in vielen Bereichen besetzt und mehr.", "Ja. Wir helfen."]
+
+
+def test_srt_lines_fit_the_width_and_keep_a_number_with_its_word():
+    # T3: lines of 54-59 characters (a phrase longer than two lines was put in two anyway) and "more than five / years"
+    import subs
+    lines = subs.two_lines("Now I work with the ACME24 team and help companies find the right people")
+    assert all(len(x) <= 42 for x in lines) and not lines[0].endswith(" and")  # the most even split was after "and"
+    ru = subs.two_lines("Я Анна, рекрутер "
+                        "с опытом более пяти "
+                        "лет и представляю ACME24 "
+                        "в Испании.")
+    assert all(len(x) <= 42 for x in ru) and not ru[0].endswith("пяти")  # not torn after "pyati"
+    words = [{"text": w, "start": k * 0.4, "end": k * 0.4 + 0.3, "glue": False} for k, w in enumerate(
+        "Over the years I have filled roles in many fields: sales, IT, construction, marketing, accounting and other areas.".split())]
+    parts = subs.pieces(words)
+    texts = [subs.joined(p) for p in parts]
+    assert len(parts) == 2 and texts[0].endswith("fields:")  # split at the colon, both halves fit two lines
+    assert all(len(x) <= 42 for t in texts for x in subs.two_lines(t))
+
+
+def test_srt_of_a_long_phrase_is_several_subtitles_timed_by_its_words(project):
+    e = plan_project(project)
+    write_json(e / "captions.json", long_sentence_captions())
+    run_script("subs.py", "srt", "edit/4821", cwd=project)
+    blocks = (e / "subtitles.srt").read_text(encoding="utf-8").strip().split("\n\n")
+    assert len(blocks) == 3  # the 18-word sentence (102 characters) in two subtitles, then the next phrase
+    assert all(len(line) <= 42 for b in blocks for line in b.split("\n")[2:])
+    assert blocks[1].split("\n")[1].startswith("00:00:02,970 --> ")  # the second piece starts on its first word
+
+
+def test_translated_words_carry_their_phrase(project):
+    # the kit hides a translated phrase that a scene covers for the most part (T3: "company really needs." after one)
+    e = plan_project(project)
+    run_script("subs.py", "phrases", "edit/4821", "--lang", "de", cwd=project)
+    translate(e)
+    run_script("subs.py", "apply", "edit/4821", "--lang", "de", cwd=project)
+    words = json.loads((e / "captions-de.json").read_text(encoding="utf-8"))["words"]
+    assert {w["phrase"] for w in words} == {f"p{k:03d}" for k in range(1, 7)}
+
+
+def test_a_scene_quote_in_the_subtitle_language_is_checked_against_the_translation(project):
+    # T3: scene texts stayed in the speech language in the English version; written in English, a quote from the speech
+    # must still be verbatim - against the translated subtitles
+    e = plan_project(project, {"use_scenes": True, "subtitles_lang": "de"})
+    run_script("subs.py", "phrases", "edit/4821", "--lang", "de", cwd=project)
+    translate(e)
+    run_script("subs.py", "apply", "edit/4821", "--lang", "de", cwd=project)
+    run_script("visual_plan.py", "init", "edit/4821", cwd=project)
+    run_script("visual_plan.py", "add", "edit/4821", "--kind", "scene", "--type", "quote", "--mode", "full",
+               "--at", "6.5", "--dur", "3.4", "--lines", "Sie sagte:", "prüft, wie sie denken", "--source", "speech",
+               "--what", "her words", "--why", "the key thought", cwd=project)
+    r = run_script("visual_plan.py", "validate", "edit/4821", cwd=project, check=False)
+    assert "not verbatim" not in r.stdout, r.stdout
+    plan = json.loads((e / "visual_plan.json").read_text(encoding="utf-8"))
+    plan["inserts"][0]["text"]["lines"] = ["Sie sagte:", "denkt nach"]
+    write_json(e / "visual_plan.json", plan)
+    r = run_script("visual_plan.py", "validate", "edit/4821", cwd=project, check=False)
+    assert "not verbatim" in r.stdout and "captions-de.json" in r.stdout
+
+
+def test_translated_subtitles_keep_the_speakers():
+    # T4: the kit colors subtitles per speaker; a translated phrase must not mix two speakers and keeps its speaker
+    import subs
+    words = [{"text": t, "start": a, "end": b, "seg": 0, "speaker": s} for t, a, b, s in [
+        ("So", 0.0, 0.3, "B"), ("it", 0.3, 0.5, "B"), ("helped", 0.5, 0.8, "B"), ("you", 0.8, 1.2, "B"),
+        ("yes,", 1.2, 1.6, "A"), ("it", 1.6, 1.8, "A"), ("helped", 1.8, 2.2, "A"), ("a", 2.2, 2.3, "A"),
+        ("lot.", 2.3, 2.8, "A")]]
+    ps = subs.phrases_of({"words": words, "speakers": ["A", "B"]})
+    # no pause and no sentence end between them: only the change of speaker ends the first phrase
+    assert [(p["src"], p["speaker"]) for p in ps] == [("So it helped you", "B"), ("yes, it helped a lot.", "A")]
+    ps[0]["text"], ps[1]["text"] = "Es hat dir also geholfen", "ja, sehr."
+    assert {w["speaker"] for w in subs.timed_words(ps[1])} == {"A"}
+    # a phrase too short to read alone does not join another speaker's
+    short = words[:2] + words[4:]
+    assert [p["speaker"] for p in subs.phrases_of({"words": short})] == ["B", "A"]

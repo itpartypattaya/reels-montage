@@ -37,12 +37,14 @@ export const CtaAction: React.FC<{ c: SceneCtx }> = ({ c }) => {
   );
   const ripple = interpolate(frame, [tI, tI + 14], [0, 1], { ...clamp, easing: easeOut });
   const rippleOn = frame >= tI && frame < tI + 14;
-  const tapDot = (x: number | string, y: number | string) => (
+  // the tap: a dot and a ripple ring in a color that stands out from what is under them (T6: the marker color, yellow, on a
+  // yellow button over a cream field, was invisible)
+  const tapDot = (x: number | string, y: number | string, color: string, d = 60) => (
     <>
       <div style={{ position: "absolute", left: x, top: y, width: 150 * ripple, height: 150 * ripple, marginLeft: -75 * ripple, marginTop: -75 * ripple,
-        borderRadius: "50%", border: `5px solid ${card ? surf.text : surf.hiBg}`, boxSizing: "border-box", opacity: rippleOn ? 1 - ripple : 0 }} />
-      <div style={{ position: "absolute", left: x, top: y, width: 60, height: 60, marginLeft: -30, marginTop: -30, borderRadius: 30,
-        backgroundColor: alpha(brand.colors.light, 0.75), border: `4px solid ${card ? surf.text : surf.hiBg}`, boxSizing: "border-box",
+        borderRadius: "50%", border: `5px solid ${color}`, boxSizing: "border-box", opacity: rippleOn ? 1 - ripple : 0 }} />
+      <div style={{ position: "absolute", left: x, top: y, width: d, height: d, marginLeft: -d / 2, marginTop: -d / 2, borderRadius: d / 2,
+        backgroundColor: alpha(brand.colors.light, 0.75), border: `4px solid ${color}`, boxSizing: "border-box",
         transform: `scale(${frame >= tI && frame < tI + 5 ? 0.82 : 1})`, opacity: interpolate(frame, [tI - 8, tI, tI + 10, tI + 16], [0, 1, 1, 0], clamp) }} />
     </>
   );
@@ -76,7 +78,8 @@ export const CtaAction: React.FC<{ c: SceneCtx }> = ({ c }) => {
             <div style={{ position: "absolute", left: bar * 0.38, top: bar * 0.28, width: 0, height: 0, borderTop: `${bar * 0.22}px solid transparent`,
               borderBottom: `${bar * 0.22}px solid transparent`, borderLeft: `${bar * 0.32}px solid ${surf.hiText}` }} />
             <div style={{ position: "absolute", left: bar / 2 - 80 * sendRipple, top: bar / 2 - 80 * sendRipple, width: 160 * sendRipple, height: 160 * sendRipple,
-              borderRadius: "50%", border: `5px solid ${surf.hiBg}`, boxSizing: "border-box", opacity: frame >= send && frame < send + 14 ? 1 - sendRipple : 0 }} />
+              borderRadius: "50%", border: `5px solid ${card ? surf.text : surf.accent}`, boxSizing: "border-box",
+              opacity: frame >= send && frame < send + 14 ? 1 - sendRipple : 0 }} />
           </div>
         </div>
       </div>
@@ -106,7 +109,7 @@ export const CtaAction: React.FC<{ c: SceneCtx }> = ({ c }) => {
               <div style={{ position: "relative", display: "inline-block", marginTop: 10, padding: "6px 14px", marginLeft: -14 }}>
                 <span style={{ fontFamily: fonts.body, fontWeight: 600, fontSize: linkSize, color: card ? surf.text : surf.accent, whiteSpace: "pre",
                   textDecoration: "underline", textUnderlineOffset: "0.18em", textDecorationThickness: "0.06em" }}>{link}</span>
-                {tapDot("55%", "55%")}
+                {tapDot("55%", "55%", card ? surf.text : surf.accent)}
                 <Brackets x={0} y={0} w="100%" h="100%" progress={br} color={card ? surf.text : surf.accent} size={24} stroke={4} />
               </div>
             </div>
@@ -116,7 +119,7 @@ export const CtaAction: React.FC<{ c: SceneCtx }> = ({ c }) => {
               <div style={{ fontFamily: fonts.heading, fontWeight: 800, fontSize: nameSize, lineHeight: 1.1, color: surf.text, whiteSpace: "pre" }}>
                 {glue(brand.name)}
               </div>
-              {tapDot("50%", "55%")}
+              {tapDot("50%", "55%", card ? surf.text : surf.accent)}
               <Brackets x={0} y={0} w="100%" h="100%" progress={br} color={card ? surf.text : surf.accent} size={24} stroke={4} />
             </div>
           )}
@@ -143,11 +146,14 @@ export const CtaAction: React.FC<{ c: SceneCtx }> = ({ c }) => {
       ) : null}
       {btn ? (
         <div style={{ position: "relative", marginTop: 38, padding: 14, opacity: m2.opacity, transform: m2.transform, transformOrigin: "0% 50%" }}>
-          <div style={{ fontFamily: fonts.body, fontWeight: 700, fontSize: btnSize, lineHeight: 1.1, whiteSpace: "pre", color: surf.hiText,
-            backgroundColor: surf.hiBg, padding: "0.45em 1em", borderRadius: c.radius ? 999 : 0, transform: `scale(${frame >= tI && frame < tI + 5 ? 0.96 : 1})` }}>
-            {btn}
+          {/* the tap lands on the button's right padding, off the label, in the label's color; its ripple spreads inside the
+              button (clipped by it) behind the label: every letter stays readable (T6: the dot covered a letter of the address) */}
+          <div style={{ position: "relative", overflow: "hidden", fontFamily: fonts.body, fontWeight: 700, fontSize: btnSize, lineHeight: 1.1,
+            whiteSpace: "pre", color: surf.hiText, backgroundColor: surf.hiBg, padding: "0.45em 1em", borderRadius: c.radius ? 999 : 0,
+            transform: `scale(${frame >= tI && frame < tI + 5 ? 0.96 : 1})` }}>
+            {tapDot("calc(100% - 0.5em)", "50%", surf.hiText, Math.round(btnSize * 0.8))}
+            <span style={{ position: "relative" }}>{btn}</span>
           </div>
-          {tapDot("62%", "58%")}
           <Brackets x={0} y={0} w="100%" h="100%" progress={br} color={surf.accent} size={28} stroke={5} />
         </div>
       ) : null}

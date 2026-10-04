@@ -11,7 +11,8 @@ The skill's rule "no text on a face, chin above the subtitles" is checked here:
   audit  - the finished render (after camera and graphics): faces against the subtitle band (where speech is heard and
            no scene hides the subtitles), the keep_clear zones (cards, hook, CTA, registered by visual_plan.py
            keep-clear; designed scenes overlay/split/window by visual_plan.py export, and ready scenes are also read
-           straight from the plan) and memes; the top of the head cut off by the frame edge.
+           straight from the plan) and memes; the top of the head cut off by the frame edge; a face cut at the left or
+           right edge (in the render, and from faces.json through camera.json, where a half face is not detected).
 
     python scripts/faces.py scan edit/<id> [--video <file>] [--step 0.25] [--geometry auto|cover|source] [--frame x,y,w,h]
     python scripts/faces.py zones edit/<id> [--cam 1.2,540,990] [--sub 1250,1430] [--frame x,y,w,h]
@@ -32,20 +33,22 @@ OpenCV 4.8 or newer in the Python that runs this script: pip install opencv-pyth
 No model or no OpenCV: the commands say so and exit with code 0; faces are then checked by eye on frames.
 Remotion camera: screen = (x - cx)*z + 540, (y - cy)*z + 960 (references/faces.md, section 2).
 
-A horizontal source in the "framed" format (references/techniques.md): final.mp4 stays 1920x1080, and a centered 9:16
-cover would give coordinates that are not on screen and lose a second speaker at the edge. So scan measures such a
-video IN ITS SOURCE GEOMETRY (--geometry auto: horizontal -> source, otherwise cover as before) and writes
-"geometry": "source", the source "w"/"h" and the "frame" window to faces.json (FRAME by default: a 1030x1240 window at
-(25, 340)). load() returns the boxes already in the window's screen coordinates: the video is a cover in the window,
-centered; the camera works relative to the window, and the window center is (540, 960), so the formula is the same
-(cx, cy in screen coordinates). zones/check clip faces to the window (beyond its edge a face is not visible); --frame
-sets another window.
+A horizontal source in the "framed" format (references/techniques.md; reel.json -> format: framed): final.mp4 keeps
+its horizontal size, and a centered 9:16 cover would give coordinates that are not on screen and lose a second speaker
+at the edge. So scan measures such a video IN ITS SOURCE GEOMETRY (--geometry auto: horizontal -> source, otherwise
+cover as before) and writes "geometry": "source", the source "w"/"h" and the "frame" window to faces.json (reel.json ->
+window, else FRAME: a 1030x1240 window at (25, 340)). load() returns the boxes already in the window's screen
+coordinates (the window of reel.json when it is set, so a moved window needs no new scan): the video is a cover in the
+window, centered; the camera works relative to the window center ((540, 960) for the default window) and never shows
+past the video's edge (reels_common.cam_fit, as the kit draws it). zones/check clip faces to the window (beyond its
+edge a face is not visible); --frame sets another window. audit checks a face cut by the window's sides.
 """
 import argparse, importlib.util, json, os, shutil, subprocess, sys, tempfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from reels_common import edit_dir, load_json, probe, project_root, project_settings, run, save_json, utf8_stdio, warn
+from reels_common import (SUB_BAND, SUB_MAX_TOP, edit_dir, framed_at, framed_view, load_json, probe, project_root,
+                          project_settings, run, save_json, utf8_stdio, warn)
 
 W, H = 1080, 1920
 MODEL = None         # --model; otherwise REELS_FACE_MODEL; otherwise it-reelsmaker.json -> face_model (model_path())
@@ -56,8 +59,7 @@ MODEL_HELP = (f"download {MODEL_FILE} yourself from the opencv_zoo project on Gi
               f"--model <file>, the REELS_FACE_MODEL environment variable or \"face_model\" in it-reelsmaker.json")
 MARGIN = 60          # margin around a face for any graphics
 UI_TOP, UI_BOTTOM, UI_RIGHT = 220, 420, 120
-SUB = (1290, 1400)   # default subtitle band (top 1290, card about 100 px); for your video pass --sub top,bottom
-SUB_MAX_TOP = 1390   # never lower the subtitles below this: the bottom 420 px is the UI zone
+SUB = SUB_BAND       # the subtitle band graphics keep out of (reels_common: the same as validate); --sub top,bottom
 FRAME = (25, 340, 1030, 1240)  # the "framed" window for a horizontal source (references/techniques.md), x, y, w, h
 SRC_LONG = 960       # measuring in source geometry: the long side of the frame for YuNet (like 540x960 for vertical)
 
@@ -307,7 +309,8 @@ def load(edit, raw=False, frame=None):
     elif data.get("filter", {}).get("v") != FILTER_V:
         filter_faces(data)  # the filter does not depend on scale: compute in the file's coordinates
     if data.get("geometry") == "source":
-        to_screen(data, frame or data.get("frame") or FRAME)
+        fr = framed_at(edit)  # reel.json's window wins over the one stored at scan time: the source geometry is kept
+        to_screen(data, frame or (fr or {}).get("window") or data.get("frame") or FRAME)
     return data
 
 
@@ -316,6 +319,16 @@ def window(data, frame=None):
     whole frame."""
     fr = frame or (data or {}).get("frame")
     return list(fr) if fr else None
+
+
+def view(data, frame=None):
+    """The camera's clamp geometry for reels_common.cam_fit: (window, the video's cover rect in it) for a measurement
+    in source geometry ("framed"); None: the whole frame."""
+    fr = window(data, frame)
+    src = (data or {}).get("source")
+    if not fr or not src:
+        return None
+    return framed_view(fr, (src["w"], src["h"]))
 
 
 def clip(b, fr):
@@ -345,6 +358,41 @@ def between(data, t0, t1):
         return []
     st = data.get("step", 0.25)
     return [f[:4] for s in data["samples"] if t0 - st <= s["t"] <= t1 + st for f in s["faces"]]
+
+
+def source_cuts(e):
+    """Seconds of the rough cut where the source changes (captions.json segments): another camera angle from here on."""
+    segs = sorted((load_json(Path(e) / "captions.json", {}) or {}).get("segments", []), key=lambda g: g["out_start"])
+    return [g["out_start"] for p, g in zip(segs, segs[1:]) if g.get("source") != p.get("source")]
+
+
+def pieces(t0, t1, cuts):
+    """A span split at the source changes inside it -> [(start, end, hard start, hard end)]: a hard edge is a change
+    of angle, where the faces of the other side are not this piece's faces."""
+    edges = [t0] + [c for c in cuts if t0 + 1e-3 < c < t1 - 1e-3] + [t1]
+    hard = lambda t: any(abs(t - c) < 1e-3 for c in cuts)
+    return [(a, b, hard(a), hard(b)) for a, b in zip(edges, edges[1:])]
+
+
+def within(data, a, b, hard_a=False, hard_b=False):
+    """Faces in [a, b] like between(), but the nearest sample beyond an edge is taken only where the edge is not a
+    change of angle (T2: span k02 of the side angle got a front-angle sample from just before its cut, and its union
+    box [593, 879, 208, 208] described neither angle)."""
+    if not data:
+        return []
+    st = data.get("step", 0.25)
+    lo, hi = (a if hard_a else a - st), (b if hard_b else b + st)
+    return [f[:4] for s in data["samples"] if lo <= s["t"] <= hi and not (hard_b and s["t"] >= b) for f in s["faces"]]
+
+
+def samples_within(data, a, b, hard_a=False, hard_b=False):
+    """How many scan samples within() looks at for [a, b]: 0 means the piece is shorter than the scan step (no sample
+    of its own angle), not that it has no face."""
+    if not data:
+        return 0
+    st = data.get("step", 0.25)
+    lo, hi = (a if hard_a else a - st), (b if hard_b else b + st)
+    return sum(1 for s in data["samples"] if lo <= s["t"] <= hi and not (hard_b and s["t"] >= b))
 
 
 def union(boxes):
@@ -396,7 +444,8 @@ def parse_cam(s):
 def cmd_scan(a):
     e = edit_dir(a.edit)
     video = Path(a.video) if a.video else e / "final.mp4"
-    data = scan_video(video, a.step, a.raw, a.geometry, parse_box(a.frame) if a.frame else None)
+    fr = framed_at(e)  # reel.json -> format: framed: its window (else FRAME) for a horizontal video
+    data = scan_video(video, a.step, a.raw, a.geometry, parse_box(a.frame) if a.frame else (fr or {}).get("window"))
     if data is None:
         print("faces not measured (no model or OpenCV): check faces on frames by eye")
         return
@@ -436,13 +485,27 @@ def zone_report(f, sub, fr=None):
             "sub_ok": f[1] + f[3] + MARGIN // 2 <= sub[0], "cut_top": f[1] < (fr[1] if fr else 0)}
 
 
+def sub_band(e, given=None, rendered=False):
+    """(top, bottom) of the subtitles: --sub; for the audit of a render, the band visual_plan.py export gave it (the
+    plan's subtitles_band: the top below the measured chin); otherwise the band graphics keep out of, as validate
+    checks it (reel-defaults.json -> meme_layout.subtitles_band, reels_common.SUB_BAND)."""
+    if given:
+        return tuple(parse_box(given))
+    if rendered:
+        rec = (load_json(e / "visual_plan.json", {}) or {}).get("subtitles_band")
+        if rec:
+            return tuple(rec)
+    import meme_layout as ml
+    return tuple(ml.layout().get("subtitles_band") or SUB)
+
+
 def cmd_zones(a):
     e = edit_dir(a.edit)
     frame = parse_box(a.frame) if a.frame else None
     data = load(e, a.raw, frame)
     if not data:
         sys.exit(f"no {e / 'faces.json'}; first run faces.py scan {a.edit}")
-    sub = tuple(parse_box(a.sub)) if a.sub else SUB
+    sub = sub_band(e, a.sub)
     cam = parse_cam(a.cam)
     fr = window(data, frame)
     if fr:
@@ -451,10 +514,22 @@ def cmd_zones(a):
     if not a.raw and rejected_summary(data):
         print(rejected_summary(data) + "\n")
     print(f"{'span':<8} {'time':<13} {'face (x,y,w,h)':<22} {'headroom y':<12} {'chest y':<12} {'left':>6} {'right':>7}  subtitles")
+    cuts = source_cuts(e)
+    rows = []
     for sid, t0, t1, text in segments_of(e):
-        fs = screen_faces(between(data, t0, t1), cam, fr)
+        ps = pieces(t0, t1, cuts)  # a span across a change of angle: zones per angle, never a union of both
+        rows += [(sid + ("abcdefghij"[k] if len(ps) > 1 and k < 10 else ""), a, b, ha, hb) for k, (a, b, ha, hb) in enumerate(ps)]
+    for sid, t0, t1, ha, hb in rows:
+        fs = screen_faces(within(data, t0, t1, ha, hb), cam, fr)
         f = union(fs)
         z = zone_report(f, sub, fr)
+        if not fs and any(s["faces"] for s in data["samples"]):
+            # no sample at all: a piece shorter than the scan step; samples without a face: no face in this span
+            # (T5: every faceless span, up to 5.7 s long, said "shorter than the scan step")
+            if samples_within(data, t0, t1, ha, hb):
+                z["no_face"] = True
+            else:
+                z["unmeasured"] = True
         out.append({"id": sid, "start": t0, "end": t1, **z})
         ce = f"{z['ceiling'][0]}-{z['ceiling'][1]}" if z["ceiling"] else "none"
         ch = f"{z['chest'][0]}-{z['chest'][1]}" if z["chest"] else "none"
@@ -464,8 +539,15 @@ def cmd_zones(a):
             f"chin {f[1] + f[3]}: no room for subtitles; a wider shot (smaller z) or camera cy +{need - SUB_MAX_TOP}")
         if z.get("cut_top"):
             flag += "; top of the head beyond the edge" + (" of the window" if fr else "")
+        if z.get("unmeasured"):
+            flag = "no face sample of this angle (shorter than the scan step): faces.py scan --step 0.1, or a still"
+        elif z.get("no_face"):
+            flag = "ok: no face in this span (the scan samples here have none); the whole frame is free"
         print(f"{sid:<8} {t0:5.2f}-{t1:5.2f}  {str(f) if f else '-':<22} {ce:<12} {ch:<12} {z['left']:>6} {z['right']:>7}  {flag}")
     save_json(e / "faces_zones.json", {"cam": cam, "sub": sub, "margin": MARGIN, "frame": fr, "segments": out})
+    if cuts:
+        print(f"angle changes (the source changes) at {', '.join(f'{c:.2f}' for c in cuts)} s: a span across one is "
+              f"split (a, b, ...), each piece with its own faces")
     print(f"\nzones: {e / 'faces_zones.json'}. \"Headroom\": hook and cards above the head; \"chest\": between the chin "
           f"and the subtitles (needs >= 120 px); with a {MARGIN} px margin from the face. Camera: --cam z,cx,cy of the "
           f"span's shot size.")
@@ -490,16 +572,83 @@ def cmd_check(a):
 
 def audit_zones(plan):
     """What the audit checks against faces from the plan: keep_clear (cards + overlay/split/window scenes, written by
-    visual_plan.py export; if export has not run yet, ready scenes are taken from the plan) and the windows where scenes
-    hide the subtitles (split/full/slogan/hide_subtitles), where "a face in the subtitle band" is not an error.
-    -> (keep, hidden)."""
-    from visual_plan import hides_subtitles, scene_keep_entries
+    visual_plan.py export; if export has not run yet, ready scenes are taken from the plan) and the windows where the
+    subtitles are hidden - by scenes (split/full/slogan/hide_subtitles) and by the plan's hide-subs windows (a per-video
+    composition: a presenter, an accent title; T2 flagged "a face in the subtitle band" under a presenter whose
+    composition had hidden them) - where "a face in the subtitle band" is not an error. -> (keep, hidden)."""
+    from visual_plan import hidden_windows, hides_subtitles, scene_keep_entries
     keep = list(plan.get("keep_clear", []))
     have = {k.get("scene") for k in keep if k.get("scene")}
     keep += [k for k in scene_keep_entries(plan) if k["scene"] not in have]
     hidden = [(i["start"], i["start"] + i["dur"]) for i in plan.get("inserts", [])
               if i.get("kind") == "scene" and i.get("status") == "ready" and i.get("type") != "cover" and hides_subtitles(i)]
-    return keep, hidden
+    return keep, hidden + [tuple(h) for h in hidden_windows(plan)]
+
+
+def own_face(k, fb):
+    """The face is the zone's own: a presenter layer (keep-clear --own-face) holds the presenter's face by definition,
+    so that face is not "graphics on a face" (T2: the presenter's zone from matte.py place was flagged on its own
+    face). Another face in the zone still is."""
+    o = k.get("own_face")
+    if not o:
+        return False
+    cx, cy = fb[0] + fb[2] / 2, fb[1] + fb[3] / 2
+    x, y, w, h = grow(o, MARGIN)
+    return x <= cx <= x + w and y <= cy <= y + h
+
+
+SIDE_EDGE = 6  # px: a face box this close to the left or right edge of the render is cut by it (boxes come in 2 px steps)
+
+
+def covered(plan):
+    """Spans where the rough cut is not on screen where faces.json has it: ready scenes that move or cover it (split,
+    panel, window, full), a B-roll that replaces it, a cutaway meme, a presenter layer. Not ready inserts fall back to
+    the main footage, so they do not count (review: a B-roll at 4-6 s gave "face cut at the side" for every sample)."""
+    from visual_plan import COVER_MODES
+    out = []
+    for i in plan.get("inserts", []):
+        k, m = i.get("kind"), i.get("mode")
+        if i.get("status") == "ready" and ((k == "scene" and m in COVER_MODES and i.get("type") != "cover")
+                                           or (k == "broll" and m == "replace") or (k == "meme" and m == "cutaway")):
+            out.append((i["start"], i["start"] + i["dur"]))
+    return out + [(k["start"], k["end"]) for k in plan.get("keep_clear", []) if k.get("matte")]
+
+
+def side_cuts(e, plan):
+    """Times where the rough cut's faces (faces.json), through the camera of camera.json, reach the left or right
+    edge of the frame (within SIDE_EDGE): in a two-person skit the main risk of a push-in is the other person's face cut at the side,
+    which the render's detector may miss once half of it is gone. "Framed": the edges are the window's, the camera is
+    clamped to the window (as the kit draws it), and a face wholly beyond the window is not on screen, so not cut (T7:
+    load() had already turned the source geometry into "screen", the window check never ran, and the full-frame clamp
+    moved cx 820 to 540: a false "face cut at the side" at 6.25 s while the render had the face at x 642-803). Scenes
+    that move or cover the video (split, panel, window, full), B-roll that replaces it, cutaway memes and presenter
+    layers are left out (covered()): the rough cut is not where faces.json says there."""
+    if not (Path(e) / "camera.json").is_file():
+        return []
+    from visual_plan import camera_at, plan_camera, plan_duration
+    data = load(e)
+    if not data:
+        return []
+    fr = window(data)
+    geo, center = view(data), frame_center(fr)
+    left, right = (fr[0], fr[0] + fr[2]) if fr else (0, W)
+    shots = plan_camera(e, plan)
+    if not shots:
+        return []
+    end = plan_duration(e, plan) or shots[-1]["t"] + 1.0
+    moved = covered(plan)
+    out = []
+    for smp in data["samples"]:
+        t = smp["t"]
+        if t > end or any(a0 <= t < a1 for a0, a1 in moved):
+            continue
+        cam = camera_at(shots, t, end, view=geo)
+        boxes = [cam_box(f[:4], cam, center) for f in smp["faces"]]
+        if fr:  # a face wholly beyond the window is not on screen
+            boxes = [b for b in boxes if clip(b, fr)]
+        if any(b[0] <= left + SIDE_EDGE or b[0] + b[2] >= right - SIDE_EDGE for b in boxes):
+            out.append(t)
+    return out
 
 
 def cmd_audit(a):
@@ -510,13 +659,17 @@ def cmd_audit(a):
         print("face audit skipped (no model or OpenCV): check still frames by eye")
         return
     save_json(e / "faces_render.json", data)
-    sub = tuple(parse_box(a.sub)) if a.sub else SUB
+    sub = sub_band(e, a.sub, rendered=True)
     cap = load_json(e / "captions.json", {})
     plan = load_json(e / "visual_plan.json", {}) or {}
     spoken = [(w["start"], w["end"]) for w in cap.get("words", [])]
     keep, hidden = audit_zones(plan)
     memes = [i for i in plan.get("inserts", []) if i.get("kind") == "meme" and i.get("box") and i.get("status") == "ready"]
     issues = {}
+    win = (framed_at(e) or {}).get("window")  # "framed": the window's edges cut the face, not the frame's
+    lx, rx, ty = (win[0], win[0] + win[2], win[1]) if win else (0, W, 0)
+    edge = "the window" if win else "the frame"
+    over = covered(plan)  # B-roll, a cutaway, a covering scene: a person at its edge is not the camera's crop
 
     def add(kind, t):
         issues.setdefault(kind, []).append(t)
@@ -530,19 +683,28 @@ def cmd_audit(a):
             if talking and subs_on and not a.no_subs and inter(fb, [0, sub[0], W, sub[1] - sub[0]]):
                 add("face in the subtitle band (chin below their top)", t)
             for k in keep:
-                if k["start"] <= t <= k["end"] and inter(k["box"], grow(fb, MARGIN // 2)):
+                if k["start"] <= t <= k["end"] and inter(k["box"], grow(fb, MARGIN // 2)) and not own_face(k, fb):
                     add(f"\"{k.get('what', 'graphics')}\" on a face", t)
             for m in memes:
                 if m["start"] <= t <= m["start"] + m["dur"] and inter(m["box"], grow(fb, MARGIN // 2)):
                     add(f"meme {m['id']} on a face", t)
-            if fb[1] < 0:
-                add("top of the head cut off by the frame edge", t)
+            if any(a0 <= t < a1 for a0, a1 in over):
+                continue
+            if fb[1] < ty + (2 if win else 0):
+                add(f"top of the head cut off by the {'window' if win else 'frame'} edge", t)
+            if fb[0] <= lx + SIDE_EDGE or fb[0] + fb[2] >= rx - SIDE_EDGE:
+                add(f"a face cut at the side of {edge} (the camera's crop)", t)
+    for t in side_cuts(e, plan):  # a face the crop cuts in half may not be detected in the render at all
+        add(f"a face cut at the side of {edge} by the camera (faces.json through camera.json)", t)
+    for kind in issues:
+        issues[kind] = sorted(set(issues[kind]))
     skipped = rejected_summary(data)
     if skipped:
         print(skipped + ": skipped, these are not faces (see the frames in faces_render.json -> rejected)")
     if not issues:
         print(f"face audit: {len(data['samples'])} frames every {a.step} s, no overlaps (subtitles, keep_clear cards: "
-              f"{len(keep)}, memes: {len(memes)})")
+              f"{len(keep)}, memes: {len(memes)}); no face cut at the side of {edge}"
+              + (" (the render, and faces.json through camera.json)" if (e / "camera.json").is_file() else ""))
         return
     for kind, ts in issues.items():
         spans, cur = [], [ts[0], ts[0]]

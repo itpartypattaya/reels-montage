@@ -61,7 +61,7 @@ Online sources are off until turned on for a video (`reelcfg.py save edit/<id> -
 |---|---|
 | `use_online_footage` | online stock as a B-roll source |
 | `use_online_memes` | online memes — CC with commercial use only |
-| `generation_engines` | `code` — code scenes (core), `model` — a video model |
+| `generation_engines` | `code` — code scenes (core), `model` — a video model; the core's `use_generated_footage=true` turns on both by default, so model prompts are written too: `["code"]` keeps code scenes only |
 | `generate_now` | whether to start **paid** generation; without it only a ready prompt is written and the insert stays `pending` |
 | `online_*_providers`, `generation_*` | providers, model and clip length (`references/sources.md`) |
 
@@ -75,6 +75,7 @@ Online sources are off until turned on for a video (`reelcfg.py save edit/<id> -
 - **Network and keys.** Check offline mode and the key **before every** network action, not only at search time. Keys come from environment variables or from a file outside the project (`references/sources.md`). **Never ask the person to paste a key into the chat, and never run `keys set` yourself:** to add a key, the person runs `python <add-on scripts>/reels_online.py keys set <NAME>` in their own terminal (hidden input; it refuses to run without a terminal); you may run `keys list` (values masked) to see what is set. Mask API keys, authorization headers and `key=`/`token=` in URLs in all output and saved errors; keys are never written to project files or git.
 - **Stock.** Download only what was selected. Record attribution in `edit/<id>/inserts/credits.json` and in the post caption. Never present a stock person as “our client or candidate”: stock licenses forbid implied endorsement.
 - **Online memes.** Embed only CC0, PDM, CC BY and CC BY-SA, with attribution; check the license on the image's detail page. GIPHY is a reference only (an Instagram sticker or a re-shoot). Film stills, celebrity photos and other people's memes featuring people — never.
+  `memes fetch` names the file by its bytes, not by the link: emoji sets often come as **SVG**, which `memes.py` cannot read and this add-on cannot draw without native libraries. Search marks SVG results; prefer a raster one. A fetched SVG stays as `.svg` next to its sidecar (license, attribution): convert it yourself to a PNG of the same name (≥ 600 px, transparent background) with a tool you trust, then `memes.py index`.
 - **Generation.** Prompt fields and template, checks, and “money is never spent twice” — `references/generation.md`.
 - **AI label.** A photorealistic insert from a model → turn on the “AI info” label when publishing (Meta rules). Stylized code graphics don't need it.
 - **Brand restrictions** (`forbidden_imagery`, `forbidden_imagery_en`) apply to stock queries and generation prompts.

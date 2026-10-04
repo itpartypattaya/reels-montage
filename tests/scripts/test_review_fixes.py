@@ -468,3 +468,84 @@ def test_camera_shot_picks_its_source_file_on_a_multicamera_cut(tmp_path):
         vp.camera_shots(tmp_path, {"segments": []}, cap)
     write_json(tmp_path / "camera.json", {"shots": [{"src": 12.0, "source": "cam-b.mov", "z": 1.1}]})
     assert vp.camera_shots(tmp_path, {"segments": []}, cap)[0]["t"] == 5.0
+
+
+def test_a_word_across_the_gap_of_a_reordered_cut_is_shown_once():
+    # T3: the question from the end moved to the start (26.9-29.467 first, 29.7-32.0 last); its last word, which the
+    # transcript stretched over the pause before the last piece (29.24-29.72), came up in both pieces: the check only
+    # looked at the pieces next to each other in the list
+    c = plan_for(None, [(26.9, 29.467), (0.733, 4.6), (29.7, 32.0)])
+    words = {"main": [{"text": "alone,", "start": 29.24, "end": 29.72}, {"text": "happy", "start": 29.8, "end": 30.1}]}
+    _, caps, _ = cut.timeline(c, words)
+    assert [(w["text"], w["seg"]) for w in caps] == [("alone,", 0), ("happy", 2)]
+    # a teaser shown again in its place (a replay of the same seconds) still keeps the word in both
+    c = plan_for(None, [(26.9, 29.467), (22.7, 29.467), (29.7, 32.0)])
+    _, caps, _ = cut.timeline(c, words)
+    assert [(w["text"], w["seg"]) for w in caps] == [("alone,", 0), ("alone,", 1), ("happy", 2)]
+
+
+def test_a_punctuation_token_joins_its_word():
+    # T3: faster-whisper returned a dash as a word (p 0.17): it got its own time and "Typewriter" lit it up like a word
+    c = plan_for(None, [(0, 4)])
+    toks = [("sales", 0.2, 0.6), ("–", 0.6, 0.7), ("IT", 0.7, 0.9), (",", 0.9, 0.95), ("«", 1.0, 1.05),
+            ("build", 1.05, 1.4), ("».", 1.4, 1.45)]
+    _, caps, _ = cut.timeline(c, {"main": [{"text": t, "start": a, "end": b} for t, a, b in toks]})
+    assert [w["text"] for w in caps] == ["sales –", "IT,", "«build»."]
+    assert caps[0]["end"] == 0.6  # the word keeps its own time
+
+
+def test_a_word_mostly_outside_the_cut_is_not_shown():
+    # T7: "primere." (35.48-36.14), the tail of a line the cut removed, touched the piece from 36.067 by 0.07 s of its
+    # 0.66 s and came up on frames 0-2 though its sound is not in the cut. A word mostly inside a piece (its start
+    # stretched early, "And") and a word that starts in a piece and runs on in it (its END stretched over the pause,
+    # "otherwise?" is spoken by 51.06) stay
+    c = plan_for(None, [(36.067, 42.367), (43.5, 51.067), (52.133, 56.767)])
+    words = {"main": [{"text": "primere.", "start": 35.48, "end": 36.14}, {"text": "Tell", "start": 36.14, "end": 36.46},
+                      {"text": "otherwise?", "start": 50.52, "end": 51.96}, {"text": "And", "start": 51.96, "end": 52.34},
+                      {"text": "late", "start": 51.05, "end": 51.6}]}
+    _, caps, _ = cut.timeline(c, words)
+    assert [(w["text"], w["seg"]) for w in caps] == [("Tell", 0), ("otherwise?", 1), ("And", 2)], caps
+
+
+def test_a_word_stretched_back_into_the_pause_before_a_piece_is_shown():
+    # review: "So" 9.5-10.3 opens its piece (10.0-12.0) with its START stretched back over the pause: 0.3 s of 0.8 s
+    # inside, the center outside; the T7 rule kept only a word whose END was stretched (main kept it, any overlap)
+    c = plan_for(None, [(10.0, 12.0)])
+    words = {"main": [{"text": "So", "start": 9.5, "end": 10.3}, {"text": "today", "start": 10.3, "end": 10.7}]}
+    _, caps, _ = cut.timeline(c, words)
+    assert [w["text"] for w in caps] == ["So", "today"]
+
+
+def test_a_word_left_out_at_an_edge_is_named():
+    # review: a short last word spoken by the piece's end, its end stretched 0.8 s over the pause (0.10 s inside), left
+    # the subtitles without a word; the times cannot tell it from a removed line's tail, so cut.py names it
+    c = plan_for(None, [(10.0, 12.0)])
+    words = {"main": [{"text": "we", "start": 11.5, "end": 11.85}, {"text": "go.", "start": 11.9, "end": 12.8},
+                      {"text": "far", "start": 12.81, "end": 13.2}]}
+    _, caps, _ = cut.timeline(c, words)
+    assert [w["text"] for w in caps] == ["we"]
+    hidden = cut.hidden_at_edges(c, words, caps)
+    assert [(t, k, round(o, 2)) for t, _, _, _, k, o in hidden] == [("go.", 0, 0.1)]
+
+
+def test_a_teaser_inside_a_piece_keeps_the_gap_warning():
+    # review: a teaser (3-4 s) replayed inside 0-10 s sat between 0-10 and 10.5-20 in the sorted order, and the quiet
+    # syllable in the removed 10.0-10.5 gap went unnamed
+    words = {"main": [{"text": "uh", "start": 10.1, "end": 10.3}]}
+    for ranges in ([(0, 10), (10.5, 20)], [(3, 4), (0, 10), (10.5, 20)]):
+        c = plan_for(None, ranges)
+        _, caps, _ = cut.timeline(c, words)
+        assert [w[0] for w in cut.dropped_in_gaps(c, words, caps)] == ["uh"], ranges
+
+
+def test_pick_goes_on_without_the_look_when_the_source_moved(project, capsys):
+    # review: footage.py pick of project footage read cut.json with all its checks: a raw source moved after the rough
+    # cut stopped the pick ("source 'main': no file")
+    import footage
+    e = project / "edit" / "0001"
+    write_json(e / "cut.json", {"fps": 30, "sources": {"main": {"file": "gone.MOV"}},
+                                "ranges": [{"start": 0, "end": 1}], "look": {"lut_mix": 0.6}})
+    with pytest.raises(SystemExit):
+        footage.rough_cut_look(e)  # --look asked for it: a loud stop
+    assert footage.rough_cut_look(e, strict=False) is None
+    assert "is not applied to this clip" in capsys.readouterr().err

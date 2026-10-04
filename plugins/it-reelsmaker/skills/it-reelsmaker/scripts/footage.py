@@ -10,21 +10,43 @@ exit code 0: the edit continues with what there is.
     python scripts/footage.py index [--dir footage ...]              # index of the project's videos + contact sheets for descriptions
     python scripts/footage.py describe IMG_4821.MOV "wide shot, a person at a desk" [--tags office,desk] [--exclude]
     python scripts/footage.py search "pool view balcony" [--edit edit/<id>] [--providers project,local] [--limit 6]
-    python scripts/footage.py plan-search edit/<id>                  # candidates for every B-roll insert of the plan, by source priority
-    python scripts/footage.py pick edit/<id> b01 [--candidate 0] [--in 2.0] [--lut brand] [--yes]   # fetch/take + prepare -> ready
+    python scripts/footage.py plan-search edit/<id> [--retry] [--insert b01 --query "pool view"]   # candidates for every B-roll insert, by source priority
+    python scripts/footage.py pick edit/<id> b01 [--candidate 0] [--in 2.0] [--lut brand] [--no-look] [--yes]   # fetch/take + prepare -> ready
     python scripts/footage.py prepare <file> --out edit/<id>/inserts/b01.mp4 --dur 1.6 [--in 2.0] [--fit cover|contain]
                        [--focus 0.5,0.4] [--speed 0.8] [--lut brand|<hald.png> --lut-strength 0.7] [--edit edit/<id>]
+                       [--look edit/<id>] [--grade <chain applied before the LUT>]
+
+Color. A video from the project's own footage (the same shoot) gets the rough cut's look from cut.json, exactly as
+cut.py applies it: look.correct (balance) -> the LUT at lut_mix -> look.grade (pick does it by itself; prepare with
+--look edit/<id>; pick --no-look turns it off). Otherwise the cutaway differs in color from the cut around it. A
+cutaway cut.py made with "extract" in cut.json (edit/<id>/<name>.mp4) is already in that color: it is project footage
+too (found by search and plan-search, described by the extract's "what" or footage.py describe), and pick takes it as
+it is, without a second look (T5: the look applied twice turned a white wall pink). Other footage (a library, online,
+photos): --lut brand|<hald.png> at --lut-strength; --grade is a filter chain BEFORE that LUT (a correction, like
+look.correct), not after it.
+
+Search scores the share of the query's words found in a file's name, description and tags. plan-search scores each
+B-roll insert by its "query" (its "what" when there is no query, or when the query finds nothing), with the same
+scoring as search, and keeps candidates at --min-score 0.5 or more. An insert with no candidate is marked skipped
+(the main footage stays) with the way back: describe the footage, then plan-search --retry, or try other words with
+plan-search --insert b01 --query "...".
+
+index of the whole project writes the shared contact sheets _footage_index/sheet-NN.jpg; index --dir writes sheets
+named after those folders (_footage_index/<folder>-sheet-NN.jpg) and leaves the shared ones alone. describe takes a
+file the index does not know yet (an extract, a new file): it adds it to footage_index.json first.
 
 Online sources and their terms are described by the add-on. A download from an online source happens only after the
 person approves the visual plan (the plan lists the source and the file size): `pick --yes`.
 """
-import argparse, json, re, shutil, sys
+import argparse, json, os, re, shutil, sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from reels_common import (IMAGE_EXT, VIDEO_EXT, brand_file, edit_dir, editing_json, effective, library_dirs, load_config,
                           load_json, online, probe, project_root, rel, run, save_json, score, utf8_stdio, warn)
+from cut import extract_path, load_cut, look_chain, lut_inputs
 
+NO_FOOTAGE = "no footage in any enabled source"  # plan-search's skip reason: --retry looks for these again
 MAX_PAD_S = 0.5  # how much a short source may be stretched with a freeze frame (tpad clone); more -> other footage
 EXCLUDE_DIRS = {"edit", "node_modules", "out", "_catalog", ".git", "plans", "memes"}
 
@@ -56,6 +78,27 @@ def rights_blocked(verdicts, why="", explicit=None):
     return any(v == "no" for v in (verdicts or {}).values()) and bool(RIGHTS_RE.search(why or ""))
 
 
+def _key(p):
+    return os.path.normcase(str(Path(p).resolve()))
+
+
+def cut_extracts(e):
+    """{path key: (file, entry)} of the cutaways cut.py made from cut.json "extract" (edit/<id>/<name>.mp4) that
+    exist. They come from the video's own source on purpose, already in the rough cut's look: valid project footage
+    that needs no second look."""
+    out = {}
+    if not e:
+        return out
+    for name, x in ((load_json(Path(e) / "cut.json", {}) or {}).get("extract") or {}).items():
+        try:
+            p = extract_path(Path(e), name)
+        except SystemExit:  # an unsafe name: cut.py refuses it too
+            continue
+        if p.is_file():
+            out[_key(p)] = (p, {"name": name, **(x if isinstance(x, dict) else {})})
+    return out
+
+
 def cand(**kw):
     base = {"provider": None, "id": None, "title": "", "path": None, "url": None, "page_url": None, "w": None, "h": None,
             "dur": None, "size_mb": None, "license": None, "author": None, "score": 0.0, "embed": True, "notes": ""}
@@ -84,8 +127,11 @@ class Provider:
 
 class ProjectProvider(Provider):
     """The project's own videos and photos: videos in the project folder + videos and photos in the footage_dirs
-    folders. Photos only from footage_dirs on purpose: the project folder also holds covers, screenshots and
-    exported frames, which must not turn into B-roll. Descriptions live in footage_index.json."""
+    folders + the video's cutaways cut.py made ("extract" in cut.json; older edit/<id>/broll* files too). Photos only
+    from footage_dirs on purpose: the project folder also holds covers, screenshots and exported frames, which must
+    not turn into B-roll. The video's own source files are left out (the cut already shows them) - except an extract,
+    made from the source on purpose. Descriptions live in footage_index.json; an extract's "what" in cut.json counts as
+    its description."""
     name = "project"
 
     def files(self, o):
@@ -95,6 +141,7 @@ class ProjectProvider(Provider):
             dd = root / d
             if dd.is_dir():
                 out += [p for p in dd.rglob("*") if p.is_file() and p.suffix.lower() in VIDEO_EXT | IMAGE_EXT]
+        extras = cut_extracts(o.get("edit"))
         if o.get("edit"):
             out += [p for p in o["edit"].glob("broll*") if p.suffix.lower() in VIDEO_EXT]
         main = set()
@@ -103,23 +150,32 @@ class ProjectProvider(Provider):
             main.add(Path(v).name.lower())
         # finished renders (<brand>-<slug>-YYYY-MM-DD[-master].mp4) are not sources
         render = re.compile(r"\d{4}-\d{2}-\d{2}(-master)?\.mp4$", re.I)
-        return [p for p in out if p.name.lower() not in main and not render.search(p.name)]
+        keep = [p for p in out if p.name.lower() not in main and not render.search(p.name)]
+        seen = {_key(p) for p in keep}
+        return keep + [p for k, (p, _) in extras.items() if k not in seen]
 
     def search(self, query, o):
         idx = load_json(o["project"] / "footage_index.json", {})
+        extras = cut_extracts(o.get("edit"))
         res = []
         for p in self.files(o):
             r = rel(p, o["project"])
             meta = idx.get(r, {})
             if meta.get("exclude"):
                 continue
-            text = " ".join([p.stem, meta.get("description", ""), " ".join(meta.get("tags", []))])
+            x = (extras.get(_key(p)) or (None, None))[1]
+            desc = meta.get("description") or (x or {}).get("what") or ""
+            text = " ".join([p.stem, desc, " ".join(meta.get("tags", []))])
             sc = score(query, text)
-            note = "" if meta.get("description") else "no description: look at the contact sheet (footage.py index)"
-            if sc > 0 or not meta.get("description"):
-                res.append(cand(provider=self.name, id=r, title=meta.get("description") or p.name, path=str(p),
+            note = "" if desc else ("no description: footage.py describe, or \"what\" in the cut.json extract" if x
+                                    else "no description: look at the contact sheet (footage.py index)")
+            if x:
+                note = "; ".join(filter(None, ["cut.py extract of this video, already in the rough cut's color", note]))
+            if sc > 0 or not desc:
+                res.append(cand(provider=self.name, id=r, title=desc or p.name, path=str(p),
                                 w=meta.get("w"), h=meta.get("h"), dur=meta.get("dur"),
-                                size_mb=round(p.stat().st_size / 1e6, 1), license="own footage", score=sc, notes=note))
+                                size_mb=round(p.stat().st_size / 1e6, 1), license="own footage", score=sc, notes=note,
+                                **({"graded": True} if x else {})))
         return res
 
 
@@ -260,6 +316,21 @@ def cmd_providers(a):
               f"{'' if used else ' (not used in this video: off in the settings or not in the list)'}")
 
 
+def file_facts(p, info=None):
+    """Size, duration and frame size of a file for footage_index.json."""
+    info = info or (probe(p) if p.suffix.lower() in VIDEO_EXT else {"w": None, "h": None, "dur": None})
+    return {"w": info.get("w"), "h": info.get("h"), "dur": round(info["dur"], 2) if info.get("dur") else None,
+            "size_mb": round(p.stat().st_size / 1e6, 1)}
+
+
+def sheet_prefix(dirs):
+    """The contact sheets' name prefix: "" for the whole project (the shared sheet-NN.jpg), the folder names for
+    index --dir, so indexing one folder never overwrites the shared sheets (T5: index --dir edit/<id> did)."""
+    if not dirs:
+        return ""
+    return "-".join(re.sub(r"[^\w.]+", "-", str(d).strip("/\\")).strip("-.") or "dir" for d in dirs)[:80] + "-"
+
+
 def cmd_index(a):
     from PIL import Image, ImageDraw
     project = project_root()
@@ -270,17 +341,17 @@ def cmd_index(a):
     idxf = project / "footage_index.json"
     sheet_dir = project / "_footage_index"
     sheet_dir.mkdir(exist_ok=True)
+    prefix = sheet_prefix(a.dir)
+    tmp = sheet_dir / f"_f-{os.getpid()}.jpg"  # parallel runs don't share the frame file
     T, rows, facts = 160, [], {}
     for n, p in enumerate(files):
         r = rel(p, project)
         info = probe(p) if p.suffix.lower() in VIDEO_EXT else {"w": None, "h": None, "dur": None}
-        meta = {"w": info["w"], "h": info["h"], "dur": round(info["dur"], 2) if info.get("dur") else None,
-                "size_mb": round(p.stat().st_size / 1e6, 1)}
+        meta = file_facts(p, info)
         facts[r] = meta
         strip = Image.new("RGB", (T * 3, int(T * 16 / 9) + 18), (30, 30, 30))
         d = ImageDraw.Draw(strip)
         for k, frac in enumerate((0.15, 0.5, 0.85)):
-            tmp = sheet_dir / "_f.jpg"
             try:
                 if p.suffix.lower() in VIDEO_EXT:
                     run(["ffmpeg", "-v", "error", "-y", "-ss", f"{(info['dur'] or 1) * frac:.2f}", "-i", p, "-frames:v", "1",
@@ -294,8 +365,7 @@ def cmd_index(a):
                 pass
         d.text((4, strip.height - 16), f"{n}: {r} {info.get('w')}x{info.get('h')} {meta['dur']}s", fill=(255, 255, 0))
         rows.append(strip)
-    if (sheet_dir / "_f.jpg").exists():
-        (sheet_dir / "_f.jpg").unlink()
+    tmp.unlink(missing_ok=True)
     with editing_json(idxf, {}) as idx:  # descriptions written by a parallel describe are not lost
         for r, meta in facts.items():
             cur = idx.setdefault(r, {})
@@ -308,8 +378,8 @@ def cmd_index(a):
         sheet = Image.new("RGB", (chunk[0].width * 2, chunk[0].height * ((len(chunk) + 1) // 2)), (0, 0, 0))
         for k, im in enumerate(chunk):
             sheet.paste(im, ((k % 2) * im.width, (k // 2) * im.height))
-        sheet.save(sheet_dir / f"sheet-{page // 6:02d}.jpg", quality=80)
-    print(f"{idxf}: {len(files)} files; contact sheets: {sheet_dir}/sheet-*.jpg. Look at them and describe: "
+        sheet.save(sheet_dir / f"{prefix}sheet-{page // 6:02d}.jpg", quality=80)
+    print(f"{idxf}: {len(files)} files; contact sheets: {sheet_dir}/{prefix}sheet-*.jpg. Look at them and describe: "
           f"footage.py describe <path> \"what is in the frame\" [--tags ...] [--exclude]")
 
 
@@ -317,9 +387,14 @@ def cmd_describe(a):
     project = project_root()
     idxf = project / "footage_index.json"
     key = a.path.replace("\\", "/")
+    f = next((q for q in (project / key, Path(a.path)) if q.is_file()), None)
+    if f is not None and rel(f, project) != str(f):
+        key = rel(f, project)  # the index keys are paths from the project folder
     with editing_json(idxf, {}) as idx:
         if key not in idx:
-            sys.exit(f"not in the index: {key} (run footage.py index first)")
+            if f is None or f.suffix.lower() not in VIDEO_EXT | IMAGE_EXT:
+                sys.exit(f"not in the index and no such video or photo in the project: {key} (footage.py index)")
+            idx[key] = {**file_facts(f), "description": "", "tags": [], "exclude": False}  # a new file, an extract
         idx[key]["description"] = a.text
         if a.tags:
             idx[key]["tags"] = [t.strip() for t in a.tags.split(",") if t.strip()]
@@ -353,36 +428,68 @@ def cmd_plan_search(a):
     o["settings"] = s
     o["eff"], o["why"] = effective(s)
     names = order(o)
+    if a.query and len(a.insert or []) != 1:
+        sys.exit("--query needs one --insert ID: the new words are for one insert")
+    ids = set(a.insert or [])
+    unknown = ids - {i["id"] for i in plan["inserts"]}
+    if unknown:
+        sys.exit(f"no insert {', '.join(sorted(unknown))} in the plan")
+
+    def wanted(i):
+        """A B-roll insert without a file that is still planned; with --retry (or named with --insert) also one this
+        command skipped earlier for lack of footage."""
+        if i["kind"] != "broll" or i.get("file") or (ids and i["id"] not in ids):
+            return False
+        return i["status"] == "planned" or (i["status"] == "skipped" and (a.retry or ids)
+                                            and str(i.get("fallback", "")).startswith(NO_FOOTAGE))
+
     for i in plan["inserts"]:
-        if i["kind"] != "broll" or i["status"] not in ("planned",) or i.get("file"):
+        if not wanted(i):
             continue
-        q_local = " ".join(filter(None, [i.get("what"), i.get("query")]))  # project descriptions: in the person's language
-        q_online = i.get("query") or i.get("what")                           # online sources search in English
-        want = [i["source"]] if i["source"] in ("project", "local") else \
-            [n for n in names if n not in ("project", "local")] if i["source"] == "online" else \
-            [] if i["source"] == "generated" else names
-        found, used = [], None
+        was = i["status"]
+        if a.query:
+            i["query"] = a.query
+        src = i["source"]
+        want = [src] if src in ("project", "local") else \
+            [n for n in names if n not in ("project", "local")] if src == "online" else \
+            [] if src == "generated" else names
+        # the same scoring as `search`: the share of the QUERY's words found (T5: the long "what" + "query" diluted the
+        # share, a file found by search at 0.50 fell under --min-score and the insert was skipped); "what" is the
+        # fallback when there is no query or the query finds nothing
+        queries = [q for q in dict.fromkeys([i.get("query"), i.get("what")]) if q and str(q).strip()]
+        found, used, near = [], None, []
         for n in want:
-            q = q_local if n in ("project", "local") else q_online
-            res = [c for c in safe_search(n, q, {**o, "min_dur": i["dur"]}) if c["score"] >= a.min_score]
-            if res:
-                found, used = res[:a.limit], n
+            for q in queries:
+                res = safe_search(n, q, {**o, "min_dur": i["dur"]})
+                near += [c for c in res if 0 < c["score"] < a.min_score]
+                res = [c for c in res if c["score"] >= a.min_score]
+                if res:
+                    found, used = res[:a.limit], n
+                    break
+            if found:
                 break
         if found:
             i["candidates"], i["candidate"] = found, found[0]
             i["source"] = "online" if used not in ("project", "local") else used
+            i["status"], i["fallback"] = "planned", i.get("fallback") if was == "planned" else "main footage"
             print(f"{i['id']}: {used}: {len(found)} candidates, best: {found[0]['title'][:60]} ({found[0]['score']})")
-        elif i["source"] in ("auto", "generated") and (o["eff"].get("generated_code") or o["eff"].get("generated_prompts")):
+        elif src in ("auto", "generated") and (o["eff"].get("generated_code") or o["eff"].get("generated_prompts")):
             i["source"], i["status"] = "generated", "pending"
             i.setdefault("gen", {k: "" for k in GEN_FIELDS})
             i["fallback"] = "generated (codescene.py); main footage until there is a clip"
             print(f"{i['id']}: no ready footage -> generated (fill in gen, then codescene.py or addon.py gen)")
         else:
             i["status"] = "skipped"
-            i["fallback"] = "no footage in any enabled source: main footage"
-            print(f"{i['id']}: no footage, generation is off -> skipped (main footage)")
-        put_insert(e, i, ("candidates", "candidate", "source", "status", "gen", "fallback"),
-                   when=lambda cur: cur.get("status") == "planned" and not cur.get("file"))
+            i["fallback"] = f"{NO_FOOTAGE}: main footage"
+            best = max(near, key=lambda c: c["score"], default=None)
+            print(f"{i['id']}: no footage at --min-score {a.min_score} for "
+                  f"{' / '.join(repr(q) for q in queries) or 'an empty query'}, generation is off -> skipped (main "
+                  f"footage)" + (f"; the closest: {best['title'][:50]} ({best['score']})" if best else ""))
+            print(f"  to try again: describe the footage (footage.py describe <file> \"...\", or \"what\" in a cut.json "
+                  f"extract), then footage.py plan-search {a.edit} --retry; other words: footage.py plan-search "
+                  f"{a.edit} --insert {i['id']} --query \"...\"")
+        put_insert(e, i, ("candidates", "candidate", "source", "status", "gen", "fallback", "query"),
+                   when=lambda cur, was=was: cur.get("status") == was and not cur.get("file"))
 
 
 def lut_chain(lut, strength):
@@ -396,11 +503,13 @@ class ShortSource(ValueError):
     """The source is too short for the insert: take other footage or a smaller --in."""
 
 
-def prepare(src, out, dur, start=0.0, fit="cover", focus=(0.5, 0.5), speed=1.0, lut=None, lut_strength=0.7, grade=None):
+def prepare(src, out, dur, start=0.0, fit="cover", focus=(0.5, 0.5), speed=1.0, lut=None, lut_strength=0.7, grade=None,
+            look=None):
     """Any video or photo source -> 1080×1920, 30 fps, yuv420p, no audio, exactly dur seconds.
-    fit/focus/grade work for both video and photos. A video shorter than needed: a gap <= MAX_PAD_S is filled with a
-    freeze of the last frame (with a warning), a larger one raises ShortSource; the result's length is checked after
-    ffmpeg."""
+    fit/focus/grade work for both video and photos (grade: before the LUT). look: the rough cut's look (cut.py
+    load_cut: correct, lut, lut_mix, grade), applied by cut.py's own look_chain; it replaces lut/lut_strength.
+    A video shorter than needed: a gap <= MAX_PAD_S is filled with a freeze of the last frame (with a warning), a
+    larger one raises ShortSource; the result's length is checked after ffmpeg."""
     src, out = Path(src), Path(out)
     out.parent.mkdir(parents=True, exist_ok=True)
     is_img = src.suffix.lower() in IMAGE_EXT
@@ -443,13 +552,16 @@ def prepare(src, out, dur, start=0.0, fit="cover", focus=(0.5, 0.5), speed=1.0, 
             body = (f"[0:v]{fg},split[f][g];[g]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,"
                     f"boxblur=30:3,eq=brightness=-0.08[bg];[bg][f]overlay=(W-w)/2:(H-h)/2")
         inputs = ["-ss", f"{start:.3f}", "-t", f"{dur * speed + 0.5:.3f}", "-i", src]
-    filt = body + (f",{grade}" if grade else "") + ",setsar=1[v0]"
-    if lut:
+    head = body + (f",{grade}" if grade else "")
+    if look:  # the same look as the rough cut: cut.py's chain, the HALD image on input 1
+        filt = look_chain(look, head, "v")
+        inputs += lut_inputs(look)
+    elif lut:
         lc = lut_chain(lut, lut_strength).replace("split[a][b]", "[v0]split[a][b]").replace("[0:v][1:v]haldclut", "[v0][1:v]haldclut")
-        filt += ";" + lc + ",format=yuv420p[v]"
+        filt = head + ",setsar=1[v0];" + lc + ",format=yuv420p[v]"
         inputs += ["-i", lut]
     else:
-        filt += ";[v0]format=yuv420p[v]"
+        filt = head + ",setsar=1[v0];[v0]format=yuv420p[v]"
     run(["ffmpeg", "-v", "error", "-y", *inputs, "-filter_complex", filt, "-map", "[v]", "-an",
          "-frames:v", str(n), "-r", "30", "-c:v", "libx264", "-preset", "medium", "-crf", "17",
          "-movflags", "+faststart", out])
@@ -485,10 +597,46 @@ def edit_for_out(out):
     return None
 
 
+def rough_cut_look(e, strict=True):
+    """The rough cut's look from cut.json (cut.py load_cut), or None when there is no cut list or no look. strict=False
+    (pick, where the look is automatic): a cut.json that no longer loads (review: its source moved or archived after the
+    rough cut) is a warning and no look, not the end of the pick."""
+    if not e or not (e / "cut.json").is_file():
+        return None
+    try:
+        c = load_cut(e, project_root())
+    except SystemExit as ex:
+        if strict:
+            raise
+        warn(f"{ex}: the rough cut's look (correct, LUT, grade) is not applied to this clip; restore the source or "
+             f"grade the clip yourself (--no-look)")
+        return None
+    return c if (c["correct"] or c["lut"] or c["grade"]) else None
+
+
+def look_text(c):
+    return ", ".join(filter(None, [f"correct {c['correct']}" if c["correct"] else "",
+                                   f"LUT {Path(c['lut']).name} at {round(c['lut_mix'] * 100)}%" if c["lut"] else "",
+                                   f"grade {c['grade']}" if c["grade"] else ""]))
+
+
 def cmd_prepare(a):
     focus = tuple(float(x) for x in a.focus.split(","))
     lut = a.lut
-    if a.lut == "brand":
+    look = None
+    if a.look:
+        if a.lut:
+            sys.exit("--look takes the LUT from cut.json: drop --lut")
+        le = edit_dir(a.look)
+        look = rough_cut_look(le)
+        if look and _key(a.src) in cut_extracts(le):
+            look = None
+            print(f"{Path(a.src).name}: a cut.py extract of {a.look}, already in the rough cut's color: no second look")
+        elif not look:
+            warn(f"--look {a.look}: no cut.json or no look in it; no color grading")
+        else:
+            print(f"look as the rough cut: {look_text(look)}")
+    elif a.lut == "brand":
         e = edit_dir(a.edit) if a.edit else edit_for_out(a.out)
         if not e:
             warn("--lut brand: could not tell which video this is (no reel.json near --out); pass --edit edit/<id>")
@@ -497,7 +645,7 @@ def cmd_prepare(a):
     elif a.lut:
         lut = resolve_lut(a.lut, None, None, None)
     try:
-        info = prepare(a.src, a.out, a.dur, a.start, a.fit, focus, a.speed, lut, a.lut_strength, a.grade)
+        info = prepare(a.src, a.out, a.dur, a.start, a.fit, focus, a.speed, lut, a.lut_strength, a.grade, look)
     except ShortSource as ex:
         sys.exit(f"✗ {ex}")
     print(f"{a.out}: {info['w']}×{info['h']}, {info['dur']:.2f} s")
@@ -549,11 +697,22 @@ def cmd_pick(a):
         put_insert(e, i, ("status", "fallback"))
         warn(f"{a.insert}: {i['fallback']}")
         return
-    lut = resolve_lut(a.lut, o.get("brand"), o.get("brand_dir"), o["project"])
+    # the project's own video = the same shoot: the rough cut's look (balance, LUT, grade), as cut.py applies it -
+    # once: a cut.py extract already has it (T5: applied again, a white wall came out pink)
+    look, graded = None, False
+    if c.get("provider") == "project" and not a.no_look and Path(raw).suffix.lower() in VIDEO_EXT:
+        graded = bool(c.get("graded")) or _key(raw) in cut_extracts(e)
+        look = None if graded else rough_cut_look(e, strict=False)
+        ign = "; --lut is ignored for the project's own footage (--no-look to grade it yourself)" if a.lut else ""
+        if graded:
+            print(f"{a.insert}: a cut.py extract of this video, already in the rough cut's color: taken as it is{ign}")
+        elif look:
+            print(f"{a.insert}: look as the rough cut ({look_text(look)}){ign}")
+    lut = None if look or graded else resolve_lut(a.lut, o.get("brand"), o.get("brand_dir"), o["project"])
     out = e / "inserts" / f"{i['id']}.mp4"
     focus = tuple(float(x) for x in a.focus.split(","))
     try:
-        prepare(raw, out, i["dur"], a.start, a.fit, focus, a.speed, lut, a.lut_strength)
+        prepare(raw, out, i["dur"], a.start, a.fit, focus, a.speed, lut, a.lut_strength, look=look)
     except ShortSource as ex:
         i["status"], i["fallback"] = "skipped", f"{ex}; main footage for now"
         i.pop("file", None)
@@ -580,17 +739,24 @@ def main():
     p.add_argument("--limit", type=int, default=6); p.add_argument("--min-dur", type=float, default=0)
     p.add_argument("--json", action="store_true"); p.set_defaults(fn=cmd_search)
     p = sub.add_parser("plan-search"); p.add_argument("edit"); p.add_argument("--limit", type=int, default=5)
-    p.add_argument("--min-score", type=float, default=0.5); p.set_defaults(fn=cmd_plan_search)
+    p.add_argument("--min-score", type=float, default=0.5)
+    p.add_argument("--retry", action="store_true", help="search again for inserts this command skipped for lack of footage")
+    p.add_argument("--insert", nargs="+", metavar="ID", help="only these inserts (a skipped one is searched again)")
+    p.add_argument("--query", help="with one --insert: new search words, saved to the insert")
+    p.set_defaults(fn=cmd_plan_search)
     p = sub.add_parser("pick"); p.add_argument("edit"); p.add_argument("insert"); p.add_argument("--candidate", type=int, default=0)
     p.add_argument("--start", "--in", dest="start", type=float, default=0.0); p.add_argument("--fit", default="cover", choices=["cover", "contain"])
     p.add_argument("--focus", default="0.5,0.5"); p.add_argument("--speed", type=float, default=1.0)
     p.add_argument("--lut"); p.add_argument("--lut-strength", type=float, default=0.7); p.add_argument("--yes", action="store_true")
+    p.add_argument("--no-look", action="store_true", help="the project's own footage without the rough cut's look")
     p.set_defaults(fn=cmd_pick)
     p = sub.add_parser("prepare"); p.add_argument("src"); p.add_argument("--out", required=True)
     p.add_argument("--dur", type=float, required=True); p.add_argument("--start", "--in", dest="start", type=float, default=0.0)
     p.add_argument("--fit", default="cover", choices=["cover", "contain"]); p.add_argument("--focus", default="0.5,0.5")
     p.add_argument("--speed", type=float, default=1.0); p.add_argument("--lut"); p.add_argument("--lut-strength", type=float, default=0.7)
-    p.add_argument("--grade"); p.add_argument("--edit", help="the video for --lut brand (otherwise found from the --out path)")
+    p.add_argument("--grade", help="a filter chain applied BEFORE the LUT (a correction)")
+    p.add_argument("--edit", help="the video for --lut brand (otherwise found from the --out path)")
+    p.add_argument("--look", metavar="EDIT", help="edit/<id>: that video's look from cut.json (correct, LUT, grade), as cut.py")
     p.set_defaults(fn=cmd_prepare)
     a = ap.parse_args()
     a.fn(a)

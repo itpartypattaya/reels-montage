@@ -203,6 +203,17 @@ def seams_sheet(new, fps, points, out_jpg, work):
     return out_jpg
 
 
+def props_arg(v):
+    """--props for Remotion: inline JSON as it is; a file path made absolute, because Remotion runs in the Remotion
+    project folder and would read a relative path from there (T5: "neither valid JSON nor a file path")."""
+    if v is None or v.lstrip().startswith("{"):
+        return v
+    p = Path(v).expanduser()
+    if not p.is_file():
+        sys.exit(f"--props {v}: no such file (a relative path is read from the current folder, {Path.cwd()})")
+    return str(p.resolve())
+
+
 def main():
     ap = argparse.ArgumentParser(description="re-render a segment of a video and splice it into the finished render")
     ap.add_argument("render", help="the finished Remotion render (not -master: rebuild the master after the patch)")
@@ -216,9 +227,11 @@ def main():
     ap.add_argument("--mode", choices=["auto", "copy", "reencode"], default="auto")
     ap.add_argument("--audio", choices=["keep", "rerender"], default="keep")
     ap.add_argument("--remotion", help="the Remotion project folder (default: searched upwards from the render)")
-    ap.add_argument("--props", help="--props for Remotion")
+    ap.add_argument("--props", help="--props for Remotion: a JSON file (a relative path is from the current folder) or "
+                                    "inline JSON")
     ap.add_argument("--keep-temp", action="store_true")
     a = ap.parse_args()
+    a.props = props_arg(a.props)
 
     t0 = time.time()
     old = Path(a.render).resolve()

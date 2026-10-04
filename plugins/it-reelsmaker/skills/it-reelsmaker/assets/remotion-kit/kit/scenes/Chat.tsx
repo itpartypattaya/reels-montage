@@ -22,7 +22,7 @@ export const Chat: React.FC<{ c: SceneCtx }> = ({ c }) => {
   const W = c.inner.w;
   const head = spec.text?.lines?.filter(Boolean) ?? [];
   const headH = head.length ? 112 : 0;
-  const size = c.mode === "full" ? 42 : 38;
+  const size = c.mode === "full" ? 42 : 40; // interface text: below the 54-64 px of cards, never below ~40 px (scenes.md)
   const pad = 30;
   const maxB = Math.round((W - 2 * pad) * 0.76);
   const gap = 14;
@@ -61,7 +61,7 @@ export const Chat: React.FC<{ c: SceneCtx }> = ({ c }) => {
             {head[0].trim().charAt(0).toUpperCase()}
           </div>
           <div>
-            <div style={{ fontWeight: 700, fontSize: 38, color: S.text, lineHeight: 1.15 }}>{glue(head[0])}</div>
+            <div style={{ fontWeight: 700, fontSize: 40, color: S.text, lineHeight: 1.15 }}>{glue(head[0])}</div>
             {head[1] ? <div style={{ fontWeight: 500, fontSize: 28, color: S.muted, marginTop: 4 }}>{glue(head[1])}</div> : null}
           </div>
         </div>

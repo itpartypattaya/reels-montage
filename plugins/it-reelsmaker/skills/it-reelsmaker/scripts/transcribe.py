@@ -5,6 +5,7 @@
     python scripts/transcribe.py snip edit/4821 IMG_4821.MOV --from 12.3 --to 16.8          # re-transcribe a <= 5 s piece
     python scripts/transcribe.py check edit/4821/transcripts/IMG_4821.json                  # is a transcript in the right format
     python scripts/transcribe.py audio edit/4821 IMG_4821.MOV                               # only the aligned WAV, for your own transcriber
+    python scripts/transcribe.py rate edit/4821 [--source front]                            # speech rate of the rough cut
 
 The transcript is cached: a second run with the same source prints "cached" and does nothing (--force redoes it).
 The audio goes into edit/<id>/audio16k-<source stem>.wav (16 kHz mono; speech_mask.py reads the same file). Everything runs on this
@@ -17,28 +18,84 @@ and run `check`.
 
 Format (the same as other common word-level tools, so you can use your own transcriber instead and only run `check`):
     {"language_code": "ru", "text": "...", "words": [{"text": "Hello", "start": 0.52, "end": 0.9, "type": "word"}, ...]}
-start/end in seconds of the source; optional "speaker_id" per word (faster-whisper has no speaker labels: for two
-speakers on one microphone, tell them apart by the lips, SKILL.md step 2); items with another "type" (spacing,
-audio events) are ignored.
+start/end in seconds of the source; optional "speaker" per word ("speaker_id", the name other tools use, is read the
+same way; cut.py writes "speaker"). faster-whisper has no speaker labels, and on one microphone a diarizer mixes the
+two people up: tell them apart by the lips (SKILL.md step 2) and put the speakers into cut.json ("speaker" per range,
+"speakers" for a switch inside one; cut.py --help); items with another "type" (spacing, audio events) are ignored.
 
 snip: a suspicious spot (a merged retake, a stretched word) cut out with a run-up from silence and transcribed alone,
-without the context of the whole video (condition_on_previous_text off, a "verbatim, with every repeat" prompt).
-On a 10 s piece a repeat still collapses into one word, on 5 s it does not; keep pieces <= 5 s. The result goes into
-edit/<id>/snip/ with times on the source timeline. A word fragment at an edge is never visible to Whisper in any mode:
-only speech_mask.py --edl catches it.
+without the context of the whole video (condition_on_previous_text off). The language is --language, else the one of
+the source's cached transcript (a 5 s piece is too short to detect it reliably). The prompt is a short sample of
+speech with fillers and repeats IN THAT LANGUAGE (English and Russian), so Whisper keeps them; for another or an
+unknown language there is no prompt, and --no-prompt turns it off. Never a prompt in another language: Whisper copies
+it into the text (T5: an English "verbatim" instruction with --language ru came back as "Verbatim, 1 000 EUR" instead
+of the Russian words). On a 10 s piece a repeat still collapses into one word, on 5 s it does not; keep pieces <= 5 s.
+The result goes into edit/<id>/snip/ with times on the source timeline. A word fragment at an edge is never visible to
+Whisper in any mode: only speech_mask.py --edl catches it.
+
+rate: syllables per second = the vowels of the transcript's words / the speech time by the speech mask
+(speech_mask.py: speech windows only, pauses do not count), measured on the rough cut final.mp4 per source and per
+segment (captions.json); what step 5 compares between two cameras. Measure on the cut speech, not on the source: the
+rate on a whole source mixes in phrases the cut drops (T2: the source estimate and the cut differed, and the cut is
+what the viewer hears; a take spoken faster shows up as one segment above the others). Vowels: Latin and Cyrillic
+letters (one vowel = one syllable in Russian; English is overestimated a little, the same for both cameras). A number
+written in digits ("270", "1,5", "10%") has no vowels to count but takes time to say: such words are left out of both
+the vowels and the speech time (the mask windows under the word), and the output says how many (T5: a price in
+digits read 2.18 syllables/s on a segment spoken at the video's usual pace).
 
 Needs faster-whisper (`pip install faster-whisper`). The model is not downloaded by this script: if it is not on this
 computer yet, the script prints the one command that downloads it. Defaults: medium, int8, CPU (~2.5 min per 96 s of
 audio on a laptop); small is faster and less accurate; large does not fit a laptop with 8 GB.
 """
-import argparse, json, os, sys, uuid, wave
+import argparse, json, os, re, sys, uuid, wave
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from reels_common import ANALYSIS_AF, audio_offset, edit_dir, load_json, locked, probe, project_root, run, save_json, utf8_stdio, warn
 
 SNIP_MAX = 5.0
-SNIP_PROMPT = "Verbatim, with every repeat, slip and filler word."
+# a sample of speech with fillers and repeats, in the transcript's own language: Whisper follows its style; a prompt in
+# another language leaks into the text
+SNIP_PROMPTS = {
+    "en": "Umm, so, so I, I mean, like, you know, uh, it's, it's fine.",
+    "ru": "\u041d\u0443, \u044d-\u044d, \u0432\u043e\u0442, \u0432\u043e\u0442, \u043a\u0430\u043a \u0431\u044b, "
+          "\u043d\u0443, \u0442\u043e \u0435\u0441\u0442\u044c, \u044d\u0442\u043e \u0441\u0430\u043c\u043e\u0435.",
+}
+
+
+def snip_prompt(language):
+    """The snip prompt for a language code ("ru", "en-US"), or None: no prompt rather than one in another language."""
+    return SNIP_PROMPTS.get(str(language or "").lower().replace("_", "-").split("-")[0])
+
+
+# three-letter codes another transcriber writes ("rus", "eng") -> the two-letter codes faster-whisper takes
+ISO3 = {"rus": "ru", "eng": "en", "ukr": "uk", "deu": "de", "ger": "de", "fra": "fr", "fre": "fr", "spa": "es",
+        "ita": "it", "por": "pt", "tur": "tr", "tha": "th", "vie": "vi", "zho": "zh", "chi": "zh", "jpn": "ja",
+        "kor": "ko", "pol": "pl", "nld": "nl", "dut": "nl", "ara": "ar", "hin": "hi", "ind": "id", "swe": "sv",
+        "ces": "cs", "cze": "cs", "kaz": "kk", "bel": "be", "heb": "he", "ell": "el", "gre": "el"}
+# the codes Whisper models know (faster_whisper.tokenizer._LANGUAGE_CODES; not imported here: loading faster-whisper
+# for a code check is slow, and in the tests it would replace the stub)
+WHISPER_LANGS = set(
+    "af am ar as az ba be bg bn bo br bs ca cs cy da de el en es et eu fa fi fo fr gl gu ha haw he hi hr ht hu hy id "
+    "is it ja jw ka kk km kn ko la lb ln lo lt lv mg mi mk ml mn mr ms mt my ne nl nn no oc pa pl ps pt ro ru sa sd si "
+    "sk sl sn so sq sr su sv sw ta te tg th tk tl tr tt uk ur uz vi yi yo yue zh".split())
+
+
+def whisper_language(code):
+    """A language code as faster-whisper takes it ("en-US" -> "en", "rus" -> "ru"), or None when it does not know it
+    (a full name like "swedish" from the online add-on, a code outside its list): None lets the model detect it."""
+    base = str(code or "").strip().lower().replace("_", "-").split("-")[0]
+    base = ISO3.get(base, base)
+    return base if base in WHISPER_LANGS else None
+
+
+def snip_language(given, e, src):
+    """The language of a snip: --language, else the language_code of the source's cached transcript (as faster-whisper
+    takes it: review, "rus" from another transcriber made the model stop with "not a valid language code"), else None."""
+    if given:
+        return whisper_language(given) or given  # a code faster-whisper does not know: its own error names it
+    doc = load_json(e / "transcripts" / f"{Path(src).stem}.json") or {}
+    return whisper_language(doc.get("language_code"))
 
 
 def resolve_src(arg, project, e):
@@ -91,10 +148,32 @@ def read_wav(wav):
     return np.frombuffer(data, dtype="<i2").astype(np.float32) / 32768.0
 
 
-def words_of(model, wav, language, snip=False, offset=0.0):
-    """faster-whisper -> (language, text, words) with times shifted by offset."""
+HYPHENS = "-‐‑"  # hyphen-minus, hyphen, non-breaking hyphen (not the dashes of a pause: en dash, em dash)
+
+
+def join_hyphen_parts(words):
+    """Whisper splits a hyphenated word into tokens, the later ones starting with a hyphen ("no" "-no" "-no." for
+    "no-no-no", "someone" in Russian as "kto" "-to"): joined back into one word spanning their times, so the subtitles
+    don't show "no -no -no." and a cloud text with the whole word lays onto it. A lone hyphen stays a token."""
+    out = []
+    for w in words:
+        t = str(w.get("text", ""))
+        prev = out[-1] if out else None
+        if (prev is not None and len(t) > 1 and t[0] in HYPHENS and w.get("type", "word") == "word"
+                and prev.get("type", "word") == "word" and float(w["start"]) - float(prev["end"]) < 0.15):
+            prev["text"] = str(prev["text"]) + t
+            prev["end"] = w["end"]
+            if "p" in prev or "p" in w:
+                prev["p"] = min(float(prev.get("p", 1)), float(w.get("p", 1)))
+            continue
+        out.append(dict(w))
+    return out
+
+
+def words_of(model, wav, language, snip=False, offset=0.0, prompt=None):
+    """faster-whisper -> (language, text, words) with times shifted by offset. prompt: a snip's initial prompt."""
     segments, info = model.transcribe(read_wav(wav), language=language, word_timestamps=True, beam_size=5,
-                                      condition_on_previous_text=not snip, initial_prompt=SNIP_PROMPT if snip else None)
+                                      condition_on_previous_text=not snip, initial_prompt=prompt if snip else None)
     words, texts, last = [], [], 0.0
     for seg in segments:
         texts.append(seg.text.strip())
@@ -107,7 +186,7 @@ def words_of(model, wav, language, snip=False, offset=0.0):
         if seg.end - last >= 10 and not snip:
             print(f"  ... {seg.end:.0f} s", file=sys.stderr)
             last = seg.end
-    return info.language, " ".join(texts), words
+    return info.language, " ".join(texts), join_hyphen_parts(words)
 
 
 def check_doc(doc):
@@ -131,6 +210,8 @@ def check_doc(doc):
         if s + 0.05 < prev:
             out.append(f"word {k} {w.get('text')!r}: starts at {s}, before the previous word ({prev}); words must be in order")
         prev = max(prev, s)
+    # a note for a person to listen to (> 1.0 s); structure.py's "retake?" sign starts at 1.5 s, because a word of
+    # 1.0-1.5 s is usually stretched over the pause after it (structure.LONG_WORD)
     long = [w for w in words if isinstance(w.get("start"), (int, float)) and isinstance(w.get("end"), (int, float))
             and w["end"] - w["start"] > 1.0]
     if long:
@@ -200,14 +281,93 @@ def cmd_snip(a):
     if a.end - a.start > SNIP_MAX:
         warn(f"the piece is {a.end - a.start:.1f} s: above {SNIP_MAX:.0f} s a repeat may still collapse into one word")
     name = f"{src.stem}_{a.start:.2f}-{a.end:.2f}"
+    language = snip_language(a.language, e, src)
+    prompt = None if a.no_prompt else snip_prompt(language)
     wav = extract_audio(src, e / "snip" / f"{name}.wav", a.start, a.end)
     model = load_model(a.model, a.compute)
-    lang, text, words = words_of(model, wav, a.language, snip=True, offset=a.start)
+    lang, text, words = words_of(model, wav, language, snip=True, offset=a.start, prompt=prompt)
     save_json(e / "snip" / f"{name}.json", {"language_code": lang, "text": text, "words": words, "source": src.name,
-                                           "from": a.start, "to": a.end})
-    print(f"{a.start:.2f}-{a.end:.2f}: {text}")
+                                           "from": a.start, "to": a.end, "prompt": prompt})
+    how = (f"language {language}" if language else "language detected on the piece (pass --language)") + (
+        f", a {language} prompt with fillers" if prompt else ", no prompt")
+    print(f"{a.start:.2f}-{a.end:.2f} ({how}): {text}")
     for w in words:
         print(f"  {w['start']:8.2f} {w['end']:8.2f}  {w['text']}")
+
+
+VOWELS = set("aeiouAEIOU" + "".join(chr(c) for c in (0x430, 0x435, 0x451, 0x438, 0x43e, 0x443, 0x44b, 0x44d,
+                                                     0x44e, 0x44f, 0x456, 0x457, 0x454)))  # Cyrillic a e yo i o u y e yu ya i yi ye
+
+
+def vowels(text):
+    return sum(1 for ch in str(text) if ch.lower() in VOWELS)
+
+
+def is_number(text):
+    """A word written in digits only ("270", "1,5", "10%", "$50"): no letters and at least one digit."""
+    t = str(text)
+    return bool(re.search(r"\d", t)) and not re.search(r"[^\W\d_]", t)
+
+
+def masked(mask, hop, spans):
+    """Mask windows (speech) inside the union of spans [(start, end)] in seconds."""
+    on, cur = 0, None
+    for a, b in sorted(spans) + [(float("inf"), float("inf"))]:
+        if cur and a <= cur[1]:
+            cur[1] = max(cur[1], b)
+            continue
+        if cur:
+            on += sum(mask[max(0, int(round(cur[0] / hop))):max(0, int(round(cur[1] / hop)))])
+        cur = [a, b]
+    return on * hop
+
+
+def cmd_rate(a):
+    """Syllables per second of the rough cut, per source and per segment (see the module help)."""
+    import speech_mask as sm
+    e = edit_dir(a.edit)
+    cap = load_json(e / "captions.json")
+    if not cap or not (e / "final.mp4").exists():
+        sys.exit(f"{e}: no captions.json or final.mp4: build the rough cut first (cut.py)")
+    env, hf = sm.load_envs(str(e / "final.mp4"))
+    sdb = sm.smax(env)
+    srt = sorted(x for x in sdb if x > -90)
+    thr = min(-30.0, (srt[int(len(srt) * 0.95)] if srt else -20) - 20)
+    mask = sm.speech_mask(sdb, thr, vl=sm.voiceless(hf))
+    segs = [g for g in cap.get("segments", []) if not a.source or g.get("source") == a.source]
+    if not segs:
+        sys.exit(f"no segment of source {a.source!r} (sources: {', '.join(sorted({g.get('source') for g in cap.get('segments', [])}))})")
+    rows, total = [], {}
+    for g in segs:
+        g0, g1 = g["out_start"], g["out_start"] + g["out_dur"]
+        lo, hi = int(round(g0 / sm.HOP)), int(round(g1 / sm.HOP))
+        ws = [w for w in cap.get("words", []) if w.get("seg") == g["i"]]
+        nums = [w for w in ws if is_number(w["text"])]
+        # a number in digits: its vowels are not in the text, so its time is left out too
+        cut = masked(mask, sm.HOP, [(max(g0, float(w["start"])), min(g1, float(w["end"]))) for w in nums
+                                    if min(g1, float(w["end"])) > max(g0, float(w["start"]))])
+        speech = max(0.0, sum(mask[lo:hi]) * sm.HOP - cut)
+        v = sum(vowels(w["text"]) for w in ws if not is_number(w["text"]))
+        rows.append((g, v, speech, [str(w["text"]) for w in nums], cut))
+        t = total.setdefault(g.get("source"), [0, 0.0, 0, 0, 0.0])
+        t[0] += v; t[1] += speech; t[2] += 1; t[3] += len(nums); t[4] += cut
+    print(f"speech rate on the rough cut (syllables/s = vowels / speech time by the speech mask, threshold {thr:.1f} dBFS;"
+          f" numbers in digits are left out of both)")
+    for src, (v, speech, n, nn, ns) in total.items():
+        print(f"  {src}: {v / speech if speech else 0:.2f}  ({v} vowels, {speech:.2f} s of speech, {n} segment(s)"
+              + (f"; {nn} number(s) in digits left out with their {ns:.2f} s" if nn else "") + ")")
+    print("per segment:")
+    for g, v, speech, nums, cut in rows:
+        print(f"  {g['i']:2d} {g.get('source', ''):<8} {g['out_start']:7.2f}+{g['out_dur']:.2f}  "
+              f"{v / speech if speech else 0:5.2f}  ({v} vowels, {speech:.2f} s"
+              + (f"; without {', '.join(nums)}: {cut:.2f} s" if nums else "") + f")  {g.get('beat', '')}")
+    if a.json:
+        print(json.dumps({"threshold": round(thr, 1), "sources": {k: {"rate": round(v / sp, 2) if sp else None, "vowels": v,
+                                                                       "speech_s": round(sp, 2), "segments": n,
+                                                                       "numbers": nn, "numbers_s": round(ns, 2)}
+                                                                   for k, (v, sp, n, nn, ns) in total.items()},
+                          "segments": [{"i": g["i"], "source": g.get("source"), "rate": round(v / sp, 2) if sp else None,
+                                        "numbers": nums} for g, v, sp, nums, _ in rows]}, ensure_ascii=False))
 
 
 def cmd_check(a):
@@ -226,7 +386,7 @@ def cmd_check(a):
 def main():
     utf8_stdio()
     argv = sys.argv[1:]
-    cmds = {"snip", "check", "audio"}
+    cmds = {"snip", "check", "audio", "rate"}
     if argv and argv[0] not in cmds and not argv[0].startswith("-"):
         argv = ["full"] + argv  # the main mode needs no command word: transcribe.py edit/<id> <source>
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -243,12 +403,16 @@ def main():
     p = sub.add_parser("snip", help="re-transcribe a <= 5 s piece without context")
     p.add_argument("edit"); p.add_argument("source")
     p.add_argument("--from", dest="start", type=float, required=True); p.add_argument("--to", dest="end", type=float, required=True)
+    p.add_argument("--no-prompt", action="store_true", help="no initial prompt (the default prompt is in the transcript's language)")
     common(p); p.set_defaults(fn=cmd_snip)
     p = sub.add_parser("audio", help="only edit/<id>/audio16k-<name>.wav on the video timeline, for your own transcriber")
     p.add_argument("edit"); p.add_argument("source"); p.add_argument("--force", action="store_true")
     p.set_defaults(fn=cmd_audio)
     p = sub.add_parser("check", help="is a transcript (yours or this script's) in the right format")
     p.add_argument("file"); p.set_defaults(fn=cmd_check)
+    p = sub.add_parser("rate", help="syllables per second of the rough cut, per source and segment (step 5)")
+    p.add_argument("edit"); p.add_argument("--source", help="only this cut.json source key")
+    p.add_argument("--json", action="store_true"); p.set_defaults(fn=cmd_rate)
     a = ap.parse_args(argv)
     a.fn(a)
 

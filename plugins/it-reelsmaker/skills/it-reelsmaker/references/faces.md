@@ -82,10 +82,12 @@ Every card, hook or CTA card over the video is entered in the plan as a `keep_cl
 **When.** Before showing the video to the person.
 
 **How.** The same measurement, but on the **render**: the camera, B-roll and graphics are already applied, so the faces are where the viewer sees them. Samples every 0.25 s are checked:
-- **against the subtitle band** — wherever speech is heard. Pass the actual band: the top and bottom of the subtitle card;
-- **against the `keep_clear` zones** — cards, hook, CTA;
+- **against the subtitle band** — wherever speech is heard and the subtitles are on: scenes that hide them and the plan's `hide-subs` windows (subtitles hidden by a per-video composition, `visual_plan.py hide-subs`) are left out. Pass the actual band: the top and bottom of the subtitle card;
+- **against the `keep_clear` zones** — cards, hook, CTA; a presenter layer's own face (`keep-clear --own-face`) is not an overlap with its own zone;
 - **against meme boxes**;
 - **against the frame edge** — whether the top of the head is cut off.
+
+Zones (`faces.py zones`) split a span at a change of camera angle (the rough cut's source changes): each piece gets the faces of its own angle, never a union of two (a wide shot's small face and a close-up's big one).
 
 **Result.** Overlaps with timecodes, exit code 1 → fix and re-render. The audit does not see graphics that were not entered in `keep_clear`. Those are checked with still frames and the storyboard.
 

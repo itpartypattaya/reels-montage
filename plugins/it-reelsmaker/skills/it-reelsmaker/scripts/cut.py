@@ -13,8 +13,9 @@ cut.json (paths are relative to the project root, or to edit/<id>, or absolute):
      "sources": {"main": {"file": "IMG_4821.MOV", "transcript": "edit/4821/transcripts/IMG_4821.json"}},
      "look": {"correct": "colorbalance=rs=-0.02", "lut": "brand", "lut_mix": 0.6, "grade": "eq=contrast=1.05"},
      "scale": "auto",
-     "ranges": [{"source": "main", "start": 1.567, "end": 12.967, "beat": "hook"},
-                {"start": 14.767, "end": 20.767, "beat": "the answer"}],
+     "ranges": [{"source": "main", "start": 1.567, "end": 12.967, "beat": "hook", "speaker": "A"},
+                {"start": 14.767, "end": 20.767, "beat": "the answer", "speaker": "B",
+                 "speakers": [{"from": 18.2, "to": 19.1, "speaker": "A"}]}],
      "fix": {"recruter": "recruiter"},
      "fix_at": [{"text": "all", "at": 16.16, "to": "everything"}],
      "retime": [{"text": "Hi", "at": 0.0, "start": 0.68, "end": 0.84}],
@@ -25,9 +26,15 @@ sources     one or more source files; each may set its own "speed" (two angles r
             "transcript": word timings ({"words": [{"text", "start", "end", "type"}]}); by default
             edit/<id>/transcripts/<file stem>.json. Without a transcript the cut is built without subtitles.
 ranges      segments in source seconds, in the order of the video; edges from speech_mask.py. "source" may be
-            left out when there is only one source. Edges are snapped to the frame grid.
+            left out when there is only one source. Edges are snapped to the frame grid. Two speakers (subtitles
+            colored per speaker): "speaker" names who speaks in the range, and "speakers" lists switches inside it
+            ({"from", "to"} in source seconds, a word belongs where its middle is); the label goes onto each caption
+            word, and captions.json -> "speakers" lists the labels in sorted order (the first gets the first color).
+            Without them a transcript's own labels ("speaker", or "speaker_id") are kept. One microphone: identify
+            the speakers by their lips (SKILL.md step 2), a diarizer mixes them up.
 look        color in two steps. "correct": an ffmpeg filter chain that fixes this source (white balance, green
-            cast, exposure), applied BEFORE the LUT; "lut": "brand" (the HALD LUT of the video's brand,
+            cast, exposure), applied BEFORE the LUT; the white balance is measured, not set by eye:
+            balance.py edit/<id> --write; "lut": "brand" (the HALD LUT of the video's brand,
             brand.json -> lut.hald) or a HALD image file; "lut_mix" its strength 0..1 (start at 0.5-0.7 and compare
             face stills before and after); "grade": a filter chain applied AFTER the LUT (contrast, sharpness).
             Without "look" the color stays as shot.
@@ -35,9 +42,18 @@ scale       "auto": a vertical source that is not 1080x1920 is scaled (and cropp
             1080x1920 with lanczos; a horizontal source keeps its size (the framed format places it in Remotion);
             "none": never scale.
 fix, fix_at transcription fixes: every occurrence of a word, or one occurrence near a source second (±0.02 s).
+            "to": "" removes the word from the subtitles (a word only the local model heard, a stray "uh"):
+            "fix_at": [{"text": "you", "at": 46.4, "to": ""}]; the sound is not touched. "text" is the word as the
+            transcript has it and "at" its start AFTER retime: for a retimed word, its new "start".
 retime      exact timings of key words measured on the waveform: (word, transcript start) -> (start, end).
+
+A transcript word that the cut leaves out of every range although it sits in a short gap (up to 1 s) removed between
+two ranges of one source is named in a warning, in --dry-run too: a quiet syllable below the speech threshold is cut
+as a pause (T4: a quiet two-letter word at -35..-40 dBFS under a -33.6 threshold left the sound and the subtitles
+without a word). Check it by ear; lower speech_mask.py --thr or extend the range over it.
 extract     extra clips from the sources for Remotion (cutaways from the same footage), same color, no sound:
-            edit/<id>/<name>.mp4.
+            edit/<id>/<name>.mp4. A B-roll insert from the project's own videos gets the same look too:
+            footage.py pick (project footage) and footage.py prepare --look edit/<id>.
 
 How it is built (checked on real renders):
   - each segment is encoded on its own: -ss/-t, setpts for the speed-up, fps, color, atempo (pitch kept),
@@ -50,15 +66,18 @@ How it is built (checked on real renders):
 Output in edit/<id>/: final.mp4, captions.json (segments src_start/src_end/out_start/out_dur + words on the new
 timeline), edl.json (sources and ranges for speech_mask.py --edl), clips/ (intermediate segments).
 """
-import argparse, json, math, sys
+import argparse, json, math, sys, unicodedata
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from reels_common import brand_file, edit_dir, inside, load_config, load_json, probe, project_root, run, safe_slug, save_json, utf8_stdio, warn
+from reels_common import (brand_file, edit_dir, inside, load_config, load_json, probe, project_root, run, safe_slug, save_json,
+                          speaker_of, utf8_stdio, warn)
 
 FADE = 0.03
 MIN_WORD = 0.08  # s: the shortest word on the subtitle timeline
 LUT_MIX = 0.6
+REPLAY = 0.2     # s: two pieces of one source overlapping by more than this replay the same speech (a teaser, a restart)
+GAP_MAX = 1.0    # s: a gap this short between two pieces of one pass is a removed pause, not a dropped line
 
 
 def resolve(p, project, e):
@@ -109,7 +128,8 @@ def load_cut(e, project, speed_arg=None):
         if src not in sources:
             sys.exit(f"cut.json: range {k}: source {r.get('source')!r} is not in sources")
         s, t = validate_range(r, sources[src], fps, f"range {k}")
-        ranges.append({"source": src, "start": s, "end": t, "beat": r.get("beat", "")})
+        ranges.append({"source": src, "start": s, "end": t, "beat": r.get("beat", ""),
+                       "speaker": speaker_of(r), "speakers": speaker_switches(r, k)})
     if not ranges:
         sys.exit("cut.json: no ranges")
     look = cut.get("look") or {}
@@ -158,6 +178,20 @@ def load_cut(e, project, speed_arg=None):
             "extract": extras}
 
 
+def speaker_switches(r, k):
+    """A range's "speakers": [(from, to, label)] in source seconds; a malformed entry stops with a clear message."""
+    out = []
+    for n, x in enumerate(r.get("speakers") or []):
+        try:
+            a, b, who = float(x["from"]), float(x["to"]), speaker_of(x)
+        except (KeyError, TypeError, ValueError):
+            sys.exit(f"cut.json: range {k}: speakers[{n}] needs \"from\", \"to\" (source seconds) and \"speaker\"")
+        if who is None or not (math.isfinite(a) and math.isfinite(b)) or b <= a:
+            sys.exit(f"cut.json: range {k}: speakers[{n}]: \"to\" after \"from\" and a \"speaker\" label are needed")
+        out.append((a, b, who))
+    return out
+
+
 def extract_path(e, name):
     return inside(e, e / f"{safe_slug(name, 'extract name')}.mp4", "extract output")
 
@@ -195,16 +229,23 @@ def video_graph(c, src, speed, out_label="v"):
     chain.append(f"fps={c['fps']}")
     if src["scale"]:
         chain.append(src["scale"])
+    return look_chain(c, "[0:v]" + ",".join(chain), out_label)
+
+
+def look_chain(c, head, out_label="v", lut_in="[1:v]"):
+    """The look after a filter chain (head) that ends in the frame to color: look.correct, the LUT at lut_mix (the
+    HALD image on input lut_in), look.grade, then setsar and yuv420p -> [out_label]. One function for the rough cut,
+    balance.py's still and footage.py's cutaways from the same shoot: they share one color (T2: a cutaway prepared
+    with its own LUT step came out a different color from the cut around it)."""
     if c.get("correct"):
-        chain.append(c["correct"])
-    head = "[0:v]" + ",".join(chain)
-    tail = (f",{c['grade']}" if c["grade"] else "") + f",setsar=1,format=yuv420p[{out_label}]"
-    if not c["lut"]:
+        head += "," + c["correct"]
+    tail = (f",{c['grade']}" if c.get("grade") else "") + f",setsar=1,format=yuv420p[{out_label}]"
+    if not c.get("lut"):
         return head + tail
-    mix = max(0.0, min(1.0, c["lut_mix"]))
+    mix = max(0.0, min(1.0, c.get("lut_mix", LUT_MIX)))
     if mix >= 0.999:
-        return head + "[p];[p][1:v]haldclut" + tail
-    return head + f",split[a][b];[b][1:v]haldclut[l];[a][l]blend=all_mode=normal:all_opacity={mix:.2f}" + tail
+        return head + f"[p];[p]{lut_in}haldclut" + tail
+    return head + f",split[a][b];[b]{lut_in}haldclut[l];[a][l]blend=all_mode=normal:all_opacity={mix:.2f}" + tail
 
 
 def lut_inputs(c):
@@ -222,6 +263,7 @@ def load_words(c):
             continue
         words = [dict(w) for w in doc.get("words", []) if w.get("type", "word") == "word" and str(w.get("text", "")).strip()]
         for w in words:
+            w["speaker"] = speaker_of(w)  # "speaker_id" on input becomes "speaker"
             for r in c["retime"]:
                 if w["text"] == r["text"] and abs(w["start"] - float(r["at"])) < 0.02:
                     w["start"], w["end"] = float(r["start"]), float(r["end"])
@@ -238,8 +280,69 @@ def fixed(w, c):
     return c["fix"].get(w["text"], w["text"])
 
 
+def same_pass(a, b):
+    """Two pieces of one source are parts of one pass through it, so a word between them is shown once: they don't
+    replay the same speech. A piece inside the other, or an overlap over REPLAY, replays it (a teaser shown again in
+    its place, a restart): each keeps its own copy of the words. The order of the pieces in the list does not matter
+    (T3: a question moved to the start lost nothing, but its last word, which the transcript stretched over the pause
+    before the last piece, came up in both)."""
+    if a["source"] != b["source"]:
+        return False
+    inside = (a["start"] >= b["start"] and a["end"] <= b["end"]) or (b["start"] >= a["start"] and b["end"] <= a["end"])
+    return not inside and min(a["end"], b["end"]) - max(a["start"], b["start"]) <= REPLAY
+
+
+HEARD = 0.15  # s: a word that starts (or ends) inside a piece and runs in it this long is heard there
+EDGE_TOUCH = 0.05  # s: a word left out of the subtitles that a piece holds this much of is named (hidden_at_edges)
+
+
+def owner(w, group):
+    """The piece of one pass that shows a word: the one holding most of it (a tie: the earlier in the list), when the
+    word is heard in the cut: the pieces hold most of it or its center, or it starts inside a piece and runs on in it
+    for HEARD (recognizers stretch a word's END over the pause after it: T7's "inache?" 50.52-51.96 is spoken by 51.06,
+    where the piece ends), or, the mirror, it ends inside a piece after HEARD in it (its START stretched back over the
+    pause before it: "So" 9.5-10.3 in a piece from 10.0, review). A word mostly outside goes nowhere: its sound is not
+    in the cut (T7: "primere." 35.48-36.14, the tail of a removed line, touched a piece from 36.067 by 0.07 of its
+    0.66 s and came up on frames 0-2); cut.py names such a word when a piece holds some of it (hidden_at_edges). A word
+    that two pieces split between them (stretched over a pause the cut compressed) stays with the larger part. A word
+    in none of them goes to the nearest piece within 0.05 s of the word's center, else nowhere (a word in a short
+    removed gap is named by dropped_in_gaps)."""
+    ov = [(min(w["end"], x["end"]) - max(w["start"], x["start"]), k) for k, x in group]
+    best = max(o for o, _ in ov)
+    if best > 0:
+        d = w["end"] - w["start"]
+        mid = (w["start"] + w["end"]) / 2
+        held = sum(max(0.0, o) for o, _ in ov)
+        enough = min(HEARD, 0.5 * d) - 1e-9
+        starts = any(x["start"] <= w["start"] < x["end"] and o >= enough for (o, _), (_, x) in zip(ov, group))
+        ends = any(x["start"] < w["end"] <= x["end"] and o >= enough for (o, _), (_, x) in zip(ov, group))
+        if held >= 0.5 * d - 1e-9 or any(x["start"] <= mid <= x["end"] for _, x in group) or starts or ends:
+            return min(k for o, k in ov if o == best)
+        return None
+    mid = (w["start"] + w["end"]) / 2
+    d, k = min((max(x["start"] - mid, mid - x["end"], 0.0), k) for k, x in group)
+    return k if d <= 0.05 else None
+
+
+def speaker_in(w, r):
+    """Who says the word in range r: a switch of the range's "speakers" holding the word's middle, else the range's
+    "speaker", else the transcript's own label (None: no speaker known)."""
+    mid = (w["start"] + w["end"]) / 2
+    for a, b, who in r.get("speakers") or []:
+        if a <= mid < b:
+            return who
+    return r.get("speaker") or speaker_of(w)
+
+
+def punct_only(text):
+    """A token of punctuation alone (faster-whisper returns a dash as a word): it is not a word of its own."""
+    t = str(text).strip()
+    return bool(t) and all(unicodedata.category(ch).startswith("P") for ch in t)
+
+
 def timeline(c, words):
-    """Assign words per occurrence; resolve boundaries only between adjacent source spans."""
+    """Words on the new timeline: each word once per pass through its source (a replay shows it again), punctuation
+    tokens joined to their word."""
     fps, segments, captions, offset = c["fps"], [], [], 0.0
     frames = 0
     for i, r in enumerate(c["ranges"]):
@@ -252,32 +355,85 @@ def timeline(c, words):
         segments.append({"i": i, "source": r["source"], "src_start": round(s, 3), "src_end": round(e, 3),
                          "out_start": round(offset, 3), "out_dur": round(d, 3), "speed": speed, "beat": r["beat"],
                          "_s": s, "_e": e, "_n": n, "_fps": fps})
-        same = [(i, r)]
-        for k in (i - 1, i + 1):
-            if not 0 <= k < len(c["ranges"]):
-                continue
-            x = c["ranges"][k]
-            # A restart in the source is a new occurrence, even when it overlaps the old one. The next span forward in
-            # the source is the same occurrence, touching or not: a word the transcript stretches across the gap
-            # between them goes to the span that holds more of it, not to both.
-            earlier, later = (x, r) if k < i else (r, x)
-            if x["source"] == r["source"] and later["start"] > earlier["start"] and later["end"] > earlier["end"]:
-                same.append((k, x))
+        group = [(i, r)] + [(k, x) for k, x in enumerate(c["ranges"]) if k != i and same_pass(r, x)]
+        mine, prefix = [], ""
         for w in words[r["source"]]:
-            ov = [(min(w["end"], x["end"]) - max(w["start"], x["start"]), k) for k, x in same]
-            best = max(o for o, _ in ov)
-            k_best = min(k for o, k in ov if o == best)
-            mid = (w["start"] + w["end"]) / 2
-            if not ((best > 0 and k_best == i) or (best <= 0 and s - 0.05 <= mid <= e + 0.05)):
+            if owner(w, group) != i:
                 continue
             ws, we = min(max(w["start"], s), e), min(max(w["end"], s), e)
-            if we - ws <= 0:
+            text = str(fixed(w, c))
+            if we - ws <= 0 or not text.strip():  # "to": "" removes the word from the subtitles (T2: a stray "you")
                 continue
-            captions.append({"text": fixed(w, c), "src": round(w["start"], 3), "start": round((ws - s) / speed + offset, 3),
-                             "end": round((we - s) / speed + offset, 3), "seg": i})
+            if punct_only(text):
+                # T3: a dash the recognizer returned as a word got its own time, and "Typewriter" lit it up like a word
+                t = text.strip()
+                if unicodedata.category(t[0]) in ("Ps", "Pi"):  # an opening quote or bracket: with the next word
+                    prefix += t
+                elif mine:
+                    mine[-1]["text"] += (" " if unicodedata.category(t[0]) == "Pd" else "") + t
+                continue
+            who = speaker_in(w, r)
+            mine.append({"text": prefix + text, "src": round(w["start"], 3), "start": round((ws - s) / speed + offset, 3),
+                         "end": round((we - s) / speed + offset, 3), "seg": i, **({"speaker": who} if who else {})})
+            prefix = ""
+        captions += mine
         frames += n
         offset = frames / fps
     return segments, captions, offset
+
+
+def speakers_of(captions):
+    """The speaker labels of the caption words, sorted: the kit colors them in this order."""
+    return sorted({w["speaker"] for w in captions if w.get("speaker")})
+
+
+def dropped_in_gaps(c, words, captions):
+    """Transcript words in no range that sit mostly (half their length or more) inside a short gap (<= GAP_MAX)
+    removed between two pieces of one pass through a source -> [(word, source, word start, word end, gap start,
+    gap end)]. Such a gap is a pause the speech mask compressed: a quiet syllable below its threshold reads as a pause
+    there, and the cut drops it from the sound and the subtitles without a word (T4). A word removed on purpose
+    ("to": "") and a punctuation token are not named; a line dropped on purpose leaves a longer gap."""
+    shown = {(c["ranges"][w["seg"]]["source"], w["src"]) for w in captions}
+    out = []
+    for src, ws in words.items():
+        rs = sorted((r for r in c["ranges"] if r["source"] == src), key=lambda r: (r["start"], r["end"]))
+        # a replay (a teaser shown again in its place) lies inside another piece: it is no edge of a removed gap (review:
+        # a teaser at 3-4 s inside 0-10 s split the pair 0-10 / 10.5-20, and the quiet syllable at 10.1 went unnamed)
+        rs = [r for k, r in enumerate(rs) if not any(x["start"] <= r["start"] and r["end"] <= x["end"]
+                                                      and (j < k or (x["start"], x["end"]) != (r["start"], r["end"]))
+                                                      for j, x in enumerate(rs) if j != k)]
+        gaps = [(a["end"], b["start"]) for a, b in zip(rs, rs[1:])
+                if 0 < b["start"] - a["end"] <= GAP_MAX and same_pass(a, b)
+                and not any(x["start"] < b["start"] and x["end"] > a["end"] for x in rs if x is not a and x is not b)]
+        for w in ws:
+            if (src, round(w["start"], 3)) in shown or punct_only(w["text"]) or not str(fixed(w, c)).strip():
+                continue
+            d = max(w["end"] - w["start"], 1e-3)
+            for g0, g1 in gaps:
+                if min(w["end"], g1) - max(w["start"], g0) >= 0.5 * d:
+                    out.append((str(w["text"]), src, w["start"], w["end"], g0, g1))
+                    break
+    return out
+
+
+def hidden_at_edges(c, words, captions, skip=()):
+    """Transcript words that a piece holds a part of (>= EDGE_TOUCH) but the subtitles leave out: owner() found them
+    mostly outside the cut. Right for the tail of a removed line; wrong for a word heard inside whose time the
+    recognizer stretched past the edge (a short last word, 0.10 s inside, its end stretched 0.8 s over the pause).
+    Times alone cannot tell the two apart, so each is named, never dropped without a word. -> [(word, source, start,
+    end, range index, seconds inside)]; skip: (source, start) already named by dropped_in_gaps."""
+    shown = {(c["ranges"][w["seg"]]["source"], w["src"]) for w in captions}
+    out = []
+    for src, ws in words.items():
+        rs = [(k, r) for k, r in enumerate(c["ranges"]) if r["source"] == src]
+        for w in ws:
+            key = (src, round(w["start"], 3))
+            if key in shown or key in skip or punct_only(w["text"]) or not str(fixed(w, c)).strip():
+                continue
+            o, k = max(((min(w["end"], r["end"]) - max(w["start"], r["start"]), k) for k, r in rs), default=(0.0, None))
+            if o >= EDGE_TOUCH:
+                out.append((str(w["text"]), src, w["start"], w["end"], k, o))
+    return out
 
 
 def encode_segment(c, g, out):
@@ -379,7 +535,18 @@ def main():
         print(f"  {g['i']:>2} {g['source']:<8} {g['src_start']:>8.3f}-{g['src_end']:<8.3f} x{g['speed']:<5} "
               f"-> {g['out_start']:>7.3f} +{g['out_dur']:.3f} s  {nw:>3} words  {g['beat']}")
     nall = sum(len(v) for v in words.values())
-    print(f"segments {len(segments)}, words {len(captions)} of {nall}, total {total} s")
+    count = {x: sum(1 for w in captions if w.get("speaker") == x) for x in speakers_of(captions)}
+    print(f"segments {len(segments)}, words {len(captions)} of {nall}, total {round(total, 3)} s"
+          + ("; words per speaker: " + ", ".join(f"{x} {n}" for x, n in count.items()) if count else ""))
+    gap_words = dropped_in_gaps(c, words, captions)
+    for text, src, ws, we, g0, g1 in gap_words:
+        warn(f"the word \"{text}\" ({src} {ws:.2f}-{we:.2f}) falls in the {g0:.2f}-{g1:.2f} gap the cut removes between two "
+             f"ranges: it is in neither, so the cut drops it from the sound and the subtitles. A quiet syllable below the "
+             f"speech threshold is cut as a pause: check by ear; lower speech_mask.py --thr or extend the range over it")
+    for text, src, ws, we, k, o in hidden_at_edges(c, words, captions, {(s, round(x, 3)) for _, s, x, _, _, _ in gap_words}):
+        warn(f"the word \"{text}\" ({src} {ws:.2f}-{we:.2f}) is {o:.2f} s inside range {k} but mostly outside it: left out of "
+             f"the subtitles. Right for the tail of a removed line; if it is heard in the cut (the recognizer stretched its "
+             f"time past the edge), give its real times in cut.json \"retime\"")
     if a.dry_run:
         return
     clips = e / "clips"
@@ -403,12 +570,13 @@ def main():
                                "ranges": [{"source": g["source"], "start": g["src_start"], "end": g["src_end"],
                                            "speed": g["speed"], "beat": g["beat"]} for g in segments],
                                "total_duration_s": round(total, 3)})
-    save_json(e / "captions.json", {"duration": round(total, 3), "segments": segments, "words": captions})
+    save_json(e / "captions.json", {"duration": round(total, 3), "segments": segments, "words": captions,
+                                    **({"speakers": speakers_of(captions)} if speakers_of(captions) else {})})
     problems = check_final(e / "final.mp4", c["fps"], expected_frames)
     if problems:
         print("final.mp4 check FAILED: " + "; ".join(problems))
         sys.exit(1)
-    print(f"final.mp4 ready: {total} s; captions.json, edl.json written. Next: python scripts/speech_mask.py --edl "
+    print(f"final.mp4 ready: {round(total, 3)} s; captions.json, edl.json written. Next: python scripts/speech_mask.py --edl "
           f"{(e / 'edl.json').as_posix()}")
 
 

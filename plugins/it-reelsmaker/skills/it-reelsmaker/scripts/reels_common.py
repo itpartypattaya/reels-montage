@@ -405,6 +405,216 @@ TONE_PRESETS = ["premium", "warm", "expert", "story", "tech", "friendly", "drive
 TONE_DEFAULT = "expert"
 BRAND_SCHEMA = 2  # 1 -> 2: brand tone (references/migrations.md)
 MEME_SIZES = ["s", "m", "l"]
+# The subtitle band, y in the 1080x1920 frame, one value for every script: cards, memes and scenes keep out of it
+# (visual_plan.py validate, meme_layout.py), faces.py checks faces against it (reel-defaults.json ->
+# meme_layout.subtitles_band overrides it). export puts the subtitles' top at the measured chin + 30 px within
+# SUB_BAND[0]..SUB_MAX_TOP (below are 420 px of UI); with no face measurement the kit's own top, SUB_TOP_KIT
+# (ReelKit.tsx). faces.py once had its own band (1290-1400): zones offered a chest down to 1270, where validate
+# rejected a card, and audit checked a band the render did not have.
+SUB_BAND = (1250, 1430)
+SUB_MAX_TOP = 1390
+SUB_TOP_KIT = 1290
+# The height of the kit's subtitle block at its most, two lines (Subtitles.tsx GEO: "Typewriter" 2 x 56 x 1.22; "Bar"
+# 2 plates of 60 x 1.15 + 13 with a 6 px gap; "Accent" 2 x 66 x 1.15 + 16): export records the band the render has as
+# [top, top + this], below the UI line. The kit never draws a third line (T4: a 56-character phrase wrapped into three
+# lines reached y 1455 while the recorded band ended at 1430).
+SUB_BLOCK_H = {"typewriter": 137, "plate": 170, "accent": 168}
+
+# The "framed" format (references/techniques.md): a horizontal source in a rounded window on the style's field, an
+# optional caps label above it. edit/<id>/reel.json -> "format": "framed", "window": [x, y, w, h] (optional, FRAMED_WINDOW
+# by default), "label": "..." (optional). One window for every script and the kit: faces.py maps its measurement into
+# it, visual_plan.py clamps the camera to it and keeps text inside it, export hands it to ReelKit (props.framed), which
+# draws the window, the label and the video inside it (no per-video composition).
+FORMATS = ("full", "framed")
+FRAMED_WINDOW = (25, 340, 1030, 1240)
+FRAMED_RADIUS = 50     # px, the window's corners (no feathering)
+FRAMED_PAD = 35        # px: text inside the window keeps this far from its sides (x 60 at the default window)
+FRAMED_LABEL_UP = 48   # px: the caps label's top above the window (28 px letters end ~20 px above its edge)
+FRAMED_HOOK_MIN = 76   # px: the smallest hook line inside the window (the 92-120 px rule needs ~230 px of headroom)
+
+
+def framed_of(s):
+    """The "framed" layout from a video's settings (reel.json): {"window": [x, y, w, h], "label": str|None}; None: the
+    full vertical frame."""
+    s = s or {}
+    if s.get("format") != "framed":
+        return None
+    win = s.get("window") or FRAMED_WINDOW
+    try:
+        win = [int(round(float(v))) for v in win][:4]
+    except (TypeError, ValueError):
+        win = list(FRAMED_WINDOW)
+    return {"window": win if len(win) == 4 else list(FRAMED_WINDOW), "label": str(s.get("label") or "").strip() or None}
+
+
+def framed_at(e):
+    """The "framed" layout of edit/<id> from its reel.json (the only source of a video's settings), or None."""
+    return framed_of(load_json(Path(e) / "reel.json", {}) or {})
+
+
+def framed_issues(s):
+    """Problems of the format keys (format, window, label) in a video's settings: [] when they are fine."""
+    s = s or {}
+    out, fmt, win = [], s.get("format"), s.get("window")
+    if fmt is not None and fmt not in FORMATS:
+        out.append(f"format {fmt!r}: one of {', '.join(FORMATS)} (framed: a horizontal source in a window)")
+    if win is not None:
+        if not (isinstance(win, (list, tuple)) and len(win) == 4
+                and all(isinstance(v, (int, float)) and not isinstance(v, bool) for v in win)):
+            out.append(f"window {win!r}: [x, y, w, h] on the 1080x1920 screen")
+        else:
+            x, y, w, h = win
+            if x < 0 or y < 0 or x + w > 1080 or y + h > 1920 or w < 540 or h < 540:
+                out.append(f"window {list(win)}: inside the 1080x1920 frame and at least 540x540")
+            elif s.get("label") and y - FRAMED_LABEL_UP < 220:
+                out.append(f"window {list(win)}: the label sits {FRAMED_LABEL_UP} px above the window, under the app's "
+                           f"top bar (y < 220): lower the window to y >= {220 + FRAMED_LABEL_UP} or drop the label")
+    return out
+
+
+def framed_area(fr):
+    """The text area of the "framed" format (scenes, the hook, boxes, the subtitle band) -> [x0, y0, x1, y1]: inside the
+    window, FRAMED_PAD from its sides, within the safe zone (x 60-960, y 220-1500). With no label, the field above the
+    window joins it: a hook can start there and run into the window's headroom (references/techniques.md)."""
+    x, y, w, h = fr["window"]
+    return [max(60, x + FRAMED_PAD), max(220, y + 20) if fr.get("label") else 220,
+            min(960, x + w - FRAMED_PAD), min(1500, y + h - 20)]
+
+
+def framed_view(window, src):
+    """(window, video rect) on screen for a source of size src = (w, h) laid as a cover in the window, centered (the
+    same mapping as faces.py to_screen and the kit's framed layout)."""
+    fx, fy, fw, fh = window
+    sw, sh = src
+    k = max(fw / sw, fh / sh)
+    return [fx, fy, fw, fh], [fx + (fw - sw * k) / 2, fy + (fh - sh * k) / 2, sw * k, sh * k]
+
+
+def framed_source(e):
+    """(w, h) of the rough cut a "framed" video lays in its window: faces.json's source geometry, else final.mp4."""
+    d = load_json(Path(e) / "faces.json") or {}
+    if d.get("geometry") == "source" and d.get("w") and d.get("h"):
+        return int(d["w"]), int(d["h"])
+    f = Path(e) / "final.mp4"
+    if f.exists():
+        info = probe(f)
+        if info.get("w") and info.get("h"):
+            return int(info["w"]), int(info["h"])
+    return None
+
+
+def cam_fit(z, cx, cy, view=None):
+    """The virtual camera (z, cx, cy) clamped so its window never shows past the video. view = (window, video rect) on
+    screen ("framed": the window and the video's cover in it); None: the whole 1080x1920 frame, cx within
+    [540/z, 1080 - 540/z], cy within [960/z, 1920 - 960/z]. The kit's fitCamera (ReelKit.tsx) is the same rule."""
+    (fx, fy, fw, fh), (vx, vy, vw, vh) = view or ((0, 0, 1080, 1920), (0, 0, 1080, 1920))
+    z = max(1.0, float(z))
+    hx, hy = fw / 2 / z, fh / 2 / z
+    return z, min(max(cx, vx + hx), vx + vw - hx), min(max(cy, vy + hy), vy + vh - hy)
+
+
+def speaker_of(w):
+    """The speaker label of a transcript or caption word: "speaker", or "speaker_id" (the name other word-level tools
+    use) on input; None without one. Labels are strings ("A", "B", or a diarizer's "SPEAKER_00")."""
+    s = w.get("speaker", w.get("speaker_id"))
+    return None if s is None or str(s).strip() == "" else str(s).strip()
+
+
+# --- Numbers and line breaks in speech: structure.py signs, visual_plan.py hints, subs.py lines ---
+# A number is a token of its own: digits with separators, a sign, a currency, %, an ordinal ending ("3rd", Russian
+# "5-ti"); digits inside a word ("ACME24", "B2B", "COVID-19") are a name, not a number (T3: a brand name with digits was
+# taken for a number: a stat-scene hint, "a number -> a card" and the "number" sign on lines without one).
+NUMBER_RE = re.compile(r"(?<![\w\-])[+\-\u2212~\u2248]?[$\u20ac\u00a3\u20bd\u00a5\u20b8]?\d+(?:[.,:/'\u2009\u00a0]\d+)*"
+                       r"(?:%|\u2030|[$\u20ac\u00a3\u20bd\u00a5\u20b8]|\+|[x\u00d7]|[kmb]|st|nd|rd|th|-?[\u0430-\u044f\u0451]{1,3})?(?!\w)",
+                       re.I)
+# number words, every form (a line break never tears one from its word: Russian "more than five / years" was split so):
+# English; Russian 1-10, the tens, the hundreds, a hundred (sotnya), one and a half, several, a couple
+NUMBER_WORDS = set("zero one two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen "
+                   "sixteen seventeen eighteen nineteen twenty thirty forty fifty sixty seventy eighty ninety hundred "
+                   "hundreds thousand thousands million millions billion billions dozen dozens half several couple".split()
+                   + "\u043e\u0434\u0438\u043d \u043e\u0434\u043d\u0430 \u043e\u0434\u043d\u043e \u043e\u0434\u043d\u0438 "
+                     "\u043e\u0434\u043d\u043e\u0433\u043e \u043e\u0434\u043d\u043e\u0439 "
+                     "\u043e\u0434\u043d\u043e\u043c\u0443 \u043e\u0434\u043d\u0438\u043c \u043e\u0434\u043d\u043e\u043c "
+                     "\u043e\u0434\u043d\u0443 \u0434\u0432\u0430 \u0434\u0432\u0435 \u0434\u0432\u0443\u0445 "
+                     "\u0434\u0432\u0443\u043c \u0434\u0432\u0443\u043c\u044f \u0442\u0440\u0438 \u0442\u0440\u0435\u0445 "
+                     "\u0442\u0440\u0451\u0445 \u0442\u0440\u0435\u043c \u0442\u0440\u0451\u043c "
+                     "\u0442\u0440\u0435\u043c\u044f \u0447\u0435\u0442\u044b\u0440\u0435 "
+                     "\u0447\u0435\u0442\u044b\u0440\u0435\u0445 \u0447\u0435\u0442\u044b\u0440\u0451\u0445 "
+                     "\u0447\u0435\u0442\u044b\u0440\u0435\u043c \u0447\u0435\u0442\u044b\u0440\u0451\u043c "
+                     "\u0447\u0435\u0442\u044b\u0440\u044c\u043c\u044f \u043f\u044f\u0442\u044c \u043f\u044f\u0442\u0438 "
+                     "\u043f\u044f\u0442\u044c\u044e \u0448\u0435\u0441\u0442\u044c \u0448\u0435\u0441\u0442\u0438 "
+                     "\u0448\u0435\u0441\u0442\u044c\u044e \u0441\u0435\u043c\u044c \u0441\u0435\u043c\u0438 "
+                     "\u0432\u043e\u0441\u0435\u043c\u044c \u0432\u043e\u0441\u044c\u043c\u0438 "
+                     "\u0432\u043e\u0441\u0435\u043c\u044c\u044e \u0434\u0435\u0432\u044f\u0442\u044c "
+                     "\u0434\u0435\u0432\u044f\u0442\u0438 \u0434\u0435\u0432\u044f\u0442\u044c\u044e "
+                     "\u0434\u0435\u0441\u044f\u0442\u044c \u0434\u0435\u0441\u044f\u0442\u0438 "
+                     "\u0434\u0435\u0441\u044f\u0442\u044c\u044e \u0434\u0432\u0430\u0434\u0446\u0430\u0442\u044c "
+                     "\u0434\u0432\u0430\u0434\u0446\u0430\u0442\u0438 \u0442\u0440\u0438\u0434\u0446\u0430\u0442\u044c "
+                     "\u0442\u0440\u0438\u0434\u0446\u0430\u0442\u0438 \u0441\u043e\u0440\u043e\u043a "
+                     "\u0441\u043e\u0440\u043e\u043a\u0430 \u043f\u044f\u0442\u044c\u0434\u0435\u0441\u044f\u0442 "
+                     "\u043f\u044f\u0442\u0438\u0434\u0435\u0441\u044f\u0442\u0438 "
+                     "\u0448\u0435\u0441\u0442\u044c\u0434\u0435\u0441\u044f\u0442 "
+                     "\u0448\u0435\u0441\u0442\u0438\u0434\u0435\u0441\u044f\u0442\u0438 "
+                     "\u0441\u0435\u043c\u044c\u0434\u0435\u0441\u044f\u0442 "
+                     "\u0441\u0435\u043c\u0438\u0434\u0435\u0441\u044f\u0442\u0438 "
+                     "\u0432\u043e\u0441\u0435\u043c\u044c\u0434\u0435\u0441\u044f\u0442 "
+                     "\u0432\u043e\u0441\u044c\u043c\u0438\u0434\u0435\u0441\u044f\u0442\u0438 "
+                     "\u0434\u0435\u0432\u044f\u043d\u043e\u0441\u0442\u043e "
+                     "\u0434\u0435\u0432\u044f\u043d\u043e\u0441\u0442\u0430 \u0441\u0442\u043e \u0441\u0442\u0430 "
+                     "\u0434\u0432\u0435\u0441\u0442\u0438 \u0434\u0432\u0443\u0445\u0441\u043e\u0442 "
+                     "\u0442\u0440\u0438\u0441\u0442\u0430 \u0442\u0440\u0435\u0445\u0441\u043e\u0442 "
+                     "\u0442\u0440\u0451\u0445\u0441\u043e\u0442 \u0447\u0435\u0442\u044b\u0440\u0435\u0441\u0442\u0430 "
+                     "\u0447\u0435\u0442\u044b\u0440\u0435\u0445\u0441\u043e\u0442 "
+                     "\u0447\u0435\u0442\u044b\u0440\u0451\u0445\u0441\u043e\u0442 "
+                     "\u043f\u044f\u0442\u044c\u0441\u043e\u0442 \u0448\u0435\u0441\u0442\u044c\u0441\u043e\u0442 "
+                     "\u0441\u0435\u043c\u044c\u0441\u043e\u0442 \u0432\u043e\u0441\u0435\u043c\u044c\u0441\u043e\u0442 "
+                     "\u0434\u0435\u0432\u044f\u0442\u044c\u0441\u043e\u0442 \u0441\u043e\u0442\u043d\u044f "
+                     "\u0441\u043e\u0442\u043d\u0438 \u0441\u043e\u0442\u0435\u043d "
+                     "\u043f\u043e\u043b\u0442\u043e\u0440\u0430 \u043f\u043e\u043b\u0442\u043e\u0440\u044b "
+                     "\u043f\u043e\u043b\u0443\u0442\u043e\u0440\u0430 "
+                     "\u043d\u0435\u0441\u043a\u043e\u043b\u044c\u043a\u043e "
+                     "\u043d\u0435\u0441\u043a\u043e\u043b\u044c\u043a\u0438\u0445 \u043f\u0430\u0440\u0430 "
+                     "\u043f\u0430\u0440\u0443".split())
+# Russian: 11-19, thousand, million, billion in every case (one stem each)
+NUMBER_STEM = re.compile(r"^(?:\w+\u043d\u0430\u0434\u0446\u0430\u0442[\u044c\u0438\u044e]|\u0442\u044b\u0441\u044f\u0447\w*|"
+                         r"\u043c\u0438\u043b\u043b\u0438\u043e\u043d\w*|\u043c\u0438\u043b\u043b\u0438\u0430\u0440\u0434\w*)$")
+# short function words that never end a line (typography.md, "Line breaks"; the kit's SHORT in Phrase.tsx), English and
+# Russian: prepositions, conjunctions, articles, pronouns of one or two letters, the negation
+SHORT_WORDS = set("a an the to of in on at by for with from into and or but nor as if so not no my our your its his "
+                  "her their this that i we you he she it".split()
+                  + ("\u0432 \u0432\u043e \u043a \u043a\u043e \u0441 \u0441\u043e \u0443 \u043e \u043e\u0431 "
+                     "\u043e\u0431\u043e \u0438 \u0430 \u043d\u043e \u043d\u0435 \u043d\u0438 \u043d\u0430 \u043f\u043e "
+                     "\u0437\u0430 \u043e\u0442 \u0434\u043e \u0438\u0437 \u0431\u0435\u0437 \u0434\u043b\u044f "
+                     "\u043f\u0440\u0438 \u043f\u0440\u043e \u0447\u0442\u043e \u043a\u0430\u043a \u044d\u0442\u043e "
+                     "\u0442\u043e \u0432\u044b \u043c\u044b \u044f \u043e\u043d \u043e\u043d\u0430 \u0438\u0445 "
+                     "\u0435\u0435 \u0435\u0433\u043e \u043d\u0430\u0434 \u043f\u043e\u0434 "
+                     "\u0447\u0435\u0440\u0435\u0437 \u0438\u043b\u0438 \u0434\u0430").split())
+# particles that lean on the word before them (Russian li, zhe, by, l', zh, b): never the first word of a line
+AFTER_WORDS = set("\u043b\u0438 \u0436\u0435 \u0431\u044b \u043b\u044c \u0436 \u0431".split())
+_EDGE = "\"'()[]{}<>,.;:!?\u2026\u00ab\u00bb\u201c\u201d\u201e\u2018\u2019"
+
+
+def bare(token):
+    """A token without the punctuation around it, lowercase, Russian yo as ye (the word lists hold the ye spelling)."""
+    return str(token).strip(_EDGE + " ").lower().replace("\u0451", "\u0435")
+
+
+def is_number(token):
+    """A number of its own: digits ("12", "60%", "$100", "3rd", "5+") or a number word ("five", Russian "pyati")."""
+    t = str(token).strip(_EDGE + " ")
+    b = bare(token)
+    return bool(NUMBER_RE.fullmatch(t)) or b in NUMBER_WORDS or bool(NUMBER_STEM.match(b))
+
+
+def no_break(prev, nxt):
+    """True: a line (or a subtitle chunk) must not end between these two words: after a short function word, after a
+    number (it goes with its unit or word: "12 days", "five years"), before a dash, a percent sign or a particle that
+    leans back. A word ending in punctuation (a comma, a period) always allows the break."""
+    p = str(prev).strip()
+    if p and p[-1] in ",.;:!?\u2026)\u00bb\u201d":
+        return False
+    n = str(nxt).strip()
+    return (bare(p) in SHORT_WORDS or is_number(p) or n[:1] in ("\u2014", "\u2013", "-", "%") or bare(n) in AFTER_WORDS)
 
 
 def migrate_brand(b):
@@ -562,6 +772,7 @@ def effective(settings):
     else:
         put("memes", memes, "use_memes=false")
     put("local_memes", memes and s.get("use_local_memes"), "off")
+    put("scenes", s.get("use_scenes"), "use_scenes=false")  # designed scenes, drawn in code by the kit
     ext = online()
     if ext:
         ext.effective_online(s, put, eff)
