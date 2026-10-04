@@ -2,7 +2,7 @@
 
 Inserts are an optional layer on top of the regular edit. If everything is off, the edit runs as it would without them: main footage, shot-size changes, graphics from the brief. Decisions about inserts are made in the **visual plan** (step 7a) before the Remotion code; the render only executes the plan.
 
-**Designed scenes** (hook, quote, slogan, number, list, CTA, cover; `kind: "scene"`, ids `c01`…) live in the same plan and budget: the `full`, `split`, `panel` and `window` modes count toward coverage together with B-roll, `overlay` counts like a card, through `keep_clear`. Everything about scenes: `references/scenes.md`. The **brand tone** (`brand.json → tone`, `references/brands.md`) sits between the skill defaults and the profile's `inserts` and sets the ceilings: memes, transitions, light flashes, whips, full-frame scenes.
+**Designed scenes** (hook, quote, slogan, number, list, CTA, cover; `kind: "scene"`, ids `c01`…) live in the same plan and budget: the `full`, `split`, `panel` and `window` modes count toward coverage together with B-roll, `overlay` counts like a card, through `keep_clear`; a presenter over a scene (`keep-clear --matte`, the line `matte.py place` prints) covers the speaker's frame and counts toward coverage too. Everything about scenes: `references/scenes.md`. The **brand tone** (`brand.json → tone`, `references/brands.md`) sits between the skill defaults and the profile's `inserts` and sets the ceilings: memes, transitions, light flashes, whips, full-frame scenes.
 
 ## Settings
 
@@ -41,13 +41,15 @@ What each setting does:
 |---|---|
 | `use_broll` | B-roll at all |
 | `use_project_footage` / `use_local_footage` | B-roll sources: project, library |
-| `use_generated_footage` | code scenes in Remotion |
+| `use_generated_footage` | code scenes in Remotion (B-roll inserts, so `use_broll` stays on); with the online-sources add-on installed it also turns on the add-on's own steps for generated footage, and its skill says how to keep code scenes only |
 | `use_scenes` | designed scenes (`references/scenes.md`); on when chosen in step 0 or asked for in the prompt |
 | `use_memes`, `use_local_memes` | memes, and your own meme library |
 | `meme_size` | pop-up meme size: `s` / `m` / `l` |
 | `intensity` | `minimal` / `moderate` / `active` |
 
 **Turn everything off** (as without inserts): `use_broll=false`, `use_scenes=false`, `use_memes=false`.
+
+**Code scenes only, no footage**: `use_broll=true`, `use_project_footage=false`, `use_local_footage=false`, `use_generated_footage=true`. Designed scenes are a separate key, `use_scenes`.
 
 **What actually turns on.** Before the plan, the agent checks what is really available: an enabled source that isn't there (empty folders, no library catalog, the Remotion project doesn't build) turns itself off, and the reason goes into the report. This is not an error: the edit proceeds with what is available.
 
@@ -164,13 +166,13 @@ B-roll audio is always muted. A video meme's own sound plays only when turned on
 
 ## Footage sources
 
-**Project material.** These are other source files, in the `footage/` and `broll/` folders. The video's own source files and finished renders are excluded.
+**Project material.** These are other source files, in the `footage/` and `broll/` folders. The video's own source files and finished renders are excluded, with one exception: a cutaway cut from the video's own source on purpose (`extract` in `cut.json`, for “detail first” or a view the speech mentions) is valid material. `cut.py` makes it in the rough cut's color, and `footage.py` lists it as project footage (its `"what"` in `cut.json` is its description) and takes it as it is, without applying the look a second time.
 
 File names (`IMG_xxxx`) say nothing, so descriptions are written once:
 1. **Index.** For each file: size, duration, and 3 frames (15/50/85 %) on a contact sheet.
 2. **Descriptions.** The agent looks at the sheets and writes a description and tags for each file in `footage_index.json`.
 
-After that, search runs on the words of the descriptions. An angle from the same shoot that didn't make the edit is ready-made B-roll.
+After that, search runs on the words of the descriptions. An angle from the same shoot that didn't make the edit is ready-made B-roll. `plan-search` scores each insert by its `query` (its `what` when the query finds nothing) the same way `search` does; an insert with no candidate at `--min-score` 0.5 is marked `skipped` with the way back: describe the file (`footage.py describe <file> "…"` works on a file the index doesn't know yet), then `plan-search --retry`, or other words with `plan-search --insert b01 --query "…"`. `index --dir <folder>` writes its own contact sheets (`_footage_index/<folder>-sheet-NN.jpg`) and leaves the project's shared sheets alone.
 
 **Library.** Vertical videos from the asset library catalog (SKILL.md, section 11) whose verdict for the brand is not “no”.
 

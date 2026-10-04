@@ -5,7 +5,7 @@ The core's matte.py does everything else (frames from the rough cut, edge cleanu
 the check frame, place) and runs rembg on this computer. This command replaces only "run rembg and build the WebM":
 the frames go to your server as JPG in one archive, rembg and the WebM packaging run there, one file comes back.
 
-    python <core scripts>/addon.py matte cut edit/<id> --from 12.4 --to 19.0 [--width 720] [--name host] [--video <file>] [--host <ssh host>] [--dry]
+    python <core scripts>/addon.py matte cut edit/<id> --from 12.4 --to 19.0 [--width 1080] [--name host] [--video <file>] [--host <ssh host>] [--dry]
     python <core scripts>/addon.py matte place edit/<id> ...      # the core's place (no server)
 
 The server is an ssh host you reach without a password prompt (a key in your ssh agent or ~/.ssh/config). The script

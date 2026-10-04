@@ -2,7 +2,7 @@
 
 One complete scene component for Remotion, as a starting point for the others in `references/scenes.md`. It shows the conventions every scene follows: brand colors and fonts come from the profile, never as HEX values or font names in the code; entrance and exit follow the scene-tone table; the text waits for its fonts before it is measured; the lines form one block; nothing goes outside x 60–960 and y 220–1500.
 
-Copy it into your Remotion project (for example `src/kit/scenes/QuoteScene.tsx`) and adapt it. The quote text must be verbatim from the transcript; the plan check compares it. The two other tones, `hype` and `parody` (`bold` only), follow the same pattern: a row in `TONES` and one in `MOTION`. The two other tones, `hype` and `parody` (`bold` only), follow the same pattern: a row in `TONES` and one in `MOTION`.
+Copy it into your Remotion project (for example `src/kit/scenes/QuoteScene.tsx`) and adapt it. The quote text must be verbatim from the transcript; the plan check compares it. The two other tones, `hype` and `parody` (`bold` only), follow the same pattern: a row in `TONES` and one in `MOTION`.
 
 ```tsx
 import React from "react";

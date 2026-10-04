@@ -26,11 +26,13 @@ Profiles live in the project, not in the plugin: a plugin update doesn't touch t
 | `{{BRAND}}`, `{{VOICE}}`, `{{TAGLINE}}` | `name`, `voice`, `tagline` |
 | `{{DARK}}`, `{{ACCENT}}`, `{{LIGHT}}` | `colors.primary`, `colors.accent`, `colors.light` |
 | `{{MUTED}}`, `{{MARKER}}`, `{{INK}}` | `colors.extra.muted`; `colors.extra.marker` (the marker color); `colors.extra.ink`, alias `on_marker` (text on the marker). If the brand doesn't set a marker, `{{MARKER}}` = `colors.accent` and `{{INK}}` = `colors.text_on_accent`; its own marker without `ink` gets near-black `#111111` text |
-| `{{FONT_HEADING}}`, `{{FONT_TEXT}}`, `{{FONT_SERIF}}` | `fonts.heading`, `fonts.body`, `fonts.serif` |
+| `{{FONT_HEADING}}`, `{{FONT_TEXT}}`, `{{FONT_SERIF}}` | `fonts.heading`, `fonts.body`, `fonts.serif` (optional: the serif of “Editorial”; the kit takes it for that style's headings when `looks.editorial.heading` is not set: `brand.py set <slug> fonts.serif.family="Playfair Display" fonts.serif.weights=[600,700] fonts.serif.source=google`). The general way to give any style its fonts is `looks.<style>.heading` / `.body`. The kit loads the upright faces of a Google font only: an italic (Editorial's “serif italic”) is loaded in the per-video composition (`loadFont("italic", { weights, subsets })` from the same `@remotion/google-fonts` module), otherwise the browser slants the upright face; a local font's italic files (`fonts.<role>.italic`) are loaded |
 | `{{LOGO_DARK_BG}}`, `{{LOGO_LIGHT_BG}}`, `{{LOGO_MARK}}` | `logos.on_dark`, `logos.on_light`, `logos.mark_on_dark` |
 | `{{FORBIDDEN_IMAGES}}`, `{{FORBIDDEN_WORDS}}` | `forbidden_imagery` (+ `_en`, for English-language searches and prompts), `forbidden_words` |
 | `{{SITE}}`, `{{HANDLE}}`, `{{CODE_WORD}}` | `cta.site`, `cta.handle`, `cta.code_word` |
 | `{{APPROVER}}`, `{{ACCOUNT_TYPE}}` | `approver`, `account` |
+
+**Subtitle colors per speaker** (a two-person video): `colors.speakers`, an optional list in the order of the sorted speaker labels (`brand.py set <slug> colors.speakers='["#F7F9FB","#8FDCDD"]'`). Without it the first speaker keeps the subtitle mode's own colors and the second takes `colors.accent`; a dark accent over the “Typewriter” darkening needs a lighter tint here (measure: `visual_plan.py shade edit/<id> --color <hex>`).
 
 ## Your settings in the project
 
@@ -164,9 +166,9 @@ The file is copied into `assets/`, and its role is written to `logos`. The role 
 
 Where each one comes from in the frame:
 - **Frame corner:** `mark_on_dark` → `on_dark`.
-- **End card:** `on_dark` → `mark_on_dark`.
+- **End card:** `on_dark` → `mark_on_dark`; with a CTA the kit sets the brand line (`tagline`) small under the logo, and a profile without a `tagline` gets the `on_dark_tagline` variant instead.
 - **No logo:** the brand name is typeset on the card.
-- **Corner mark** (if chosen in the brief): top left, just below the UI zone, 90–110 px, ~85 % opacity, for the whole video.
+- **Corner mark** (if chosen in the brief): top right, just below the UI zone and left of the buttons column, for the whole video; the kit draws it 112 px at x 828–940, y 236–348, ~90 % opacity, and fades it out while a scene is on. Not top left: hooks, cards and lists are left-aligned from y 250 and would run into it. A brand that wants it elsewhere sets it in its `guide.md`, and the video gets a per-video composition.
 - A logo is never stretched, never recolored beyond the variants in the profile, and never placed on a busy background without a backing plate.
 
 A variant you recolored yourself (for example white made from a dark one) goes in only with a note in `unverified` and a question to the brand owner.
@@ -205,7 +207,9 @@ The profile is copied into the Remotion project: the JSON to `src/brands/<slug>.
 
 HEX codes and font names are never written into the video's code.
 
-**Styles the kit draws.** `ReelKit` draws “Marker” (`marker`, and its variant `v2`, which sets every line in the body font) and “Brand” (`brand`) itself. `minimal`, `editorial`, `bold` and `glass` are drawn as “Marker” in brand colors with a console warning: for those styles, write a per-video composition that reuses the kit's components (`Phrase`, subtitles, inserts, scenes). `brand.json → looks.<style>` overrides a style's look for this brand: `mark` (the marker color), `on_mark` (text on it), `field` (the field of full-frame scenes in this style, the primary color by default; on a light field the text is the primary color), `heading` and `body` (fonts, in the `fonts` format), for example `"looks": {"marker": {"mark": "#F5FAA4", "on_mark": "#111111"}}`.
+**Styles the kit draws.** `ReelKit` draws “Marker” (`marker`, and its variant `v2`, which sets every line in the body font) and “Brand” (`brand`) itself. `minimal`, `editorial`, `bold` and `glass` are drawn as “Marker” in brand colors with a console warning: for those styles, write a per-video composition that reuses the kit's components (`Phrase`, subtitles, inserts, scenes). The plan check still times scenes by the kit's own animations (the reading-time floor in `references/scenes.md`: the `stat` counter waits 24 frames, lines enter with a stagger), so the composition keeps its entrances at or under those, or the scene's `dur` grows by the difference. Text such a style puts over the video without a plate (white capitals in the headroom, say) needs a darkening measured for its zone: `visual_plan.py shade edit/<id> --scene <id>` (or `--zone x,y,w,h`). A style outside `styles.allowed` is the brand's rule broken: `reelcfg.py save` warns, ask the brand owner and record the choice in `project.md`. `brand.json → looks.<style>` overrides a style's look for this brand: `mark` (the marker color), `on_mark` (text on it), `field` (the field of full-frame scenes in this style, the primary color by default; on a light field the text is the primary color), `heading` and `body` (fonts, in the `fonts` format), for example `"looks": {"marker": {"mark": "#F5FAA4", "on_mark": "#111111"}}`.
+
+**Focus brackets.** In the “Brand” style the kit draws focus brackets only inside `stat`, `word` and `cta` scenes. Brackets that close in on a spoken word over the video are a per-video composition: `ReelKit` plus a component that puts the kit's `Brackets` (`src/kit/scenes/parts.tsx`) around the word's box on its word; record that box in the plan's `keep_clear`.
 
 **Fonts in the kit.** `src/kit/brand.ts` loads Google fonts by family name from its `GOOGLE` map, which knows 14 families: Inter, Manrope, Oswald, Montserrat, Onest, Inter Tight, Playfair Display, Roboto, Rubik, Unbounded, Golos Text, Nunito, Open Sans, PT Sans. An unknown family falls back to Inter with a warning. Another Google family is an import plus one entry in the `GOOGLE` map; `kit.py check` lists that file as changed, and `kit.py update` replaces `src/kit/` (backup in `.kit-backup/`), so add the entry again after an update. The kit requests only the `latin` and `cyrillic` subsets of a Google font: for another script (for example Vietnamese or Greek), add its subset in that loader or use font files. The brand's own font files: `"source": "local"` with `files` (upright faces) and `italic` (italic faces) in `brand.json → fonts`; the weight and style come from the file name (Thin 100 … Black 900; Italic, Oblique or `-It`).
 

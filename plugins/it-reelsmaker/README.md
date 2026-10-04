@@ -12,8 +12,8 @@ The plugin is a skill built on real client videos: the thresholds and numbers in
 
 1. **Brand, style and inserts first.** Pick a saved brand profile (colors, fonts, logos, design rules) or create one from a name, 1–3 colors and a brand tone (one of eight, from premium and warm to drive and bold; you can change it later), which sets which memes are allowed, how many cutaways and how loud the techniques can be. Choose one of six styles and the subtitle mode.
 2. **Word-level transcript**, then a search for retakes and slips.
-3. **Cut plan → your “yes”.** The plan lists what stays, what goes and why. Nothing is cut before you approve.
-4. **Rough cut** with ffmpeg: segment edges found by a speech mask (on a tested video they matched a manual cut within ±40 ms), color, speed-up, subtitles on the new timeline. Then faces are measured across the whole cut.
+3. **Cut plan → your “yes”.** The plan lists what stays, what goes and why, and offers 2–3 ways to start and end the video: in order, without the slow start, or a teaser (a strong line from later plays first). Nothing is cut before you approve.
+4. **Rough cut** with ffmpeg: segment edges found by a speech mask (on a tested video they matched a manual cut within ±40 ms), color (white balance measured to neutral on the graded frames, before your LUT, not judged by eye), speed-up, subtitles on the new timeline. Then faces are measured across the whole cut.
 5. **Graphics brief** in one question: logo, call to action, techniques, sound.
 6. **Visual plan** for inserts (B-roll from your project or library, code scenes, designed scenes, memes), shown before any render.
 7. **Remotion**: virtual camera, graphics on their spoken words, subtitles, render, and an audit of faces against text in the final file.

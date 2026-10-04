@@ -20,8 +20,15 @@ rules and hands the inserts over to Remotion.
         [--box x,y,w,h] [--side left|right] [--sound card] [--hide-subtitles] --what "..." --why "..."
     python scripts/visual_plan.py init edit/promo1 --scenes-only --duration 22 [--brand acme]   # a promo without footage
     python scripts/visual_plan.py keep-clear edit/4821 --from 3.7 --to 9.6 --box 60,400,760,420 --what "price card"
+    python scripts/visual_plan.py keep-clear edit/4821 --remove 2      # the 2nd zone as numbered in visual_plan.md
+    python scripts/visual_plan.py keep-clear edit/4821 --from 23.4 --to 26.7 --box 404,1038,632,652 --what presenter \
+        --matte host --own-face 595,1120,181,233     # the presenter layer from matte.py place (it prints this line)
+    python scripts/visual_plan.py hide-subs edit/4821 --from 23.4 --to 26.7 --why "presenter over a scene"
+    python scripts/visual_plan.py hide-subs edit/4821 --remove 1       # numbered in visual_plan.md
+    python scripts/visual_plan.py remove edit/4821 c03 [b01 ...]       # take inserts out of the plan (to change one: remove, add)
     python scripts/visual_plan.py validate edit/4821        # errors -> exit code 1; warnings -> exit code 0
     python scripts/visual_plan.py md edit/4821              # visual_plan.md: show it to the person before the render
+    python scripts/visual_plan.py shade edit/4821           # the "Typewriter" darkening for 4.5:1 -> reel.json subtitles_shade
     python scripts/visual_plan.py export edit/4821 --remotion reels [--name 4821]
 
 --at: a second on the timeline (5.2), a span (s03, its start) or a word (word:paint#1, the start of its nth occurrence).
@@ -30,7 +37,12 @@ approval) | skipped (declined: the main footage stays, the reason is in fallback
 render; an unfilled code-scene brief (gen) on an insert that is not ready is a warning, not an error.
 Settings come from edit/<id>/reel.json (reelcfg.py save); the plan holds only a snapshot, and validate refreshes it.
 `init --set` saves the keys to reel.json. keep-clear without a plan creates a plan with no inserts (a graphics registry).
-Coverage is the union of the intervals of all inserts (B-roll and memes, popups included); coverage and spacing are errors.
+keep-clear --matte NAME marks a presenter layer (matte.py place prints the command): its span counts in the coverage,
+--own-face is the presenter's own face (validate and faces.py audit don't flag it in its own zone), and export copies
+edit/<id>/matte/NAME.webm to public/<id>/. hide-subs: windows where a per-video composition hides the subtitles
+(a presenter, an accent title): export adds them to props.hideSubtitles, faces.py audit reads them.
+Coverage is the union of the intervals of all inserts (B-roll and memes, popups included, and presenter layers);
+coverage and spacing are errors.
 --source online (online footage and memes) needs the online-sources add-on it-reelsmaker-online; without it the online
 source is unavailable.
 
@@ -42,17 +54,27 @@ has a source, contrast of the brand colors, coverage (full/split/panel/window to
 overlay/split/window box (face, safe zone, keep_clear), no two scenes at once, not over a meme, only cta in the last 2 s.
 The brand tone's ceilings (memes, transitions, flash/whip, full) are errors; reel.json -> tone_override: true turns them
 into warnings (going louder on explicit request, noted in the report). export --props writes props.scenes and adds the
-overlay/split/window scenes to keep_clear (faces.py audit sees them).
+overlay/split/window scenes to keep_clear (faces.py audit sees them), and records the render's subtitle band in the plan
+(subtitles_band: the top below the measured chin), which faces.py audit checks.
+The "framed" format (reel.json -> format: framed, optional window and label; references/techniques.md): a horizontal
+rough cut in a rounded window on the style's field. The camera is clamped to the window (as the kit draws it), boxes
+and the subtitle band stay inside the window's text area (reels_common.framed_area: with no label the field above the
+window joins it), scenes are overlay or full (full covers the window), and export writes props.framed (the window, the
+label, the rough cut's size, the field color) so ReelKit draws the layout itself. validate checks that faces.json was
+measured in the source geometry and that the rough cut is horizontal.
 The "scenes only" format (init --scenes-only --duration N): no speech spans, --at in seconds only, every scene is full,
-scene coverage >= 95 %; export --props: video "", empty captions with the duration, subtitles none.
+scene coverage >= 95 %; transitions are cuts (the texts hand over at the join, as the kit draws it) and more than 4 frames
+of empty field at a join is a warning; export --props: video "", empty captions with the duration, subtitles none.
 """
 import argparse, contextlib, datetime, filecmp, hashlib, json, math, re, shutil, sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from reels_common import (MEME_SIZES, budget, edit_dir, editing_json, effective, forbidden_hits, inside, load_config,
-                          load_json, locked, media_kind, online, parse_sets, probe, safe_slug, save_json, tokens,
-                          utf8_stdio, warn)
+from reels_common import (FRAMED_HOOK_MIN, FRAMED_RADIUS, MEME_SIZES, NUMBER_RE, SUB_BAND, SUB_BLOCK_H, SUB_MAX_TOP,
+                          SUB_TOP_KIT, budget, cam_fit, edit_dir, editing_json, effective, forbidden_hits, framed_area,
+                          framed_at, framed_issues, framed_source, framed_view, inside, load_config, load_json, locked,
+                          media_kind, online, parse_sets, probe, project_root, safe_slug, save_json, tokens, utf8_stdio,
+                          warn)
 
 SCENE_MODES = ["overlay", "split", "panel", "window", "full"]  # order = default preference (the face stays)
 KINDS = {"broll": {"modes": ["replace", "window"], "prefix": "b"}, "meme": {"modes": ["popup", "cutaway"], "prefix": "m"},
@@ -83,8 +105,9 @@ _RU_AZ = _ru("430 - 44f")  # the Russian lowercase letters, for character classe
 
 # Speech patterns for the span hints: English words, plus Russian ones written as code points (see _ru); the comment
 # above each pattern glosses its Russian words. Add words of your speaker's language the same way.
-# numbers: one ... ten, hundred, two hundred, thousand*, million*, percent*, half*
-NUM_RE = re.compile(r"\d|\b(two|three|four|five|six|seven|eight|nine|ten|hundred\w*|thousand\w*|million\w*|percent\w*|"
+# numbers: a number of its own (reels_common.NUMBER_RE: "12", "60%", "$100", not the digits of a name such as "ACME24"),
+# one ... ten, hundred, two hundred, thousand*, million*, percent*, half*
+NUM_RE = re.compile(NUMBER_RE.pattern + r"|\b(two|three|four|five|six|seven|eight|nine|ten|hundred\w*|thousand\w*|million\w*|percent\w*|"
                     r"half|halves|"
                     + _ru(r"43e 434 438 43d|43e 434 43d 430|434 432 430|434 432 435|442 440 438|447 435 442 44b 440 435|"
                           r"43f 44f 442 44c|448 435 441 442 44c|441 435 43c 44c|432 43e 441 435 43c 44c|"
@@ -111,16 +134,16 @@ SCENE_TYPES = {
     "quote": {"modes": ["overlay", "split", "full"], "need": ["lines", "source"]},
     "slogan": {"modes": ["full", "split"], "need": ["lines"]},
     "stat": {"modes": ["overlay", "split", "full"], "need": ["value", "lines", "source"]},
-    "list": {"modes": ["panel", "split", "full"], "need": ["items"]},
+    "list": {"modes": ["overlay", "panel", "split", "full"], "need": ["items"]},  # overlay: items on plates, the speaker stays
     "contrast": {"modes": ["overlay", "split", "full"], "need": ["lines"]},
-    "word": {"modes": ["overlay", "split", "panel"], "need": ["lines"], "variants": ["grid-pick", "funnel", "timeline", "icon"]},
+    "word": {"modes": ["overlay", "split", "panel", "full"], "need": ["lines"], "variants": ["grid-pick", "funnel", "timeline", "icon"]},
     "chat": {"modes": ["split", "full", "window"], "need": ["items"]},
     "ui": {"modes": ["split", "full", "window"], "need": ["media", "interaction"]},
     "cta": {"modes": ["overlay", "full"], "need": ["lines"], "variants": ["tap", "comment", "bio"]},
     "cover": {"modes": ["full"], "need": ["lines"]},
 }
 SCENE_SOURCES = ["speech", "brief", "brand", "client", "agent"]
-SCENE_SOUNDS = ["card", "type", "tap", "hit", "paper", "none"]
+SCENE_SOUNDS = ["card", "type", "tap", "hit", "paper", "bell", "none"]  # bell: payoff, a number lands, the logo (scenes.md)
 CHAT_FROM = ["me", "them", "system"]
 INTERACTIONS = ["tap", "type", "cursor", "swipe"]
 COVER_MODES = ("full", "split", "panel", "window")  # scenes that cover the speaker's frame: they count toward coverage
@@ -328,6 +351,26 @@ def build_plan(e, cap, s, prov, doc):
     return plan
 
 
+AND_RE = re.compile(r"\s(?:and|or|" + _ru("438|438 43b 438") + r")\s", re.I)  # and, or (Russian: i, ili)
+
+
+def enumeration(text):
+    """Three or more SHORT parts in a row (up to 3 words each), split at commas, semicolons, colons, dashes and a
+    standalone "and"/"or": "patience, discipline and focus". Counting short parts anywhere caught clause commas (T2:
+    "and now the other way round, recall a big deal, which you were sure, that you would close, but lost" - three
+    short clauses, no list); in a list the short parts stand next to each other. A part needs a word of 4+ letters: a
+    lone short word ("so" in "as at work, so in life", split at its "and") is a link, not an item (T4: that span got
+    the list hint while the real list, set off by dashes - "this feeling - to feel people, understand their needs,
+    find their pains - never left" - got none)."""
+    parts = [x for x in re.split(r"[,;:—–]|\s-\s", AND_RE.sub(",", f" {text} ")) if x.strip()]
+    run = best = 0
+    for x in parts:
+        words = [w for w in x.split() if re.search(r"\w", w)]
+        run = run + 1 if words and len(words) <= 3 and any(len(re.sub(r"\W", "", w)) >= 4 for w in words) else 0
+        best = max(best, run)
+    return best >= 3
+
+
 def scene_hints(n, total, text, start, end, cuts, long_cuts):
     """Hints for "a scene the video lacks" (references/scenes.md). A hint is not a decision: a scene has its own what
     and why."""
@@ -336,8 +379,7 @@ def scene_hints(n, total, text, start, end, cuts, long_cuts):
         out.append("scene:hook - a weak start (a filler word, or > 2 s without a number or a question) -> a hook scene")
     if NUM_RE.search(text):
         out.append("scene:stat - a number in the speech -> a stat scene (a source is required)")
-    parts = [x for x in re.split(r"[,;]", text) if x.strip()]
-    if LIST_RE.search(text) or (len(parts) >= 3 and sum(1 for x in parts if len(x.split()) <= 3) >= 3):
+    if LIST_RE.search(text) or enumeration(text):
         out.append("scene:list - an enumeration -> a list scene (items on their own words)")
     if QUOTE_RE.search(text):
         out.append("scene:quote - someone else's words -> a quote scene (verbatim, with a source)")
@@ -378,11 +420,13 @@ def cmd_init(a):
     print(f"plan: {plan_path(e)}: {len(plan['segments'])} spans, {fmt_t(dur)}"
           + (f"; keep_clear kept ({len(plan['keep_clear'])})" if plan["keep_clear"] else ""))
     b = plan["budget"]
-    if not eff.get("broll") and not eff.get("memes"):
+    scenes = bool(s.get("use_scenes"))  # T3: "inserts are off" was printed with designed scenes on
+    if not eff.get("broll") and not eff.get("memes") and not scenes:
         print("inserts are off: the plan has only the main footage (the edit runs as without inserts)")
     else:
         print(f"budget ({s['intensity']}): up to {b['broll_max'] if eff.get('broll') else 0} B-roll, "
-              f"up to {b.get('memes_max', 0) if eff.get('memes') else 0} memes, inserts <= {b['coverage_max_s']} s in total, "
+              f"up to {b.get('memes_max', 0) if eff.get('memes') else 0} memes, designed scenes {'on' if scenes else 'off'}, "
+              f"inserts <= {b['coverage_max_s']} s in total (full, split, panel and window scenes count), "
               f">= {b.get('min_gap_s')} s between inserts. This is a ceiling, not a target.")
     for k, r in why.items():
         if r != "off" and k in ("online_footage", "generate_now", "online_memes") and s.get({"online_footage": "use_online_footage",
@@ -437,21 +481,55 @@ def resolve_at(at, plan, cap):
     return float(at)
 
 
-def window_issues(e, plan, ins, box, fdata=None):
-    """Problems with a window box: the safe zone, the face (faces.json through the insert's camera, with MARGIN),
-    keep_clear."""
+def text_zone(e):
+    """(x0, y0, x1, y1) where boxes may go: the safe zone (WINDOW_ZONE), or in the "framed" format the window's text
+    area (reels_common.framed_area), and the zone's name for messages."""
+    fr = framed_at(e)
+    if fr:
+        return tuple(framed_area(fr)), "the framed window's text area"
+    return WINDOW_ZONE, "the safe zone"
+
+
+def faces_seen(e, plan, data, t0, t1, cam=None, shots_ok=True):
+    """The rough cut's faces in [t0, t1] where the viewer sees them -> (boxes, how). Through camera.json at each
+    sample's time, as the kit renders it and faces.py audit checks it (how "camera.json"); else through the static
+    cam (how "cam") or as measured (None). "Framed": relative to the window's center, the camera clamped to the window
+    (T7: the full-frame clamp turned a shot at cx 820 into cx 540 and keep-clear missed a face faces.py check found),
+    and clipped to it (beyond the window a face is not on screen)."""
     import faces as fc
-    x0, y0, x1, y1 = WINDOW_ZONE
+    if not data:
+        return [], None
+    fr = fc.window(data)
+    shots = plan_camera(e, plan) if shots_ok else []
+    if shots:
+        geo = camera_view(e, data)
+        st, end = data.get("step", 0.25), plan_duration(e, plan) or shots[-1]["t"] + 1.0
+        return [b for smp in data["samples"] if t0 - st <= smp["t"] <= t1 + st
+                for b in fc.screen_faces(smp["faces"], camera_at(shots, smp["t"], end, view=geo), fr)], "camera.json"
+    return fc.screen_faces(fc.between(data, t0, t1), cam, fr), ("cam" if cam else None)
+
+
+def window_issues(e, plan, ins, box, fdata=None):
+    """Problems with a window box: the safe zone (the framed window's text area), the face (faces.json through
+    camera.json, else through the insert's --cam, with MARGIN), keep_clear."""
+    import faces as fc
+    (x0, y0, x1, y1), zone = text_zone(e)
     x, y, w, h = box
     out = []
     if x < x0 or y < y0 or x + w > x1 or y + h > y1:
-        out.append(f"window {box} leaves the safe zone x {x0}-{x1}, y {y0}-{y1}")
+        out.append(f"window {box} leaves {zone} x {x0}-{x1}, y {y0}-{y1}")
     t0, t1 = ins["start"], ins["start"] + ins["dur"]
-    faces_ = [fc.cam_box(b, ins.get("cam")) for b in fc.between(fdata if fdata is not None else fc.load(e), t0, t1)]
+    data = fdata if fdata is not None else fc.load(e)
+    # the face on screen: through camera.json at each sample's time, as the kit renders it and faces.py audit checks it;
+    # the insert's own static --cam only without camera.json (and the split layout's fixed speaker frame). T3: a hook box
+    # with --cam 1,540,960 passed validate and failed the render audit: the shot's push-in lifted the face into its margin
+    faces_, how = faces_seen(e, plan, data, t0, t1, ins.get("cam"), shots_ok=ins.get("mode") != "split")
+    shots = how == "camera.json"
     hit = [f for f in faces_ if fc.inter(box, fc.grow(f, fc.MARGIN))]
     if hit:
         out.append(f"window {box} covers the face {fc.union(hit)} (margin {fc.MARGIN} px, "
-                   + ("with the camera)" if ins.get("cam") else "without a camera: if the span has a push-in, add ... --cam z,cx,cy)"))
+                   + ("with the camera of camera.json)" if shots else "with the camera)" if ins.get("cam") else
+                      "without a camera: if the span has a push-in, add ... --cam z,cx,cy)"))
     for k in plan.get("keep_clear", []):
         if k["start"] < t1 and k["end"] > t0 and fc.inter(box, k["box"]):
             out.append(f"the window covers '{k.get('what', 'graphics')}' {k['box']}")
@@ -486,6 +564,24 @@ def find_spoken(text, cap, near=None, window=None):
     return hits, best
 
 
+def near_match(text, cap):
+    """How many words of text the speech has in the same order at its best place (a window a little longer than the
+    text, so one word added or changed in the middle still counts the rest). find_spoken's run stops at the first
+    difference: T1 reported "1 of 5 words matched" for a quote with one word changed."""
+    q = norm_words(text)
+    seq = [t for w in (cap or {}).get("words", []) for t in norm_words(w.get("text", ""))]
+
+    def lcs(a, b):
+        prev = [0] * (len(b) + 1)
+        for x in a:
+            cur = [0]
+            for j, y in enumerate(b):
+                cur.append(prev[j] + 1 if x == y else max(prev[j + 1], cur[j]))
+            prev = cur
+        return prev[-1]
+    return max((lcs(q, seq[i:i + len(q) + 2]) for i in range(len(seq))), default=0)
+
+
 def is_inside(p, root):
     """p is inside root (after resolve), not by a string startswith: "edit/48" does not accept "edit/4821"."""
     try:
@@ -504,20 +600,26 @@ def layout_frames(tr, T, way):
     """Frames of a layout change, as layoutFrames in the scene kit (kit/scenes/tones.ts)."""
     if tr == "cut":
         return 0
-    if tr == "flash":
-        return 3
+    if tr == "flash":  # a hard cut under the light flash (LightFlash.tsx): no layout frames
+        return 0
     if tr == "whip":
         return 5
     return min(14, max(8, T.get("in", 14))) if way == "in" else min(10, max(6, T.get("out", 9)))
 
 
-def scene_timeline(sc, T, mode, fps, words):
+def scene_timeline(sc, T, mode, fps, words, only=False):
     """Frames of a scene from its start, as sceneTimeline in the scene kit (kit/scenes/tones.ts): a smooth transition
-    over a pause becomes a cut ("over a pause, a hard cut"), lead/tail are 0.6 of the layout change (except overlay)."""
+    over a pause becomes a cut ("over a pause, a hard cut"), lead/tail are 0.6 of the layout change (except overlay).
+    only ("scenes only"): every smooth transition is a cut: there is no speaker to move and the field is the
+    background, so the text enters from the scene's first frame and has left by its last (T6: 14-15 empty frames of
+    bare field at every join, the old text's exit tail plus the new one's lead)."""
     n = max(1, jround(sc["dur"] * fps))
     tin = sc.get("transition_in") or T.get("transition", "cut")
     tout = sc.get("transition_out") or T.get("transition", "cut")
-    if words:
+    if only:
+        tin = "cut" if tin in ("fade", "slide", "whip") else tin
+        tout = "cut" if tout in ("fade", "slide", "whip") else tout
+    elif words:
         a, b = sc["start"], sc["start"] + sc["dur"]
         speaking = lambda t0, t1: any(w["start"] < t1 and w["end"] > t0 for w in words)
         if tin in ("fade", "slide", "whip") and not speaking(a, a + layout_frames(tin, T, "in") / fps):
@@ -578,8 +680,26 @@ def text_full_on(sc, typ, lines, tl, fps, words):
         return lead + 3 + (nl - 1) * 4 + inF
     if typ == "stat":
         return max(lead + max(inF, 24), lead + 8 + (nl - 1) * 4 + inF)
-    if typ == "cta":
-        return lead + (nl - 1) * 4 + inF
+    if typ == "cta":  # as CtaAction.tsx draws each variant
+        var = sc.get("variant") or "tap"
+        it = sc.get("interaction") or {}
+        own = (it.get("text") or "").strip()
+        if var == "tap":  # the head is the first line; the button (or the clarifier) comes in at lead + 6
+            return lead + 6 + inF if (own or len(lines) > 1) else lead + inF
+        if var == "comment":  # the head, the comment field at lead + 6, then the code word is typed (2 frames a character)
+            quoted = next((m.group(1) for m in (re.search(r"[\u00ab\"\u201e\u201c]([^\u00bb\"\u201d]+)[\u00bb\"\u201d]", x)
+                                                for x in lines) if m), None)
+            word = own or quoted or (lines[1] if len(lines) > 1 else "")
+            head = len(lines) if (own or quoted) else 1
+            ti = it.get("t")
+            t0 = (max(lead + inF + 4, jround((ti - sc["start"]) * fps)) if isinstance(ti, (int, float))
+                  else lead + inF + 4)
+            return max(lead + (head - 1) * 4 + inF, lead + 6 + inF, t0 + 2 * len(word))
+        # bio: the head (the lines without the link) and the profile row at lead + 6
+        link = own or next((x for x in lines if re.fullmatch(r"\S+\.[a-z\u0430-\u044f]{2,}(/\S*)?|@\S+|https?://\S+",
+                                                               x.strip(), re.I)), "")
+        head = len([x for x in lines if x != link])
+        return max(lead + max(0, head - 1) * 4 + inF, lead + 6 + inF)
     if typ == "word":
         return lead + 10 + (nl - 1) * 4 + inF
     if typ == "contrast" and len(lines) == 2:
@@ -604,12 +724,12 @@ def default_box(mode):
 
 
 def hides_subtitles(sc):
-    """Subtitles are hidden (as in SceneLayer of the scene kit): split/panel/window/full and slogan always; hook and
-    quote by default (the scene text repeats the speech) unless hide_subtitles=false is explicit; the rest per
-    hide_subtitles."""
+    """Subtitles are hidden (as in SceneLayer of the scene kit): split/panel/window/full and slogan always; hook, quote
+    and list by default (the scene text repeats the speech; a list over the video replaces it, two texts at once don't
+    read) unless hide_subtitles=false is explicit; the rest per hide_subtitles."""
     if sc.get("mode") in ("split", "panel", "window", "full") or sc.get("type") == "slogan":
         return True
-    if sc.get("type") in ("hook", "quote") and sc.get("hide_subtitles") is not False:
+    if sc.get("type") in ("hook", "quote", "list") and sc.get("hide_subtitles") is not False:
         return True
     return bool(sc.get("hide_subtitles"))
 
@@ -631,11 +751,11 @@ def scene_box_issues(e, plan, sc, box, fdata=None):
         if mode == "split":
             probe_["cam"] = SPLIT_CAM
         return window_issues(e, p, probe_, box, fdata)
-    x0, y0, x1, y1 = WINDOW_ZONE
+    (x0, y0, x1, y1), zone = text_zone(e)
     x, y, w, h = box
     out = []
     if x < x0 or y < y0 or x + w > x1 or y + h > y1:
-        out.append(f"box {box} leaves the safe zone x {x0}-{x1}, y {y0}-{y1}")
+        out.append(f"box {box} leaves {zone} x {x0}-{x1}, y {y0}-{y1}")
     win = SPEAKER_WINDOW.get(sc.get("side") or "right", SPEAKER_WINDOW["right"])  # as speakerTarget in the kit: right by default
     if fc.inter(box, win):
         out.append(f"box {box} covers the speaker's window {win} (the face must stay visible)")
@@ -679,6 +799,13 @@ def add_scene(a):
     if not a.type:
         sys.exit("scene: --type is required (" + ", ".join(SCENE_TYPES) + ")")
     spec = SCENE_TYPES[a.type]
+    variants = spec.get("variants") or []
+    # T1: a hook added without --variant passed here and failed only at validate
+    if ("variant" in spec["need"] and not a.variant) or (a.variant and variants and a.variant not in variants):
+        sys.exit(f"scene {a.type}: --variant {'is required' if not a.variant else a.variant + ' is not one of them'}: "
+                 f"{', '.join(variants)}")
+    if a.variant and not variants:
+        sys.exit(f"scene {a.type} has no variants: drop --variant")
 
     def js(v, what):
         if v is None:
@@ -715,6 +842,10 @@ def add_scene(a):
         mode = a.mode or ("full" if only else next(m for m in SCENE_MODES if m in spec["modes"]))
         if mode not in SCENE_MODES:
             sys.exit(f"scene mode {mode}: allowed {', '.join(SCENE_MODES)}")
+        if only and mode != "full":  # T6: accepted here, refused only by validate
+            sys.exit(f"'scenes only' format: there is no speaker, so the mode is full only, not {mode}")
+        if mode not in spec["modes"]:
+            sys.exit(f"scene {a.type}: mode {mode} is not for it (allowed: {', '.join(spec['modes'])})")
         for it in items or []:  # item times: by spoken words (or seconds)
             if isinstance(it, dict) and it.get("t") is None and it.get("at") is not None:
                 if only and str(it["at"]).startswith("word:"):
@@ -734,7 +865,7 @@ def add_scene(a):
               "box": [int(float(x)) for x in a.box.split(",")] if a.box else None, "side": a.side,
               "source": {"kind": a.source, "ref": a.source_ref} if a.source in SCENE_SOURCES else None,
               "what": a.what, "why": a.why, "transition_in": tr_in, "transition_out": a.transition_out or tr_in,
-              "sound": a.sound, "hide_subtitles": bool(a.hide_subtitles) or mode in ("split", "panel", "window", "full") or a.type in ("slogan", "hook", "quote"),
+              "sound": a.sound, "hide_subtitles": bool(a.hide_subtitles) or mode in ("split", "panel", "window", "full") or a.type in ("slogan", "hook", "quote", "list"),
               "status": "planned", "fallback": "main footage"}
         if a.type == "cover" and a.frame_at is not None:
             sc["frame_at"] = round(a.frame_at, 3)  # the video second under the cover (the cover composition, export -> cover.frameAt)
@@ -760,7 +891,60 @@ def read_need(n, R):
     return R.get("short_s", 0.8) if n <= R.get("short_words", 3) else max(R.get("min_s", 1.2), R.get("per_word_s", 0.3) * n)
 
 
-def check_scenes(e, plan, s, doc, brand, fdata, cap, scenes, brolls, memes):
+END_CARD_S = 2.6  # the end card / logo sting the kit appends after the rough cut (export --card / --sting)
+
+
+def end_tail(a, plan):
+    """Seconds the export appends after the rough cut (an end card or a logo sting): "the last 2 s" count from the end
+    of the whole video (T5: a stat scene ending 1.95 s before the end of a 25.0 s cut was flagged, while a 2.6 s sting
+    followed and the video was 27.6 s). During export its own --card/--sting decide; validate takes --card/--sting
+    before the export, else what the last export recorded in the plan ("end_card")."""
+    if getattr(a, "sting", False) or getattr(a, "card", None):
+        return END_CARD_S
+    if getattr(a, "cmd", None) == "export":
+        return 0.0
+    return float((plan.get("end_card") or {}).get("seconds") or 0.0)
+
+
+JOIN_EMPTY_MAX = 4  # frames: a "scenes only" join may show this much bare field (the exit's last frame and the
+                    # entrance's first are nearly empty anyway); more reads as a pause (T6 had 14-15 at every join)
+
+
+def text_frames(tl, s, tones, fps, only):
+    """Where each scene's text is visible, in frames of the video → [(scene, first visible frame, frame after the last
+    visible one)], by time: from the frame after its entrance starts (lead) to its exit's end (n - tail), as the kit
+    draws it (an entrance at frame 0 is still transparent, an exit's last frame already is)."""
+    out = []
+    for x in sorted(tl, key=lambda v: v["start"]):
+        T = tones.get(scene_tone(x, s)) or tones.get("calm") or {"in": 14, "out": 9}
+        k = scene_timeline(x, T, x.get("mode"), fps, [], only)
+        f0 = jround(x["start"] * fps)
+        out.append((x, f0 + k["lead"] + 1, f0 + k["n"] - k["tail"]))
+    return out
+
+
+def scenes_only_cover(plan, s, doc):
+    """"Scenes only": (seconds the scenes cover, seconds their text is on screen) for the validate summary."""
+    tl = [x for x in plan.get("inserts", []) if x.get("kind") == "scene" and x.get("status") != "skipped"
+          and x.get("type") in SCENE_TYPES and x.get("type") != "cover" and isinstance(x.get("dur"), (int, float))]
+    fps = (doc.get("scenes") or {}).get("fps", 30)
+    tones = {k: v for k, v in (doc.get("scene_tones") or {}).items() if not k.startswith("_")}
+
+    def union(iv):
+        tot, cur = 0.0, None
+        for a0, a1 in sorted(iv):
+            if cur and a0 <= cur[1] + 1e-6:
+                cur[1] = max(cur[1], a1)
+            else:
+                tot += (cur[1] - cur[0]) if cur else 0.0
+                cur = [a0, a1]
+        return tot + ((cur[1] - cur[0]) if cur else 0.0)
+    cov = union([(x["start"], x["start"] + x["dur"]) for x in tl])
+    vis = union([(a / fps, b / fps) for _, a, b in text_frames(tl, s, tones, fps, True) if b > a])
+    return cov, vis
+
+
+def check_scenes(e, plan, s, doc, brand, fdata, cap, scenes, brolls, memes, tail=0.0):
     """Scene checks (references/scenes.md, the plan check). -> (errors, warnings, ids of scenes with errors)."""
     errs, warns, bad = [], [], set()
     if not [x for x in scenes if x.get("type") != "cover"]:
@@ -774,9 +958,10 @@ def check_scenes(e, plan, s, doc, brand, fdata, cap, scenes, brolls, memes):
     R = conf.get("reading") or {}
     fps = conf.get("fps", 30)
     only = plan.get("format") == "scenes-only"
+    framed = None if only else framed_at(e)
     D = plan.get("duration") or 0.0
     tones = {k: v for k, v in (doc.get("scene_tones") or {}).items() if not k.startswith("_")}
-    band = ml.layout(s, doc).get("subtitles_band", [1250, 1430])
+    band = ml.layout(s, doc).get("subtitles_band", list(SUB_BAND))
     words_ok = bool((cap or {}).get("words"))
 
     def E(sc, msg):
@@ -786,7 +971,7 @@ def check_scenes(e, plan, s, doc, brand, fdata, cap, scenes, brolls, memes):
     def W(sc, msg):
         warns.append(f"{sc['id']}: {msg}")
 
-    settled = {}
+    settled, needs = {}, {}
     for sc in scenes:
         typ, mode = sc.get("type"), sc.get("mode")
         spec = SCENE_TYPES.get(typ)
@@ -800,7 +985,10 @@ def check_scenes(e, plan, s, doc, brand, fdata, cap, scenes, brolls, memes):
             E(sc, f"mode {mode} (allowed: {', '.join(SCENE_MODES)})")
         elif only and mode != "full":
             E(sc, f"'scenes only' format: there is no speaker, so the mode is full only, not {mode}")
-        elif not only and mode not in spec["modes"]:
+        elif framed and mode in ("split", "panel", "window") and typ != "cover":
+            E(sc, f"the framed format: the kit draws overlay (inside the window) and full (covering the window) scenes, "
+                  f"not {mode}: the speaker already sits in a window")
+        elif mode not in spec["modes"]:  # "scenes only" too: the kit draws a type only in its own modes
             E(sc, f"mode {mode} is not for {typ} (allowed: {', '.join(spec['modes'])})")
         text = sc.get("text") or {}
         lines = [str(x) for x in (text.get("lines") or []) if str(x).strip()]
@@ -910,10 +1098,13 @@ def check_scenes(e, plan, s, doc, brand, fdata, cap, scenes, brolls, memes):
         #    the last word. Timing: sceneTimeline in kit/scenes/tones.ts (a transition over a pause -> a cut).
         hold = T.get("hold", 0.4)
         cw = cap.get("words") if words_ok else []
-        tl = scene_timeline(sc, T, mode, fps, cw)
+        tl = scene_timeline(sc, T, mode, fps, cw, only)
         t0 = sc["start"]
         exit_t = t0 + tl["settle_to"] / fps
-        anchor_text, nwords = " ".join(lines), len(norm_words(" ".join(lines)))
+        label = str(text.get("label") or "")  # the caps label is on screen with the lines: it is read too (T6)
+        spoken = " ".join(lines)  # what the speaker may say: the label is not spoken
+        anchor_text = " ".join(([label] if label.strip() else []) + lines)
+        nwords = len(norm_words(anchor_text))
         full_on = t0 + text_full_on(sc, typ, lines, tl, fps, cw) / fps
         if inter and (inter.get("t") is not None or inter.get("at") is not None):
             try:
@@ -936,21 +1127,22 @@ def check_scenes(e, plan, s, doc, brand, fdata, cap, scenes, brolls, memes):
                     E(sc, f"item {k + 1} at {fmt_t(t)} is outside the scene {fmt_t(sc['start'])}-{fmt_t(exit_t)}")
             last = [it for it in items if isinstance(it, dict)][-1]
             anchor_text, nwords = str(last.get("text", "")), len(norm_words(last.get("text", "")))
+            spoken = anchor_text
             full_on = max(t0 + tl["lead"] / fps, max(times)) + tl["inF"] / fps  # itemFrames in the kit: max(lead, its own time)
         elif typ == "stat":
             nwords += 1  # the number itself
         if nwords:
             need = read_need(nwords, R)
             rest = exit_t - full_on
-            settled[sc["id"]] = rest
+            settled[sc["id"]], needs[sc["id"]] = rest, need
             lay = f", layout change {tl['lead']}/{tl['tail']} frames" if tl["lead"] or tl["tail"] else ""
             if rest + 1e-6 < need:
-                E(sc, f"reading-time floor: '{anchor_text[:40]}' ({nwords} words) settled {max(rest, 0):.2f} s < {need:.2f} s "
+                E(sc, f"reading-time floor: '{anchor_text}' ({nwords} words) settled {max(rest, 0):.2f} s < {need:.2f} s "
                       f"(from {fmt_t(full_on)}, when the whole text is on screen, until it leaves at {fmt_t(exit_t)}; tone {tn}: "
                       f"in {tl['inF']} / out {tl['outF']} frames{lay}): cut the text or split the scene, don't speed it up")
-            hit = find_spoken(anchor_text, cap, near=t0, window=(t0 - 4.0, t_end))[0] if words_ok else []
+            hit = find_spoken(spoken, cap, near=t0, window=(t0 - 4.0, t_end))[0] if words_ok else []
             if hit and exit_t + 1e-6 < hit[0][1] + hold:
-                E(sc, f"'{anchor_text[:40]}' is heard until {fmt_t(hit[0][1])} but leaves at {fmt_t(exit_t)}: after the last "
+                E(sc, f"'{spoken}' is heard until {fmt_t(hit[0][1])} but leaves at {fmt_t(exit_t)}: after the last "
                       f"word hold for at least {hold} s (tone {tn})")
         # 3. quote: verbatim per the transcript; client/brief need a reference
         if typ == "quote":
@@ -959,17 +1151,27 @@ def check_scenes(e, plan, s, doc, brand, fdata, cap, scenes, brolls, memes):
                 if not words_ok:
                     E(sc, "a quote from the speech, but captions.json has no words: nothing to check it against")
                 else:
-                    hits, best = find_spoken(" ".join(lines), cap)
+                    hits, _ = find_spoken(" ".join(lines), cap)
+                    lang = s.get("subtitles_lang")
+                    if not hits and lang:  # a version with translated subtitles: the quote may be in their language
+                        tr = load_json(e / f"captions-{lang}.json") or {}
+                        hits = find_spoken(" ".join(lines), tr)[0] if tr.get("words") else []
                     if not hits:
                         E(sc, f"the quote is not verbatim: '{' '.join(lines)[:60]}' is not in captions.json as a run of words "
-                              f"({best} of {len(norm_words(' '.join(lines)))} words matched): take the words from the transcript")
+                              f"({near_match(' '.join(lines), cap)} of {len(norm_words(' '.join(lines)))} words found there "
+                              f"in this order): take the words from the transcript"
+                              + (f" or from the translated subtitles (captions-{lang}.json)" if lang else ""))
             elif k in ("client", "brief") and not str(src.get("ref") or "").strip():
                 E(sc, f"a quote from {k}: source.ref is needed (where from: an email, the brief, a date)")
             elif k == "agent":
                 W(sc, "the agent worded the quote: verify it and note it in the report")
-        # 4. stat: a source is required (the error above); from the agent: verify
+        # 4. stat: a source is required (the error above); from the agent: verify. Any other text the agent took or
+        #    worded itself (a hook, a contrast, a list from the client's site: T6) is "to verify" as well
         if typ == "stat" and src.get("kind") == "agent":
             W(sc, "a number from the agent (source agent): verify it and note it in the report")
+        elif typ != "quote" and src.get("kind") == "agent":
+            W(sc, "a text the agent took or worded itself (source agent): verify it with the person and note it in the "
+                  "report (open items)")
         elif typ == "stat" and src.get("kind") in ("client", "brief") and not str(src.get("ref") or "").strip():
             W(sc, f"a number from {src['kind']}: give source.ref")
         # 8. the overlay/split/window box
@@ -979,6 +1181,17 @@ def check_scenes(e, plan, s, doc, brand, fdata, cap, scenes, brolls, memes):
                 E(sc, m + ("" if sc.get("box") else " (the default box: set add ... --box)"))
             if mode == "overlay" and not hides_subtitles(sc) and fc.inter(box, [0, band[0], 1080, band[1] - band[0]]):
                 E(sc, f"box {box} is on the subtitle band (y {band[0]}-{band[1]}): move it higher or set hide_subtitles")
+            if typ == "hook" and mode == "overlay" and lines and (sc.get("variant") or "slam") in ("slam", "type"):
+                # the kit's hook on plates: the font is the box height over the lines (1.21 per line with plates, the
+                # label above takes 52 px), at most 96 px; the width may lower it further (measured in the render)
+                size = min(96, int((box[3] - (52 if text.get("label") else 0)) / (len(lines) * 1.21)))
+                need = FRAMED_HOOK_MIN if framed else 92
+                if size < need:
+                    W(sc, f"the hook lines come out at ~{size} px (box height {box[3]} for {len(lines)} line(s)), under "
+                          f"{need} px: " + (f"in the framed format, start the box on the field above the window (no "
+                                            f"label: the field joins the text area) or give it more of the window's "
+                                            f"headroom; {FRAMED_HOOK_MIN} px is the floor inside the window"
+                                            if framed else "the hook rule is 92-120 px: a taller box, or fewer lines"))
         if accent := text.get("accent"):
             if norm_words(accent) and " ".join(norm_words(accent)) not in " ".join(norm_words(" ".join(lines))):
                 W(sc, f"accent '{accent}' is not found in the lines")
@@ -1007,8 +1220,9 @@ def check_scenes(e, plan, s, doc, brand, fdata, cap, scenes, brolls, memes):
             if overlap(x, b) > 0.05:
                 W(x, f"at the same time as B-roll {b['id']}: a scene over B-roll, check it with a still frame")
         final = conf.get("final_s", 2.0)
-        if x["start"] + x["dur"] > D - final + 1e-6 and x.get("type") not in ("cta", "outro"):
-            E(x, f"in the last {final} s only cta is allowed (the ending and the call to action), but this is {x.get('type')}")
+        if x["start"] + x["dur"] > D + tail - final + 1e-6 and x.get("type") not in ("cta", "outro"):
+            E(x, f"in the last {final} s only cta is allowed (the ending and the call to action), but this is {x.get('type')}"
+                 + (f" (the video ends at {D + tail:.2f} s with the {tail} s end card or sting)" if tail else ""))
     fulls = [x for x in tl if x.get("mode") == "full"]
     if not only:
         gap_need = conf.get("full_gap_s", 2.0)
@@ -1019,9 +1233,13 @@ def check_scenes(e, plan, s, doc, brand, fdata, cap, scenes, brolls, memes):
                             f"the face disappears for too long")
                 bad.update((x["id"], y["id"]))
     hooks = [settled[x["id"]] for x in tl if x.get("type") == "hook" and x["id"] in settled]
-    others = [v for k, v in settled.items() if k not in {x["id"] for x in tl if x.get("type") == "hook"}]
+    # a scene held no longer than its own reading floor needs is not a rival: an 8-word CTA needs 2.4 s whatever the hook
+    # gets (T1 warned "hook 1.70 s < CTA 2.40 s" for exactly that)
+    others = [v for k, v in settled.items() if k not in {x["id"] for x in tl if x.get("type") == "hook"}
+              and v > needs.get(k, 0.0) + 0.1]
     if hooks and others and max(hooks) + 1e-6 < max(others):
-        warns.append(f"the hook is settled for {max(hooks):.2f} s, less than another scene ({max(others):.2f} s): the hook should get the most")
+        warns.append(f"the hook is settled for {max(hooks):.2f} s, less than another scene ({max(others):.2f} s, longer than "
+                     f"its own reading floor): the hook should get the most")
     if only:
         so = conf.get("scenes_only") or {}
         lo, hi = so.get("duration", [15, 25])
@@ -1039,6 +1257,13 @@ def check_scenes(e, plan, s, doc, brand, fdata, cap, scenes, brolls, memes):
         if D and cov / D < need - 1e-6:
             errs.append(f"'scenes only': scenes cover {cov:.1f} of {D} s ({cov / D * 100:.0f} %) < {need * 100:.0f} %: "
                         f"put the scenes back to back, with no empty frame")
+        vis = text_frames(tl, s, tones, fps, only)
+        for (x, a0, a1), (y, b0, b1) in zip(vis, vis[1:]):
+            empty = b0 - a1  # frames of bare field between the old text leaving and the new one entering
+            if empty > JOIN_EMPTY_MAX:
+                warns.append(f"{x['id']} -> {y['id']}: {empty} frames of empty field at the join (the text of {x['id']} "
+                             f"has left at {fmt_t(a1 / fps)}, {y['id']} shows from {fmt_t(b0 / fps)}): more than "
+                             f"{JOIN_EMPTY_MAX}, start {y['id']} where {x['id']} ends")
         if tl and (tl[0].get("type") != "hook" or tl[0]["start"] > 0.05):
             warns.append("'scenes only': storyboard: the first scene is a hook starting at 0 s")
     return errs, warns, bad
@@ -1092,6 +1317,20 @@ def tone_issues(s, doc, brolls, memes, scenes, only=False):
     return out
 
 
+def meme_rights(meme_id):
+    """A meme's rights from the meme index (memes.py index), so validate knows them before memes.py prepare (T5:
+    "rights are unknown" for an own meme and a CC one). blocked: forbidden by third-party rights. None: no id, or the
+    meme is not indexed yet (a warning)."""
+    if not meme_id:
+        return None
+    import memes
+    m = (load_json(memes.index_path(project_root())) or {}).get(meme_id)
+    if m is None:
+        warn(f"--meme-id {meme_id}: not in the meme index (memes.py index); its rights stay unknown until memes.py prepare")
+        return None
+    return "blocked" if memes.is_blocked(m) else m.get("rights") or "unknown"
+
+
 def cmd_add(a):
     if a.kind == "scene":
         return add_scene(a)
@@ -1115,7 +1354,7 @@ def cmd_add(a):
                "transition_in": a.transition, "transition_out": a.transition_out or ("cut" if a.transition == "cut" else a.transition),
                "status": "planned", "fallback": "main footage", "credit": None}
         if kind == "meme":
-            ins.update({"meme_id": a.meme_id, "position": a.position, "rights": None, "audio": False})
+            ins.update({"meme_id": a.meme_id, "position": a.position, "rights": meme_rights(a.meme_id), "audio": False})
         if a.source == "generated":
             ins["gen"] = {k: "" for k in GEN_FIELDS}
         if a.cam:
@@ -1194,6 +1433,7 @@ def cmd_validate(a, quiet=False):
         errs.append("the video length is unknown (no captions.json and no final.mp4): make the rough cut first")
         plan["duration"] = 0.0
     bud = budget(plan["duration"], s, doc)
+    tail = end_tail(a, plan)  # an end card or a sting after the cut: "the last 2 s" are the whole video's
     ins = plan.get("inserts", [])
     brolls = [i for i in ins if i["kind"] == "broll" and i["status"] != "skipped"]
     memes = [i for i in ins if i["kind"] == "meme" and i["status"] != "skipped"]
@@ -1212,8 +1452,11 @@ def cmd_validate(a, quiet=False):
         errs.append(f"memes {len(memes)} > the budget of {bud.get('memes_max')} for intensity {s['intensity']}")
     # coverage is the share of the video where any insert is on screen: B-roll and memes in both modes (popups too);
     # simultaneous inserts are not counted twice (a union of intervals)
+    # a presenter over a scene (keep-clear --matte, from matte.py place) covers the speaker's frame like a scene: T2
+    # left it out and the plan read 39 % while the video had 51 % against a ceiling of 40 %
+    layers = [] if only else [(k["start"], k["end"]) for k in plan.get("keep_clear", []) if k.get("matte")]
     cover, cur = 0.0, None
-    for x0, x1 in sorted((i["start"], i["start"] + i["dur"]) for i in brolls + memes + covering):
+    for x0, x1 in sorted([(i["start"], i["start"] + i["dur"]) for i in brolls + memes + covering] + layers):
         if cur and x0 <= cur[1]:
             cur[1] = max(cur[1], x1)
         else:
@@ -1223,21 +1466,45 @@ def cmd_validate(a, quiet=False):
     cutaways = [m for m in memes if m.get("mode") == "cutaway"]
     import faces as fc
     fdata = fc.load(e)
+    fr = None if only else framed_at(e)
+    errs += [f"reel.json: {m}" for m in framed_issues(load_json(e / "reel.json", {}) or {})]
+    if not only:
+        # the framed format and the measurement agree: faces.json in source geometry, a horizontal rough cut
+        src = framed_source(e)
+        if fr and fdata and not fdata.get("source"):
+            errs.append("format framed, but faces.json was measured as a 9:16 cover: run faces.py scan again (a "
+                        "horizontal rough cut is measured in its source geometry and mapped into the window)")
+        elif not fr and fdata and fdata.get("source"):
+            warns.append("faces.json is in source geometry (a horizontal rough cut), but reel.json has no format framed: "
+                         "the kit would lay the video as a band across the middle; reelcfg.py save edit/<id> --set "
+                         "format=framed")
+        if fr and src and src[0] <= src[1]:
+            warns.append(f"format framed with a vertical rough cut ({src[0]}x{src[1]}): the window only makes the face "
+                         f"smaller; framed is for a horizontal source")
+        elif not fr and src and src[0] > src[1]:
+            warns.append(f"the rough cut is horizontal ({src[0]}x{src[1]}): without format framed the kit lays it as a "
+                         f"band across the middle; reelcfg.py save edit/<id> --set format=framed")
     for k in plan.get("keep_clear", []) if fdata else []:
-        if k.get("mode") == "window":  # a scene window: the rough cut isn't visible on screen, the face is in the speaker's window
+        if k.get("mode") == "window" or k.get("matte"):
+            # a scene window or a presenter layer: the rough cut isn't visible there; the face on screen is the speaker's
+            # own (in the window, or the cut-out figure itself)
             continue
         kc = k.get("cam")
-        hit = [fc.cam_box(b, kc) for b in fc.between(fdata, k["start"], k["end"])
-               if fc.inter(k["box"], fc.grow(fc.cam_box(b, kc), fc.MARGIN))]
+        # the face where the render puts it: camera.json at each sample's time, so a zone over a camera change is
+        # checked shot by shot (a scene's entry keeps one static camera for its whole span); the split layout's fixed
+        # speaker frame keeps its own; without camera.json, the zone's --cam
+        faces_, how = faces_seen(e, plan, fdata, k["start"], k["end"], kc, shots_ok=k.get("mode") != "split")
+        hit = [b for b in faces_ if fc.inter(k["box"], fc.grow(b, fc.MARGIN))]
         if hit:
             warns.append(f"'{k.get('what')}' {k['box']} touches the face {fc.union(hit)} on the rough cut "
-                         f"({'with the camera' if kc else 'without a camera: pass --cam to keep-clear'}): "
+                         f"({'with the camera of camera.json' if how == 'camera.json' else 'with the camera' if kc else 'without a camera: pass --cam to keep-clear'}): "
                          f"check it with a still frame, or with faces.py audit after the render")
     cmax = (doc.get("meme_layout") or {}).get("cutaway_max", 1)
     if len(cutaways) > cmax:
         errs.append(f"full-frame memes (cutaway) {len(cutaways)} > {cmax} per video")
     if cover > bud["coverage_max_s"] + 0.01:
-        errs.append(f"inserts take {cover:.1f} s > {bud['coverage_max_s']} s ({int(bud['coverage_max'] * 100)} % of the video)")
+        errs.append(f"inserts take {cover:.1f} s > {bud['coverage_max_s']} s ({int(bud['coverage_max'] * 100)} % of the video)"
+                    + (f"; presenter layers included: {sum(b - a for a, b in layers):.1f} s" if layers else ""))
     act = sorted(brolls + memes, key=lambda i: i["start"])
     last = None  # the insert that ends later than all the previous ones
     for y in act:
@@ -1355,7 +1622,7 @@ def cmd_validate(a, quiet=False):
                     errs.append(f"{tag}: the meme's rights are unknown and the brand policy is strict: own/licensed/cc is needed")
                 else:
                     warns.append(f"{tag}: the meme's rights are unknown: a risk for a commercial account")
-            if i["start"] + i["dur"] > plan["duration"] - 2.0:
+            if i["start"] + i["dur"] > plan["duration"] + tail - 2.0:
                 warns.append(f"{tag}: a meme in the last 2 s: the ending/CTA is better without a meme")
         text = " ".join([i.get("what", ""), i.get("query", ""), " ".join(str(v) for v in (i.get("gen") or {}).values())]).lower()
         for f in forbidden_hits(brand, text):
@@ -1375,7 +1642,7 @@ def cmd_validate(a, quiet=False):
         if i["status"] == "pending" and not quiet:
             warns.append(f"{tag}: waiting ({i.get('fallback') or 'a code scene or a file'}): it won't go into the render until it is ready")
     cap = load_json(e / "captions.json", {}) if scenes else {}
-    se, sw, bad = check_scenes(e, plan, s, doc, brand, fdata, cap, scenes, brolls, memes)
+    se, sw, bad = check_scenes(e, plan, s, doc, brand, fdata, cap, scenes, brolls, memes, tail)
     errs += se
     warns += sw
     for m, ids in tone_issues(s, doc, brolls, memes, timeline, only):
@@ -1413,13 +1680,21 @@ def cmd_validate(a, quiet=False):
         for m in warns:
             print("warning: " + m)
         ready = sum(1 for i in ins if i["status"] == "ready")
-        print(f"total: {len(ins)} insert(s) (ready {ready}), B-roll {len(brolls)}/{bud['broll_max']}, "
-              f"memes {len(memes)}/{bud.get('memes_max')}, coverage {cover:.1f}/{bud['coverage_max_s']} s; "
+        if only:  # T6 printed the B-roll budget (coverage 0.0/4.84 s) and no scene coverage
+            sc_cov, txt = scenes_only_cover(plan, s, doc)
+            D = plan["duration"] or 1.0
+            cov_line = (f"scenes cover {sc_cov:.1f} of {plan['duration']} s ({sc_cov / D * 100:.0f} %), text on screen "
+                        f"{txt:.1f} s ({txt / D * 100:.0f} %)")
+        else:
+            cov_line = (f"B-roll {len(brolls)}/{bud['broll_max']}, memes {len(memes)}/{bud.get('memes_max')}, "
+                        f"coverage {cover:.1f}/{bud['coverage_max_s']} s")
+        print(f"total: {len(ins)} insert(s) (ready {ready}), {cov_line}; "
               + (f"{len(timeline)} scene(s) (ready {sum(1 for x in timeline if x['status'] == 'ready')}, "
                  + ("'scenes only' format" if only else
                     f"full {sum(1 for x in timeline if x.get('mode') == 'full')}/"
                     f"{(s.get('brand_tone') or {}).get('full_scenes_max')}") + "); " if scenes else "")
-              + f"{len(errs)} error(s), {len(warns)} warning(s)")
+              + f"{len(errs)} error(s), {len(warns)} warning(s)"
+              + (f"; the video is {plan['duration'] + tail:.2f} s with the {tail} s end card or sting" if tail else ""))
     return errs, warns
 
 
@@ -1439,7 +1714,12 @@ def cmd_md(a):
     if fb:
         L += ["Fallback: " + "; ".join(fb), ""]
     if plan.get("format") == "scenes-only":
-        L += ["Format: **scenes only** (a promo without footage): no speech spans, scenes by time.", ""]
+        L += ["Format: **scenes only** (a promo without footage): no speech spans, scenes by time; between scenes the "
+              "transition is a cut (one text leaves by its scene's last frame, the next enters from its first).", ""]
+    elif framed_at(e):
+        fr = framed_at(e)
+        L += [f"Format: **framed** (a horizontal source in a window drawn by the kit): window {fr['window']}"
+              + (f", label “{fr['label']}”" if fr["label"] else ", no label") + f"; text area {framed_area(fr)}.", ""]
     bt = s.get("brand_tone") or {}
     if bt:
         L += [f"Brand tone **{bt.get('preset')}** ({bt.get('label', '')}), scene tone {s.get('scene_tone') or bt.get('scene_tone')}"
@@ -1457,7 +1737,8 @@ def cmd_md(a):
                        for i in over if i["kind"] == "scene") or "-"
         tr = "; ".join(f"{i['id']}: {i['transition_in']}/{i['transition_out']}" for i in over) or "cut"
         main = g["main"] + (f", {g['camera']}" if g.get("camera") else "") + (f"; graphics: {g['graphics']}" if g.get("graphics") else "")
-        com = "; ".join(filter(None, [g.get("notes", "")] + [f"{i['id']}: {i['why']}" for i in over]))
+        com = "; ".join(filter(None, [g.get("notes", "")] + [f"{i['id']}: {i['why']}" for i in over]
+                               + ([f"hints: {', '.join(g['hints'])}"] if g.get("hints") else [])))
         txt = g["text"] if len(g["text"]) < 90 else g["text"][:87] + "..."
         L.append(f"| {g['id']} | {fmt_t(g['start'])}-{fmt_t(g['end'])} | {txt} | {main} | {br} | {mm} | {sn} | {tr} | {com} |")
     if ins:
@@ -1485,6 +1766,20 @@ def cmd_md(a):
                 for i in dl)]
         if any(i.get("source") == "generated" for i in ins):
             L += ["", "Code-scene briefs: `generated/briefs.md` (`codescene.py manifest`)."]
+    keep = plan.get("keep_clear") or []
+    if keep:  # cards, the hook, the CTA drawn per video: their texts are shown before the render too (SKILL.md step 8)
+        L += ["", "## Graphics zones (keep_clear)", ""]
+        L += [f"{n}. {fmt_t(k['start'])}-{fmt_t(k['end'])} {k.get('what', '')} box {k.get('box')}"
+              + (f", camera {k['cam']}" if k.get("cam") else "")
+              + (f", presenter layer {k['matte']} (counts in the coverage)" if k.get("matte") else "")
+              + (f" (scene {k['scene']}, written by export)" if k.get("scene") else "") for n, k in enumerate(keep, 1)]
+        L += ["", "Remove a zone: `visual_plan.py keep-clear edit/<id> --remove N`."]
+    hs = plan.get("hide_subtitles") or []
+    if hs:
+        L += ["", "## Subtitles hidden (hide-subs)", ""]
+        L += [f"{n}. {fmt_t(h['start'])}-{fmt_t(h['end'])}" + (f": {h['why']}" if h.get("why") else "")
+              for n, h in enumerate(hs, 1)]
+        L += ["", "Remove a window: `visual_plan.py hide-subs edit/<id> --remove N`."]
     L += ["", f"Check: {len(errs)} error(s), {len(warns)} warning(s)."]
     L += [f"- error: {m}" for m in errs] + [f"- warning: {m}" for m in warns]
     out = e / "visual_plan.md"
@@ -1493,24 +1788,52 @@ def cmd_md(a):
 
 
 def scene_text(i):
-    """The scene text on one line, for md."""
+    """The scene text on one line, for md, in full (the person approves every word on screen; T6 cut list items off
+    at 70 characters) and with its caps label."""
     t = " / ".join((i.get("text") or {}).get("lines") or [])
+    label = str((i.get("text") or {}).get("label") or "").strip()
     if i.get("items"):
         t = (t + ": " if t else "") + "; ".join(str(x.get("text", "")) for x in i["items"] if isinstance(x, dict))
     if i.get("type") == "stat" and i.get("value"):
         v = i["value"]
         t = f"{v.get('prefix', '')}{v.get('to')}{v.get('suffix', '')} " + t
     t = t or (i.get("interaction") or {}).get("text") or i.get("what", "")
-    return f"'{t[:70]}{'...' if len(t) > 70 else ''}'"
+    return (f"[{label}] " if label else "") + f"'{t}'"
 
 
 def cmd_keep(a):
-    """A zone that memes and windows don't cover: a card, the hook, the CTA, an object in hand."""
+    """A zone that memes and windows don't cover: a card, the hook, the CTA, an object in hand. --remove N takes zones out
+    (numbered as in visual_plan.md, from 1)."""
     e = edit_dir(a.edit)
+    if a.remove:
+        with editing_plan(e) as plan:
+            keep = plan.get("keep_clear") or []
+            bad = [n for n in a.remove if not 1 <= n <= len(keep)]
+            if bad:
+                sys.exit(f"keep_clear has {len(keep)} zone(s) (visual_plan.md numbers them): no {', '.join(map(str, bad))}")
+            own = [n for n in a.remove if keep[n - 1].get("scene")]
+            if own:
+                sys.exit(f"zone {', '.join(map(str, own))} belongs to a scene and export writes it back: remove the scene "
+                         f"(visual_plan.py remove {a.edit} {keep[own[0] - 1]['scene']}) or move it")
+            gone = [keep[n - 1] for n in sorted(set(a.remove))]
+            plan["keep_clear"] = [k for n, k in enumerate(keep, 1) if n not in set(a.remove)]
+        for k in gone:
+            print(f"keep_clear removed: {k.get('what', '')} {k.get('box')} {fmt_t(k['start'])}-{fmt_t(k['end'])}")
+        return
+    if a.start is None or a.end is None or not a.box or not a.what:
+        sys.exit("keep-clear: --from, --to, --box and --what are needed (or --remove N)")
     box = [int(x) for x in a.box.split(",")]
     entry = {"start": a.start, "end": a.end, "box": box, "what": a.what}
     if a.cam:  # the span's camera, so that validate checks the face where the viewer sees it
         entry["cam"] = [float(x) for x in a.cam.split(",")]
+    if a.matte:  # a presenter layer (matte.py place): coverage, its WebM copied by export
+        entry["matte"] = safe_slug(a.matte, "--matte", dots=True)
+        if not (e / "matte" / f"{entry['matte']}.webm").exists():
+            warn(f"no {e / 'matte' / (entry['matte'] + '.webm')}: export has nothing to copy until matte.py cut makes it")
+    if a.own_face:  # the presenter's own face on screen: not a no-go for its own layer
+        entry["own_face"] = [int(x) for x in a.own_face.split(",")]
+        if len(entry["own_face"]) != 4:
+            sys.exit("--own-face: x,y,w,h")
     with locked(plan_path(e)):
         plan = load_json(plan_path(e))
         if plan is None:  # inserts are off and no plan was built: a plan without inserts is created (a graphics registry)
@@ -1522,11 +1845,70 @@ def cmd_keep(a):
     print(f"keep_clear: {a.what} {box} {fmt_t(a.start)}-{fmt_t(a.end)}")
     import faces as fc
     data = fc.load(e)
-    if data:
+    if data and a.matte:  # a presenter layer: the rough cut is not visible under it, the face in it is the presenter's own
+        print("presenter layer: counts in the inserts' coverage; the face in it is the presenter's own (not checked)")
+    elif data:
+        # the face where the viewer sees it: --cam for this zone, else camera.json at each sample's time (as validate
+        # and the render audit see it; T4: keep-clear without --cam checked the box against the uncropped frame)
         cam = [float(x) for x in a.cam.split(",")] if a.cam else None
-        hit = [b for b in fc.between(data, a.start, a.end) if fc.inter(box, fc.grow(fc.cam_box(b, cam), fc.MARGIN))]
-        print(f"warning: '{a.what}' touches the face (margin {fc.MARGIN} px): {fc.union(hit)}: move it to a zone from faces.py zones"
-              if hit else f"the face is not touched (per faces.json{', with the camera' if cam else ', without a camera'})")
+        faces_, how_ = faces_seen(e, plan, data, a.start, a.end, cam, shots_ok=not cam)
+        shots = how_ == "camera.json"
+        hit = [b for b in faces_ if fc.inter(box, fc.grow(b, fc.MARGIN))]
+        how = ", with the camera" if cam else ", with the camera of camera.json" if shots else ", without a camera"
+        print(f"warning: '{a.what}' touches the face (margin {fc.MARGIN} px{how}): {fc.union(hit)}: move it to a zone "
+              f"from faces.py zones" if hit else f"the face is not touched (per faces.json{how})")
+
+
+def cmd_hide(a):
+    """Windows where the subtitles are hidden by something the plan doesn't hold as a scene (a presenter over a scene, an
+    accent title in a per-video composition): export puts them into props.hideSubtitles, faces.py audit reads them.
+    --remove N takes windows out (numbered as in visual_plan.md, from 1)."""
+    e = edit_dir(a.edit)
+    with editing_plan(e) as plan:
+        hs = plan.setdefault("hide_subtitles", [])
+        if a.remove:
+            bad = [n for n in a.remove if not 1 <= n <= len(hs)]
+            if bad:
+                sys.exit(f"hide_subtitles has {len(hs)} window(s) (visual_plan.md numbers them): no {', '.join(map(str, bad))}")
+            gone = [hs[n - 1] for n in sorted(set(a.remove))]
+            plan["hide_subtitles"] = [h for n, h in enumerate(hs, 1) if n not in set(a.remove)]
+        else:
+            if a.start is None or a.end is None or a.end <= a.start:
+                sys.exit("hide-subs: --from and --to (--to after --from) are needed, or --remove N")
+            dur = plan.get("duration")
+            if dur and (a.start < 0 or a.end > float(dur) + 0.05):
+                sys.exit(f"hide-subs: {a.start}-{a.end} is outside the video (0-{dur})")
+            gone = []
+            hs.append({"start": round(a.start, 3), "end": round(a.end, 3), **({"why": a.why} if a.why else {})})
+            hs.sort(key=lambda h: h["start"])
+    for h in gone:
+        print(f"hide_subtitles removed: {fmt_t(h['start'])}-{fmt_t(h['end'])} {h.get('why', '')}".rstrip())
+    if not a.remove:
+        print(f"hide_subtitles: {fmt_t(a.start)}-{fmt_t(a.end)}" + (f" ({a.why})" if a.why else "")
+              + "; export puts it into props.hideSubtitles, faces.py audit reads it")
+
+
+def hidden_windows(plan):
+    """The plan's own subtitle-hide windows (hide-subs), as [start, end]."""
+    return [[h["start"], h["end"]] for h in plan.get("hide_subtitles") or []]
+
+
+def cmd_remove(a):
+    """Take inserts (B-roll, memes, scenes) out of the plan, with the zones export wrote for those scenes. To change an
+    insert: remove it and add it again (T1 edited visual_plan.json by hand five times for want of this)."""
+    e = edit_dir(a.edit)
+    with editing_plan(e) as plan:
+        have = {i["id"] for i in plan["inserts"]}
+        missing = [x for x in a.ids if x not in have]
+        if missing:
+            sys.exit(f"no insert {', '.join(missing)} in the plan (there are: {', '.join(sorted(have)) or 'none'})")
+        gone = [i for i in plan["inserts"] if i["id"] in a.ids]
+        plan["inserts"] = [i for i in plan["inserts"] if i["id"] not in a.ids]
+        if plan.get("keep_clear"):
+            plan["keep_clear"] = [k for k in plan["keep_clear"] if k.get("scene") not in a.ids]
+    for i in gone:
+        print(f"removed {i['id']}: {i['kind']} {i.get('type') or i.get('mode')} {fmt_t(i['start'])} +{i['dur']} s: {i['what']}")
+    print("files the inserts used stay where they are; validate and export again")
 
 
 def scene_face(e, sc):
@@ -1590,17 +1972,38 @@ def scene_export(i, e, pub, name, plan, cap, s):
     return clean(sp)
 
 
-def same_source(a, b):
-    """A shot's "source" names a segment's source file: the same path, file name or stem."""
+def source_files(e):
+    """cut.json sources: {key: file}, so that a shot may name its source by the key or by the file."""
+    doc = load_json(Path(e) / "cut.json", {}) or {}
+    out = {}
+    for k, v in (doc.get("sources") or {}).items():
+        f = v.get("file") if isinstance(v, dict) else v
+        if f:
+            out[str(k)] = str(f)
+    return out
+
+
+def same_source(a, b, files=None):
+    """A shot's "source" names a segment's source: the same path, file name or stem, or the cut.json key of that
+    file (captions.json segments carry the key; T2: "source": "<file>.MOV" against segments of "front" failed
+    the export)."""
     a, b = str(a or ""), str(b or "")
-    return bool(a and b) and (a == b or Path(a).name == Path(b).name or Path(a).stem == Path(b).stem)
+    if not (a and b):
+        return False
+
+    def names(x):
+        out = {x, Path(x).name, Path(x).stem}
+        if files and x in files:
+            out |= {files[x], Path(files[x]).name, Path(files[x]).stem}
+        return out
+    return bool(names(a) & names(b))
 
 
-def src_to_out(src, cap, seg=None, source=None):
+def src_to_out(src, cap, seg=None, source=None, files=None, quiet=False):
     """A source second -> the second of the finished video (captions.json segments; references/camera.md, at()).
-    source: the shot's file, for a cut from several cameras whose source seconds overlap."""
+    source: the shot's file or source key, for a cut from several cameras whose source seconds overlap."""
     pool = [g for g in cap.get("segments", []) if (seg is None or g["i"] == seg)
-            and (source is None or same_source(source, g.get("source")))]
+            and (source is None or same_source(source, g.get("source"), files))]
     if source is not None and not pool:
         sys.exit(f"camera.json: no segment of the rough cut comes from {source}")
     hit = [g for g in pool if g["src_start"] - 0.001 <= src <= g["src_end"] + 0.001]
@@ -1610,7 +2013,8 @@ def src_to_out(src, cap, seg=None, source=None):
         if not nxt:
             sys.exit(f"camera.json: source second {src} was cut out")
         g = min(nxt, key=lambda x: x["src_start"])
-        print(f"camera.json: source second {src} is cut out; the shot starts with the next segment ({g['src_start']})")
+        if not quiet:
+            print(f"camera.json: source second {src} is cut out; the shot starts with the next segment ({g['src_start']})")
         return g["out_start"]
     if len(hit) > 1:
         sys.exit(f"camera.json: source second {src} is in several segments ({[g['i'] for g in hit]}): add \"source\" "
@@ -1637,17 +2041,17 @@ def subtitles_in(e, lang):
     return doc
 
 
-def camera_shots(e, plan, cap):
+def camera_shots(e, plan, cap, quiet=False):
     """edit/<id>/camera.json -> ReelKit props.camera: shots in seconds of the finished video, sorted.
     {"shots": [{"src": 12.4 | "at": "word:resume#1" | 3.2, "z": 1.1, "cx": 540, "cy": 1000, "drift": 0.03, "whip": false}]}
-    src: a source second (stable when the speed changes), with "source": "cam-a.mov" on a cut from several
-    files; at: a second or a word of the finished video."""
+    src: a source second (stable when the speed changes), with "source": "cam-a.mov" (a path, file name or stem,
+    or the source key of cut.json) on a cut from several files; at: a second or a word of the finished video."""
     doc = load_json(e / "camera.json", None)
     if not doc:
         return []
-    shots = []
+    shots, files = [], source_files(e)
     for k, sh in enumerate(doc.get("shots", [])):
-        t = (src_to_out(float(sh["src"]), cap, sh.get("seg"), sh.get("source")) if "src" in sh
+        t = (src_to_out(float(sh["src"]), cap, sh.get("seg"), sh.get("source"), files, quiet) if "src" in sh
              else resolve_at(str(sh.get("at", 0)), plan, cap))
         z = float(sh.get("z", 1.0))
         if z < 1:
@@ -1657,14 +2061,253 @@ def camera_shots(e, plan, cap):
     return sorted(shots, key=lambda x: x["t"])
 
 
-def chin_on_screen(y, t, shots):
-    """Where a source y lands on screen at second t: the shot's camera at its deepest drift (camera.md formula)."""
+def plan_camera(e, plan):
+    """camera.json shots for the checks (validate): [] without camera.json, or when it does not resolve (export
+    reports that)."""
+    if not (Path(e) / "camera.json").is_file():
+        return []
+    try:
+        return camera_shots(e, plan, load_json(Path(e) / "captions.json", {}) or {}, quiet=True)
+    except SystemExit:
+        return []
+
+
+def camera_view(e, fdata=None):
+    """The camera's clamp geometry (reels_common.cam_fit) for edit/<id>: in the "framed" format the window and the
+    rough cut's cover in it (as faces.py maps faces and the kit draws the video); None: the whole frame."""
+    fr = framed_at(e)
+    if not fr:
+        return None
+    import faces as fc
+    v = fc.view(fdata) if fdata and fdata.get("source") else None
+    if v is None:
+        src = framed_source(e)
+        v = framed_view(fr["window"], src) if src else (fr["window"], fr["window"])
+    return v
+
+
+def camera_at(shots, t, end, fps=30, view=None):
+    """The virtual camera (z, cx, cy) at second t, as ReelKit's cameraAt draws it: the shot's push-in (drift) grows
+    over the shot, a whip blends from the previous shot over 7 frames, the window never shows past the video
+    (view: the "framed" window, camera_view; None: the whole frame). None before the first shot (the frame as is)."""
+    i = max((k for k, s in enumerate(shots) if s["t"] <= t + 1e-6), default=-1)
+    if i < 0:
+        return None
+
+    def fit(z, cx, cy):
+        return cam_fit(z, cx, cy, view)
+
+    def shot_at(k, tt):
+        s = shots[k]
+        nxt = shots[k + 1]["t"] if k + 1 < len(shots) else end
+        p = min(max((tt - s["t"]) / max(0.01, nxt - s["t"]), 0.0), 1.0)
+        return fit(s["z"] * (1 + s.get("drift", 0) * p), s["cx"], s["cy"])
+
+    cam = shot_at(i, t)
+    p = (t - shots[i]["t"]) * fps / 7
+    if not shots[i].get("whip") or i == 0 or p >= 1:
+        return cam
+    prev, k = shot_at(i - 1, shots[i]["t"]), 1 - (1 - max(0.0, p)) ** 3
+    return tuple(a + (b - a) * k for a, b in zip(prev, cam))
+
+
+def chin_on_screen(y, t, shots, view=None):
+    """Where a source y lands on screen at second t: the shot's camera at its deepest drift (camera.md formula), clamped
+    like the kit (view: the "framed" window, whose center the camera works around)."""
     s = next((x for x in reversed(shots) if x["t"] <= t + 1e-6), None)
     if not s:
         return y
-    z = max(1.0, s["z"] * (1 + s["drift"]))
-    cy = min(max(s["cy"], 960 / z), 1920 - 960 / z)
-    return (y - cy) * z + 960
+    z, _, cy = cam_fit(s["z"] * (1 + s["drift"]), s["cx"], s["cy"], view)
+    c = view[0][1] + view[0][3] / 2 if view else 960
+    return (y - cy) * z + c
+
+
+def subtitle_top(e, s, cam, quiet=False):
+    """The subtitles' top as the render puts it -> (top, band): below the measured chin (faces.json) through the
+    camera, or allowing for the template's drift (up to x1.05 toward the frame center) without one."""
+    import faces as fc
+    import meme_layout as ml
+    band = ml.layout(s).get("subtitles_band") or list(SUB_BAND)
+    fdata = fc.load(e)
+    top = SUB_TOP_KIT
+    if fdata:
+        geo = camera_view(e, fdata)
+        # no camera: the template's drift (up to x1.05) toward the frame's center, or the framed window's (the kit's
+        # fitCamera around the window center; Codex review: a custom window was scaled around y 960)
+        cy = geo[0][1] + geo[0][3] / 2 if geo else 960
+        chins = ([chin_on_screen(b[1] + b[3], s_["t"], cam, geo) for s_ in fdata["samples"] for b in s_["faces"]] if cam else
+                 [(b[1] + b[3] - cy) * 1.05 + cy for s_ in fdata["samples"] for b in s_["faces"]])
+        if chins:
+            need = round(max(chins) + fc.MARGIN // 2)
+            top = max(band[0], min(SUB_MAX_TOP, need))
+            if not quiet:
+                print(f"subtitles: top at y {top} (chin down to {round(max(chins))} per faces.json)"
+                      + (f"; WARNING: even at {SUB_MAX_TOP} the chin touches the subtitles: use a wider shot or a lower "
+                         f"camera" if need > SUB_MAX_TOP else ""))
+    return top, band
+
+
+# "Typewriter" darkening (shade): its contrast target and the geometry of the kit (Subtitles.tsx: the gradient starts
+# 220 px above the subtitles' top and is full at 40 % of its height; two lines of 56 px at line height 1.22 from x 60)
+SHADE_TARGET = 4.5
+SHADE_LINES = round(2 * 56 * 1.22)
+SHADE_X = (60, 940)
+
+
+_LIN = [c / 12.92 if c <= 0.04045 else ((c + 0.055) / 1.055) ** 2.4 for c in (k / 1023 for k in range(1024))]
+
+
+def srgb_lum(r, g, b):
+    """Relative luminance of an sRGB color given as 0..1 channels (WCAG), through a 1024-step table."""
+    return 0.2126 * _LIN[int(r * 1023 + 0.5)] + 0.7152 * _LIN[int(g * 1023 + 0.5)] + 0.0722 * _LIN[int(b * 1023 + 0.5)]
+
+
+def cmd_shade(a):
+    """The darkening behind "Typewriter" subtitles (reel.json subtitles_shade), measured: the rough cut's frames while
+    the subtitles are on (spoken words, outside the windows where a scene hides them), the subtitle band through the
+    camera of camera.json; for each value the contrast of the text color against the lightest 5 % of the band (the
+    gradient as the kit draws it, blended over the frame as the browser does); the smallest value that gives
+    SHADE_TARGET on the lightest frame. T3: the run guessed 0.55 for a white T-shirt; the docs said 0.15-0.25.
+    --zone x,y,w,h or --scene ID measures any text zone instead (a style whose text sits in the headroom, like "bold"
+    in a per-video composition: T5 measured it by hand): a FLAT darkening of the zone, on the frames of the scene's time
+    (--scene) or --from/--to (else the whole video), against --target (3.0, large text, by default for a zone)."""
+    import subprocess
+    from reels_common import local_media_args
+    e = edit_dir(a.edit)
+    video = e / "final.mp4"
+    if not video.exists():
+        sys.exit(f"no {video}: the shade is measured on the rough cut (cut.py)")
+    plan = load_json(plan_path(e)) or {}
+    cap = load_json(e / "captions.json") or {}
+    s, _, _, _, brand = load_config(e)
+    color = a.color or ((brand or {}).get("colors") or {}).get("text_on_primary") or "#FFFFFF"
+    try:
+        tr, tg, tb = (int(color.lstrip("#")[k:k + 2], 16) / 255 for k in (0, 2, 4))
+    except ValueError:
+        sys.exit(f"--color {color!r}: a hex color like #FFFFFF")
+    lt = srgb_lum(tr, tg, tb)
+    if lt < 0.4:
+        sys.exit(f"the text color {color} is dark: a darkening lowers its contrast; use a light backing instead")
+    shots = plan_camera(e, plan)
+    end = cap.get("duration") or plan_duration(e, plan) or 0
+    zone, span, what = None, None, ""
+    if a.scene:
+        sc = next((i for i in plan.get("inserts", []) if i["id"] == a.scene and i.get("kind") == "scene"), None)
+        if not sc:
+            sys.exit(f"--scene {a.scene}: no such scene in the plan")
+        kc = next((k for k in plan.get("keep_clear", []) if k.get("scene") == a.scene), None)
+        zone = sc.get("box") or (kc or {}).get("box")
+        if not zone:
+            sys.exit(f"--scene {a.scene}: the scene has no box (a full-frame scene draws its own field); use --zone")
+        span, what = (sc["start"], sc["start"] + sc["dur"]), f"scene {a.scene}"
+    elif a.zone:
+        try:
+            zone = [int(float(v)) for v in a.zone.split(",")]
+        except ValueError:
+            zone = []
+        if len(zone) != 4 or zone[2] <= 0 or zone[3] <= 0:
+            sys.exit(f"--zone {a.zone}: x,y,w,h in 1080x1920")
+        span, what = (a.start if a.start is not None else 0.0, a.end if a.end is not None else end), "the zone"
+    target = a.target or (3.0 if zone else SHADE_TARGET)
+    top = a.top or (plan.get("subtitles_band") or [None])[0] or subtitle_top(e, s, shots, quiet=True)[0]
+    fr = framed_at(e)
+    if fr and not a.top:  # "framed": the block inside the window's text area, as export puts it (Codex review: before
+        # the first export a short window [25,340,1030,800] was measured at y 1290, below the window, "no frame")
+        a0, a1 = framed_area(fr)[1], framed_area(fr)[3]
+        top = max(a0, min(top, a1 - SUB_BLOCK_H["typewriter"]))
+    bottom = min(1500, top + SHADE_LINES)
+    hidden = ([(i["start"], i["start"] + i["dur"]) for i in plan.get("inserts", []) if i.get("kind") == "scene"
+               and i.get("status") == "ready" and i.get("type") != "cover" and hides_subtitles(i)]
+              + [tuple(h) for h in hidden_windows(plan)])
+    spoken = [(w["start"], w["end"] + 0.4) for w in cap.get("words", [])]
+    W, H, fps = 270, 480, 4  # a quarter of the frame, 4 frames a second
+    # where the rough cut lies on screen: the whole frame, or the "framed" window with the video's cover in it (a point
+    # outside the window is the field, not the video, and is left out)
+    geo = camera_view(e)
+    win, (vx, vy, vw, vh) = geo if geo else ((0, 0, 1080, 1920), (0, 0, 1080, 1920))
+    ccx, ccy = win[0] + win[2] / 2, win[1] + win[3] / 2
+    if geo:
+        src = framed_source(e) or (1080, 1920)
+        W, H = max(2, round(src[0] / 4)), max(2, round(src[1] / 4))
+    r = subprocess.run(local_media_args(["ffmpeg", "-v", "error", "-i", str(video), "-vf",
+                                         f"fps={fps},scale={W}:{H}:flags=area", "-f", "rawvideo", "-pix_fmt", "rgb24", "-"]),
+                       capture_output=True)
+    if r.returncode != 0:
+        sys.exit("ffmpeg failed:\n" + r.stderr.decode("utf-8", "replace")[-800:])
+    size = W * H * 3
+    g0, g1 = top - 220, top - 220 + 0.4 * (2140 - top)  # the gradient: 0 at g0, full from g1 down
+    ys, xs = range(top, bottom, 4), range(SHADE_X[0], SHADE_X[1], 8)
+    if zone:  # a flat darkening over the zone, not the subtitles' gradient
+        x0, y0, zw, zh = zone
+        ys, xs = range(max(0, y0), min(1920, y0 + zh), 4), range(max(0, x0), min(1080, x0 + zw), 8)
+        g0, g1 = -2.0, -1.0
+    frames = []
+    for k in range(len(r.stdout) // size):
+        t = k / fps
+        if zone:
+            if not span[0] <= t <= span[1]:
+                continue
+        elif not any(a0 <= t <= a1 for a0, a1 in spoken) or any(h0 <= t < h1 for h0, h1 in hidden):
+            continue
+        buf = r.stdout[k * size:(k + 1) * size]
+        cam = camera_at(shots, t, end, view=geo) if shots else None
+        z, cx, cy = cam or cam_fit(1.0, ccx, ccy, geo)
+        px = []
+        for y in ys:
+            if not win[1] <= y < win[1] + win[3]:
+                continue
+            f = min(1.0, max(0.0, (y - g0) / (g1 - g0)))
+            sy = min(H - 1, max(0, int(((y - ccy) / z + cy - vy) / vh * H)))
+            for x in xs:
+                if not win[0] <= x < win[0] + win[2]:
+                    continue
+                sx = min(W - 1, max(0, int(((x - ccx) / z + cx - vx) / vw * W)))
+                o = (sy * W + sx) * 3
+                px.append((buf[o] / 255, buf[o + 1] / 255, buf[o + 2] / 255, f))
+        if px:
+            frames.append((t, px))
+    if not frames:
+        sys.exit(f"no frame in {what} {span[0]:.2f}-{span[1]:.2f} s" if zone else
+                 "no frame with subtitles on: no spoken words outside the hidden windows")
+    def light(px, v):  # the lightest 5 % of the band under the darkening v
+        lums = sorted(srgb_lum(rr * (1 - v * f), gg * (1 - v * f), bb * (1 - v * f)) for rr, gg, bb, f in px)
+        return lums[min(len(lums) - 1, int(len(lums) * 0.95))]
+
+    n_all, pick = len(frames), set()
+    for v in (0.0, 0.5):  # the lightest frames, with and without a darkening (the gradient weighs the rows differently)
+        pick |= {t for t, _ in sorted(frames, key=lambda fr: -light(fr[1], v))[:8]}
+    frames = [fr for fr in frames if fr[0] in pick]
+    current = s.get("subtitles_shade")
+    values = sorted({round(v / 20, 2) for v in range(0, 19)} | ({float(current)} if current is not None else set()))
+    rows = []
+    for v in values:
+        c, t = min(((lt + 0.05) / (light(px, v) + 0.05), t) for t, px in frames)
+        rows.append((v, c, t))
+    best = next((row for row in rows if row[1] >= target), None)
+    if zone:
+        print(f"shade: {what} x {zone[0]}-{zone[0] + zone[2]}, y {zone[1]}-{zone[1] + zone[3]}, {span[0]:.2f}-{span[1]:.2f} s, "
+              f"{n_all} frames ({fps} a second{', the camera of camera.json' if shots else ''}); a flat darkening; text "
+              f"{color}; the contrast against the lightest 5 % of the zone on the lightest frame (target {target}:1):")
+    else:
+        print(f"shade: the subtitle band y {top}-{bottom}, x {SHADE_X[0]}-{SHADE_X[1]}, {n_all} frames with subtitles on "
+              f"({fps} a second{', the camera of camera.json' if shots else ''}; windows where scenes hide them left out); "
+              f"text {color}; the contrast against the lightest 5 % of the band on the lightest frame:")
+    for v, c, t in rows:
+        if v in (0.0, 0.15, 0.25, 0.35, 0.45, 0.55, 0.65) or (v == current and not zone) or (best and v == best[0]):
+            mark = " <- reel.json now" if v == current and not zone else ""
+            mark += " <- suggested" if best and v == best[0] else ""
+            print(f"  {v:.2f}: {c:4.1f}:1 (the lightest frame {fmt_t(t)}){mark}")
+    if not best:
+        print(f"even 0.90 gives {rows[-1][1]:.1f}:1 < {target}:1: the background is too light for a darkening; "
+              + ("put the text on a plate or a backing in the brand color" if zone else
+                 "use the plate subtitles or a backing under them (references/typography.md)"))
+        return
+    if zone:
+        print(f"{what}: a flat darkening of {best[0]:.2f} under the text ({best[1]:.1f}:1 >= {target}:1 on the lightest "
+              f"frame {fmt_t(best[2])}); set it in the composition that draws this text")
+        return
+    print(f"reel.json subtitles_shade: {best[0]:.2f} ({best[1]:.1f}:1 >= {SHADE_TARGET}:1 on the lightest frame "
+          f"{fmt_t(best[2])}) -> reelcfg.py save {a.edit} --set subtitles_shade={best[0]:.2f}")
 
 
 def cmd_export(a):
@@ -1712,6 +2355,22 @@ def cmd_export(a):
         scenes.append(sp)
         if sp.get("hide_subtitles"):
             hide.append([sp["start"], round(sp["start"] + sp["dur"], 3)])
+    hide = sorted(hide + hidden_windows(plan))  # hide-subs: per-video compositions (a presenter, an accent title)
+    # presenter layers (keep-clear --matte): the WebM goes next to the rough cut, where Presenter's src points
+    # (matte.py place: "<id>/<name>.webm"); before, it was copied by hand
+    for k in plan.get("keep_clear", []):
+        if not k.get("matte"):
+            continue
+        m_src = e / "matte" / f"{safe_slug(k['matte'], 'keep_clear matte', dots=True)}.webm"
+        m_dst = inside(rem / "public", rem / "public" / name / m_src.name, "matte copy")
+        if not m_src.exists():
+            warn(f"keep_clear '{k.get('what')}': no {m_src} (matte.py cut): the presenter has no figure to show")
+            continue
+        md = m_dst.stat() if m_dst.exists() else None
+        if not md or md.st_size != m_src.stat().st_size or abs(md.st_mtime - m_src.stat().st_mtime) > 1:
+            m_dst.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(m_src, m_dst)
+            print(f"matte: {m_src.name} -> public/{name}/{m_src.name}" + (" (updated)" if md else ""))
     # the plan's keep_clear: overlay/split/window scenes (a box on screen); validate (memes, windows) and faces.py audit see them
     entries = scene_keep_entries(plan)
     if entries or any(k.get("scene") for k in plan.get("keep_clear", [])):
@@ -1754,29 +2413,45 @@ def cmd_export(a):
                  "style": plan["settings"].get("style") or brand.get("style_default"),  # the current style from reel.json
                  "hideSubtitles": hide, "drift": True, "hook": {"text": a.hook, "until": 2.4} if a.hook else None,
                  "corner": bool(a.corner), "endCard": {"line1": a.card[0], "line2": a.card[1] if len(a.card) > 1 else None,
-                                                       "seconds": 2.6} if a.card else
-                 {"line2": brand.get("tagline"), "seconds": 2.6} if a.sting else None}
+                                                       "seconds": END_CARD_S} if a.card else
+                 {"line2": brand.get("tagline"), "seconds": END_CARD_S} if a.sting else None}
         cam = [] if only else camera_shots(e, plan, cap)
         if cam:
             props["camera"], props["drift"] = cam, False
             print(f"camera: {len(cam)} shot(s) from camera.json")
-        # subtitles below the chin: the face measurement (faces.json), allowing for the template's drift (up to x1.05
-        # toward the frame center)
         import faces as fc
-        fdata = fc.load(e)
-        if fdata:
-            chins = ([chin_on_screen(b[1] + b[3], s_["t"], cam) for s_ in fdata["samples"] for b in s_["faces"]] if cam else
-                     [(b[1] + b[3] - 960) * 1.05 + 960 for s_ in fdata["samples"] for b in s_["faces"]])
-            if chins:
-                need = round(max(chins) + fc.MARGIN // 2)
-                props["subtitlesTop"] = max(1250, min(fc.SUB_MAX_TOP, need))
-                print(f"subtitles: top at y {props['subtitlesTop']} (chin down to {round(max(chins))} per faces.json)"
-                      + ("; WARNING: even at 1390 the chin touches the subtitles: use a wider shot or a lower camera" if need > fc.SUB_MAX_TOP else ""))
+        top, band = subtitle_top(e, s, cam)
+        fr = None if only else framed_at(e)
+        if fr:
+            # the framed format: ReelKit draws the window, the label and the video inside it (props.framed); the
+            # field is the style's (brand.looks[style].field), else the primary color, as the kit's own field
+            src = framed_source(e)
+            if not src:
+                sys.exit("format framed: the rough cut's size is unknown (no faces.json in source geometry, final.mp4 "
+                         "unreadable): run faces.py scan, or rebuild final.mp4")
+            look = ((brand.get("looks") or {}).get(str(props["style"] or "").lower()) or {})
+            props["framed"] = {"window": fr["window"], "label": fr["label"], "source": list(src),
+                               "radius": FRAMED_RADIUS, "field": look.get("field") or (brand.get("colors") or {}).get("primary")}
+            print(f"framed: window {fr['window']}, source {src[0]}x{src[1]}"
+                  + (f", label “{fr['label']}”" if fr["label"] else ", no label") + f", field {props['framed']['field']}")
+        props["subtitlesTop"] = top
         if props["subtitles"] not in ("accent", "plate", "typewriter", "none"):
             mode = {"v2": "plate", "bar": "plate", "typewriter": "typewriter", "print": "typewriter"}.get(str(props["subtitles"]).lower())
             if not mode:
                 warn(f"subtitles '{props['subtitles']}': the kit draws accent, plate and typewriter; accent is used")
             props["subtitles"] = mode or "accent"
+        if not only:  # faces.py audit checks the render against the band it really has
+            # the kit draws at most two lines (Subtitles.tsx): the band is the mode's two-line block from the top, above
+            # the UI (T4: the band said 1250-1430 while a three-line phrase reached 1455)
+            h = SUB_BLOCK_H.get(props["subtitles"], band[1] - band[0])
+            low = fc.H - fc.UI_BOTTOM
+            if fr:  # the subtitle block stays inside the window's text area (the kit lifts it the same way)
+                a0, a1 = framed_area(fr)[1], framed_area(fr)[3]
+                low = min(low, a1)
+                top = max(a0, min(top, a1 - h))
+                props["subtitlesTop"] = top
+            with editing_plan(e) as p2:
+                p2["subtitles_band"] = [top, min(low, top + h)]
         if s.get("subtitles_shade") is not None:
             props["subtitlesShade"] = float(s["subtitles_shade"])
         props["scenes"] = scenes  # designed scenes (the scene kit, SceneSpec); an older template ignores this prop
@@ -1789,6 +2464,14 @@ def cmd_export(a):
             print(f"scenes: {len(scenes)} in props.scenes; subtitles hidden in {len(hide)} window(s)")
         save_json(Path(a.props), props)
         print(f"template props: {a.props}")
+    # what follows the cut, recorded once the export is through (during it end_tail() reads --sting/--card): validate
+    # counts "the last 2 s" from the whole video's end. Codex review: written before the Remotion project check, a
+    # failed export left an end card that the next validate counted
+    with editing_plan(e) as p2:
+        if a.sting or a.card:
+            p2["end_card"] = {"kind": "sting" if a.sting else "card", "seconds": END_CARD_S}
+        else:
+            p2.pop("end_card", None)
 
 
 def main():
@@ -1822,13 +2505,38 @@ def main():
     g.add_argument("--frame-at", type=float, help="cover: the video second under the cover (otherwise 1.0 s or poster.py pick)")
     g.add_argument("--sound", choices=SCENE_SOUNDS); g.add_argument("--hide-subtitles", action="store_true")
     p.set_defaults(fn=cmd_add)
-    p = sub.add_parser("keep-clear"); p.add_argument("edit"); p.add_argument("--from", dest="start", type=float, required=True)
-    p.add_argument("--to", dest="end", type=float, required=True); p.add_argument("--box", required=True, help="x,y,w,h in 1080x1920")
-    p.add_argument("--what", required=True); p.add_argument("--cam", help="z,cx,cy of the camera on this span")
+    p = sub.add_parser("keep-clear"); p.add_argument("edit"); p.add_argument("--from", dest="start", type=float)
+    p.add_argument("--to", dest="end", type=float); p.add_argument("--box", help="x,y,w,h in 1080x1920")
+    p.add_argument("--what"); p.add_argument("--cam", help="z,cx,cy of the camera on this span")
+    p.add_argument("--remove", type=int, nargs="+", metavar="N", help="remove zone N (numbered in visual_plan.md, from 1)")
+    p.add_argument("--matte", help="a presenter layer: the matte.py name (counts in the coverage, export copies its WebM)")
+    p.add_argument("--own-face", help="x,y,w,h: the presenter's own face on screen (not flagged in its own zone)")
     p.set_defaults(fn=cmd_keep)
+    p = sub.add_parser("hide-subs", help="hide the subtitles in a window a per-video composition covers")
+    p.add_argument("edit"); p.add_argument("--from", dest="start", type=float); p.add_argument("--to", dest="end", type=float)
+    p.add_argument("--why"); p.add_argument("--remove", type=int, nargs="+", metavar="N",
+                                            help="remove window N (numbered in visual_plan.md, from 1)")
+    p.set_defaults(fn=cmd_hide)
+    p = sub.add_parser("remove", help="take inserts out of the plan"); p.add_argument("edit")
+    p.add_argument("ids", nargs="+", help="insert ids: c03, b01, m02")
+    p.set_defaults(fn=cmd_remove)
     p = sub.add_parser("validate"); p.add_argument("edit")
+    g = p.add_mutually_exclusive_group()
+    g.add_argument("--sting", action="store_true", help="a logo sting will follow the cut (export --sting): the last 2 s "
+                                                        "count from the end of the whole video")
+    g.add_argument("--card", action="store_true", help="an end card will follow the cut (export --card)")
     p.set_defaults(fn=lambda a: sys.exit(1 if cmd_validate(a)[0] else 0))
     p = sub.add_parser("md"); p.add_argument("edit"); p.set_defaults(fn=cmd_md)
+    p = sub.add_parser("shade", help="measure the darkening behind \"Typewriter\" subtitles (reel.json subtitles_shade)")
+    p.add_argument("edit"); p.add_argument("--color", help="the subtitle text color (default: the brand's text_on_primary)")
+    p.add_argument("--top", type=int, help="the subtitles' top y (default: the band export recorded, else the chin)")
+    g = p.add_mutually_exclusive_group()
+    g.add_argument("--zone", metavar="X,Y,W,H", help="measure a text zone instead of the subtitle band (a flat darkening)")
+    g.add_argument("--scene", metavar="ID", help="measure the box of this scene, over its time (a flat darkening)")
+    p.add_argument("--from", dest="start", type=float, help="--zone: from this second (default: the whole video)")
+    p.add_argument("--to", dest="end", type=float, help="--zone: up to this second")
+    p.add_argument("--target", type=float, help="the contrast to reach (default 4.5 for subtitles, 3.0 for a zone: large text)")
+    p.set_defaults(fn=cmd_shade)
     p = sub.add_parser("export"); p.add_argument("edit"); p.add_argument("--remotion", required=True); p.add_argument("--name")
     p.add_argument("--force", action="store_true"); p.add_argument("--props", help="the props file for the template composition")
     p.add_argument("--subtitles", choices=["accent", "plate", "typewriter", "none"]); p.add_argument("--hook")

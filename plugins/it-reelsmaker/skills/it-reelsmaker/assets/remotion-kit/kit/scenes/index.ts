@@ -3,7 +3,7 @@
 export * from "./types";
 export * from "./tones";
 export { SAFE_ZONE, FULL_RECT, SceneLayer, effectiveMode, playableScenes, sceneActivity, sceneHideIntervals, sceneStage, speakerRectAt, speakerTarget } from "./SceneLayer";
-export type { SpeakerRect } from "./SceneLayer";
+export type { SceneFrameBox, SpeakerRect } from "./SceneLayer";
 export { Brackets, Label, TextBlock, contrast, fmtNumber, surfaces, wordTimes } from "./parts";
 export { Hook } from "./Hook";
 export { Quote } from "./Quote";

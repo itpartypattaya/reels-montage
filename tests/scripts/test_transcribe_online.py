@@ -58,6 +58,17 @@ def test_text_without_spaces_is_laid_by_characters(online):
     assert out[1]["local"] == "世姐" and rep["fixed"] == [(1.4, "世姐", "世界。")] and rep["same"] == 1
 
 
+def test_hyphenated_word_is_not_doubled(online):
+    # IMG_0135 (04.10): the cloud wrote "не-не-не." as one word, the local model "не" "-не" "-не."; the tails stayed as
+    # "local only" and the subtitles read "не-не-не. -не -не."
+    import transcribe as core
+    local = core.join_hyphen_parts(words([("HR,", 10.86, 11.32), ("не", 11.44, 11.74), ("-не", 11.74, 11.98),
+                                          ("-не.", 11.98, 12.26), ("Это", 12.42, 12.64)]))
+    assert [(w["text"], w["start"], w["end"]) for w in local][1] == ("не-не-не.", 11.44, 12.26)
+    out, rep = online.lay_text(local, "HR, не-не-не. Это")
+    assert [w["text"] for w in out] == ["HR,", "не-не-не.", "Это"] and not rep["local_only"]
+
+
 def test_cloud_text_on_local_times(online):
     out, rep = online.lay_text(words(LOCAL), TEXT)
     assert [w["text"] for w in out] == ["Привет,", "мир.", "Чем", "конкретнее", "тем", "лучше!", "Сколько?"]
@@ -183,3 +194,31 @@ def test_runner_knows_the_command(project, tmp_path):
     r = run_script("addon.py", "transcribe", "edit/4821", "IMG_4821.MOV", "--provider", "openai", "--price",
                    cwd=project, env=env)
     assert "gpt-transcribe" in r.stdout and "≈ $0.000" in r.stdout
+
+
+@needs_ffmpeg
+def test_a_long_word_note_is_printed_once(online, project, monkeypatch, capsys):
+    # T1: "N word(s) longer than 1 s" came twice: from the core's local run and again for the merged transcript
+    from conftest import ROOT
+    monkeypatch.syspath_prepend(str(ROOT / "tests" / "scripts" / "stubs"))  # faster-whisper: "Hello big world."
+    late_audio_video(project / "IMG_4821.MOV")
+    monkeypatch.setenv("OPENAI_API_KEY", KEY)
+    monkeypatch.setattr(online, "openai_call", lambda wav, key, model, language=None, prompt=None, words=False:
+                        {"text": "Hello big world.", "usage": {"type": "duration", "seconds": 3}})
+    assert run(online, "--yes", "--language", "en") == 0
+    err = capsys.readouterr().err
+    assert err.count("longer than 1 s") == 1, err
+
+
+def test_cloud_words_before_the_first_local_word_get_a_real_time(online):
+    # T2: the cloud heard a short phrase at the very start that the local model did not, and the local model put its
+    # first word at 0.00: the cloud words got 0.00-0.00 (zero length at the very start)
+    out, rep = online.lay_text(words([("вы", 0.0, 0.32), ("сказали", 0.32, 0.8)]), "Я знаю, вы сказали")
+    assert [w["text"] for w in out] == ["Я", "знаю,", "вы", "сказали"]
+    lead = out[:2]
+    assert all(w.get("est") and w["end"] - w["start"] >= 0.06 for w in lead), lead
+    assert lead[0]["start"] >= 0.0 and lead[1]["end"] <= out[2]["start"] < out[2]["end"]
+    assert not out[2].get("est") and out[3]["start"] == 0.32  # the matched words keep the local times otherwise
+    # with room before the first word: just before it, short
+    out, _ = online.lay_text(words([("вы", 1.5, 1.8), ("сказали", 1.8, 2.3)]), "Я знаю, вы сказали")
+    assert out[0]["start"] == 0.9 and out[1]["end"] == 1.5 and out[2]["start"] == 1.5

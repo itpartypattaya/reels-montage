@@ -6,15 +6,15 @@ Two messages as the person should see them: the cut plan of step 5 and the repor
 
 > **IMG_4821.MOV → a Reel for Acme.** Source: 72.4 s, 2160×3840 after rotation, 30 fps; the author did not speed it up (7.4 syllables/s).
 >
-> **What stays.** 11 of 15 phrases, in the original order. The hook is the first strong line, “Most hiring managers test memory, not thinking” (0:03.4).
+> **Start and ending** (chosen from three variants, step 3a): the slow start is cut, so the video opens on the first strong line, “Most hiring managers test memory, not thinking” (0:03.4), and ends on the call to action with a pull-out. Not chosen: a teaser of “I hired the one who failed the test” (0:41.2–0:43.0, clean edges): it is the payoff of the story and would give it away; proof first (the interview story before the claim): it needs the claim to make sense.
+>
+> **What stays.** 11 of 15 phrases, in the original order.
 >
 > **What goes:**
 > - 0:00–0:03.2 “So, um, hi everyone”: a slow start before the hook;
 > - 0:21.6–0:27.9 the first take of “test how they think”: the speaker stopped and said “let me say that again”, so the second take (0:28.3–0:33.0) stays;
 > - 0:46.0–0:49.5 an aside about the weather: off topic;
 > - 1:05.2–1:08.0 the call to action said a second time: the first one is cleaner.
->
-> **Rejected:** moving the story about the interview (0:34–0:45) to the start. It is stronger as proof after the claim than as a hook.
 >
 > **Takes and slips.** At 0:52.1 the word “candidates” lasts 1.4 s with a 0.4 s silence inside: a re-transcribed 5-second segment shows two takes, and the last one stays.
 >

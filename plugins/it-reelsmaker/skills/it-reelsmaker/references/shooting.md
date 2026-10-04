@@ -7,5 +7,5 @@ A memo to send the speaker before the shoot.
 3. Light from the side (side-on to a window), not from behind and not head-on.
 4. Lines phrase by phrase, in takes; restart the whole phrase.
 5. After the main shot, 2–3 detail shots of 5–10 s each (hands, emotion, an object) from a new tripod position.
-6. A “hook” in the scene itself: an object or an action that raises a question.
+6. A “hook” in the scene itself: an object or an action that raises a question; even better if the last line or the call to action comes back to it.
 7. Two-person skit: each person has their own lavalier mic.

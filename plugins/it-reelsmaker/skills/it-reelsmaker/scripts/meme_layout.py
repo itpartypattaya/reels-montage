@@ -17,7 +17,7 @@ import json, subprocess, sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from reels_common import load_defaults, probe, run, warn
+from reels_common import SUB_BAND, load_defaults, probe, run, warn
 
 W, H = 1080, 1920
 
@@ -28,7 +28,7 @@ def layout(settings=None, doc=None):
     L.setdefault("sizes", {"s": 300, "m": 380, "l": 460})
     L.setdefault("max_side", 460)
     L.setdefault("safe", {"top": 220, "bottom": 420, "right": 120, "left": 40})
-    L.setdefault("subtitles_band", [1250, 1430])
+    L.setdefault("subtitles_band", list(SUB_BAND))
     L.setdefault("face_margin", 60)
     L.setdefault("edge_margin", 60)
     L.setdefault("slots", ["top-left", "top-right", "top-center", "mid-left", "mid-right", "low-left", "low-right"])

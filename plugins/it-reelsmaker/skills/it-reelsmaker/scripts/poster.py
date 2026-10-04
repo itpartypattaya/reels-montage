@@ -10,18 +10,24 @@ one, otherwise a frame of its own choosing (a B-roll frame from the middle, say)
     python scripts/poster.py attach out/x-master.mp4 --cover edit/<id>/cover.jpg -o out/x-final.mp4
 
 pick  — a "settled" frame from the render: --t; otherwise from the visual plan, the hook scene's settled window
-        (after its entrance and before its exit, by the scene tone, references/scenes.md), otherwise the cover scene's;
-        otherwise 1.0 s → jpg q2. Within the window the frame is taken in a pause of the speech, measured on the
-        render's sound: a face caught mid-word is distorted (an open mouth, a half-said vowel). No pause in the window:
-        the quietest moment, with a note; --t inside speech: a warning with the nearest pause.
+        (after its entrance and before its exit, by the scene tone, references/scenes.md), otherwise the cover scene's,
+        otherwise in a "scenes only" promo the first scene's (a render with no sound track, as every "scenes only"
+        render is before mastering: the middle of that window, nothing to time against); otherwise 0.5–3.0 s, widened to 0.5–8.0 s when that has no speech pause (T5: a voice-over with no hook scene
+        had none), or your own --window A-B → jpg q2. Within the window the frame is taken in a pause of the speech (the speech mask of
+        the render's sound, a gap of at least 0.15 s; a shorter dip is between or inside words): a face caught mid-word
+        is distorted (an open mouth, a half-said vowel). No pause in the window (a dense cut): the quietest moment,
+        with a note; --t on speech: a warning with the nearest pause - about a face only when the face scan
+        (faces_render.json, else faces.json) sees one near that second.
         A pause is not enough on its own: in pauses people blink and look down (a real case: the pause frame had
         half-closed eyes). --sheet saves up to 6 candidates from the window's pauses side by side, numbered left to
-        right, with their seconds printed: pick the one with open eyes and a mouth at rest, then pick --t <second>.
+        right, with their seconds printed (those on speech marked so): pick the one with open eyes and a mouth at rest,
+        then pick --t <second>.
         A cover with text over the frame is drawn by the ReelCover composition (`npx remotion still ReelCover cover.png --props=…`).
 bake  — replaces ONLY frame 0 with the cover image (overlay enable='eq(n,0)'); video libx264 crf 18 preset slow yuv420p,
         audio copied, +faststart. Check: the frame count (ffprobe -count_frames) and the video and audio durations are
-        the same before and after, and frame 0 = the cover; otherwise exit code 1 (do not deliver the file). Order:
-        render → bake → master_audio.py (mastering copies the video without re-encoding, frame 0 is kept) → faces.py audit.
+        the same before and after, and frame 0 = the cover; otherwise exit code 1 (do not deliver the file). Order
+        (SKILL.md step 9): render → faces.py audit (on the render) → pick → bake → master_audio.py (mastering copies
+        the video without re-encoding, frame 0 is kept) → attach.
 attach — embeds the cover as cover art (an attached picture, mp4 "covr"): what file managers show as the thumbnail.
         Nothing is re-encoded; the last step, after master_audio.py (mastering keeps only the first video stream).
         Check: the video and audio streams and durations are unchanged and the cover is in the file; otherwise exit 1.
@@ -84,60 +90,105 @@ def frame_png(video, n, out):
 
 # ─── pick ───────────────────────────────────────────────────────────────────────────────────────────
 
-def pauses(render, t0, t1):
-    """Pauses of the speech in [t0, t1] of the render: [(start, end)], at least 60 ms below the speech threshold
-    (the louder of -45 dBFS and the 95th percentile of the window - 20 dB), 10 ms windows; plus the quietest moment."""
-    import wave
-    from array import array
-    from math import log10, sqrt
+PAUSE = 0.15   # s: a real pause in the speech mask, the floor of pause compression (speech_mask.py); a shorter dip in
+               # connected speech is inside a word or between two (SKILL.md step 3). The 60 ms dips taken before put all
+               # six candidates of a real video mid-word.
+CONTEXT = 1.0  # s of sound around the window: the mask's threshold is set by the speech level, not by one word
+
+
+_AUDIO = {}
+
+
+def has_audio(render):
+    """Whether the render has an audio track (a "scenes only" render has none: the sound is added at mastering)."""
+    k = str(Path(render).resolve())
+    if k not in _AUDIO:
+        r = sh(["ffprobe", "-v", "error", "-select_streams", "a", "-show_entries", "stream=index", "-of", "csv=p=0", render],
+               "ffprobe")
+        _AUDIO[k] = bool(r.stdout.strip())
+    return _AUDIO[k]
+
+
+def speech_of(render, t0, t1):
+    """The speech mask (speech_mask.py) of the render's sound around [t0, t1] → (mask, env, base): 10 ms windows
+    from base = t0 - CONTEXT; None without sound (no audio track: T6, every "scenes only" render, crashed here)."""
+    import speech_mask as sm
+    if not has_audio(render):
+        return None
+    base = max(0.0, t0 - CONTEXT)
     tmp = Path(tempfile.mkdtemp(prefix="poster-"))
     try:
         wav = tmp / "a.wav"
-        sh(["ffmpeg", "-v", "error", "-y", "-ss", f"{max(0.0, t0):.3f}", "-to", f"{t1:.3f}", "-i", render, "-vn", "-ac", "1",
-            "-ar", "16000", "-c:a", "pcm_s16le", wav], "ffmpeg (cover audio)")
-        with wave.open(str(wav), "rb") as w:
-            data = array("h", w.readframes(w.getnframes()))
+        sh(["ffmpeg", "-v", "error", "-y", "-ss", f"{base:.3f}", "-to", f"{t1 + CONTEXT:.3f}", "-i", render, "-vn",
+            "-ac", "1", "-ar", "16000", "-c:a", "pcm_s16le", wav], "ffmpeg (cover audio)")
+        env, hf = sm.load_envs(str(wav))
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
-    n, env = 160, []
-    for i in range(0, len(data) - n + 1, n):
-        s = sum(v * v for v in data[i:i + n])
-        r = sqrt(s / n) / 32768
-        env.append(20 * log10(r) if r > 1e-6 else -120.0)
     if not env:
+        return None
+    sdb = sm.smax(env)
+    srt = sorted(x for x in sdb if x > -90)
+    thr = min(-30.0, srt[int(len(srt) * 0.95)] - 20) if srt else -45.0
+    return sm.speech_mask(sdb, thr, vl=sm.voiceless(hf)), env, base
+
+
+def pauses(render, t0, t1, sp=None):
+    """Pauses of the speech in [t0, t1] of the render: [(start, end)], gaps of the speech mask of at least PAUSE
+    (clipped to the window); plus the quietest moment of the window (10 ms level, smoothed over 50 ms)."""
+    sp = sp or speech_of(render, t0, t1)
+    if sp is None:
         return [], None
-    thr = max(-45.0, sorted(env)[int(len(env) * 0.95)] - 20)
-    out, k, base = [], 0, max(0.0, t0)
-    while k < len(env):
-        if env[k] < thr:
+    mask, env, base = sp
+    i0, i1 = max(0, int(round((t0 - base) / 0.01))), min(len(mask), int(round((t1 - base) / 0.01)))
+    out, k = [], i0
+    while k < i1:
+        if not mask[k]:
             j = k
-            while j < len(env) and env[j] < thr:
+            while j < len(mask) and not mask[j]:
                 j += 1
-            if (j - k) * 0.01 >= 0.06:
-                out.append((base + k * 0.01, base + j * 0.01))
+            g0 = k
+            while g0 > 0 and not mask[g0 - 1]:  # the gap may begin before the window
+                g0 -= 1
+            if (j - g0) * 0.01 >= PAUSE:
+                out.append((base + k * 0.01, base + min(j, i1) * 0.01))
             k = j
         else:
             k += 1
-    sm = [sum(env[max(0, i - 2):i + 3]) / len(env[max(0, i - 2):i + 3]) for i in range(len(env))]
-    quiet = base + min(range(len(sm)), key=lambda i: sm[i]) * 0.01 + 0.005
+    if i1 <= i0:
+        return out, None
+    sm_ = [sum(env[max(0, i - 2):i + 3]) / len(env[max(0, i - 2):i + 3]) for i in range(i0, i1)]
+    quiet = base + (i0 + min(range(len(sm_)), key=lambda i: sm_[i])) * 0.01 + 0.005
     return out, quiet
 
 
+def on_speech(sp, t):
+    """True when second t is speech by the mask."""
+    mask, _, base = sp
+    i = int(round((t - base) / 0.01))
+    return 0 <= i < len(mask) and mask[i]
+
+
 def in_pause(render, a, b, why):
-    """The middle of the longest speech pause inside [a, b] (one frame away from its edges) → (second, source)."""
+    """The middle of the longest speech pause inside [a, b] (one frame away from its edges) → (second, source); no
+    sound track: the middle of [a, b]."""
+    if not has_audio(render):
+        return round((a + b) / 2, 3), f"{why}, its middle (the render has no sound track)"
     ps, quiet = pauses(render, a, b)
-    ps = [(max(x, a), min(y, b)) for x, y in ps if min(y, b) - max(x, a) >= 0.06]
+    ps = [(max(x, a), min(y, b)) for x, y in ps if min(y, b) - max(x, a) >= 0.06]  # room for a frame inside the window
     if ps:
         x, y = max(ps, key=lambda g: g[1] - g[0])
         return round((x + y) / 2, 3), f"{why}, in a pause of the speech {x:.2f}–{y:.2f} s (the face is not mid-word)"
     if quiet is not None:
-        return round(quiet, 3), f"{why}, the quietest moment: no pause in the window, check the face (mid-word?)"
+        return round(quiet, 3), (f"{why}, the quietest moment: no pause of {PAUSE:.2f} s or more in the window "
+                                 f"(a dense cut), check the face (mid-word?)")
     return round((a + b) / 2, 3), why
 
 
 def candidates(render, a, b, k=6):
-    """Up to k moments in [a, b]: the middles of the speech pauses (longest first), topped up evenly across the window."""
-    ps, quiet = pauses(render, a, b)
+    """Up to k moments in [a, b] → [(second, in a pause)]: the middles of the speech pauses (longest first), topped up
+    evenly across the window (those are on speech: the sheet says so)."""
+    sp = speech_of(render, a, b)
+    ps, quiet = pauses(render, a, b, sp)
     ps = sorted(((max(x, a), min(y, b)) for x, y in ps if min(y, b) - max(x, a) >= 0.06), key=lambda g: g[0] - g[1])
     out = [round((x + y) / 2, 3) for x, y in ps[:k]]
     step = (b - a) / (k + 1)
@@ -147,11 +198,50 @@ def candidates(render, a, b, k=6):
         m = round(a + j * step, 3)
         if all(abs(m - o) > 0.2 for o in out):
             out.append(m)
-    return sorted(out)
+    return [(t, sp is None or not on_speech(sp, t)) for t in sorted(out)]  # no sound: nothing is on speech
 
 
-def hook_window(e):
-    """(start, end, source) of the hook scene's settled window (else the cover scene's), or None."""
+DEFAULT_WIN, WIDE_END = (0.5, 3.0), 8.0  # no hook or cover scene: the window, and how far it widens without a pause
+
+
+def window_of(e, render, given=None):
+    """(start, end, label) of the cover window: --window A-B; the hook (else cover) scene's settled window; else 0.5-3.0
+    s, widened to 0.5-8.0 s (inside the video) when it has no speech pause of its own."""
+    if given:
+        try:
+            lo, hi = (float(x) for x in given.split("-"))
+        except ValueError:
+            sys.exit(f"--window {given}: expected A-B in seconds, e.g. 0.5-6")
+        if hi <= lo:
+            sys.exit(f"--window {given}: the end must be after the start")
+        return lo, hi, "--window"
+    win = hook_window(e)
+    if win and win[1] > win[0]:
+        return win[0], win[1], "window " + win[2]
+    lo, hi = DEFAULT_WIN
+    ps, _ = pauses(render, lo, hi)
+    if any(min(y, hi) - max(x, lo) >= 0.06 for x, y in ps):
+        return lo, hi, f"no hook scene: {lo}–{hi} s"
+    vdur = video_info(render).get("vdur") or WIDE_END
+    wide = round(min(WIDE_END, vdur - 0.5), 2)
+    if wide <= hi:
+        return lo, hi, f"no hook scene: {lo}–{hi} s"
+    return lo, wide, f"no hook scene and no pause in {lo}–{hi} s: widened to {lo}–{wide} s"
+
+
+def faces_near(e, t, span=0.5):
+    """Whether the face scan sees a face within ±span s of t (faces_render.json of the render, else faces.json of the
+    rough cut, the same timeline up to the cut's end) → True / False, or None without a scan."""
+    for name in ("faces_render.json", "faces.json"):
+        d = load_json(e / name)
+        if d and isinstance(d.get("samples"), list):
+            return any(s.get("faces") for s in d["samples"] if abs(float(s.get("t", -9)) - t) <= span)
+    return None
+
+
+def settled_scene(e):
+    """The scene whose settled window gives the cover: the first hook, else the first cover scene, else (a "scenes only"
+    promo: the frame is all scenes) the first scene → (scene, type, tone, start, end) of its settled window, or None."""
     plan = load_json(e / "visual_plan.json") or {}
     scenes = [i for i in plan.get("inserts", []) if i.get("kind") == "scene" and i.get("status") != "skipped"]
     if not scenes:
@@ -159,36 +249,43 @@ def hook_window(e):
     s, _, doc, _, _ = load_config(e)
     tones = doc.get("scene_tones") or {}
     fps = (doc.get("scenes") or {}).get("fps", 30)
-    for typ in ("hook", "cover"):
-        sc = min((x for x in scenes if x.get("type") == typ), key=lambda x: x["start"], default=None)
+    pick = [(typ, min((x for x in scenes if x.get("type") == typ), key=lambda x: x["start"], default=None))
+            for typ in ("hook", "cover")]
+    if plan.get("format") == "scenes-only":
+        first = min((x for x in scenes if x.get("type") != "cover"), key=lambda x: x["start"], default=None)
+        pick.append(((first or {}).get("type"), first))
+    for typ, sc in pick:
         if sc:
             tn = sc.get("tone") or s.get("scene_tone") or (s.get("brand_tone") or {}).get("scene_tone") or "calm"
             T = tones.get(tn) or {"in": 14, "out": 9}
-            return sc["start"] + T["in"] / fps, sc["start"] + sc["dur"] - T["out"] / fps, f"{sc['id']} {typ} ({tn})"
+            return sc, typ, tn, sc["start"] + T["in"] / fps, sc["start"] + sc["dur"] - T["out"] / fps
     return None
 
 
+def hook_window(e):
+    """(start, end, source) of the hook scene's settled window (else the cover scene's, else in "scenes only" the
+    first scene's), or None."""
+    got = settled_scene(e)
+    if not got:
+        return None
+    sc, typ, tn, a, b = got
+    return a, b, f"{sc['id']} {typ} ({tn})"
+
+
 def rest_time(e, render=None):
-    """A frame in the "settled" window of the hook scene (else the cover scene) from the plan, in a pause of the speech
-    when the render is given → (second, source) or (None, reason)."""
+    """A frame in the "settled" window of the hook scene (else the cover scene, else in "scenes only" the first scene)
+    from the plan, in a pause of the speech when the render is given → (second, source) or (None, reason)."""
     plan = load_json(e / "visual_plan.json") or {}
-    scenes = [i for i in plan.get("inserts", []) if i.get("kind") == "scene" and i.get("status") != "skipped"]
-    if not scenes:
+    if not [i for i in plan.get("inserts", []) if i.get("kind") == "scene" and i.get("status") != "skipped"]:
         return None, "no scenes in the plan"
-    s, _, doc, _, _ = load_config(e)
-    tones = doc.get("scene_tones") or {}
-    fps = (doc.get("scenes") or {}).get("fps", 30)
-    for typ in ("hook", "cover"):
-        sc = min((x for x in scenes if x.get("type") == typ), key=lambda x: x["start"], default=None)
-        if sc:
-            tn = sc.get("tone") or s.get("scene_tone") or (s.get("brand_tone") or {}).get("scene_tone") or "calm"
-            T = tones.get(tn) or {"in": 14, "out": 9}
-            a, b = sc["start"] + T["in"] / fps, sc["start"] + sc["dur"] - T["out"] / fps
-            why = f"the settled window of {sc['id']} {typ} ({tn}) {a:.2f}–{b:.2f} s"
-            if b <= a:
-                return round(sc["start"] + sc["dur"] / 2, 3), why
-            return in_pause(render, a, b, why) if render else (round((a + b) / 2, 3), why)
-    return None, "no hook or cover scene"
+    got = settled_scene(e)
+    if not got:
+        return None, "no hook or cover scene"
+    sc, typ, tn, a, b = got
+    why = f"the settled window of {sc['id']} {typ} ({tn}) {a:.2f}–{b:.2f} s"
+    if b <= a:
+        return round(sc["start"] + sc["dur"] / 2, 3), why
+    return in_pause(render, a, b, why) if render else (round((a + b) / 2, 3), why)
 
 
 def cmd_pick(a):
@@ -197,9 +294,9 @@ def cmd_pick(a):
     if not render.is_file():
         sys.exit(f"render not found: {render}")
     if a.sheet:
-        win = hook_window(e)
-        lo, hi = (win[0], win[1]) if win and win[1] > win[0] else (0.5, 3.0)
-        ts = candidates(render, lo, hi)
+        lo, hi, label = window_of(e, render, a.window)
+        cs = candidates(render, lo, hi)
+        ts = [t for t, _ in cs]
         tmp = Path(tempfile.mkdtemp(prefix="poster-"))
         try:
             frames = []
@@ -215,23 +312,41 @@ def cmd_pick(a):
                 "-frames:v", "1", out])
         finally:
             shutil.rmtree(tmp, ignore_errors=True)
-        print(f"cover candidates ({'window ' + win[2] if win else 'no hook scene: 0.5–3.0 s'} {lo:.2f}–{hi:.2f} s), "
-              f"left to right: " + ", ".join(f"{j + 1}: {tt:.2f} s" for j, tt in enumerate(ts)) + f" → {out}")
-        print("pick the frame with open eyes and the mouth at rest, then: poster.py pick … --t <second> -o …/cover.jpg")
+        print(f"cover candidates ({label}, {lo:.2f}–{hi:.2f} s), "
+              f"left to right: " + ", ".join(f"{j + 1}: {tt:.2f} s{'' if ok else ' (on speech)'}"
+                                             for j, (tt, ok) in enumerate(cs)) + f" → {out}")
+        only = (load_json(e / "visual_plan.json") or {}).get("format") == "scenes-only"  # no footage, no face
+        face = not only and any(faces_near(e, tt) is not False for tt in ts)  # no face scan: assume there may be one
+        if not any(ok for _, ok in cs):
+            print(f"no pause of {PAUSE:.2f} s or more in the window (a dense cut): every candidate is on speech"
+                  + (", look at the mouth of each" if face else
+                     "; the face scan sees no face there, so it does not matter for a face"))
+        print(("pick the frame with open eyes and the mouth at rest" if face else
+               "no face in these frames: pick the one that shows the subject best")
+              + ", then: poster.py pick … --t <second> -o …/cover.jpg")
         return
     if not a.output:
         sys.exit("-o is needed (or --sheet for the candidates)")
     if a.t is not None:
         t, why = a.t, "--t"
-        ps, _ = pauses(render, a.t - 1.0, a.t + 1.0)
-        if not any(x <= a.t <= y for x, y in ps):
+        sp = speech_of(render, max(0.0, a.t - 1.0), a.t + 1.0)
+        ps, _ = pauses(render, max(0.0, a.t - 1.0), a.t + 1.0, sp)
+        face = faces_near(e, a.t)
+        if sp is not None and not any(x <= a.t <= y for x, y in ps) and face is not False:
+            # a voice-over with no face in the frame: speech under the cover frame changes nothing (T5 warned anyway)
             near = min(((x + y) / 2 for x, y in ps), key=lambda m: abs(m - a.t), default=None)
-            warn(f"--t {a.t:.2f} falls on speech: the face may be caught mid-word"
-                 + (f"; the nearest pause is at {near:.2f} s" if near is not None else ""))
+            warn(f"--t {a.t:.2f} falls on speech" + ("" if on_speech(sp, a.t) else f" (a dip shorter than {PAUSE:.2f} s, "
+                 "between or inside words)") + (": the face may be caught mid-word" if face else
+                                                 ": a face, if one is in the frame, may be caught mid-word (no face scan)")
+                 + (f"; the nearest pause is at {near:.2f} s" if near is not None else "; no pause within 1 s"))
+    elif a.window:
+        lo, hi, label = window_of(e, render, a.window)
+        t, why = in_pause(render, lo, hi, f"--window {lo:.2f}–{hi:.2f} s")
     else:
         t, why = rest_time(e, render)
         if t is None:
-            t, why = 1.0, f"1.0 s by default ({why})"
+            lo, hi, label = window_of(e, render)
+            t, why = in_pause(render, lo, hi, f"{why}: {label}")
     info = video_info(render)
     if info["vdur"]:
         t = max(0.0, min(t, info["vdur"] - 1.0 / info["fps"]))
@@ -382,6 +497,8 @@ def main():
     p = sub.add_parser("pick", help="a \"settled\" frame from the render → jpg")
     p.add_argument("edit"); p.add_argument("--render", required=True); p.add_argument("--t", type=float)
     p.add_argument("-o", "--output"); p.add_argument("--sheet", help="save up to 6 candidate frames side by side")
+    p.add_argument("--window", metavar="A-B", help="look for the frame in these seconds (e.g. 0.5-6) instead of the "
+                                                   "hook scene or the default 0.5-3.0 s")
     p.set_defaults(fn=cmd_pick)
     p = sub.add_parser("bake", help="replace frame 0 with the cover (frame count and duration stay the same)")
     p.add_argument("render"); p.add_argument("--cover", required=True); p.add_argument("-o", "--output", required=True)

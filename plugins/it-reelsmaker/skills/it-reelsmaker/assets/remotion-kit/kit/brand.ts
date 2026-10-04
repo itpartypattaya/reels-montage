@@ -39,8 +39,11 @@ export type Brand = {
     text_on_primary: string;
     text_on_accent: string;
     extra?: Record<string, string>;
+    // subtitle colors per speaker, in captions.speakers order (Subtitles.tsx); absent: text_on_primary, then accent
+    speakers?: string[];
   };
-  fonts: { heading: BrandFont; body: BrandFont };
+  // serif: the serif of the “Editorial” style ({{FONT_SERIF}}): its headings, when looks.editorial.heading is not set
+  fonts: { heading: BrandFont; body: BrandFont; serif?: BrandFont };
   logos: Record<string, string>;
   motion?: "calm" | "lively" | "energetic";
   tone?: BrandTone;
@@ -77,6 +80,8 @@ const loadGoogle = (f: BrandFont): string => {
   const weights = (f.weights ?? [400, 700]).map(String).filter((w) => have.includes(w));
   const first = normal[weights[0] ?? have[0]] ?? {};
   const subsets = ["cyrillic", "latin"].filter((s) => s in first);
+  // upright faces only: a fontStyle "italic" gets the browser's slanted upright face, not the family's italic (to use a
+  // real italic, load it in your composition: loadFont("italic", { weights, subsets }) from the same module)
   const { fontFamily } = mod.loadFont("normal", { weights: weights.length ? weights : [have[0]], subsets });
   loaded.set(key, fontFamily);
   return fontFamily;
@@ -126,8 +131,10 @@ export const alpha = (hex: string, a: number) => {
 //     text on its own marker is extra.on_marker (or extra.ink) or #111111, on accent it is text_on_accent. “v2” sets everything in the
 //     body font (typography.md: Inter only);
 //   “brand” — accent marker, text_on_accent text, brand fonts.
-// The rest (minimal, editorial, bold, glass) are not implemented in ReelKit: a console warning and “marker”.
-// brand.looks[<style>] overrides any of the fields; field — the color of a full-frame scene's field for this style (default: primary).
+// The rest (minimal, editorial, bold, glass) are not implemented in ReelKit: a console warning and “marker”, except that
+// “editorial” takes its headings in fonts.serif ({{FONT_SERIF}}) when the brand has one.
+// brand.looks[<style>] overrides any of the fields — looks.<style>.heading / .body are the general way to give a style
+// its fonts; field — the color of a full-frame scene's field for this style (default: primary).
 export type Look = { style: string; mark: string; onMark: string; field?: string; heading: BrandFont; body: BrandFont };
 const warned = new Set<string>();
 
@@ -147,7 +154,7 @@ export const styleLook = (b: Brand, style?: string | null): Look => {
     mark: o.mark ?? own ?? c.accent,
     onMark: o.on_mark ?? (own ? x.on_marker ?? x.ink ?? "#111111" : c.text_on_accent),
     field: o.field,
-    heading: o.heading ?? (s === "v2" ? b.fonts.body : b.fonts.heading),
+    heading: o.heading ?? (s === "v2" ? b.fonts.body : s === "editorial" ? b.fonts.serif ?? b.fonts.heading : b.fonts.heading),
     body: o.body ?? b.fonts.body,
   };
 };

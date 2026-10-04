@@ -25,14 +25,15 @@ const SHOTS = [ { src: 0, cam: M, drift: 0.05 }, { src: 17.6, cam: P, whip: true
 ## Shot rules
 
 - **Clamp the camera** so that its window never leaves the frame: `cx` within [540/z, 1080 − 540/z], `cy` within [960/z, 1920 − 960/z]. Otherwise an empty edge shows.
+- **In the “framed” format** (`references/techniques.md`) `cx, cy` are screen coordinates too, the same ones `faces.py` gives: the rough cut is a cover in the window, and the camera puts the point (cx, cy) at the window's center ((540, 960) for the default window at (25, 340), 1030×1240). The clamp is the window's: half its width over z on each side inside the video's cover (for a 1080×608 source at z 1: `cx` from about −46 to 1126, `cy` 960 only, since the cover fills the window's height), so a shot shifted toward a speaker at the side (cx 820) stays where it is. `visual_plan.py` (validate, keep-clear, the subtitle top) and `faces.py audit` clamp the same way, and the audit checks a face cut by the window's sides.
 - Put the frame center slightly **below the eyes** (`cy` ≈ 990–1000 with the eyes at y 960): the chin stays above the subtitles. Check with the face zones for that camera (`faces.py zones --cam z,cx,cy`), then with the render audit.
 - Use the **wide shot wherever a card is on screen**: the card needs the “headroom” zone.
-- Change shots only in a gap between words of **≥ 0.1 s**; hold one shot size **no longer than 3–4 s**; every cut on a pause gets a shot-size change. Reference density: about 13 shots in 27 s, one every ~2 s; a 20–25 s video has about 10 picture changes.
+- Change shots only in a gap between words of **≥ 0.1 s**, or on a segment join: a cut between two ranges is always a valid place for a shot change, even when tight pacing compresses the pause there to 50 ms. Hold one shot size **no longer than 3–4 s**; every cut on a pause gets a shot-size change. A dialogue with long segments and tight pacing may leave no 0.1 s gap inside a segment for 6–8 s: take natural pacing (`speech_mask.py --density natural`) for it, or change shots on the joins. Reference density: about 13 shots in 27 s, one every ~2 s; a 20–25 s video has about 10 picture changes.
 - Meaning of the shot size: push-in on the main thought, a number, an emotion or a question to the viewer; close-up on the CTA and personal lines; wide on context and the final conclusion.
 - Put shots on seconds that stay in the video (for example a segment's `src_start`): `at()` throws on a second that was cut out.
 - If the face already fills about **half of the frame width**, there is no room to zoom: say so before editing and get the dynamics from cutaways and graphics.
 - After any crop, the hands and objects the speaker talks about stay in frame.
-- **Dynamics check:** the first 1–2 s are not a static wide shot (a detail, a close face, a push-in or the hook); the video uses at least three shot sizes.
+- **Dynamics check:** the first 1–2 s are not a static wide shot (a detail, a close face, a push-in or the hook); the video uses at least three shot sizes. Exception: a two-person skit opens on a wide shot without a push-in, since the hook there is the line plus the roles and the scale on screen (`skit.md`).
 - **Multiple cameras:** bring both speech rates to a common middle. Slowing below ×1 repeats frames (at ×0.915 about every 11th frame); on a static head this is invisible.
 - Optional, untested and costly to render: real motion blur on a whip (ffmpeg at 180 fps averaged over 6 frames, or `@remotion/motion-blur`). Offer it only if the whip lacks punch.
 
@@ -51,7 +52,8 @@ with each shot's camera.
 A shot starts at `src` (a source second, stable when the speed changes; `"source": "cam-a.mov"` on a cut from several
 cameras whose seconds overlap; `seg` when that second appears twice in one file), or at
 `at` (a second or `word:<word>#n` of the finished video). `drift` is the push-in over the shot (+0.02–0.06), `whip`
-replaces the cut with a 7-frame move and a light motion blur. The kit clamps the window to the frame. With no
+replaces the cut with a 7-frame move and a light motion blur, sin(πp)·6 px on screen at its peak whatever the zoom (it
+used to grow with the zoom, 7.8 px at ×1.3, and the faces went unreadable). The kit clamps the window to the frame (in the “framed” format, to the video inside its window). With no
 `camera.json` the template keeps its plain slow drift. While a card sits on the chest (hook, contrast, CTA), keep `cy`
 at 960 or lower the zoom: the chin must stay 60 px above the card; check the stills and the render audit.
 

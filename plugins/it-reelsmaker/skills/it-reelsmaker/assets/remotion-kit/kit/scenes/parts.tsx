@@ -41,7 +41,7 @@ const distinct = (a: string, b: string): boolean => {
 };
 
 /** Scene surfaces: a field in the primary color, a light card, a field in the style's marker color. The accent is only the
- *  style's marker (one accent color per video, brand.md): in style v2 it is yellow, and the brand's teal never appears in v2 scenes. */
+ *  style's marker (one accent color per video, references/brands.md): in style v2 it is yellow, and the brand's teal never appears in v2 scenes. */
 export const surfaces = (b: Brand, look: Look): { field: Surface; card: Surface; mark: Surface } => {
   const c = b.colors;
   const markOnCard = distinct(look.mark, c.light);
@@ -108,8 +108,10 @@ export const fmtNumber = (v: number, decimals = 0): string => {
 export { useFontsLoaded };
 
 // ── big number with a counter ──
-// Digits are monospaced (tabular-nums: the counter does not jitter); the final value reserves the space. A suffix word
-// (“ minutes”, “ days”) is 0.42 of the font size on the baseline; a sign (“+”, “%”) uses the same size as the digits.
+// Digits are monospaced (tabular-nums: the counter does not jitter); the final value reserves the space and the counting
+// value sits at its right edge, so the suffix stays attached to the number (T6: “6   days” mid-count, the number at the
+// left of a slot sized for “14”). A suffix word (“ minutes”, “ days”) is 0.42 of the font size on the baseline; a sign
+// (“+”, “%”) uses the same size as the digits.
 const sufWord = (s: string) => s.trim().length > 2;
 const measureNum = (v: SceneValue, size: number, font: string) => {
   const d = v.decimals ?? 0;
@@ -143,7 +145,7 @@ export const BigNumber: React.FC<{ v: SceneValue; p: number; size: number; font:
     <span style={{ display: "inline-flex", alignItems: "baseline" }}>
       <span style={{ ...num, position: "relative", display: "inline-block" }}>
         <span style={{ visibility: "hidden" }}>{fin}</span>
-        <span style={{ position: "absolute", left: 0, top: 0 }}>{now}</span>
+        <span style={{ position: "absolute", right: 0, top: 0 }}>{now}</span>
       </span>
       {suf ? (
         word ? <span style={{ ...num, fontSize: Math.round(size * 0.42), fontWeight: 700, letterSpacing: "-0.01em", marginLeft: Math.round(size * 0.12),
@@ -229,7 +231,7 @@ export type TextBlockProps = {
   surf: Surface;
   maxWidth: number;
   align?: "left" | "center";
-  plates?: boolean; // every line on a marker plate (per video)
+  plates?: boolean; // every line on a marker plate (per video); with an accent and a chip: the accent on the marker, the rest on the chip's light plate
   quote?: boolean; // quotes around the text: « » for Cyrillic, “ ” for other scripts
   chip?: Surface | null; // label on a light plate (per video)
   lineMotion?: (k: number) => Motion;
@@ -282,6 +284,13 @@ export const TextBlock: React.FC<TextBlockProps> = (p) => {
   const align = p.align ?? "left";
   const plate: React.CSSProperties = { backgroundColor: p.surf.hiBg, color: p.surf.hiText, boxDecorationBreak: "clone",
     WebkitBoxDecorationBreak: "clone" };
+  // one accent per block (typography.md): the first line that has it
+  const accLine = p.accent ? lines.findIndex((l) => splitAccent(l, p.accent)) : -1;
+  // plates with an accent: the other words on the light plate (the chip), the accent alone on the style's marker - the same
+  // split as on a field, where only the accent has a plate. Every line on the marker hid the accent (a hook over the video
+  // in the brand style: the accent word looked like the rest). One color, no size change: accent color OR size, not both.
+  const lightPlates = !!p.plates && accLine >= 0 && !!p.chip;
+  const base: React.CSSProperties = lightPlates && p.chip ? { ...plate, backgroundColor: p.chip.bg, color: p.chip.text } : plate;
   return (
     <div style={{ display: "flex", flexDirection: "column", alignItems: align === "left" ? "flex-start" : "center", textAlign: align }}>
       {p.label ? <Label text={p.label} font={p.labelFont} surf={p.surf} chip={p.chip} motion={p.labelMotion} align={align}
@@ -299,9 +308,10 @@ export const TextBlock: React.FC<TextBlockProps> = (p) => {
           const type: React.CSSProperties = { fontFamily: p.font, fontWeight: weight, fontSize: size, lineHeight: lh,
             letterSpacing: "-0.01em", whiteSpace: "pre", color: p.surf.text };
           let body: React.ReactNode;
-          if (p.plates) {
+          const acc = k === accLine ? splitAccent(l, p.accent) : null;
+          if (p.plates && !(lightPlates && acc)) {
             body = (
-              <span style={{ ...type, ...plate, display: "inline-block", padding: "0.05em 0.2em 0.08em" }}>
+              <span style={{ ...type, ...base, display: "inline-block", padding: "0.05em 0.2em 0.08em" }}>
                 {shown}
                 {caret}
                 {rest ? <span style={{ visibility: "hidden" }}>{rest}</span> : null}
@@ -309,11 +319,17 @@ export const TextBlock: React.FC<TextBlockProps> = (p) => {
             );
           } else {
             // line = [before, accent, after]; every part holds its space from the first frame, the accent plate appears once it is fully typed
-            const acc = splitAccent(l, p.accent);
             const segs = acc ? acc : [l, "", ""];
+            // on a light plate the marker fills the plate's height and reaches its edge at the line's start or end; the
+            // negative margins keep the line's width as measured
+            const lp = segs[0] ? 0.12 : 0.2;
+            const rp = segs[2] ? 0.12 : 0.2;
+            const accStyle: React.CSSProperties = p.plates
+              ? { display: "inline-block", padding: `0.05em ${rp}em 0.08em ${lp}em`, margin: `-0.05em -${rp}em -0.08em -${lp}em` }
+              : { display: "inline-block", lineHeight: 1, padding: "0.03em 0.18em 0.1em" };
             let off = 0;
             body = (
-              <span style={{ ...type, display: "inline-block" }}>
+              <span style={{ ...type, ...(p.plates ? { ...base, padding: "0.05em 0.2em 0.08em" } : {}), display: "inline-block" }}>
                 {segs.map((s, i) => {
                   const from = off;
                   off += s.length;
@@ -328,7 +344,7 @@ export const TextBlock: React.FC<TextBlockProps> = (p) => {
                     </>
                   );
                   return i === 1 ? (
-                    <span key={i} style={{ ...(vis >= s.length ? plate : {}), display: "inline-block", lineHeight: 1, padding: "0.03em 0.18em 0.1em" }}>{inner}</span>
+                    <span key={i} style={{ ...(vis >= s.length ? plate : {}), ...accStyle }}>{inner}</span>
                   ) : (
                     <React.Fragment key={i}>{inner}</React.Fragment>
                   );

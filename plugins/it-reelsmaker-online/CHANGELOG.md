@@ -2,6 +2,18 @@
 
 What changed in IT Reelsmaker Online. The newest version is on top.
 
+## 1.4.1
+
+- Cloud transcript: a hyphenated word the cloud wrote whole (“no-no-no.”) no longer leaves the local model's pieces
+  (“-no -no.”) behind as extra words, which showed twice in the subtitles (with the core 1.6.0).
+- Cloud transcript: the note about words longer than 1 s (a sign of a merged retake) is printed once, not a second
+  time for the merged transcript.
+- Cloud transcript: words only the cloud heard at the very start get a short time just before the first word the
+  local model heard, not a zero-length 0.00-0.00 that the subtitles could not show.
+- Online memes: a downloaded file is named by what it really is, not by its link. Emoji sets often come as SVG,
+  which used to be saved as a broken `.jpg`; now an SVG stays `.svg` next to its license file with a note to convert
+  it to PNG, the search marks SVG results so you can pick a picture instead, and an error page is not saved at all.
+
 ## 1.4.0
 
 - **Subtitle translation through an API**: Claude, OpenAI or Gemini translate the video's phrases in the brand's

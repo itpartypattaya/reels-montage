@@ -3,9 +3,10 @@
 
     python scripts/master_audio.py out/render.mp4 -o out/master.mp4
     python scripts/master_audio.py out/render.mp4 -o out/master.mp4 --music track.mp3 [--gap 15] \\
-        [--music-start 12.4 | --drop-at 24.1 --drop-in-track 61.0]
+        [--music-start 12.4 | --drop-at 24.1 --drop-in-track 61.0] [--duck 21.3-23.9[:-14] ...]
     python scripts/master_audio.py track.mp3 --find-drops          # where the drops are in a track (candidates)
     python scripts/master_audio.py out/master.mp4 --check          # only the acceptance check of a finished master
+    python scripts/master_audio.py out/old-master.mp4 --check --no-loudness   # scene sounds only, mastered before the tag
     python scripts/master_audio.py out/render.mp4 -o out/master.mp4 --sfx edit/<id>/sfx.json   # + scene sound accents
 
 Voice chain (the render's audio, together with the sound effects):
@@ -19,10 +20,20 @@ Scene sounds (--sfx, if any): the kit does not play them (types.ts: "sound is ch
   absolute or relative to the project folder (or to the sfx.json folder).
 Music (if any): the bed is normalized to an absolute target (gap 15 dB → −24 LUFS, 13 → −22,
   17 → −26), ducks under the voice with a sidechain (ratio 3, threshold 0.10, attack 20, release 380),
-  and the final mix is brought to −14 LUFS again. The track is cut by meaning: the drop lands on the final phrase.
+  and the final mix is brought to −14 LUFS again. The track is cut by meaning: the track's drop (its sharpest rise,
+  --find-drops) lands on the final phrase (--drop-at, --drop-in-track).
+Ducking under a key line (--duck A-B[:dB], repeatable, seconds of the render): the music goes down by dB (−14 by
+  default) for that window, with 0.2 s fades on both sides, so the line is heard in near silence; it is applied to
+  the music after the sidechain, before the mix, and the voice is not touched. Two different things: "duck the music
+  under the key line" (--duck) and "the track's drop" (a loud moment of the track itself, placed with --drop-at).
 The video is not re-encoded: the audio goes into the finished render (-c:v copy), +faststart.
 At the end, the acceptance check from the checklist (SKILL.md): −14 ±0.7 LUFS, true peak ≤ −1 dBFS, audio = video track
 (and video = input). Exit code: 0, the check passed; 1, it failed, a measurement failed or ffmpeg failed.
+No voice and no music (the "scenes only" format): a few scene sounds over silence are not a −14 LUFS track, so the
+loudness is not required, the true peak and the durations are; a render with no sound and no --sfx is copied as is
+(no audio track, only the durations count). Such a master carries the mp4 comment tag "it-reelsmaker master: …" and
+--check reads it and applies the same rule (poster.py attach copies the tag); for a file mastered before the tag:
+--check --no-loudness.
 """
 import argparse, json, os, re, shutil, subprocess, sys, tempfile
 from pathlib import Path
@@ -36,6 +47,9 @@ TP_PROC = -1.5   # loudnorm target with headroom for AAC: the encoder adds ~0.2 
 LUFS_TOL = 0.7    # −14 ±0.7 LUFS
 TP_EPS = 0.05     # ebur128 prints the peak to 0.1: "−1.0" with a −1 target passes, "−0.9" does not
 DUR_TOL = 0.1     # audio vs. video track and video vs. input, s
+TAG = "it-reelsmaker master: "  # mp4 comment of a master the −14 LUFS rule does not apply to (--check reads it back)
+TAG_NO_VOICE = TAG + "no voice, scene sounds only (no -14 LUFS target)"
+TAG_NO_SOUND = TAG + "no sound track (scenes only)"
 
 
 def run(args):
@@ -92,11 +106,21 @@ def measure(p):
         return None, None
 
 
-def acceptance(p, d_in=None, loudness=True):
+def master_tag(p):
+    """The file's mp4 comment when it is this script's no-voice tag (TAG_NO_VOICE / TAG_NO_SOUND), else None."""
+    out = run(["ffprobe", "-v", "error", "-show_entries", "format_tags=comment", "-of", "default=nw=1:nk=1", p]).stdout.strip()
+    return out if out.startswith(TAG) else None
+
+
+def acceptance(p, d_in=None, loudness=True, sound=True):
     """Acceptance check of the master by the checklist → (measurement line, list of failures). d_in: the input's video
-    duration; loudness=False: no −14 LUFS requirement (scene sounds over silence), the true peak is still checked."""
-    i1, tp1 = measure(p)
+    duration; loudness=False: no −14 LUFS requirement (scene sounds over silence), the true peak is still checked;
+    sound=False: no audio track by design (a silent "scenes only" video), only the durations are checked."""
     dv, da = dur(p), dur(p, "a")
+    if not sound and da is None:
+        fails = [f"video {dv:.2f} s ≠ input {d_in:.2f} s"] if d_in is not None and abs(dv - d_in) > DUR_TOL else []
+        return f"no audio track (a video without sound), video {dv:.2f} s", fails
+    i1, tp1 = measure(p)
     fails = []
     if i1 is None or tp1 is None:
         fails.append("the ebur128 measurement failed: loudness and peak are unknown")
@@ -163,23 +187,66 @@ def main():
     ap.add_argument("--drop-in-track", type=float, help="the second of the drop in the track (see --find-drops)")
     ap.add_argument("--find-drops", action="store_true")
     ap.add_argument("--check", action="store_true", help="only the acceptance check of a finished master, no processing")
+    ap.add_argument("--no-loudness", action="store_true", help="with --check: no −14 LUFS requirement (scene sounds over "
+                                                               "silence, a master made before the tag); the peak still counts")
     ap.add_argument("--no-denoise", action="store_true")
     ap.add_argument("--sfx", help="edit/<id>/sfx.json: scene sound accents mixed in before mastering")
+    ap.add_argument("--duck", action="append", default=[], metavar="A-B[:dB]",
+                    help="duck the music under a key line: seconds of the render, dB down (default 14), repeatable")
     a = ap.parse_args()
     if a.find_drops:
         find_drops(a.input)
         return
     if a.check:
-        sys.exit(report(*acceptance(a.input)))
+        tag = master_tag(a.input)
+        loud = not (a.no_loudness or tag)
+        if not loud:
+            print(f"no voice: the −14 LUFS rule does not apply ({'--no-loudness' if a.no_loudness else tag}); the true "
+                  f"peak and the durations are checked")
+        sys.exit(report(*acceptance(a.input, loudness=loud, sound=tag != TAG_NO_SOUND)))
     if not a.output:
         sys.exit("-o <output.mp4> is required")
 
+    a.ducks = parse_ducks(a.duck)
+    if a.ducks and not a.music:
+        print("⚠ --duck needs --music: there is no music to duck, ignored")
     tmp = tempfile.mkdtemp(prefix="master_")
     try:
         code = master(a, tmp)
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
     sys.exit(code)
+
+
+DUCK_DB = -14.0   # dB: the music under a key line, against the bed around it ("near silence", references/library.md)
+DUCK_FADE = 0.2   # s: the fade down before the window and back up after it
+
+
+def parse_ducks(specs):
+    """--duck "A-B[:dB]" -> [(A, B, dB)]: the window in seconds of the render and how far down (a negative dB; "14"
+    and "-14" mean the same)."""
+    out = []
+    for spec in specs:
+        m = re.fullmatch(r"\s*(\d+(?:\.\d+)?)\s*-\s*(\d+(?:\.\d+)?)\s*(?::\s*([+-]?\d+(?:\.\d+)?))?\s*", spec)
+        if not m or float(m.group(2)) <= float(m.group(1)):
+            sys.exit(f"--duck {spec!r}: expected START-END[:dB] in seconds of the render, END after START (21.3-23.9:-14)")
+        db = -abs(float(m.group(3))) if m.group(3) is not None else DUCK_DB
+        out.append((float(m.group(1)), float(m.group(2)), db))
+    return out
+
+
+def duck_filter(ducks, D):
+    """An ffmpeg volume filter that ducks the music in each window (linear DUCK_FADE fades outside it), or "" without
+    windows. A window that starts after the video's end is an error; one that runs over it is clipped."""
+    terms = []
+    for a0, b0, db in ducks:
+        if a0 >= D:
+            sys.exit(f"--duck {a0:g}-{b0:g}: starts after the video's end ({D:.2f} s)")
+        g, f, b0 = 10 ** (db / 20), DUCK_FADE, min(b0, D)
+        k = f"min(clip((t-{a0 - f:.3f})/{f},0,1),clip(({b0 + f:.3f}-t)/{f},0,1))"
+        terms.append(f"(1-{1 - g:.6f}*{k})")
+        print(f"music ducked under a key line: {a0:.2f}-{b0:.2f} s by {db:.0f} dB (fades {f:g} s)")
+    return f"volume='{'*'.join(terms)}':eval=frame" if terms else ""
 
 
 def music_start(a):
@@ -194,10 +261,14 @@ def master_no_voice(a, tmp, D, why):
     Without --music and --sfx: skipped with a message, the file is copied as is; with --music: the music is mastered
     to −14 LUFS; scene sounds (--sfx) go onto the music, or onto silence, NO_VOICE_BELOW dB under its peak."""
     if not a.music and not sfx_sounds(a):
-        run(["ffmpeg", "-y", "-hide_banner", "-i", a.input, "-map", "0", "-c", "copy", "-movflags", "+faststart", a.output])
+        # the silent track a render may carry is left out: the tag says "no sound track", and --check of a file with
+        # a silent track fell through to the loudness measurement, which fails on silence (Codex review)
+        run(["ffmpeg", "-y", "-hide_banner", "-i", a.input, "-map", "0", "-map", "-0:a", "-c", "copy",
+             "-metadata", f"comment={TAG_NO_SOUND}", "-movflags", "+faststart", a.output])
         print(f"{why}: no voice and no effects, mastering skipped, the file is copied as is (+faststart): {a.output}")
         print("the −14 LUFS check does not apply to a video without sound: add music in the app when publishing, or a "
-              "track with a commercial license via --music; with scene sounds, mastering goes the usual way")
+              "track with a commercial license via --music; scene sounds (--sfx) go onto silence, with the true peak "
+              "checked and no −14 LUFS target")
         return 0
     final = os.path.join(tmp, "final.wav")
     if a.music:
@@ -210,9 +281,10 @@ def master_no_voice(a, tmp, D, why):
             print(f"⚠ the track from {start:.2f} s ends after {mlen:.1f} s, but the video is {D:.1f} s: silence at the end "
                   f"(take a longer track or start earlier: --music-start)")
         fade = min(1.2, mlen)
+        duck = duck_filter(getattr(a, "ducks", []), D)
         run(["ffmpeg", "-y", "-hide_banner", "-ss", f"{start:.3f}", "-t", f"{D:.3f}", "-i", a.music, "-af",
-             f"afade=t=in:d=0.5,afade=t=out:st={max(0, mlen - fade):.3f}:d={fade:.3f},apad=whole_dur={D:.3f}",
-             "-ar", "48000", "-ac", "2", mcut])
+             f"afade=t=in:d=0.5,afade=t=out:st={max(0, mlen - fade):.3f}:d={fade:.3f},apad=whole_dur={D:.3f}"
+             + (f",{duck}" if duck else ""), "-ar", "48000", "-ac", "2", mcut])
         loudnorm_2pass(mcut, final, "", TARGET)
         print(f"{why}: no voice; the music from {start:.2f} s of the track, at {TARGET:.0f} LUFS")
         ref = peak_db(final)
@@ -227,8 +299,11 @@ def master_no_voice(a, tmp, D, why):
         final = os.path.join(tmp, "final_limited.wav")
         run(["ffmpeg", "-y", "-hide_banner", "-i", mixed, "-af", f"alimiter=limit={10 ** ((TP - 0.5) / 20):.3f}:level=false",
              "-c:a", "pcm_s16le", final])
+    # --check reads the tag: the same rule as here. With music the master needs -14 LUFS: a tag the input carries
+    # (a silent master made earlier) is cleared, or ffmpeg copies it over and --check skips the loudness (Codex review)
+    tag = (["-metadata", "comment="] if master_tag(a.input) else []) if a.music else ["-metadata", f"comment={TAG_NO_VOICE}"]
     run(["ffmpeg", "-y", "-hide_banner", "-i", a.input, "-i", final, "-map", "0:v:0", "-map", "1:a:0",
-         "-c:v", "copy", "-c:a", "aac", "-b:a", "256k", "-ar", "48000", "-shortest", "-movflags", "+faststart",
+         "-c:v", "copy", "-c:a", "aac", "-b:a", "256k", "-ar", "48000", "-shortest", *tag, "-movflags", "+faststart",
          a.output])
     if not a.music:  # a few accents over silence are not a −14 LUFS track; the true peak still counts
         print("scene sounds only: the −14 LUFS check does not apply (add music in the app when publishing, or a "
@@ -324,10 +399,13 @@ def master(a, tmp):
              "-ar", "48000", "-ac", "2", mcut])
         loudnorm_2pass(mcut, mus, "", mtarget)
         mix = os.path.join(tmp, "mix.wav")
-        # sidechaincompress outputs about a second less than it receives → apad on both inputs, atrim on the output
+        # sidechaincompress outputs about a second less than it receives → apad on both inputs, atrim on the output;
+        # the key-line duck (--duck) goes after the sidechain, so the window is exactly that much below the bed
+        duck = duck_filter(a.ducks, D)
         fc = (f"[0:a]apad=pad_dur=2,asplit=2[v][sc];"
               f"[1:a]apad=pad_dur=2,afade=t=in:d=0.5,afade=t=out:st={max(0, D - 1.2):.3f}:d=1.2[m];"
-              f"[m][sc]sidechaincompress=threshold=0.10:ratio=3:attack=20:release=380[md];"
+              f"[m][sc]sidechaincompress=threshold=0.10:ratio=3:attack=20:release=380"
+              + (f",{duck}" if duck else "") + "[md];"
               f"[v][md]amix=inputs=2:duration=first:normalize=0,atrim=0:{D:.3f}[a]")
         run(["ffmpeg", "-y", "-hide_banner", "-i", voice, "-i", mus, "-filter_complex", fc, "-map", "[a]",
              "-c:a", "pcm_s16le", mix])
@@ -336,8 +414,9 @@ def master(a, tmp):
         mix = final
         print(f"music: from {start:.2f} s of the track, bed {mtarget:.0f} LUFS, gap ~{a.gap:.0f} dB, sidechain 3:1")
 
+    clear = ["-metadata", "comment="] if master_tag(a.input) else []  # a voice master is checked for -14 LUFS
     run(["ffmpeg", "-y", "-hide_banner", "-i", a.input, "-i", mix, "-map", "0:v:0", "-map", "1:a:0",
-         "-c:v", "copy", "-c:a", "aac", "-b:a", "256k", "-ar", "48000", "-shortest", "-movflags", "+faststart",
+         "-c:v", "copy", "-c:a", "aac", "-b:a", "256k", "-ar", "48000", "-shortest", *clear, "-movflags", "+faststart",
          a.output])
     code = report(*acceptance(a.output, D))
     print("file:", a.output + ("" if not code else " — do not publish it; deal with the failure first"))

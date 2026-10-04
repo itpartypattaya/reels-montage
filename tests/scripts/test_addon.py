@@ -1,6 +1,7 @@
 """The online add-on as the core sees it: link, runner, defaults, fallback reasons, key masking. No network:
 every run sets REELS_OFFLINE=1 and an empty keys file."""
 import json
+from pathlib import Path
 
 import pytest
 
@@ -177,3 +178,45 @@ def test_keys_set_leaves_an_existing_folder_alone(monkeypatch, tmp_path):
     if os.name != "nt":
         assert stat.S_IMODE(shared.stat().st_mode) == 0o755  # an existing folder keeps its rights
         assert stat.S_IMODE(ro.KEYS_FILE.stat().st_mode) == 0o600
+
+
+def test_memes_fetch_reads_the_file_type_from_the_bytes(project, monkeypatch, tmp_path, capsys):
+    # T5: Openverse gave two emoji sets as SVG text under a link that named no type; fetch saved them as .jpg, Pillow
+    # could not open them and memes.py index would fail. Now: the type comes from the bytes; an SVG is kept as .svg
+    # with its sidecar and a clear "convert it" message; a PNG under a .jpg link is saved as .png; junk is deleted
+    monkeypatch.syspath_prepend(str(ADDON))
+    monkeypatch.delenv("REELS_OFFLINE", raising=False)
+    import memes_online as mo
+    body = {}
+    item = {"id": "0c57de66-1111-2222-3333-444455556666", "license": "by", "license_version": "4.0",
+            "url": "https://upload.example.org/emoji/1f60d", "title": "Twemoji 1f60d", "creator": "Twitter",
+            "foreign_landing_url": "https://example.org/1f60d"}
+    monkeypatch.setattr(mo, "http_json", lambda url, **kw: dict(item))
+    online = project / "memes" / "online"
+
+    def download(url, dest, **kw):
+        Path(dest).parent.mkdir(parents=True, exist_ok=True)
+        Path(dest).write_bytes(body["data"])
+        return dest
+    monkeypatch.setattr(mo, "download", download)
+
+    def fetch(data):
+        body["data"] = data
+        mo.main(["fetch", f"openverse:{item['id']}", "--yes"])
+        return capsys.readouterr()
+
+    out = fetch(b'<?xml version="1.0"?>\n<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 36 36"></svg>')
+    assert (online / "openverse-0c57de66.svg").is_file() and not list(online.glob("*.jpg"))
+    assert "vector image (SVG)" in out.err and "openverse-0c57de66.png" in out.err
+    side = json.loads((online / "openverse-0c57de66.json").read_text(encoding="utf-8"))
+    assert side["rights"] == "cc" and "Twemoji" in side["attribution"]
+    (online / "openverse-0c57de66.svg").unlink()
+    out = fetch(b"\x89PNG\r\n\x1a\n" + b"\0" * 32)
+    assert (online / "openverse-0c57de66.png").is_file() and "memes.py index" in out.out
+    (online / "openverse-0c57de66.png").unlink()
+    out = fetch(b"<html><body>rate limited</body></html>")
+    assert "not an image" in out.err and not [p for p in online.iterdir() if p.suffix != ".json"]
+    # search marks an SVG result
+    monkeypatch.setattr(mo, "http_json", lambda url, **kw: {"results": [dict(item, filetype="svg")]})
+    mo.cmd_online(type("A", (), {"query": "heart eyes", "provider": "openverse", "limit": 4})())
+    assert "SVG: not usable until converted" in capsys.readouterr().out

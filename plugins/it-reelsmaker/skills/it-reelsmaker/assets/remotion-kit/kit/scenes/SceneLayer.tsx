@@ -4,6 +4,10 @@
 // panel ×0.42 to the edge, window — a 360×480 window around the face); full covers the frame with a field, the voice continues.
 // Transitions (brag): two dense layouts are never crossfaded — the old one leaves first, then the new one enters (content enters
 // after 0.6 of the layout change, tones.ts → sceneTimeline), a full scene enters through a color field; on a pause — a cut.
+// “Scenes only” (no video): every transition is a cut of the field (it is the background), the texts hand over at the join —
+// the old one has left by the scene's last frame, the new one enters from its first (no empty field between scenes).
+// “Framed” (props.framed, a horizontal source in a window): scenes stay in the window's text area (a box is clipped to it,
+// not to the whole safe zone), a full scene covers the window (rounded), split/panel/window are drawn as full there.
 import React from "react";
 import { AbsoluteFill, Sequence, interpolate, useCurrentFrame, useVideoConfig } from "remotion";
 import { Brand, Look, alpha, useLookFonts } from "../brand";
@@ -21,6 +25,7 @@ import { WordViz } from "./WordViz";
 import { Chat } from "./Chat";
 import { Ui } from "./Ui";
 import { CtaAction } from "./CtaAction";
+import { FlashAt } from "../LightFlash";
 
 const BY_TYPE: Record<string, React.FC<{ c: SceneCtx }>> = {
   hook: Hook, quote: Quote, slogan: Slogan, stat: Stat, list: List, contrast: Contrast, word: WordViz, chat: Chat, ui: Ui, cta: CtaAction,
@@ -28,7 +33,7 @@ const BY_TYPE: Record<string, React.FC<{ c: SceneCtx }>> = {
 // Modes per type (spec, section 4) — a warning only: the plan is checked by visual_plan.py validate
 const MODES: Record<string, SceneMode[]> = {
   hook: ["overlay", "split", "full"], quote: ["overlay", "split", "full"], slogan: ["full", "split"], stat: ["overlay", "split", "full"],
-  list: ["panel", "split", "full"], contrast: ["overlay", "split", "full"], word: ["overlay", "split", "panel"],
+  list: ["overlay", "panel", "split", "full"], contrast: ["overlay", "split", "full"], word: ["overlay", "split", "panel", "full"],
   chat: ["split", "full", "window"], ui: ["split", "full", "window"], cta: ["overlay", "full"],
 };
 const warned = new Set<string>();
@@ -49,8 +54,13 @@ export const playableScenes = (scenes?: SceneSpec[] | null): SceneSpec[] =>
   (scenes ?? []).filter((s) => s.status !== "skipped" && s.type !== "cover" && s.dur > 0).sort((a, b) => a.start - b.start);
 
 const LAYOUT: SceneMode[] = ["split", "panel", "window"];
-/** “Scenes only” (no video): there is no speaker, so split/panel/window are drawn as full. */
-export const effectiveMode = (s: SceneSpec, scenesOnly: boolean): SceneMode => (scenesOnly && LAYOUT.includes(s.mode) ? "full" : s.mode);
+/** “Scenes only” (no video): there is no speaker, so split/panel/window are drawn as full; “framed”: the speaker already
+ *  sits in a window, so they are drawn as full inside it (visual_plan.py validate refuses them there). */
+export const effectiveMode = (s: SceneSpec, scenesOnly: boolean, framed = false): SceneMode =>
+  ((scenesOnly || framed) && LAYOUT.includes(s.mode) ? "full" : s.mode);
+
+/** The “framed” layout as the scene layer needs it: the text area and the window (ReelKit framedGeometry). */
+export type SceneFrameBox = { area: Stage; win: Stage; r: number };
 
 // ── speaker frame (Footage) ──
 // x, y, w, h — the visible window on screen; k — scale of the 1080×1920 video inside the window; ox, oy — video offset in the window; r — corner radius
@@ -122,10 +132,10 @@ export const speakerRectAt = (scenes: SceneSpec[] | null | undefined, frame: num
 };
 
 /** Intervals without subtitles — the same rule as visual_plan.py hides_subtitles: every mode except overlay, and slogan always;
- *  hook and quote in overlay — yes by default (they repeat the speech); an explicit hide_subtitles: false keeps the subtitles. */
+ *  hook, quote and list in overlay — yes by default (they repeat or replace the speech); an explicit hide_subtitles: false keeps the subtitles. */
 export const sceneHideIntervals = (scenes?: SceneSpec[] | null): [number, number][] =>
   playableScenes(scenes).filter((s) => s.mode !== "overlay" || s.type === "slogan" ||
-    (s.hide_subtitles ?? (s.type === "hook" || s.type === "quote")))
+    (s.hide_subtitles ?? (s.type === "hook" || s.type === "quote" || s.type === "list")))
     .map((s) => [s.start, s.start + s.dur] as [number, number]);
 
 /** 0..1 — how much the frame is taken by a scene (the corner mark fades out over 6 frames so it does not overlap the scene). */
@@ -140,19 +150,23 @@ export const sceneActivity = (scenes: SceneSpec[] | null | undefined, frame: num
 };
 
 // ── scene zone ──
-const clampStage = (s: SceneSpec, b: number[]): Stage => {
-  const x = Math.max(SAFE_ZONE.left, b[0]);
-  const y = Math.max(SAFE_ZONE.top, b[1]);
-  const w = Math.max(1, Math.min(b[0] + b[2], SAFE_ZONE.right) - x);
-  const h = Math.max(1, Math.min(b[1] + b[3], SAFE_ZONE.bottom) - y);
+const SAFE_STAGE: Stage = { x: SAFE_ZONE.left, y: SAFE_ZONE.top, w: SAFE_ZONE.right - SAFE_ZONE.left, h: SAFE_ZONE.bottom - SAFE_ZONE.top };
+const clampStage = (s: SceneSpec, b: number[], zone: Stage, name: string): Stage => {
+  const x = Math.max(zone.x, b[0]);
+  const y = Math.max(zone.y, b[1]);
+  const w = Math.max(1, Math.min(b[0] + b[2], zone.x + zone.w) - x);
+  const h = Math.max(1, Math.min(b[1] + b[3], zone.y + zone.h) - y);
   if (x !== b[0] || y !== b[1] || w !== b[2] || h !== b[3]) {
-    warnOnce(`box-${s.id}`, `kit: scene ${s.id} box [${b.join(", ")}] goes outside the safe zone — clipped to [${x}, ${y}, ${w}, ${h}]`);
+    warnOnce(`box-${s.id}`, `kit: scene ${s.id} box [${b.join(", ")}] goes outside ${name} — clipped to [${x}, ${y}, ${w}, ${h}]`);
   }
   return { x, y, w, h };
 };
 
-export const sceneStage = (s: SceneSpec, mode: SceneMode): Stage => {
-  if (s.box && s.box.length === 4 && mode !== "panel") return clampStage(s, s.box);
+/** The scene's zone. area — the “framed” text area (the window, ReelKit framedGeometry): a box is clipped to it, an
+ *  overlay without a box takes its top, a full scene fills it. */
+export const sceneStage = (s: SceneSpec, mode: SceneMode, area?: Stage | null): Stage => {
+  if (s.box && s.box.length === 4 && mode !== "panel") return clampStage(s, s.box, area ?? SAFE_STAGE, area ? "the framed window" : "the safe zone");
+  if (area) return mode === "overlay" ? { x: area.x, y: area.y, w: area.w, h: Math.min(600, area.h) } : { ...area };
   switch (mode) {
     case "overlay":
       return { x: 60, y: 250, w: 900, h: 600 }; // headroom above the head; ideally a box from the plan (faces.json)
@@ -167,17 +181,25 @@ export const sceneStage = (s: SceneSpec, mode: SceneMode): Stage => {
   }
 };
 
-const CARD_TYPES = ["quote", "stat", "list", "word", "cta"];
+const CARD_TYPES = ["quote", "stat", "word", "cta"]; // overlay on a light card
+const PLATE_TYPES = ["hook", "contrast", "list"]; // overlay: lines on plates straight over the video, the speaker keeps the frame
 const PAD = { card: [28, 36], panel: [44, 40] };
 
+/** The cut seconds of a scene's light flashes (transition "flash"), as its own timeline resolves the transitions. */
+const flashes = (s: SceneSpec, bt: ResolvedTone, words: Word[], fps: number, scenesOnly: boolean, framed = false): number[] => {
+  const tl = sceneTimeline(s, pickTone(s, bt), effectiveMode(s, scenesOnly, framed), fps, words, scenesOnly);
+  return [...(tl.tin === "flash" ? [s.start] : []), ...(tl.tout === "flash" ? [s.start + s.dur] : [])];
+};
+
 const SceneFrame: React.FC<{ spec: SceneSpec; brand: Brand; look: Look; fonts: { heading: string; body: string }; bt: ResolvedTone;
-  words: Word[]; scenesOnly: boolean }> = (p) => {
+  words: Word[]; scenesOnly: boolean; framed?: SceneFrameBox | null }> = (p) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
   const s = p.spec;
-  const mode = effectiveMode(s, p.scenesOnly);
+  const fb = p.framed ?? null;
+  const mode = effectiveMode(s, p.scenesOnly, !!fb);
   const tone = pickTone(s, p.bt);
-  const tl = sceneTimeline(s, tone, mode, fps, p.words);
+  const tl = sceneTimeline(s, tone, mode, fps, p.words, p.scenesOnly);
   const S = surfaces(p.brand, p.look);
   const Comp = BY_TYPE[s.type];
   if (!Comp) {
@@ -185,10 +207,14 @@ const SceneFrame: React.FC<{ spec: SceneSpec; brand: Brand; look: Look; fonts: {
     return null;
   }
   if (MODES[s.type] && !MODES[s.type].includes(s.mode)) warnOnce(`mode-${s.id}`, `kit: scene ${s.id} (${s.type}) — mode ${s.mode} is not one of ${MODES[s.type].join("/")}`);
-  const stage = sceneStage(s, mode);
+  const stage = sceneStage(s, mode, fb?.area);
   const shell: SceneCtx["shell"] =
-    mode === "panel" || (mode === "overlay" && CARD_TYPES.includes(s.type)) ? "card" : mode === "overlay" && (s.type === "hook" || s.type === "contrast") ? "plates" : "field";
-  const surf = s.type === "slogan" ? S.mark : shell === "card" ? S.card : S.field;
+    mode === "panel" || (mode === "overlay" && CARD_TYPES.includes(s.type)) ? "card" : mode === "overlay" && PLATE_TYPES.includes(s.type) ? "plates" : "field";
+  // slogan: the style's field when brand.looks[style].field is set, and the primary field in the "brand" style (accent on
+  // the primary color: full-frame scenes of that style sit on it); a marker style without a field keeps the marker field.
+  // A slogan in the brand style once filled the frame with the accent color.
+  const sloganSurf = p.look.field || p.look.style === "brand" ? S.field : S.mark;
+  const surf = s.type === "slogan" ? sloganSurf : shell === "card" ? S.card : S.field;
   const pad = shell === "card" ? (mode === "panel" ? PAD.panel : PAD.card) : [0, 0];
   const radius = p.look.style === "v2" ? 0 : 18;
   const words = p.words.filter((w) => w.end > s.start - 0.3 && w.start < s.start + s.dur);
@@ -208,7 +234,12 @@ const SceneFrame: React.FC<{ spec: SceneSpec; brand: Brand; look: Look; fonts: {
     const x = (shutter(tl.tin) ? -(1 - pin) * W : 0) + (shutter(tl.tout) ? pout * W : 0);
     const op = (tl.tin === "fade" && !shutter(tl.tin) ? pin : 1) * (tl.tout === "fade" && !shutter(tl.tout) ? 1 - pout : 1);
     const h = mode === "full" ? H : 900;
-    field = <div style={{ position: "absolute", left: 0, top: 0, width: W, height: h, backgroundColor: surf.bg, opacity: op, transform: `translateX(${x}px)` }} />;
+    field = fb ? (
+      // “framed”: the field covers the window, not the frame (the style's field is already around it)
+      <div style={{ position: "absolute", left: fb.win.x, top: fb.win.y, width: fb.win.w, height: fb.win.h, overflow: "hidden", borderRadius: fb.r }}>
+        <div style={{ position: "absolute", inset: 0, backgroundColor: surf.bg, opacity: op, transform: `translateX(${(x * fb.win.w) / W}px)` }} />
+      </div>
+    ) : <div style={{ position: "absolute", left: 0, top: 0, width: W, height: h, backgroundColor: surf.bg, opacity: op, transform: `translateX(${x}px)` }} />;
   }
 
   // content shell
@@ -251,24 +282,22 @@ const SceneFrame: React.FC<{ spec: SceneSpec; brand: Brand; look: Look; fonts: {
     shellStyle = { ...shellStyle, opacity: op, transform: tf.length ? tf.join(" ") : shellStyle.transform, filter: blur > 0.3 ? `blur(${blur}px)` : undefined };
   }
 
-  const flashIn = tl.tin === "flash" ? interpolate(frame, [0, 3], [1, 0], clamp) : 0;
-  const flashOut = tl.tout === "flash" ? interpolate(frame, [tl.n - 3, tl.n], [0, 1], clamp) : 0;
-  const flash = Math.max(flashIn, flashOut);
+  // "flash": a hard cut under the light flash, which SceneLayer mounts centered on the cut (LightFlash.tsx)
   return (
     <AbsoluteFill>
       {field}
       <div style={shellStyle}>
         <Comp c={c} />
       </div>
-      {flash > 0 ? <AbsoluteFill style={{ backgroundColor: p.brand.colors.light, opacity: 0.85 * flash }} /> : null}
     </AbsoluteFill>
   );
 };
 
 /** Scene layer. words — speech words (captions.words): the “on a pause — cut” rule and slogan words landing on their spoken words.
- *  sceneTone — the video's scene tone (props.sceneTone): for scenes without their own tone. */
+ *  sceneTone — the video's scene tone (props.sceneTone): for scenes without their own tone. framed — the “framed” text area
+ *  and window (ReelKit framedGeometry): scenes stay inside the window. */
 export const SceneLayer: React.FC<{ scenes?: SceneSpec[] | null; brand: Brand; look: Look; words?: Word[]; scenesOnly?: boolean;
-  sceneTone?: string | null }> = (p) => {
+  sceneTone?: string | null; framed?: SceneFrameBox | null }> = (p) => {
   const { fps } = useVideoConfig();
   const fonts = useLookFonts(p.look);
   const bt = withRollTone(resolveBrandTone(p.brand), p.sceneTone);
@@ -276,9 +305,13 @@ export const SceneLayer: React.FC<{ scenes?: SceneSpec[] | null; brand: Brand; l
   return (
     <>
       {list.map((s) => (
-        <Sequence key={s.id} from={Math.round(s.start * fps)} durationInFrames={Math.max(1, Math.round(s.dur * fps))} layout="none">
-          <SceneFrame spec={s} brand={p.brand} look={p.look} fonts={fonts} bt={bt} words={p.words ?? []} scenesOnly={!!p.scenesOnly} />
-        </Sequence>
+        <React.Fragment key={s.id}>
+          <Sequence from={Math.round(s.start * fps)} durationInFrames={Math.max(1, Math.round(s.dur * fps))} layout="none">
+            <SceneFrame spec={s} brand={p.brand} look={p.look} fonts={fonts} bt={bt} words={p.words ?? []} scenesOnly={!!p.scenesOnly}
+              framed={p.framed} />
+          </Sequence>
+          {flashes(s, bt, p.words ?? [], fps, !!p.scenesOnly, !!p.framed).map((t) => <FlashAt key={`${s.id}-${t}`} t={t} brand={p.brand} />)}
+        </React.Fragment>
       ))}
     </>
   );

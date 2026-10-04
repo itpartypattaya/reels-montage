@@ -36,7 +36,9 @@ export const Stat: React.FC<{ c: SceneCtx }> = ({ c }) => {
       <div style={{ position: "relative", padding: "0.1em 0.16em 0.08em", marginTop: label ? 18 : 0, fontSize: numSize, lineHeight: 1,
         opacity: m.opacity, transform: m.transform, transformOrigin: "0% 50%" }}>
         <BigNumber v={v} p={p} size={numSize} font={fonts.heading} color={numColor} sufColor={surf.text} />
-        <Brackets x={0} y={0} w="100%" h="100%" progress={br * m.opacity} color={card ? surf.accent : surf.hiBg} size={Math.round(numSize * 0.2)}
+        {/* the brackets in the surface's accent (the marker when it has ≥ 3:1 on the surface, else the text color), as in the
+            CTA and word scenes; the marker plate color vanished on a light field (T6: yellow on cream, 1.05:1) */}
+        <Brackets x={0} y={0} w="100%" h="100%" progress={br * m.opacity} color={surf.accent} size={Math.round(numSize * 0.2)}
           stroke={Math.max(4, Math.round(numSize * 0.03))} />
       </div>
       {lines.length ? (
