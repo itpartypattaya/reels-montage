@@ -2132,8 +2132,11 @@ def subtitle_top(e, s, cam, quiet=False):
     top = SUB_TOP_KIT
     if fdata:
         geo = camera_view(e, fdata)
+        # no camera: the template's drift (up to x1.05) toward the frame's center, or the framed window's (the kit's
+        # fitCamera around the window center; Codex review: a custom window was scaled around y 960)
+        cy = geo[0][1] + geo[0][3] / 2 if geo else 960
         chins = ([chin_on_screen(b[1] + b[3], s_["t"], cam, geo) for s_ in fdata["samples"] for b in s_["faces"]] if cam else
-                 [(b[1] + b[3] - 960) * 1.05 + 960 for s_ in fdata["samples"] for b in s_["faces"]])
+                 [(b[1] + b[3] - cy) * 1.05 + cy for s_ in fdata["samples"] for b in s_["faces"]])
         if chins:
             need = round(max(chins) + fc.MARGIN // 2)
             top = max(band[0], min(SUB_MAX_TOP, need))
@@ -2314,11 +2317,6 @@ def cmd_export(a):
         for m in errs:
             print("error: " + m)
         sys.exit("the plan has errors: fix them (or use --force)")
-    with editing_plan(e) as p2:  # what follows the cut: validate counts "the last 2 s" from the whole video's end
-        if a.sting or a.card:
-            p2["end_card"] = {"kind": "sting" if a.sting else "card", "seconds": END_CARD_S}
-        else:
-            p2.pop("end_card", None)
     plan = load_plan(e)  # after validate the settings snapshot is current
     rem = Path(a.remotion).resolve()
     if not (rem / "package.json").is_file() or not (rem / "src").is_dir():
@@ -2466,6 +2464,14 @@ def cmd_export(a):
             print(f"scenes: {len(scenes)} in props.scenes; subtitles hidden in {len(hide)} window(s)")
         save_json(Path(a.props), props)
         print(f"template props: {a.props}")
+    # what follows the cut, recorded once the export is through (during it end_tail() reads --sting/--card): validate
+    # counts "the last 2 s" from the whole video's end. Codex review: written before the Remotion project check, a
+    # failed export left an end card that the next validate counted
+    with editing_plan(e) as p2:
+        if a.sting or a.card:
+            p2["end_card"] = {"kind": "sting" if a.sting else "card", "seconds": END_CARD_S}
+        else:
+            p2.pop("end_card", None)
 
 
 def main():

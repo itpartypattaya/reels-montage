@@ -608,3 +608,16 @@ def test_music_clears_the_no_voice_tag(project):
     r = run_script("master_audio.py", "silent.mp4", "-o", "music.mp4", "--music", "track.wav", cwd=project, check=False)
     assert (project / "music.mp4").exists(), r.stdout + r.stderr
     assert master_audio.master_tag(str(project / "music.mp4")) is None
+
+
+@needs_ffmpeg
+def test_a_silent_track_is_left_out_of_a_master_tagged_without_sound(project):
+    # Codex review (PR #13): a render with a silent audio track was copied with that track and tagged "no sound
+    # track"; --check saw the tag, but with a track present it measured the loudness of silence and failed
+    from conftest import ffmpeg
+    ffmpeg("-f", "lavfi", "-i", "color=c=gray:s=360x640:r=30:d=3", "-f", "lavfi", "-i", "anullsrc=r=48000:cl=stereo",
+           "-t", "3", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", "-shortest", project / "render.mp4")
+    run_script("master_audio.py", "render.mp4", "-o", "silent.mp4", cwd=project)
+    assert "audio" not in probe_streams(project / "silent.mp4")
+    r = run_script("master_audio.py", "silent.mp4", "--check", cwd=project, check=False)
+    assert r.returncode == 0 and "no audio track" in r.stdout, r.stdout + r.stderr

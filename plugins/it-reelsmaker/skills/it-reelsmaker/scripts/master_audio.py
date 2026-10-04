@@ -261,8 +261,10 @@ def master_no_voice(a, tmp, D, why):
     Without --music and --sfx: skipped with a message, the file is copied as is; with --music: the music is mastered
     to −14 LUFS; scene sounds (--sfx) go onto the music, or onto silence, NO_VOICE_BELOW dB under its peak."""
     if not a.music and not sfx_sounds(a):
-        run(["ffmpeg", "-y", "-hide_banner", "-i", a.input, "-map", "0", "-c", "copy", "-metadata", f"comment={TAG_NO_SOUND}",
-             "-movflags", "+faststart", a.output])
+        # the silent track a render may carry is left out: the tag says "no sound track", and --check of a file with
+        # a silent track fell through to the loudness measurement, which fails on silence (Codex review)
+        run(["ffmpeg", "-y", "-hide_banner", "-i", a.input, "-map", "0", "-map", "-0:a", "-c", "copy",
+             "-metadata", f"comment={TAG_NO_SOUND}", "-movflags", "+faststart", a.output])
         print(f"{why}: no voice and no effects, mastering skipped, the file is copied as is (+faststart): {a.output}")
         print("the −14 LUFS check does not apply to a video without sound: add music in the app when publishing, or a "
               "track with a commercial license via --music; scene sounds (--sfx) go onto silence, with the true peak "

@@ -817,3 +817,14 @@ def test_side_cuts_skip_a_b_roll_that_replaces_the_frame(project):
     assert cuts and cuts[0] == 7.0, cuts
     plan["inserts"][-1]["status"] = "planned"
     assert faces.side_cuts(e, plan)[0] == 5.0
+
+
+def test_a_failed_export_records_no_end_card(project):
+    # Codex review (PR #13): export --sting wrote end_card into the plan before the Remotion project check; after the
+    # failed export a plain validate counted a sting that was never exported
+    e = plan_project(project)
+    run_script("visual_plan.py", "init", "edit/4821", cwd=project)
+    r = run_script("visual_plan.py", "export", "edit/4821", "--remotion", project / "nope", "--sting", "--force",
+                   cwd=project, check=False)
+    assert r.returncode != 0 and "not a Remotion project" in (r.stdout + r.stderr)
+    assert "end_card" not in load_plan(e)

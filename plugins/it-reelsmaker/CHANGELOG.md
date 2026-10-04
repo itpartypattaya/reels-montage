@@ -175,7 +175,9 @@ What changed in IT Reelsmaker, written for the people who use it. The newest ver
   face cut at the side under B-roll or a cutaway; picking project footage goes on without the look when the raw
   source has moved; the burned-in subtitles and the `.srt` break lines by the same short words; translated subtitles
   are rebuilt when only the speakers change; the darkening of a framed video is measured where its subtitles go;
-  a silent master mastered again with music loses its “no sound” tag, so the loudness is checked.
+  a silent master mastered again with music loses its “no sound” tag, so the loudness is checked; a render with a
+  silent track becomes a master without one, which passes its own check; a failed export no longer records an end
+  card; the subtitles' height in a custom framed window allows for the drift around the window's center.
 
 ## 1.5.0
 

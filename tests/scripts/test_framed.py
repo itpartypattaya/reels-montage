@@ -185,3 +185,20 @@ def test_shade_in_a_short_window_before_the_export(project):
     make_video(e / "final.mp4", w=1920, h=1080, dur=2.0, audio=False, color="0xB4B4B4")
     r = run_script("visual_plan.py", "shade", "edit/4821", cwd=project, check=False)
     assert r.returncode == 0 and "subtitles_shade: " in r.stdout, r.stdout + r.stderr
+
+
+def test_subtitle_top_drifts_around_the_window_center(project):
+    # Codex review (PR #13): with no camera.json the template's drift (x1.05) scales the framed video around the
+    # window's center, but the subtitles' top scaled the chin around y 960: a custom window got the wrong top
+    import faces
+    import visual_plan as vp
+    from reels_common import load_config
+    win = [25, 700, 1030, 800]  # center y 1100
+    e = framed_project(project, window=win)
+    write_json(e / "faces.json", {"step": 0.25, "filter": {"v": faces.FILTER_V}, "geometry": "source", "w": SRC[0],
+                                  "h": SRC[1], "frame": win, "samples": [{"t": 0.0, "faces": [[500, 300, 100, 118, 0.95]]}]})
+    k = max(win[2] / SRC[0], win[3] / SRC[1])
+    chin = win[1] + (win[3] - SRC[1] * k) / 2 + 418 * k  # the source chin (300 + 118) on screen
+    s = load_config(e)[0]
+    top, _ = vp.subtitle_top(e, s, None, quiet=True)
+    assert abs(top - round((chin - 1100) * 1.05 + 1100 + faces.MARGIN // 2)) <= 1, (top, chin)
