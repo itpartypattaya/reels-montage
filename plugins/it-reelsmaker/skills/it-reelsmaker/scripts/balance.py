@@ -32,7 +32,8 @@ Automatic mode (how it works; seconds: everything runs on one small still, not o
     1, or near-gray B > R), or warmer while its grays read warm, is refused, with a pointer to --ref;
   • two probe gains give a linear model and its answer is the start; then a search in steps of 0.01 on measured
     candidates (the near-gray set changes with every candidate, so the model alone is not trusted): about 10-20
-    passes of the still.
+    passes of the still. Grays already neutral and a best fix of one step: no fix (one step is within the noise of
+    the 8-bit chain and differs between ffmpeg builds).
 Real case for the share and direction checks: an interview at a laptop in front of panoramic windows (sky, sea,
 glass: mean R/B 0.72, the white T-shirt the main near-gray object, 11% of the pixels). Without them the search
 suggested rr 0.90 bb 1.04: the T-shirt turned so blue it left the near-gray set (11% -> 4%), the rest read "neutral",
@@ -78,6 +79,7 @@ SIZE = 0.2              # weight of each gain's distance from 1 (in %): the smal
 GG_SIZE = 0.6           # gg costs more: it moves only for a green or magenta cast
 FIXED = 1e4             # the weight that keeps a gain at 1
 MOVES = 12              # steps of the measured search
+STEP = 0.01             # the search's step: one step on grays already neutral is measurement noise (see balance())
 BIG = 1e6               # the score of a candidate whose grays are off neutral: worse than any neutral one
 REF_HINT = ("balance on a known white or gray object instead: balance.py {edit} --ref SECOND,X,Y,W,H (a white "
             "T-shirt or shirt, a white or gray wall, paper, a gray card; not skin, the sky, a window or a clipped "
@@ -418,6 +420,11 @@ def balance(c, still):
         probe(1)
         g = search(model_step(g, seen[g], y0, jac, sizes), (0, 1, 2), sizes)
     best = min(seen, key=lambda h: score(h, seen[h], y0, sizes, share0))
+    # grays already neutral and a best fix of one step (0.01): below what the 8-bit chain measures, so no fix. CI on
+    # macOS suggested bb 1.01 for a neutral source (the mild pull of a warm frame's R/B within the tolerance), while on
+    # Windows the same step moved R/B the wrong way: the suggestion depended on the ffmpeg build, not on the picture
+    if best != one and ok(base, share0) and all(abs(x - 1) <= STEP + 1e-9 for x in best):
+        best = one
     return rest, base, current, best, seen
 
 

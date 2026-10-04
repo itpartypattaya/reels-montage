@@ -244,3 +244,27 @@ def test_still_is_the_frame_a_ref_box_is_measured_in(project):
     assert f.exists() and "1080x1920" in r.stdout
     with Image.open(f) as im:
         assert im.size == (1080, 1920)
+
+
+def test_one_step_on_neutral_grays_is_no_fix(monkeypatch):
+    # CI on macOS: a neutral source got bb 1.01 (the mild pull of the warm frame's R/B within the tolerance), while
+    # Windows measured that step moving R/B the wrong way: one step on grays already neutral is below what the 8-bit
+    # chain measures, so no fix. A model where that step is measured "right" (as on macOS) must still give none
+    import re
+    import balance
+
+    def gains(correct):
+        g = dict(re.findall(r"(rr|gg|bb)=([\d.]+)", correct or ""))
+        return [float(g.get(k, 1)) for k in ("rr", "gg", "bb")]
+
+    def stats(correct):
+        rr, gg, bb = gains(correct)
+        return {"gray": [137.1 * rr, 137.0 * gg, 136.9 * bb], "share": 0.19, "rb": 1.72 * rr / bb, "y": 129.0,
+                "mean": [165.0 * rr, 121.7 * gg, 96.0 * bb]}
+    monkeypatch.setattr(balance, "graded", lambda c, still, correct, png=None, half=True: correct)
+    monkeypatch.setattr(balance, "stats", stats)
+    *_, best, seen = balance.balance({"correct": ""}, None)
+    assert best == (1.0, 1.0, 1.0)
+    assert any(g != (1.0, 1.0, 1.0) and balance.score(g, m, 129.0, (balance.SIZE, balance.FIXED, balance.SIZE), 0.19)
+               < balance.score((1.0, 1.0, 1.0), seen[(1.0, 1.0, 1.0)], 129.0,
+                               (balance.SIZE, balance.FIXED, balance.SIZE), 0.19) for g, m in seen.items())  # the pull
