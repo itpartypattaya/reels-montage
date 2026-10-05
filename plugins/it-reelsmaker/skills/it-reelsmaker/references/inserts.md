@@ -7,11 +7,14 @@ Inserts are an optional layer on top of the regular edit. If everything is off, 
 ## Settings
 
 Stored in the video's `edit/<id>/reel.json`. Layers apply in order, and each one overrides the previous:
-1. skill defaults (below), then your project's `reel-defaults.json` (`references/brands.md`, “Your settings in the project”);
-2. the brand tone preset;
-3. `brand.json → inserts` of the selected brand;
-4. the video's `reel.json`;
-5. words from the prompt.
+1. skill defaults (below; with the online add-on, its defaults too);
+2. the brand tone preset (`use_broll` is on in every preset, `use_memes` in `friendly` and `bold`);
+3. your project's `reel-defaults.json` (`references/brands.md`, “Your settings in the project”), then the file named in `REELS_DEFAULTS_OVERLAY`;
+4. `brand.json → inserts` of the selected brand;
+5. the video's `reel.json`;
+6. words from the prompt.
+
+So an insert the person did not choose in step 0 is saved in `reel.json` as `false`: otherwise the tone's default turns it on.
 
 ```json
 {
@@ -159,7 +162,7 @@ Duration:
 The default transition is `cut`: a hard cut looks like a camera change. The others:
 - `whip`: 5 frames with blur, on the main thought;
 - `fade`: 7 frames;
-- `flash`: a 3-frame light flash, only at a meaningful cut;
+- `flash`: the kit's warm light flash, a radial spot in `screen` blend over 6–10 frames (the kit uses 8), only at a meaningful cut and within the brand tone's `flash_max` (`references/techniques.md`);
 - `slide`: 8 frames.
 
 B-roll audio is always muted. A video meme's own sound plays only when turned on explicitly and only with rights to the sound. B-roll that shows a face whose lips don't match the speech: ≤ ~1 s, or a moment where the person is silent.
@@ -288,4 +291,4 @@ Two insert layers, from the plan data:
 
 Each insert is a `<Sequence from={start·fps} durationInFrames={dur·fps}>`; video uses `OffthreadVideo muted`, images use `Img`.
 
-It helps to have a universal video template that is assembled from props (`--props=<json>`) without code of its own: the rough cut, inserts, subtitles in brand colors and, optionally, a hook, a corner mark and an end card. Video-specific graphics stay in the video's own component.
+The kit's `ReelKit` composition is that universal template: it is assembled from props (`visual_plan.py export … --props <file>`, then `--props=<absolute path>` for Remotion) without code of its own: the rough cut, inserts, scenes, subtitles in brand colors and, optionally, a hook, a corner mark and an end card. Video-specific graphics go into a per-video composition that reuses the kit's components.

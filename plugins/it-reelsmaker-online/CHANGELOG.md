@@ -2,6 +2,17 @@
 
 What changed in IT Reelsmaker Online. The newest version is on top.
 
+## 1.4.2
+
+- With an older core plugin, the cloud transcript and the subtitle translation now say “needs it-reelsmaker
+  ≥ 1.5.0 (update the core plugin)” instead of failing with a Python traceback.
+- Cut-out on your own server: when the server setting is empty, the command is run without `--host` (an empty value
+  broke it), and the host comes from the project settings.
+- The add-on is offered only when you name a cloud service, an API, paid generation, stock or online sources, or
+  your own server; a plain “transcribe”, “translate the subtitles” or “cut out the person” stays with the core,
+  which does it on your computer.
+- The settings layers are listed in the core's full order (with the brand tone and your project defaults).
+
 ## 1.4.1
 
 - Cloud transcript: a hyphenated word the cloud wrote whole (“no-no-no.”) no longer leaves the local model's pieces

@@ -11,8 +11,9 @@ original order: a mechanic goes in only when the person picks it.
 1. Name the format of the video in one line (insight, case study, skit, intro, interview…; section 5 of SKILL.md):
    the hook mechanics depend on it.
 2. Run `structure.py suggest edit/<id>` (`--from/--to` in source seconds when the video takes one fragment of a long
-   recording; with two cameras `--source KEY` per camera, or the main angle: the script lists the sources instead of
-   guessing): the phrases with their signs (question, answer, repeat for emphasis, exclamation, number, beat after),
+   recording; with two cameras `--source KEY` per camera (a key of `cut.json → sources`, so it needs the cut list;
+   before it exists, `--transcript edit/<id>/transcripts/<stem>.json`), or the main angle: the script lists the
+   sources instead of guessing): the phrases with their signs (question, answer, repeat for emphasis, exclamation, number, beat after),
    whether each can be cut out cleanly (≥ 0.1 s of silence at both edges by the audio level; the range runs from the
    line's first word to its last, a pause inside the line is not an edge; where two phrases' word times touch, as
    faster-whisper often writes them, the edge is the audio's silence nearest to that boundary), teaser candidates with

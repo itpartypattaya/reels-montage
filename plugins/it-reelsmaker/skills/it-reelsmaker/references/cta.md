@@ -19,7 +19,7 @@ The agent does not pick the CTA on its own.
 
 ## On the card
 
-One CTA per video (exception: a job opening, with apply + recommend). Tone: a calm invitation, no “Urgent” or “Hurry up”. Two lines: the **main line** (SemiBold, 52–60 px) and a **clarifier** (Medium, 34–38 px, in the style's muted color). Under the main line, the chosen style's accent: a marker bar or focus brackets in “Brand”, a marker bar on the key word or symbol in “Marker”. If the speaker says the link or address, the card enters on those words.
+One CTA per video (exception: a job opening, with apply + recommend). Tone: a calm invitation, no “Urgent” or “Hurry up”. Two lines: the **main line** (SemiBold, 52–60 px on a card over the video; the kit's full-frame end card draws it up to 64 px / 800, fitted to the width) and a **clarifier** (Medium, 34–38 px, in the style's muted color). Under the main line, the chosen style's accent: a marker bar or focus brackets in “Brand”, a marker bar on the key word or symbol in “Marker”. If the speaker says the link or address, the card enters on those words.
 
 | Code | For whom | Main line | Clarifier | Fits the format |
 |---|---|---|---|---|

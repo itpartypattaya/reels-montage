@@ -25,10 +25,13 @@ translates in the session). REELS_OFFLINE=1: no network at all.
 import argparse, json, re, sys
 from pathlib import Path
 
-from reels_common import edit_dir, load_config, load_json, project_root, save_json, utf8_stdio, warn
+try:  # the core's modules: subs.py came with the core 1.5.0; without it this would end in a traceback
+    from reels_common import edit_dir, load_config, load_json, project_root, save_json, utf8_stdio, warn
+    import subs
+except ImportError as exc:
+    sys.exit(f"subtitle translation needs it-reelsmaker >= 1.5.0 (update the core plugin): {exc}")
 from reels_online import api_key
 from transcribe_online import NoService, post
-import subs
 
 PROVIDERS = {
     "anthropic": {"key": "ANTHROPIC_API_KEY", "model": "claude-sonnet-5-5", "host": "https://api.anthropic.com/"},

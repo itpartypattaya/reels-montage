@@ -1,6 +1,6 @@
 {
  "schema": 1,
- "_comment": "Default video settings. Layers: this file <- brand tone preset (brand_tones, from brand.json -> tone) <- brand profile (brands/<slug>/brand.json -> inserts) <- edit/<id>/reel.json <- words from the prompt (--set). All use_* false -> a plain edit without inserts. Online sources and generation are added by the it-reelsmaker-online add-on, not here.",
+ "_comment": "Default video settings. Layers, each overriding the previous: this file (+ the online add-on's defaults) <- brand tone preset (brand_tones, from brand.json -> tone; broll_default turns use_broll on, memes.default turns use_memes on) <- the project's reel-defaults.json <- the file named in REELS_DEFAULTS_OVERLAY <- brand profile (brands/<slug>/brand.json -> inserts) <- edit/<id>/reel.json <- words from the prompt (--set). All use_* false in reel.json -> a plain edit without inserts. Online sources and generation are added by the it-reelsmaker-online add-on, not here.",
  "settings": {
   "brand": null,
   "style": null,

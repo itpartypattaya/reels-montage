@@ -3,13 +3,14 @@ name: it-reelsmaker-online
 description: >
   Online sources for it-reelsmaker video edits: vertical stock footage (Pixabay, Pexels, Magnific), CC-licensed
   memes (Openverse; GIPHY as reference only), paid AI video generation (Veo, Kling, LTX via fal.ai) for B-roll,
-  a more accurate transcript (cloud text on the local word times, OpenAI), subtitle translation through Claude,
-  OpenAI or Gemini, and figure cut-outs on your own server over SSH.
-  Use only inside an it-reelsmaker edit, when the person enabled online footage, online memes, model generation or
-  cloud transcription in the settings or asked for it directly: "find stock footage", "generate an insert", "online
-  memes", "transcribe it through OpenAI", "translate the subtitles through Gemini", "cut out the figure on my
-  server". Every download
-  and every paid run happens only after the person approves the visual plan with source, size and price.
+  a cloud transcript (OpenAI text on the local word times), subtitle translation through the Claude, OpenAI or
+  Gemini API, and figure cut-outs on your own server over SSH. Use only inside an it-reelsmaker edit, and only when
+  the person names a cloud service, an API, paid generation, stock or online sources, or their own server, or turned
+  these on in the settings: "find stock footage", "generate an insert", "online memes", "transcribe it through
+  OpenAI", "translate the subtitles through Gemini", "cut out the figure on my server". A plain "transcribe",
+  "translate the subtitles" or "cut out the person" belongs to the core it-reelsmaker skill, which does it on this
+  computer. Every download and every paid run happens only after the person approves the visual plan with source,
+  size and price.
 ---
 
 # Online sources for it-reelsmaker
@@ -39,7 +40,7 @@ It writes `online_scripts` into the project's `it-reelsmaker.json` (`unlink` rem
 
 ## Reel settings
 
-Online sources are off until turned on for a video (`reelcfg.py save edit/<id> --set use_online_footage=true`) or for the whole project. Keys live in `edit/<id>/reel.json`, with the same layers as the core (defaults → `brand.json → inserts` → `reel.json` → words in the prompt):
+Online sources are off until turned on for a video (`reelcfg.py save edit/<id> --set use_online_footage=true`) or for the whole project. Keys live in `edit/<id>/reel.json`, with the same layers as the core, each overriding the previous: the core's defaults with this add-on's → the brand tone preset → the project's `reel-defaults.json` → the file named in `REELS_DEFAULTS_OVERLAY` → `brand.json → inserts` → `reel.json` → words in the prompt:
 
 ```json
 {
@@ -117,7 +118,7 @@ skipped stays empty: translate it in the session, then `subs.py apply`.
 
 ## Figure cut-out on your own server
 
-The core cuts the figure out on this computer (`matte.py`; the cut-out reference of the core skill, `figure.md`). On a weak laptop the same step can run on a server you control: `addon.py matte cut … --host ${user_config.matte_host}` (the add-on setting; if it still reads `${user_config…}`, it is not set: the script then takes `matte.host` from `it-reelsmaker.json` or `REELS_MATTE_HOST`, otherwise ask the person once and write `matte.host` there). Frames of the span go to that host as one JPG archive over your own SSH client, the WebM with alpha comes back, and the temporary files are removed there, on error too. The server needs `rembg` with the `u2net_human_seg` model (its path on the server: `matte.server_rembg`, or `matte.rembg` when you never cut out locally); one cut-out at a time under a server-side lock, with a memory check. Nothing goes anywhere else.
+The core cuts the figure out on this computer (`matte.py`; the cut-out reference of the core skill, `figure.md`). On a weak laptop the same step can run on a server you control: `addon.py matte cut … --host ${user_config.matte_host}` (the add-on setting). If that value is empty or still reads `${user_config…}`, it is not set: leave `--host` out entirely (an empty `--host` breaks the command line), and the script takes `matte.host` from `it-reelsmaker.json` or `REELS_MATTE_HOST`; if neither is set, ask the person once and write `matte.host` there. Frames of the span go to that host as one JPG archive over your own SSH client, the WebM with alpha comes back, and the temporary files are removed there, on error too. The server needs `rembg` with the `u2net_human_seg` model (its path on the server: `matte.server_rembg`, or `matte.rembg` when you never cut out locally); one cut-out at a time under a server-side lock, with a memory check. Nothing goes anywhere else.
 
 ## References
 

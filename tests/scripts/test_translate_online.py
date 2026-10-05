@@ -149,3 +149,16 @@ def test_the_estimate_does_not_promise_a_price(tr, project, capsys):
     assert run(tr, "--provider", "gemini", "--price") == 0
     out = capsys.readouterr().out
     assert "tokens" in out and "cent" not in out
+
+
+@pytest.mark.parametrize("module,missing", [("translate_online", "subs"), ("transcribe_online", "transcribe")])
+def test_an_older_core_gets_a_message_not_a_traceback(tmp_path, module, missing):
+    """An older core (before 1.5.0) lacks subs.py and parts of transcribe.py: the add-on says to update the core."""
+    import subprocess
+    import sys
+    names = "edit_dir load_config load_json locked project_root save_json utf8_stdio warn".split()
+    (tmp_path / "reels_common.py").write_text("".join(f"{n} = None\n" for n in names), encoding="utf-8")
+    code = f"import sys; sys.path[:0] = [{str(tmp_path)!r}, {str(ADDON)!r}]; import {module}"
+    r = subprocess.run([sys.executable, "-c", code], cwd=tmp_path, capture_output=True, text=True)
+    assert r.returncode == 1 and "Traceback" not in r.stderr, r.stderr
+    assert "it-reelsmaker >= 1.5.0" in r.stderr and missing in r.stderr

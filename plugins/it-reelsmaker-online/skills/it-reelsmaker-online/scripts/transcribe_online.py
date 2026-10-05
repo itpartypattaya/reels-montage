@@ -36,10 +36,13 @@ import argparse, difflib, json, re, shutil, sys, unicodedata, urllib.error, urll
 from pathlib import Path
 from types import SimpleNamespace
 
-from reels_common import edit_dir, load_config, load_json, locked, project_root, save_json, utf8_stdio, warn
+try:  # the core's modules: an older core lacks some of them, which would otherwise end in a traceback
+    from reels_common import edit_dir, load_config, load_json, locked, project_root, save_json, utf8_stdio, warn
+    import transcribe as core
+    from transcribe import check_doc, resolve_src, source_wav
+except ImportError as exc:
+    sys.exit(f"the cloud transcript needs it-reelsmaker >= 1.5.0 (update the core plugin): {exc}")
 from reels_online import UA, api_key, err_text, offline, open_url, read_json_response
-import transcribe as core
-from transcribe import check_doc, resolve_src, source_wav
 
 OPENAI_URL = "https://api.openai.com/v1/audio/transcriptions"
 PROVIDERS = {
