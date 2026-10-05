@@ -26,6 +26,14 @@ STARTER = SKILL / "assets" / "remotion-starter"
 KIT_FILES = ("ReelKit.tsx", "kit")  # replaced by update; everything else in the project belongs to the person
 VERSION_RE = re.compile(r'KIT_VERSION\s*=\s*"([^"]+)"')
 TEXT = {".ts", ".tsx", ".js", ".jsx", ".mjs", ".json", ".css", ".md", ".txt"}
+HERE = Path(__file__).resolve().parent
+
+
+def script_cmd(name):
+    """How to run a script of this folder from anywhere: hints are run from the project folder, where a relative
+    `scripts/<name>` does not exist. The interpreter's name and the script's real path, quoted."""
+    py = "python" if os.name == "nt" else (Path(sys.executable).name or "python3")
+    return f'{py} "{HERE / name}"'
 
 
 def content(p):
@@ -142,7 +150,7 @@ def cmd_new(a):
     print(f"created the Remotion project {rem} (kit {kit_version(KIT)})")
     remember(rem)
     print("next (downloads the packages from npm, ~300 MB; the first render also downloads Remotion's headless "
-          f"browser):\n  cd \"{rem}\" && npm install\nthen check: python scripts/doctor.py --remotion \"{rem}\"")
+          f"browser):\n  cd \"{rem}\" && npm install\nthen check: {script_cmd('doctor.py')} --remotion \"{rem}\"")
 
 
 def cmd_check(a):
@@ -150,7 +158,7 @@ def cmd_check(a):
     missing, changed, extra = diff(rem)
     have, ship = kit_version(rem / "src"), kit_version(KIT)
     if not (rem / "src" / "ReelKit.tsx").is_file():
-        print(f"no kit in {rem}: kit.py update --remotion {a.remotion} copies it")
+        print(f"no kit in {rem}: {script_cmd('kit.py')} update --remotion \"{rem}\" copies it")
         return 1
     print(f"kit in the project: {have or 'unknown version'}; in the plugin: {ship}")
     if newer(have, ship):
@@ -161,7 +169,7 @@ def cmd_check(a):
         for p in files:
             print(f"  {label}: src/{p.as_posix()}")
     if missing or changed:
-        print(f"update: kit.py update --remotion {a.remotion} (replaced files are backed up first)")
+        print(f"update: {script_cmd('kit.py')} update --remotion \"{rem}\" (replaced files are backed up first)")
         return 1
     print("the kit matches the plugin")
     return 0

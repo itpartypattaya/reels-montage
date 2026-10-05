@@ -16,3 +16,15 @@ def test_report_lists_every_check_and_reads_the_remotion_project(project):
     pinned = names["@remotion/* = remotion version"]
     assert not pinned["ok"] and "@remotion/cli" in pinned["found"]  # a caret range and a different version
     assert (r.returncode == 0) == doc["ok"] == HAS_FFMPEG
+
+
+def test_fix_hints_name_the_real_script_paths(project):
+    """The hints are run from the project folder, where a relative `python scripts/kit.py` does not exist."""
+    import re
+    from pathlib import Path
+    r = run_script("doctor.py", "--json", cwd=project, check=False)
+    fixes = " ".join(c["fix"] for c in json.loads(r.stdout)["checks"])
+    paths = re.findall(r'"([^"]+\.py)"', fixes)
+    assert any(Path(p).name == "kit.py" for p in paths), fixes  # no Remotion project: "kit.py new" is offered
+    assert paths and all(Path(p).is_absolute() and Path(p).is_file() for p in paths), paths
+    assert "python scripts/" not in fixes

@@ -14,7 +14,7 @@ import argparse, importlib.util, json, os, platform, re, shutil, subprocess, sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from kit import KIT, kit_version
+from kit import KIT, kit_version, script_cmd
 from reels_common import online, project_root, project_settings, utf8_stdio
 
 OS = {"Windows": "windows", "Darwin": "macos"}.get(platform.system(), "linux")
@@ -28,8 +28,8 @@ INSTALL = {
     "whisper-model": f"{PY} -c \"from faster_whisper import download_model; download_model('medium')\"",
     "rembg": f"{PY} -m pip install \"rembg[cpu,cli]\"",
     "rembg-model": "rembg d u2net_human_seg",
-    "remotion": "python scripts/kit.py new reels (a starter project with the kit), then npm install in that folder",
-    "face-model": "download face_detection_yunet_2023mar.onnx (python scripts/faces.py --help says where) and set "
+    "remotion": f"{script_cmd('kit.py')} new reels (a starter project with the kit), then npm install in that folder",
+    "face-model": f"download face_detection_yunet_2023mar.onnx ({script_cmd('faces.py')} --help says where) and set "
                   "face_model in it-reelsmaker.json",
 }
 
@@ -116,7 +116,7 @@ def check_node(remotion):
         f"cd {remotion} && npm install")
     have, ship = kit_version(Path(remotion) / "src"), kit_version(KIT)
     add("ReelKit in the project", "recommended", have == ship, f"kit {have or 'not found'}, plugin {ship}",
-        f"python scripts/kit.py update --remotion \"{remotion}\" (replaced files are backed up first)")
+        f"{script_cmd('kit.py')} update --remotion \"{Path(remotion).resolve()}\" (replaced files are backed up first)")
 
 
 def check_models(settings):

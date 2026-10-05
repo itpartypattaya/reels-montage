@@ -310,3 +310,19 @@ def test_framed_cover_corner_and_label():
     assert "const src = cornerLogo(p);" in reel and "mark_on_light" in reel.split("const cornerLogo")[1].split("};")[0]
     label = reel.split("export const FramedLabel")[1].split("};")[0]
     assert "1080 - 140 - cs - 16" in label
+
+
+def test_update_hints_name_the_real_script_paths(project):
+    """kit.py check and doctor.py print commands that work from the project folder: the script's real path, quoted."""
+    from pathlib import Path
+    run_script("kit.py", "new", "reels", cwd=project)
+    rem = project / "reels"
+    (rem / "src" / "kit" / "version.ts").write_text('export const KIT_VERSION = "1.0.0";\n', encoding="utf-8")
+    r = run_script("kit.py", "check", "--remotion", "reels", cwd=project, check=False)
+    hint = next(line for line in r.stdout.splitlines() if line.startswith("update:"))
+    script = re.search(r'"([^"]+kit\.py)"', hint).group(1)
+    assert Path(script).is_file() and Path(script).resolve() == (CORE / "kit.py").resolve()
+    assert f'--remotion "{rem.resolve()}"' in hint
+    r = run_script("doctor.py", "--json", cwd=project, check=False)
+    fix = {c["name"]: c for c in json.loads(r.stdout)["checks"]}["ReelKit in the project"]["fix"]
+    assert re.search(r'"([^"]+kit\.py)"', fix) and Path(re.search(r'"([^"]+kit\.py)"', fix).group(1)).is_file()

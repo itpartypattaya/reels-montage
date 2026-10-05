@@ -2,6 +2,32 @@
 
 What changed in IT Reelsmaker, written for the people who use it. The newest version is on top. The skill shows a short “What's new” note from this file once, on the first edit after an update.
 
+## 1.6.1
+
+- **Instructions fixed**, so the skill does what it describes:
+  - inserts are no longer planned when you chose none: the brand tone turns B-roll (and for some tones memes) on
+    by default, so whatever you did not pick is now saved as off for the video;
+  - a video with every insert off still renders: the visual plan the export needs is created anyway;
+  - the plugin settings (project, Remotion and library folders, face model) now reach the scripts: the skill copies
+    them into the project's `it-reelsmaker.json`, the only file the scripts read;
+  - spot fixes and stills render the real video (the kit's `ReelKit` composition with the video's props) instead of
+    a per-video composition that usually does not exist, and the props path is passed whole, so a render from a
+    Remotion folder inside the project no longer fails to find it;
+  - a promo without footage gets its exact start command (`visual_plan.py init … --scenes-only --duration 20`);
+  - the speech rate is checked when the words exist (after the transcript, and exactly after the rough cut), and
+    the structure check before the cut list reads the transcript file directly;
+  - the darkening under subtitles is described as what it is: “Typewriter” only; on a light background “Accent”
+    subtitles need the plate mode or a backing;
+  - sizes and layouts match what the kit draws: subtitle sizes per mode, past list items on light plates, the end
+    card's main line up to 64 px, the light flash (8 warm frames), a two-person layout that keeps the subtitles in
+    their band, light flashes counted against the brand tone's own limit;
+  - `visual_plan.py export --hook` and the full `shade` options are documented; the settings layers are listed in
+    the same order everywhere.
+- `doctor.py` and `kit.py` print commands with the script's real path, so they work when pasted in the project
+  folder (before, `python scripts/kit.py …` was not found there).
+- The skill's description names transcription, subtitle translation, `.srt` files and cutting out the person, and
+  says what it is not for (long horizontal edits, plain conversion or compression).
+
 ## 1.6.0
 
 - **How the video starts and ends is now offered, not assumed.** Before the cut plan the skill reads the transcript
