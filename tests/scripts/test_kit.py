@@ -326,3 +326,16 @@ def test_update_hints_name_the_real_script_paths(project):
     r = run_script("doctor.py", "--json", cwd=project, check=False)
     fix = {c["name"]: c for c in json.loads(r.stdout)["checks"]}["ReelKit in the project"]["fix"]
     assert re.search(r'"([^"]+kit\.py)"', fix) and Path(re.search(r'"([^"]+kit\.py)"', fix).group(1)).is_file()
+
+
+def test_new_project_fixes_the_video_cache_and_check_names_one_without(project):
+    # "No frame found at position N" (a 1094 render on an 8 GB laptop): Remotion sized its video cache from the RAM free
+    # at the start, a few MB with other apps open; a fixed 384 MB cache in remotion.config.ts fixed it
+    run_script("kit.py", "new", "reels", cwd=project)
+    cfg = project / "reels" / "remotion.config.ts"
+    assert "setOffthreadVideoCacheSizeInBytes(384 * 1024 * 1024)" in cfg.read_text(encoding="utf-8")
+    r = run_script("kit.py", "check", "--remotion", "reels", cwd=project, check=False)
+    assert "sets no video cache size" not in r.stdout
+    cfg.write_text('import { Config } from "@remotion/cli/config";\n', encoding="utf-8")
+    r = run_script("kit.py", "check", "--remotion", "reels", cwd=project, check=False)
+    assert "sets no video cache size" in r.stdout and "setOffthreadVideoCacheSizeInBytes" in r.stdout

@@ -42,7 +42,8 @@ UA = f"it-reelsmaker/{_version()}"
 # --- Settings the add-on adds to the core's reel settings ----------------------------------------------------
 SETTING_KEYS_BOOL = ["use_online_footage", "generate_now", "use_online_memes"]
 SETTING_KEYS = ["online_footage_providers", "online_meme_providers", "generation_provider", "generation_model",
-                "generation_seconds", "transcription_provider", "translation_provider", "translation_model"]
+                "generation_seconds", "transcription_provider", "transcription_fallback", "translation_provider",
+                "translation_model"]
 # Deep-merged by the core's load_defaults() on top of its assets/reel-defaults.json (lists are replaced whole).
 # Online sources and paid generation stay off until a video's reel.json, the brand or the prompt turns them on.
 DEFAULTS = {
@@ -70,7 +71,7 @@ KEY_ALIASES = {"MAGNIFIC_API_KEY": ["FREEPIK_API_KEY"]}
 MEME_KEYS = {"giphy": "GIPHY_API_KEY", "openverse": None}  # openverse: no key (anonymous, about 100 requests a day)
 GEN_KEYS = {"fal": "FAL_KEY", "replicate": "REPLICATE_API_TOKEN", "gemini": "GEMINI_API_KEY",
             "openai": "OPENAI_API_KEY", "runway": "RUNWAYML_API_SECRET"}
-TRANSCRIBE_KEYS = {"openai": "OPENAI_API_KEY"}
+TRANSCRIBE_KEYS = {"openai": "OPENAI_API_KEY", "groq": "GROQ_API_KEY"}
 TRANSLATE_KEYS = {"anthropic": "ANTHROPIC_API_KEY", "openai": "OPENAI_API_KEY", "gemini": "GEMINI_API_KEY"}
 
 _KEYS = None

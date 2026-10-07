@@ -313,6 +313,27 @@ def quiet_syllable(env, thr, g0, g1, pmin):
     return best * 10 if best * HOP >= QUIET_RUN - 1e-9 else 0
 
 
+JOIN = 0.15  # s: two ranges of one source closer than this are one join, a cut inside the speech that runs on
+
+
+def at_join(w, k, ranges):
+    """A word / fragment warning at an edge where the neighbouring range of the same source runs on almost at once ->
+    the advice to merge: no edge between them is a pause, and moving one edge only moves the cut inside the word.
+    "" for any other warning."""
+    r = ranges[k]
+    end = w.startswith("end ") and "inside a word" in w or w.startswith("short sound at the end")
+    start = w.startswith("start ") and "inside a word" in w or w.startswith("short sound at the start")
+    j = k + 1 if end else k - 1 if start else None
+    if j is None or not 0 <= j < len(ranges) or ranges[j]["source"] != r["source"]:
+        return ""
+    gap = ranges[j]["start"] - r["end"] if end else r["start"] - ranges[j]["end"]
+    if not 0 <= gap < JOIN:
+        return ""
+    a, b = sorted((k, j))
+    return (f"; the {'next' if end else 'previous'} range of the same source {'starts' if end else 'ends'} {gap:.2f} s "
+            f"{'after' if end else 'before'} this edge: merge ranges {a} and {b}, or move both edges into a pause")
+
+
 def check_edl(path, thr_arg):
     edl = json.load(open(path, encoding="utf-8"))
     cache, bad = {}, 0
@@ -326,7 +347,7 @@ def check_edl(path, thr_arg):
             thr = thr_arg if thr_arg is not None else min(-30.0, p95 - 20)
             cache[src] = (env, speech_mask(sdb, thr, vl=vl), thr, vl, hf)
         env, mask, thr, vl, hf = cache[src]
-        w = edge_warnings(env, mask, thr, r["start"], r["end"], vl, hf)
+        w = [x + at_join(x, k, edl["ranges"]) for x in edge_warnings(env, mask, thr, r["start"], r["end"], vl, hf)]
         bad += bool(w)
         print(f"{k:2d} {src} {r['start']:.2f}–{r['end']:.2f}" + ("  ok" if not w else "".join("\n    ⚠ " + x for x in w)))
     print(f"\nedges with warnings: {bad} of {len(edl['ranges'])}")
@@ -343,11 +364,14 @@ def main():
     ap.add_argument("audio", nargs="?")
     ap.add_argument("--edl", help="edit/<id>/edl.json: check the edges of every segment of the rough cut")
     ap.add_argument("--spans", default="")
-    ap.add_argument("--density", choices=["max", "natural"], default="max")
+    # SKILL.md calls the pacing "tight" (max, the default) or "natural": both words are accepted
+    ap.add_argument("--density", choices=["max", "tight", "natural"], default="max",
+                    help="pause compression: max (= tight, the default) or natural")
     ap.add_argument("--thr", type=float, default=None, help="speech threshold, dBFS (auto by default)")
     ap.add_argument("--fps", type=float, default=30)
     ap.add_argument("--json", action="store_true")
     a = ap.parse_args()
+    a.density = "max" if a.density == "tight" else a.density
     pmin, keep = (0.160, 0.050) if a.density == "max" else (0.400, 0.220)
     if a.edl:
         sys.exit(1 if check_edl(a.edl, a.thr) else 0)

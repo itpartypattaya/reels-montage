@@ -86,6 +86,10 @@ WINDOW_DEFAULT = [60, 250, 900, 675]
 WINDOW_ZONE = (0, 220, 960, 1500)
 WINDOW_SLOTS = [WINDOW_DEFAULT, [60, 820, 900, 675]] + [[x, y, w, h] for w, h in ((600, 450), (480, 360))  # 4:3, larger -> smaller
                                                        for y in (250, 1500 - h) for x in (60, 960 - w - 60)]
+# overlay scenes also try low bands in the headroom: every slot above is 360+ px tall and lands on a face that sits
+# high (1789: all slots hit the face, WINDOW_DEFAULT was saved on it with only a warning)
+HEADROOM_BAND = [60, 250, 900, 310]
+HEADROOM_MIN = 160  # px: a computed headroom band lower than this holds no scene text
 TRANSITIONS = ["cut", "whip", "fade", "flash", "slide"]
 SOURCES = ["project", "local", "online", "generated"]  # online: only with the online add-on (reels_common.online())
 STATUSES = ["planned", "ready", "pending", "skipped"]
@@ -766,6 +770,22 @@ def scene_box_issues(e, plan, sc, box, fdata=None):
     return out
 
 
+def overlay_slots(e, plan, sc):
+    """Candidate boxes for an overlay scene without --box: the two full-width window slots, then the low headroom
+    bands (a band from the zone's top down to MARGIN above the highest face the viewer sees during the scene, camera.json
+    applied, when it is at least HEADROOM_MIN tall, and the fixed HEADROOM_BAND; the taller first), then the 4:3 slots.
+    Scene text reads across the width: 1789 got a 480x360 corner box over the chest when the slots came first."""
+    import faces as fc
+    bands = [HEADROOM_BAND]
+    (x0, y0, x1, _), _z = text_zone(e)
+    seen, _how = faces_seen(e, plan, fc.load(e), sc["start"], sc["start"] + sc["dur"], sc.get("cam"))
+    if seen:
+        top, y, x = max(250, y0), min(f[1] for f in seen) - fc.MARGIN, max(60, x0)
+        if y - top >= HEADROOM_MIN:
+            bands.append([x, top, min(900, x1 - x), y - top])
+    return WINDOW_SLOTS[:2] + sorted(bands, key=lambda b: -b[3]) + WINDOW_SLOTS[2:]
+
+
 def scene_keep_entries(plan):
     """keep_clear entries for ready overlay/split/window scenes: the box in screen coordinates (for faces.py audit)."""
     out = []
@@ -872,8 +892,14 @@ def add_scene(a):
         if a.cam:
             sc["cam"] = [float(x) for x in a.cam.split(",")]
         if not only and mode in ("overlay", "split", "window") and sc["box"] is None:
-            if mode == "overlay":  # the first free slot, as for a B-roll window
-                sc["box"] = next((b for b in WINDOW_SLOTS if not scene_box_issues(e, plan, sc, b)), WINDOW_DEFAULT)
+            if mode == "overlay":  # the first free slot, as for a B-roll window, then a low band in the headroom
+                slots = overlay_slots(e, plan, sc)
+                sc["box"] = next((b for b in slots if not scene_box_issues(e, plan, sc, b)), None)
+                if sc["box"] is None:  # 1789: WINDOW_DEFAULT was saved on the face and failed only at validate
+                    why = scene_box_issues(e, plan, sc, WINDOW_DEFAULT)
+                    sys.exit(f"scene {a.type} overlay at {fmt_t(start)}: no free box among {len(slots)} candidates "
+                             f"(the default {WINDOW_DEFAULT}: {'; '.join(why)}). Set --box x,y,w,h (faces.py zones "
+                             f"shows the free zones), another --mode, or move the scene")
             else:
                 sc["box"] = default_box(mode)
         if sc["box"] and not only and mode in ("overlay", "split", "window"):
@@ -1338,6 +1364,9 @@ def cmd_add(a):
         sys.exit(f"--source {a.source}: for {a.kind} allowed {', '.join(SOURCES + ['auto'])}")
     if a.source == "online" and not online():  # online sources come only with the online add-on
         sys.exit("--source online: the online add-on is not installed; use auto, project, local or generated")
+    if a.mode and a.mode not in KINDS[a.kind]["modes"]:  # a wrong mode was saved and failed only at validate
+        sys.exit(f"{a.kind} --mode {a.mode}: allowed {', '.join(KINDS[a.kind]['modes'])}"
+                 + ("; full frame for B-roll is `replace`" if a.kind == "broll" else ""))
     a.transition = a.transition or "cut"
     e = edit_dir(a.edit)
     cap = load_json(e / "captions.json", {})
@@ -2135,13 +2164,20 @@ def subtitle_top(e, s, cam, quiet=False):
         # no camera: the template's drift (up to x1.05) toward the frame's center, or the framed window's (the kit's
         # fitCamera around the window center; Codex review: a custom window was scaled around y 960)
         cy = geo[0][1] + geo[0][3] / 2 if geo else 960
-        chins = ([chin_on_screen(b[1] + b[3], s_["t"], cam, geo) for s_ in fdata["samples"] for b in s_["faces"]] if cam else
-                 [(b[1] + b[3] - cy) * 1.05 + cy for s_ in fdata["samples"] for b in s_["faces"]])
+        boxes = [(s_["t"], b) for s_ in fdata["samples"] for b in s_["faces"]]
+        # a weak box that passed the filter is still not trusted with the subtitles while confident faces exist (1789:
+        # a 0.68 box on a shoulder gave a "chin" at 1939 and the top 1390; the real face's chin needed 1250)
+        sure = [(t, b) for t, b in boxes if len(b) > 4 and b[4] >= fc.STRONG]
+        boxes = sure or boxes
+        chins = [(chin_on_screen(b[1] + b[3], t, cam, geo) if cam else (b[1] + b[3] - cy) * 1.05 + cy, t, b)
+                 for t, b in boxes]
         if chins:
-            need = round(max(chins) + fc.MARGIN // 2)
+            low, lt, lb = max(chins, key=lambda c: c[0])
+            need = round(low + fc.MARGIN // 2)
             top = max(band[0], min(SUB_MAX_TOP, need))
             if not quiet:
-                print(f"subtitles: top at y {top} (chin down to {round(max(chins))} per faces.json)"
+                print(f"subtitles: top at y {top} (chin down to {round(low)} per faces.json: box "
+                      f"{[round(v, 2) for v in lb[:5]]} at {lt:g} s)"
                       + (f"; WARNING: even at {SUB_MAX_TOP} the chin touches the subtitles: use a wider shot or a lower "
                          f"camera" if need > SUB_MAX_TOP else ""))
     return top, band
@@ -2464,6 +2500,9 @@ def cmd_export(a):
             print(f"scenes: {len(scenes)} in props.scenes; subtitles hidden in {len(hide)} window(s)")
         save_json(Path(a.props), props)
         print(f"template props: {a.props}")
+    else:  # a session ran export without --props and read the plans line as "done": no props, no render
+        print(f"no --props: the template props (rough cut, subtitles, brand, scenes) are NOT written, the ReelKit render "
+              f"needs them: add --props {(e / 'reelkit-props.json').as_posix()}")
     # what follows the cut, recorded once the export is through (during it end_tail() reads --sting/--card): validate
     # counts "the last 2 s" from the whole video's end. Codex review: written before the Remotion project check, a
     # failed export left an end card that the next validate counted

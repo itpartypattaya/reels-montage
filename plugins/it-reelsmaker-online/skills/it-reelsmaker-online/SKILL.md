@@ -94,7 +94,11 @@ report's lines before the cut plan. The local transcript is made first if missin
 - **Provider:** `openai`: text `gpt-transcribe` ($0.0045 per minute of audio). OpenAI's text models return no
   word times; its `whisper-1` does, but measured on real footage they were off by more than 0.15 s for one word in
   five, so they are used only without a local model (`--words cloud`, $0.006 per minute). Files up to 25 MB, about
-  13 minutes of the core's 16 kHz WAV.
+  13 minutes of the core's 16 kHz WAV. `groq`: text `whisper-large-v3-turbo` ($0.04 per hour, a free tier), as clean
+  as `gpt-transcribe` on the Russian test video; **its word times are not used** (off by more than 0.15 s for almost
+  half the words, pauses between phrases lost), so it gives the text only, on the local times, and `--words cloud`
+  is refused for it. Set `transcription_fallback=groq` (`reelcfg.py defaults --set …`) and a `GROQ_API_KEY` to use it
+  when OpenAI fails; or run it directly with `--provider groq`.
 - **Audio:** the core's `edit/<id>/audio16k-<source stem>.wav`, on the video's timeline (never the video file).
   It leaves the computer: say so when offering it.
 - **Paid, so only after a “yes”:** name the price (`--price`), run with `--yes`; or the person sets

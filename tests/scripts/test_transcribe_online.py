@@ -222,3 +222,69 @@ def test_cloud_words_before_the_first_local_word_get_a_real_time(online):
     # with room before the first word: just before it, short
     out, _ = online.lay_text(words([("вы", 1.5, 1.8), ("сказали", 1.8, 2.3)]), "Я знаю, вы сказали")
     assert out[0]["start"] == 0.9 and out[1]["end"] == 1.5 and out[2]["start"] == 1.5
+
+
+@needs_ffmpeg
+def test_groq_is_the_fallback_for_the_text_on_local_times(online, project, monkeypatch, capsys):
+    # 2026-10-07: Groq whisper-large-v3-turbo wrote the 97 s Russian test as cleanly as gpt-transcribe (one wrong word
+    # in 187) but its word times were off by > 0.15 s for 45 % of the words: a fallback for the text only, used when
+    # OpenAI fails (here: no credits), on the same local word times
+    late_audio_video(project / "IMG_4821.MOV")
+    local = local_transcript(project)
+    (project / "reel-defaults.json").write_text(json.dumps({"settings": {
+        "transcription_provider": "openai", "transcription_fallback": "groq"}}), encoding="utf-8")
+    monkeypatch.setenv("OPENAI_API_KEY", KEY)
+    monkeypatch.setenv("GROQ_API_KEY", KEY + "-groq")
+    seen = []
+
+    def net(req, timeout, allowed=None):
+        assert allowed(req.full_url)
+        seen.append(req.full_url)
+        if req.full_url.startswith("https://api.openai.com/"):
+            body = json.dumps({"error": {"message": "You exceeded your current quota", "code": "insufficient_quota"}})
+            raise urllib.error.HTTPError(req.full_url, 429, "Too Many Requests", {}, io.BytesIO(body.encode()))
+        assert req.full_url == "https://api.groq.com/openai/v1/audio/transcriptions"
+        assert b"whisper-large-v3-turbo" in req.data and b"timestamp_granularities" not in req.data
+        return io.BytesIO(json.dumps({"text": TEXT}).encode())
+    monkeypatch.setattr(online, "open_url", net)
+    with pytest.raises(SystemExit) as ex:
+        online.main(["edit/4821", "IMG_4821.MOV"])  # the person's settings: no --provider, no --yes
+    assert ex.value.code == 0 and len(seen) == 2
+    doc = json.loads(local.read_text(encoding="utf-8"))
+    assert doc["model"] == "groq whisper-large-v3-turbo text + faster-whisper timing"
+    assert doc["words"][3]["text"] == "конкретнее" and doc["words"][3]["start"] == 2.05  # the local time
+    assert (local.parent / "IMG_4821.groq.raw.json").is_file()
+    out = capsys.readouterr()
+    assert "Fallback: groq" in out.err and KEY not in out.out + out.err
+    # the same source again while OpenAI still fails: the fallback's transcript is kept, nothing is sent (Codex review)
+    monkeypatch.setattr(online, "open_url", lambda *a, **k: pytest.fail("the audio was sent again"))
+    with pytest.raises(SystemExit) as ex:
+        online.main(["edit/4821", "IMG_4821.MOV"])
+    assert ex.value.code == 0 and "the fallback; --force to try openai again" in capsys.readouterr().out
+
+
+def test_groq_word_times_are_refused(online, project, monkeypatch, capsys):
+    # Groq gives the text only: its own word times drifted too far from the audio to cut or time subtitles by
+    from test_transcribe import late_audio_video as _video
+    import shutil
+    if not shutil.which("ffmpeg"):
+        pytest.skip("ffmpeg")
+    _video(project / "IMG_4821.MOV")
+    monkeypatch.setenv("GROQ_API_KEY", KEY)
+    with pytest.raises(SystemExit) as ex:
+        online.main(["edit/4821", "IMG_4821.MOV", "--provider", "groq", "--words", "cloud", "--yes"])
+    assert ex.value.code == 2 and "word times are not used" in capsys.readouterr().err
+
+
+def test_groq_without_local_word_times_says_so(online, project, monkeypatch, capsys):
+    # Codex review: with no local model, --provider groq crashed on the price of word times it does not sell
+    import shutil
+    if not shutil.which("ffmpeg"):
+        pytest.skip("ffmpeg")
+    late_audio_video(project / "IMG_4821.MOV")
+    monkeypatch.setenv("GROQ_API_KEY", KEY)
+    monkeypatch.setattr(online.core, "cmd_full", lambda a: (_ for _ in ()).throw(SystemExit("faster-whisper is not installed")))
+    monkeypatch.setattr(online, "open_url", lambda *a, **k: pytest.fail("nothing is sent"))
+    with pytest.raises(SystemExit) as ex:
+        online.main(["edit/4821", "IMG_4821.MOV", "--provider", "groq", "--yes"])
+    assert ex.value.code == 2 and "gives the text only" in capsys.readouterr().err

@@ -185,7 +185,7 @@ Speakers often record their lines in several takes, and Whisper **merges a repea
 3. **restart words**: “so”, “I mean”, “that is”, “no”, “stop”, “let me start over”, or the same in the speaker's language; a cut-off word;
 4. **a pause > 1 s mid-thought**: often the seam between two attempts.
 
-For a suspicious spot, cut out a segment **no longer than 5 s, with a run-up from silence**, and re-transcribe it separately (`transcribe.py snip edit/<id> <source> --from … --to …`: no context of the whole video, the transcript's language, a short sample of speech with fillers in that language as the prompt; a prompt in another language leaks into the text). On a 10-second segment the repeat still collapses. Transcribing the finished video as a whole structurally cannot see repeats.
+For a suspicious spot, cut out a segment **no longer than 5 s, with a run-up from silence**, and re-transcribe it separately (`transcribe.py snip edit/<id> <source> --from … --to …`: no context of the whole video, the transcript's language, a short sample of speech with fillers in that language as the prompt; a prompt in another language leaks into the text). On a 10-second segment the repeat still collapses. When the snip hears the spot right, put its words into the main transcript with `transcribe.py splice edit/<id> edit/<id>/snip/<name>.json` (they replace the words inside the snip's window; a backup `<stem>.presplice.json` is kept), then rebuild the cut. Transcribing the finished video as a whole structurally cannot see repeats.
 
 **Which take to use:**
 - the speaker cancelled themselves out loud → discard the take;
@@ -222,7 +222,7 @@ A shot-size change is the main source of dynamics and the best way to hide a cut
 A limit below ~×1.15 → the camera will not give any dynamics; say so before editing.
 
 ### Step 5. Cut plan → “yes”
-In one message: **start and ending** (the variant chosen in step 3a, with the teaser's source timecodes if any), phrase order (what stays, what goes, **what was rejected and why**), takes and slips, **pacing** (“tight”: pauses up to 50 ms; “natural”: up to 220 ms) and **filler words** (keep / remove; by default keep: speech sounds livelier), each with a recommendation, speed-up via atempo with pitch preserved (insight monologue ×1.15–1.25, skit and calm delivery ×1.1–1.15; above ×1.3 sounds rushed), final length, zoom margin, transcription fixes, and **Supports**: the decisions that shape the video, each with the rule behind it (file › section or card ID, and its trust), what was not applied or departed from and why (`references/playbook.md`). **No cutting without a “yes”.** The message looks like the cut plan in `references/examples.md`.
+In one message: **start and ending** (the variant chosen in step 3a, with the teaser's source timecodes if any), phrase order (what stays, what goes, **what was rejected and why**), takes and slips, **pacing** (“tight”: pauses up to 50 ms, `speech_mask.py --density max`, the default; “natural”: up to 220 ms, `--density natural`) and **filler words** (keep / remove; by default keep: speech sounds livelier), each with a recommendation, speed-up via atempo with pitch preserved (insight monologue ×1.15–1.25, skit and calm delivery ×1.1–1.15; above ×1.3 sounds rushed), final length, zoom margin, transcription fixes, and **Supports**: the decisions that shape the video, each with the rule behind it (file › section or card ID, and its trust), what was not applied or departed from and why (`references/playbook.md`). **No cutting without a “yes”.** The message looks like the cut plan in `references/examples.md`.
 
 **Multiple cameras:** measure the speech rate for each source (syllables per second, step 1) and even them out with a separate speed for each; the rates that count are measured on the cut speech (`transcribe.py rate edit/<id>` after `cut.py`), adjust and rebuild. Real case: the sources measured 9.56 vs 7.55 syllables/s (27% apart) → ×0.915 and ×1.095, and the cut speech came out at 8.56 and 8.54; the source figures are only the first estimate. A take spoken faster than the rest shows up as one segment above the others: give it its own source key (the same file) with its own speed. No more than two **phrases** from the same angle in a row (count phrases, not the pieces a compressed pause splits a phrase into), and two in a row must differ in shot size; a phrase comes whole from one take; show the chain of angles in the plan.
 
@@ -239,7 +239,7 @@ voiceless-ending pickup: a short burst within 250 ms after a span is part of the
         (but the start of the next full span is a stop)
 plosive-onset pickup: a short burst within 200 ms before a span is the start of its word (a 40 ms “p”, then the closure)
 segment edge = first speech − 20 ms … last speech + 30 ms, snapped to the frame grid
-pause compression: ≥160 ms → keep 50 ms (natural: ≥400 → 220). Threshold no lower than 150 ms:
+pause compression: ≥160 ms → keep 50 ms (tight = --density max, the default; natural = --density natural: ≥400 → 220). Threshold no lower than 150 ms:
         a shorter unstressed syllable is indistinguishable from a pause
         (Russian example: “poka vy spite”, “while you sleep”, became “ka vy spite”)
 warn: pause >1 s inside a segment (seam between takes); short speech at the start, then a pause (tail of another take)
