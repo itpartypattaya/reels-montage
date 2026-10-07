@@ -279,8 +279,11 @@ def with_cover(a, tmp):
     if poster("attach", a.output, "--cover", cover, "-o", out):
         return 1
     jpg = cover_jpg_of(out)
-    run(["ffmpeg", "-y", "-hide_banner", "-i", str(cover), "-frames:v", "1", "-q:v", "2", str(jpg)])
-    print(f"cover picture for uploading it by hand: {jpg}")
+    if jpg.resolve() == cover.resolve():  # remastering from the sidecar itself: ffmpeg can't write its own input (PR review)
+        print(f"cover picture for uploading it by hand: {jpg} (the cover given, kept as it is)")
+    else:
+        run(["ffmpeg", "-y", "-hide_banner", "-i", str(cover), "-frames:v", "1", "-q:v", "2", str(jpg)])
+        print(f"cover picture for uploading it by hand: {jpg}")
     print("file:", str(out) + ("" if not code else " — do not publish it; deal with the failure first"))
     return code
 

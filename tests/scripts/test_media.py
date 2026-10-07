@@ -150,6 +150,12 @@ def test_master_with_cover_is_one_file_with_its_cover_next_to_it(project):
     assert not (red(1)[0] > 150 and red(1)[1] < 90)  # frame 1 is the render
     r = run_script("master_audio.py", str(master), "--check", cwd=project, check=False)
     assert r.returncode == 0 and "cover art: embedded" in r.stdout, r.stdout + r.stderr
+    # remastering from the sidecar itself (PR review: ffmpeg refused to write its own input)
+    side = project / "out" / "acme-tip-20261007-cover.jpg"
+    size = side.stat().st_size
+    r = run_script("master_audio.py", "render.mp4", "-o", "out/acme-tip-20261007-master.mp4", "--cover", str(side),
+                   cwd=project, check=False)
+    assert r.returncode == 0 and "kept as it is" in r.stdout and side.stat().st_size == size, r.stdout + r.stderr
     # without a cover: made as before, with a warning
     r = run_script("master_audio.py", "render.mp4", "-o", "plain.mp4", cwd=project, check=False)
     assert r.returncode == 0 and "no cover" in r.stdout
