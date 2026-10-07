@@ -2,6 +2,14 @@
 
 What changed in IT Reelsmaker Online. The newest version is on top.
 
+## 1.4.3
+
+- **Groq as a fallback for the transcript text.** When OpenAI is out of credits or unreachable, the text can come
+  from Groq's `whisper-large-v3-turbo` (a free tier, $0.04 per hour after it), laid on the same local word times:
+  `transcription_fallback=groq` and a `GROQ_API_KEY`. On a 97 s Russian video its text was as clean as OpenAI's (one
+  wrong word in 187), but its own word times were off by more than 0.15 s for almost half of the words and lost half
+  of the pauses between phrases, so they are never used.
+
 ## 1.4.2
 
 - With an older core plugin, the cloud transcript and the subtitle translation now say “needs it-reelsmaker

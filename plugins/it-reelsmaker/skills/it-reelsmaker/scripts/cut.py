@@ -44,13 +44,16 @@ scale       "auto": a vertical source that is not 1080x1920 is scaled (and cropp
 fix, fix_at transcription fixes: every occurrence of a word, or one occurrence near a source second (±0.02 s).
             "to": "" removes the word from the subtitles (a word only the local model heard, a stray "uh"):
             "fix_at": [{"text": "you", "at": 46.4, "to": ""}]; the sound is not touched. "text" is the word as the
-            transcript has it and "at" its start AFTER retime: for a retimed word, its new "start".
+            transcript has it and "at" its start AFTER retime: for a retimed word, its new "start". "fix" may also
+            be a list of ["word", "replacement"] pairs.
 retime      exact timings of key words measured on the waveform: (word, transcript start) -> (start, end).
 
 A transcript word that the cut leaves out of every range although it sits in a short gap (up to 1 s) removed between
 two ranges of one source is named in a warning, in --dry-run too: a quiet syllable below the speech threshold is cut
 as a pause (T4: a quiet two-letter word at -35..-40 dBFS under a -33.6 threshold left the sound and the subtitles
 without a word). Check it by ear; lower speech_mask.py --thr or extend the range over it.
+A word the transcript marks "est": true (heard only by a cloud transcript, its time estimated) that the cut shows
+is named too, in --dry-run as well: listen, and remove it with fix_at -> "" if it is not said.
 extract     extra clips from the sources for Remotion (cutaways from the same footage), same color, no sound:
             edit/<id>/<name>.mp4. A B-roll insert from the project's own videos gets the same look too:
             footage.py pick (project footage) and footage.py prepare --look edit/<id>.
@@ -174,8 +177,52 @@ def load_cut(e, project, speed_arg=None):
         validate_range(x, sources[src], fps, f"extract {name}")
     return {"fps": fps, "speed": speed, "sources": sources, "ranges": ranges, "grade": grade, "correct": correct,
             "lut": str(lut) if lut else None, "lut_mix": float(look.get("lut_mix", LUT_MIX)),
-            "fix": cut.get("fix") or {}, "fix_at": cut.get("fix_at") or [], "retime": cut.get("retime") or [],
-            "extract": extras}
+            "fix": fix_map(cut.get("fix")), "fix_at": word_fixes(cut.get("fix_at"), "fix_at", ("to",)),
+            "retime": word_fixes(cut.get("retime"), "retime", ("start", "end")), "extract": extras}
+
+
+def fix_map(v):
+    """cut.json "fix": {"word": "to"}, or a list of ["word", "to"] pairs (written by hand that way it crashed the cut
+    with an AttributeError) -> {word: to}. A malformed value stops with a clear message."""
+    if not v:
+        return {}
+    if isinstance(v, list):
+        if not all(isinstance(x, (list, tuple)) and len(x) == 2 for x in v):
+            sys.exit("cut.json: fix is {\"word\": \"replacement\"} or a list of [\"word\", \"replacement\"] pairs")
+        v = {x[0]: x[1] for x in v}
+    if not isinstance(v, dict) or not all(isinstance(k, str) and isinstance(x, str) for k, x in v.items()):
+        sys.exit("cut.json: fix is {\"word\": \"replacement\"} (strings; \"\" removes the word from the subtitles)")
+    return v
+
+
+def word_fixes(v, name, fields):
+    """cut.json "fix_at" / "retime": a list of {"text", "at", ...} entries, checked (a dict or an entry without "at"
+    crashed the cut with an AttributeError or a KeyError)."""
+    if not v:
+        return []
+    shape = ('[{"text": "word", "at": 16.16, "to": "replacement"}]' if name == "fix_at" else
+             '[{"text": "word", "at": 0.0, "start": 0.68, "end": 0.84}]')
+    if not isinstance(v, list):
+        sys.exit(f"cut.json: {name} is a list: {shape}")
+    out = []
+    for n, x in enumerate(v):
+        try:
+            if not isinstance(x, dict) or not isinstance(x["text"], str):
+                raise TypeError
+            r = {**x, "at": float(x["at"])}
+            for f in fields:
+                r[f] = x[f] if f == "to" else float(x[f])
+            if name == "fix_at" and not isinstance(r["to"], str):
+                raise TypeError
+            if not all(math.isfinite(r[f]) for f in ("at", *fields) if f != "to"):
+                raise ValueError
+            if name == "retime" and r["end"] <= r["start"]:
+                raise ValueError
+        except (KeyError, TypeError, ValueError):
+            sys.exit(f"cut.json: {name}[{n}] {json.dumps(x, ensure_ascii=False)}: expected {shape}"
+                     + (" with end after start" if name == "retime" else ""))
+        out.append(r)
+    return out
 
 
 def speaker_switches(r, k):
@@ -416,6 +463,15 @@ def dropped_in_gaps(c, words, captions):
     return out
 
 
+def estimated_words(c, words, captions):
+    """Words shown in the subtitles whose time the transcript only estimates ("est": true: the online add-on's cloud
+    transcript heard them and the local recognizer did not, so no timing came with them) -> [(word, source, start)].
+    The cloud model may also have heard a word that is not said (1094: "Prichyom" 33.12 and a one-letter "k" 1.46)."""
+    shown = {(c["ranges"][w["seg"]]["source"], w["src"]) for w in captions}
+    return [(str(w["text"]), src, w["start"]) for src, ws in words.items() for w in ws
+            if w.get("est") and (src, round(w["start"], 3)) in shown]
+
+
 def hidden_at_edges(c, words, captions, skip=()):
     """Transcript words that a piece holds a part of (>= EDGE_TOUCH) but the subtitles leave out: owner() found them
     mostly outside the cut. Right for the tail of a removed line; wrong for a word heard inside whose time the
@@ -547,6 +603,10 @@ def main():
         warn(f"the word \"{text}\" ({src} {ws:.2f}-{we:.2f}) is {o:.2f} s inside range {k} but mostly outside it: left out of "
              f"the subtitles. Right for the tail of a removed line; if it is heard in the cut (the recognizer stretched its "
              f"time past the edge), give its real times in cut.json \"retime\"")
+    for text, src, ws in estimated_words(c, words, captions):
+        warn(f"the word «{text}» ({src} {ws:.2f}) was heard only by the cloud transcript and its time is "
+             f"estimated: listen; remove it with fix_at -> \"\" if it is not said "
+             f"({json.dumps({'text': text, 'at': round(ws, 2), 'to': ''}, ensure_ascii=False)})")
     if a.dry_run:
         return
     clips = e / "clips"

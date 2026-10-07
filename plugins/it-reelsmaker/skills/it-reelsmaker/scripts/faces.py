@@ -71,8 +71,10 @@ STRONG = 0.85
 MIN_ASPECT = 1.05    # a YuNet face box is taller than wide (1.2-1.5); "square" or "landscape" means knees, hands, cloth
 SIZE_RANGE = (0.35, 1.8)  # width relative to the median of the video's confident faces (camera zoom gives up to x1.3)
 LOCAL_S = 2.0       # size comparison window, s: the camera plan and B-roll change the face size
-FILTER_V = 5         # 2: signs combined, "below a face" with a horizontal check, local median; 3: "below the chin" sign;
-                     # 4: far below a face and smaller than it; 5: "appeared once" up to score 0.8
+EDGE = 6             # px: a box this close to the left or right frame edge is cut by it
+FILTER_V = 6         # 2: signs combined, "below a face" with a horizontal check, local median; 3: "below the chin" sign;
+                     # 4: far below a face and smaller than it; 5: "appeared once" up to score 0.8; 6: "cut by the frame
+                     # edge" sign
 
 DETECT = r"""
 import cv2, json, sys
@@ -198,10 +200,11 @@ def iou(a, b):
     return i / (a[2] * a[3] + b[2] * b[3] - i) if i else 0.0
 
 
-def false_reason(f, strong, med, near):
+def false_reason(f, strong, med, near, width=W):
     """Why a weak box is not a face; None: it is plausible. strong: confident faces in the same frame,
     med: median width of confident faces within +-LOCAL_S (None: nothing to compare with),
-    near: boxes of the time-adjacent samples (None: frames are not consecutive, the "appeared once" rule is off).
+    near: boxes of the time-adjacent samples (None: frames are not consecutive, the "appeared once" rule is off),
+    width: the frame width in the boxes' coordinates (the "cut by the frame edge" sign).
     One indirect sign decides nothing: a tilted head can be "square", a face in B-roll is smaller.
     Discard if the box is right below a face of the same person, or if two of three signs agree."""
     x, y, w, h, sc = f[:5]
@@ -223,14 +226,20 @@ def false_reason(f, strong, med, near):
         signs.append("size unlike the faces around it")
     if sc < 0.8 and near is not None and not any(iou(f, n) > 0.3 for n in near):  # 0.72: a sofa cushion, one sample
         signs.append("appeared in a single sample")
+    # 1789: 12 weak boxes (0.60-0.77) on a shoulder and an arm cut by the left edge had one sign each and passed; the
+    # lowest "chin" (1939) pushed the subtitles down to the limit. A strong box at the edge stays: the other person
+    # of a two-person skit after a push-in.
+    if width and (x <= EDGE or x + w >= width - EDGE):
+        signs.append("cut by the frame edge")
     return " + ".join(signs) if len(signs) >= 2 else None
 
 
-def clean_frames(frames, times=None, step=None):
+def clean_frames(frames, times=None, step=None, width=W):
     """Filter for a list of frames [[x,y,w,h,score], ...] -> (kept, discarded with a reason) per frame.
     times/step: sample times (a measurement with a step); then the size is compared with the faces within +-LOCAL_S
     (a shot change or B-roll does not break the comparison) and the "appeared once" rule works. Without times (three
-    widely spaced frames of a meme) the size is compared across all frames and "appeared once" is off."""
+    widely spaced frames of a meme) the size is compared across all frames and "appeared once" is off.
+    width: the frame width in the boxes' coordinates (1080 for a cover measurement, the source width for "source")."""
     n = len(frames)
     strong_w = [[f[2] for f in fr if f[4] >= STRONG] for fr in frames]
 
@@ -251,7 +260,7 @@ def clean_frames(frames, times=None, step=None):
             med, near = glob, None
         kk, rr = [], []
         for f in fr:
-            why = false_reason(f, strong, med, near)
+            why = false_reason(f, strong, med, near, width)
             (rr.append(list(f[:5]) + [why]) if why else kk.append(list(f[:5])))
         keep.append(kk)
         rej.append(rr)
@@ -261,7 +270,7 @@ def clean_frames(frames, times=None, step=None):
 def filter_faces(data):
     """faces.json -> faces holds only plausible boxes, false ones go to rejected. A repeat call recomputes from scratch."""
     raw = [s["faces"] + [r[:5] for r in s.get("rejected", [])] for s in data["samples"]]
-    keep, rej = clean_frames(raw, [s["t"] for s in data["samples"]], data.get("step", 0.25))
+    keep, rej = clean_frames(raw, [s["t"] for s in data["samples"]], data.get("step", 0.25), data.get("w") or W)
     for s, kk, rr in zip(data["samples"], keep, rej):
         s["faces"] = kk
         if rr:
@@ -653,6 +662,9 @@ def side_cuts(e, plan):
 
 def cmd_audit(a):
     """The finished render: faces after the camera against subtitles, cards and scenes (keep_clear) and memes."""
+    if Path(a.render).is_dir():  # a session passed the video folder first ("audit edit/<id>") and got lost
+        sys.exit(f"audit takes the rendered video first: faces.py audit out/<render>.mp4 --edit edit/<id> "
+                 f"({a.render} is a folder)")
     e = edit_dir(a.edit)
     data = scan_video(Path(a.render), a.step, a.raw, geometry="cover")  # a 1080x1920 render is the screen itself
     if data is None:
@@ -735,7 +747,9 @@ def main():
     p = sub.add_parser("check"); p.add_argument("edit"); p.add_argument("--box", required=True)  # noqa
     p.add_argument("--from", dest="start", type=float, required=True); p.add_argument("--to", dest="end", type=float, required=True)
     p.add_argument("--cam"); p.add_argument("--what"); p.add_argument("--frame", help=FR); p.set_defaults(fn=cmd_check)
-    p = sub.add_parser("audit"); p.add_argument("render"); p.add_argument("--edit", required=True)
+    p = sub.add_parser("audit", help="the finished render: audit out/<render>.mp4 --edit edit/<id>")
+    p.add_argument("render", help="the rendered video, out/<render>.mp4 (not the video folder)")
+    p.add_argument("--edit", required=True, help="the video folder, edit/<id>")
     p.add_argument("--sub"); p.add_argument("--step", type=float, default=0.25); p.add_argument("--no-subs", action="store_true")
     p.set_defaults(fn=cmd_audit)
     for name, sp in sub.choices.items():

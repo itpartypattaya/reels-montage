@@ -3,6 +3,7 @@
 
     python scripts/transcribe.py edit/4821 IMG_4821.MOV [--model medium] [--language ru]   # -> edit/4821/transcripts/IMG_4821.json
     python scripts/transcribe.py snip edit/4821 IMG_4821.MOV --from 12.3 --to 16.8          # re-transcribe a <= 5 s piece
+    python scripts/transcribe.py splice edit/4821 edit/4821/snip/IMG_4821_12.30-16.80.json  # put a snip into the transcript
     python scripts/transcribe.py check edit/4821/transcripts/IMG_4821.json                  # is a transcript in the right format
     python scripts/transcribe.py audio edit/4821 IMG_4821.MOV                               # only the aligned WAV, for your own transcriber
     python scripts/transcribe.py rate edit/4821 [--source front]                            # speech rate of the rough cut
@@ -32,6 +33,13 @@ it into the text (T5: an English "verbatim" instruction with --language ru came 
 of the Russian words). On a 10 s piece a repeat still collapses into one word, on 5 s it does not; keep pieces <= 5 s.
 The result goes into edit/<id>/snip/ with times on the source timeline. A word fragment at an edge is never visible to
 Whisper in any mode: only speech_mask.py --edl catches it.
+
+splice: the snip's words replace the main transcript's words inside a window (default: the snip's own from/to;
+--from/--to narrow it). A word belongs to the window by its middle. The main transcript is the one cut.json names
+for the snip's source ("transcript"), else edit/<id>/transcripts/<source stem>.json; the doc's other keys stay, a
+"splices" list records each splice, and the state before it is kept as <stem>.presplice.json (-2, -3, ... when an
+earlier, different backup is there: a backup is never overwritten). The result goes through `check` before it is
+saved. Then rebuild the cut (cut.py): its words come from the transcript.
 
 rate: syllables per second = the vowels of the transcript's words / the speech time by the speech mask
 (speech_mask.py: speech windows only, pauses do not count), measured on the rough cut final.mp4 per source and per
@@ -295,6 +303,103 @@ def cmd_snip(a):
         print(f"  {w['start']:8.2f} {w['end']:8.2f}  {w['text']}")
 
 
+def main_transcript(e, project, stem):
+    """The transcript cut.py reads for a source stem: cut.json's "transcript" for the source whose file has this stem,
+    else edit/<id>/transcripts/<stem>.json."""
+    from cut import resolve
+    for sv in ((load_json(e / "cut.json") or {}).get("sources") or {}).values():
+        sv = {"file": sv} if isinstance(sv, str) else sv
+        if isinstance(sv, dict) and sv.get("file") and Path(str(sv["file"])).stem == stem and sv.get("transcript"):
+            return resolve(sv["transcript"], project, e)
+    return e / "transcripts" / f"{stem}.json"
+
+
+def in_window(w, t0, t1):
+    """A transcript item belongs to a splice window by its middle (an item without times: no)."""
+    try:
+        mid = (float(w["start"]) + float(w["end"])) / 2
+    except (KeyError, TypeError, ValueError):
+        return False
+    return t0 <= mid < t1
+
+
+def splice_words(doc, snip_words, t0, t1):
+    """The doc's items inside [t0, t1) replaced with the snip's words inside it -> (new items, removed, added)."""
+    items = doc.get("words") or []
+    removed = [w for w in items if isinstance(w, dict) and in_window(w, t0, t1)]
+    added = [dict(w) for w in snip_words if isinstance(w, dict) and in_window(w, t0, t1)]
+    kept = [w for w in items if not (isinstance(w, dict) and in_window(w, t0, t1))]
+    start = lambda w: float(w["start"]) if isinstance(w, dict) and isinstance(w.get("start"), (int, float)) else -1.0
+    return sorted(kept + added, key=start), removed, added
+
+
+def backup_path(f, doc):
+    """<stem>.presplice.json, or -2, -3, ... when a different earlier backup is there; None: the same state is kept."""
+    k = 1
+    while True:
+        b = f.with_name(f"{f.stem}.presplice{'' if k == 1 else f'-{k}'}.json")
+        if not b.exists():
+            return b
+        if load_json(b) == doc:
+            return None
+        k += 1
+
+
+def cmd_splice(a):
+    project = project_root()
+    e = edit_dir(a.edit, project)
+    sp = next((c for c in (Path(a.snip), project / a.snip, e / a.snip, e / "snip" / a.snip) if c.is_file()), None)
+    if sp is None:
+        sys.exit(f"no snip file {a.snip} (looked in the current folder, {project}, {e} and {e / 'snip'})")
+    snip = load_json(sp)
+    if not isinstance(snip, dict) or not isinstance(snip.get("words"), list):
+        sys.exit(f"{sp}: not a transcript (no \"words\" list); make it with transcribe.py snip")
+    m = re.fullmatch(r"(.+)_(\d+(?:\.\d+)?)-(\d+(?:\.\d+)?)", sp.stem)
+    stem = Path(str(snip["source"])).stem if snip.get("source") else (m.group(1) if m else None)
+    if not stem:
+        sys.exit(f"{sp}: the snip names no source (\"source\"): cannot tell which transcript it belongs to")
+    try:
+        t0 = float(a.start if a.start is not None else snip["from"])
+        t1 = float(a.end if a.end is not None else snip["to"])
+    except (KeyError, TypeError, ValueError):
+        sys.exit(f"{sp}: no \"from\"/\"to\" in the snip: give the window with --from and --to (source seconds)")
+    if t1 <= t0:
+        sys.exit("--to must be after --from")
+    lo, hi = snip.get("from"), snip.get("to")
+    if isinstance(lo, (int, float)) and isinstance(hi, (int, float)) and (t0 < lo - 1e-6 or t1 > hi + 1e-6):
+        # the snip heard only its own piece: outside it the main words would go with nothing in their place
+        sys.exit(f"the window {t0:.2f}-{t1:.2f} leaves the snip's piece {lo:.2f}-{hi:.2f}: keep --from/--to inside it")
+    inwin = [w for w in snip["words"] if in_window(w, t0, t1)]
+    bad = [p for p in check_doc({"words": inwin}) if inwin and not p.startswith("note:")]
+    if bad:
+        sys.exit(f"{sp}: " + "; ".join(bad))
+    f = main_transcript(e, project, stem)
+    with locked(f):
+        doc = load_json(f)
+        if not isinstance(doc, dict) or not isinstance(doc.get("words"), list):
+            sys.exit(f"no main transcript {f} for the snip's source {stem} (a snip of the rough cut, final.mp4, has no "
+                     f"transcript to go into: snip the source file)")
+        words, removed, added = splice_words(doc, snip["words"], t0, t1)
+        if not removed and not added:
+            sys.exit(f"{t0:.2f}-{t1:.2f} s: no words in the window, neither in {f.name} nor in the snip: nothing to do")
+        new = {**doc, "words": words, "splices": (doc.get("splices") or []) + [
+            {"snip": sp.name, "from": round(t0, 3), "to": round(t1, 3), "removed": len(removed), "added": len(added)}]}
+        problems = [p for p in check_doc(new) if not p.startswith("note:")]
+        if problems:
+            sys.exit(f"the spliced transcript does not pass check, nothing saved: {'; '.join(problems)}")
+        b = backup_path(f, doc)
+        if b:
+            save_json(b, doc)
+        save_json(f, new)
+    txt = lambda ws: " ".join(str(w.get("text", "")) for w in ws if w.get("type", "word") == "word") or "-"
+    print(f"{f}: {t0:.2f}-{t1:.2f} s from {sp.name}: removed {len(removed)} ({txt(removed)}), added {len(added)} "
+          f"({txt(added)})" + (f"; before: {b.name}" if b else "; the backup of this state is already there"))
+    for n in check_doc(new):
+        if n.startswith("note:"):
+            warn(n[6:])
+    print("next: rebuild the cut (cut.py) so the subtitles take the new words")
+
+
 VOWELS = set("aeiouAEIOU" + "".join(chr(c) for c in (0x430, 0x435, 0x451, 0x438, 0x43e, 0x443, 0x44b, 0x44d,
                                                      0x44e, 0x44f, 0x456, 0x457, 0x454)))  # Cyrillic a e yo i o u y e yu ya i yi ye
 
@@ -386,7 +491,7 @@ def cmd_check(a):
 def main():
     utf8_stdio()
     argv = sys.argv[1:]
-    cmds = {"snip", "check", "audio", "rate"}
+    cmds = {"snip", "splice", "check", "audio", "rate"}
     if argv and argv[0] not in cmds and not argv[0].startswith("-"):
         argv = ["full"] + argv  # the main mode needs no command word: transcribe.py edit/<id> <source>
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -405,6 +510,11 @@ def main():
     p.add_argument("--from", dest="start", type=float, required=True); p.add_argument("--to", dest="end", type=float, required=True)
     p.add_argument("--no-prompt", action="store_true", help="no initial prompt (the default prompt is in the transcript's language)")
     common(p); p.set_defaults(fn=cmd_snip)
+    p = sub.add_parser("splice", help="put a snip's words into the main transcript, inside a window")
+    p.add_argument("edit"); p.add_argument("snip", help="the snip's JSON (edit/<id>/snip/<name>.json)")
+    p.add_argument("--from", dest="start", type=float, help="window start, source seconds (default: the snip's from)")
+    p.add_argument("--to", dest="end", type=float, help="window end, source seconds (default: the snip's to)")
+    p.set_defaults(fn=cmd_splice)
     p = sub.add_parser("audio", help="only edit/<id>/audio16k-<name>.wav on the video timeline, for your own transcriber")
     p.add_argument("edit"); p.add_argument("source"); p.add_argument("--force", action="store_true")
     p.set_defaults(fn=cmd_audio)

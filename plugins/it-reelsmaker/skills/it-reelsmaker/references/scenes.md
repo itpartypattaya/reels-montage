@@ -30,7 +30,7 @@ A scene is **not needed** when the face and intonation matter more (a personal s
 
 | type | On screen | Required | Modes |
 |---|---|---|---|
-| `hook` | a hook of 2–6 words, one accent word; variants `slam` (fast in, then holds), `type` (typed out), `stack` (words stack up), `counter` (a number) | `text.lines`, `variant` | overlay, split, full (≤ 1.5 s, fast tones only) |
+| `hook` | a hook of 2–6 words, one accent word; variants `slam` (fast in, then holds), `type` (typed out), `stack` (words stack up), `counter` (a number) | `text.lines`, `variant` (required: `visual_plan.py add … --type hook --variant slam`) | overlay, split, full (≤ 1.5 s, fast tones only) |
 | `quote` | a **verbatim** quote, quotation marks, an all-caps caption “NAME · ROLE” | `text.lines`, `source` | overlay, split, full |
 | `slogan` | the main thought as a punch: a color field wipes in, words come in one by one on their spoken words (an evolution of the full-screen phrase) | `text.lines` | full, split |
 | `stat` | a big number with a from → to counter, a caption, a source | `value`, `text.lines`, `source` | overlay, split, full |

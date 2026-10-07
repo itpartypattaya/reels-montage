@@ -25,7 +25,13 @@ file the core reads; the local transcript is kept as <stem>.local.json, an older
 <stem>.prev.json, the provider's raw answer as <stem>.<provider>.raw.json (no key in any of them).
 
 Providers (references/sources.md): openai — text gpt-transcribe ($0.0045 per minute), word times whisper-1 ($0.006
-per minute, only with --words cloud); files up to 25 MB (about 13 minutes of this WAV).
+per minute, only with --words cloud); groq — text only, whisper-large-v3-turbo ($0.04 per hour; a free tier), a
+fallback when OpenAI is out of credits or unreachable. Groq's own word times are not used: on the same 97 s video they
+were off from the audio-checked local times by more than 0.15 s for 45 % of the words (large-v3: 36 %, whisper-1: 21 %),
+and they lost half of the pauses between phrases; its text was as good as gpt-transcribe's (one wrong word in 187).
+Files up to 25 MB (about 13 minutes of this WAV).
+Fallback: `transcription_fallback=groq` in the settings (reelcfg.py defaults --set ...) — when the main provider fails
+(no key, no credits, no network) and a GROQ_API_KEY is set, the text comes from Groq instead, on the same local times.
 
 Paid: it runs with --yes, or without it when the person set `transcription_provider` in the project defaults or the
 video's reel.json (their standing choice). Otherwise it prints the price and exits. No key, no network, no credits:
@@ -45,9 +51,18 @@ except ImportError as exc:
 from reels_online import UA, api_key, err_text, offline, open_url, read_json_response
 
 OPENAI_URL = "https://api.openai.com/v1/audio/transcriptions"
+GROQ_URL = "https://api.groq.com/openai/v1/audio/transcriptions"  # OpenAI-compatible: the same multipart request
 PROVIDERS = {
-    "openai": {"key": "OPENAI_API_KEY", "text_model": "gpt-transcribe", "text_usd_min": 0.0045,
+    "openai": {"key": "OPENAI_API_KEY", "url": OPENAI_URL, "host": "https://api.openai.com/",
+               "text_model": "gpt-transcribe", "text_usd_min": 0.0045,
                "words_model": "whisper-1", "words_usd_min": 0.006, "max_bytes": 25 * 1000 * 1000},
+    # text only: Groq's word times were off by > 0.15 s for 36-45 % of the words on a 97 s Russian video (2026-10-07)
+    "groq": {"key": "GROQ_API_KEY", "url": GROQ_URL, "host": "https://api.groq.com/",
+             "text_model": "whisper-large-v3-turbo", "text_usd_min": round(0.04 / 60, 5),
+             "words_model": None, "words_usd_min": None, "max_bytes": 25 * 1000 * 1000,
+             "no_words": "Groq's word times are not used: on a 97 s Russian video they were off from the audio-checked "
+                         "local times by more than 0.15 s for 36-45 % of the words and lost half of the pauses "
+                         "between phrases; it gives the text, laid on the local word times (--words local)"},
 }
 LANG_CODES = {"russian": "ru", "english": "en", "ukrainian": "uk", "german": "de", "french": "fr", "spanish": "es",
               "italian": "it", "portuguese": "pt", "turkish": "tr", "thai": "th", "vietnamese": "vi", "chinese": "zh",
@@ -75,6 +90,21 @@ def multipart(fields, files):
 
 def openai_host_ok(url):
     return str(url).startswith("https://api.openai.com/")
+
+
+def provider_call(name, wav, key, model, language=None, prompt=None, words=False):
+    """The provider's transcription endpoint (OpenAI's request shape; Groq takes the same)."""
+    if name == "openai":
+        return openai_call(wav, key, model, language, prompt, words=words)
+    p = PROVIDERS[name]
+    fields = [("model", model), ("response_format", "json"), ("temperature", "0")]
+    if language:
+        fields.append(("language", language))
+    if prompt:
+        fields.append(("prompt", prompt))
+    body, ctype = multipart(fields, [("file", Path(wav).name, Path(wav).read_bytes(), "audio/wav")])
+    return post(p["url"], body, {"Authorization": f"Bearer {key}", "Content-Type": ctype}, 600,
+                lambda url: str(url).startswith(p["host"]))
 
 
 def post(url, body, headers, timeout, allowed):
@@ -270,7 +300,17 @@ def approved(e, provider):
         s = load_config(e)[0]
     except Exception:
         return False
-    return str(s.get("transcription_provider") or "").lower() == provider
+    return provider in (str(s.get("transcription_provider") or "").lower(),
+                        str(s.get("transcription_fallback") or "").lower())
+
+
+def fallback_of(e, provider):
+    """The fallback provider from the settings (transcription_fallback), when it is another one and has its key."""
+    try:
+        fb = str(load_config(e)[0].get("transcription_fallback") or "").lower()
+    except Exception:
+        return None
+    return fb if fb in PROVIDERS and fb != provider and api_key(PROVIDERS[fb]["key"]) else None
 
 
 NOTED = set()  # starts of the long words the core's local run has just warned about (see cmd_run)
@@ -317,6 +357,9 @@ def cmd_run(a):
     src = resolve_src(a.source, project, e)
     p = PROVIDERS[a.provider]
     out = e / "transcripts" / f"{src.stem}.json"
+    if a.words == "cloud" and not p["words_model"]:
+        warn(f"{a.provider}: {p['no_words']}")
+        return 2
     with locked(e / f"audio16k-{src.stem}.wav", stale=86400):
         wav, identity, off = source_wav(e, src)
     secs = wav_seconds(wav)
@@ -341,7 +384,8 @@ def cmd_run(a):
               f"transcription_provider={a.provider} in the project defaults (reelcfg.py defaults --set ...)")
         return 0
     key = api_key(p["key"])
-    if not key:
+    fb = None if cloud_words else fallback_of(e, a.provider)
+    if not key and not fb:
         warn(f"{a.provider}: no {p['key']} key: the person adds it in their own terminal with reels_online.py keys set "
              f"{p['key']}. The edit goes on with the local transcriber: {LOCAL}")
         return 2
@@ -354,14 +398,31 @@ def cmd_run(a):
               f"≈ ${secs / 60 * p['words_usd_min']:.3f} instead of ≈ ${price:.3f}: nothing was sent. After the "
               f"person agrees: --words cloud --yes; or install the local transcriber (doctor.py)")
         return 2
+    used = a.provider
     try:
-        raw = openai_call(wav, key, model, a.language, a.prompt, words=cloud_words)
+        if not key:
+            raise NoService(f"no {p['key']} key")
+        raw = provider_call(a.provider, wav, key, model, a.language, a.prompt, words=cloud_words)
     except NoService as ex:
-        warn(f"{a.provider} {model}: {ex}. The edit goes on with the local transcriber: {LOCAL}")
-        if base is not None and not out.exists():
-            save_json(out, base)
-        return 2
-    save_json(e / "transcripts" / f"{src.stem}.{a.provider}.raw.json", raw)
+        if not fb:
+            warn(f"{a.provider} {model}: {ex}. The edit goes on with the local transcriber: {LOCAL}")
+            if base is not None and not out.exists():
+                save_json(out, base)
+            return 2
+        # the person's standing fallback (transcription_fallback): the text from it, on the same local word times
+        q = PROVIDERS[fb]
+        warn(f"{a.provider} {model}: {ex}. Fallback: {fb} {q['text_model']} (text only, the local word times; "
+             f"≈ ${secs / 60 * q['text_usd_min']:.4f})")
+        used, model, price = fb, q["text_model"], secs / 60 * q["text_usd_min"]
+        label = f"{fb} {model} text + faster-whisper timing"
+        try:
+            raw = provider_call(fb, wav, api_key(q["key"]), model, a.language, a.prompt)
+        except NoService as ex2:
+            warn(f"{fb} {model}: {ex2}. The edit goes on with the local transcriber: {LOCAL}")
+            if base is not None and not out.exists():
+                save_json(out, base)
+            return 2
+    save_json(e / "transcripts" / f"{src.stem}.{used}.raw.json", raw)
     text = str(raw.get("text") or "").strip()
     if cloud_words:
         timed = [{"text": str(w.get("word", "")).strip(), "start": round(float(w["start"]), 3),
@@ -386,7 +447,7 @@ def cmd_run(a):
         if base is not None and not out.exists():
             save_json(out, base)
         return 2
-    if out.exists() and not str(old.get("model", "")).startswith(("faster-whisper", a.provider)):
+    if out.exists() and not str(old.get("model", "")).startswith(("faster-whisper", a.provider, used)):
         out.replace(out.with_name(f"{src.stem}.prev.json"))
     save_json(out, doc)
     for n in problems:
@@ -414,7 +475,7 @@ def main(argv=None):
     ap.add_argument("edit"); ap.add_argument("source")
     ap.add_argument("--provider", choices=sorted(PROVIDERS), help="default: transcription_provider from the settings")
     ap.add_argument("--words", choices=["local", "cloud"], default="local",
-                    help="word times: local (default, the core's transcriber) or cloud (whisper-1)")
+                    help="word times: local (default, the core's transcriber) or cloud (whisper-1; not for groq)")
     ap.add_argument("--language", help="language code, e.g. ru, en (default: detected)")
     ap.add_argument("--prompt", help="a short text in the video's language and style (names, terms) the recognizer follows")
     ap.add_argument("--yes", action="store_true", help="the person agreed to the price")

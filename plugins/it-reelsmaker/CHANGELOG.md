@@ -2,6 +2,29 @@
 
 What changed in IT Reelsmaker, written for the people who use it. The newest version is on top. The skill shows a short “What's new” note from this file once, on the first edit after an update.
 
+## 1.7.1
+
+- **A render no longer fails with “No frame found” when memory is short.** A new Remotion project gets a fixed video
+  cache (`remotion.config.ts`), and `kit.py check` names a project without one; Remotion used to size the cache from
+  the free memory and, with other apps open, shrink it to a few MB.
+
+Fixes found while editing two videos:
+
+- **Subtitles no longer drop because of a shoulder at the frame edge.** A weak face box cut by the left or right edge
+  of the frame is now recognized as a false face, and the subtitle height follows only confident faces. Older face
+  measurements are filtered again when read.
+- **A scene over the video no longer lands on the face.** When no regular slot is free, a hook or a list takes a low
+  band above the head; when even that is taken, the command stops and asks for a box instead of saving one on the face.
+- **New `transcribe.py splice`**: when a re-transcribed piece hears a spot right, its words replace the transcript's
+  words there, with a backup of the previous state.
+- **The rough cut names words only the cloud transcript heard** (their time is estimated): listen, and remove a word
+  that is not said.
+- Clearer messages instead of crashes or silence: `fix` in `cut.json` may be a list of pairs, and malformed `fix_at`
+  and `retime` entries are explained; `add --mode` is checked per insert kind; `export` without `--props` says that
+  the template props were not written; `faces.py audit` explains its argument order; the edge check advises merging
+  two ranges that meet inside a word.
+- `speech_mask.py --density tight` works: it is the same as `max`, the default.
+
 ## 1.7.0
 
 - **Every decision comes with its reason.** The cut plan and the delivery report end with “Supports”: each decision

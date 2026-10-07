@@ -168,11 +168,25 @@ def cmd_check(a):
     for label, files in (("missing", missing), ("differs", changed), ("not in the plugin's kit", extra)):
         for p in files:
             print(f"  {label}: src/{p.as_posix()}")
+    cache_hint(rem)
     if missing or changed:
         print(f"update: {script_cmd('kit.py')} update --remotion \"{rem}\" (replaced files are backed up first)")
         return 1
     print("the kit matches the plugin")
     return 0
+
+
+CACHE_LINE = "Config.setOffthreadVideoCacheSizeInBytes(384 * 1024 * 1024);"
+
+
+def cache_hint(rem):
+    """A project without a fixed video cache: Remotion sizes it from the RAM free at the start, and with little free
+    it shrinks to a few MB and the render fails with "No frame found at position N" (a real 8 GB laptop case)."""
+    cfg = Path(rem) / "remotion.config.ts"
+    text = cfg.read_text(encoding="utf-8", errors="replace") if cfg.is_file() else ""
+    if "setOffthreadVideoCacheSizeInBytes" not in text:
+        print(f"note: {cfg.name} sets no video cache size; with little free RAM the render can fail with \"No frame "
+              f"found at position N\". Add: {CACHE_LINE}")
 
 
 def cmd_update(a):
