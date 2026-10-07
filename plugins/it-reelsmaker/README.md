@@ -2,7 +2,7 @@
 
 # IT Reelsmaker
 
-Turn a raw talking-head recording into a finished vertical video (Reels, Shorts, TikTok) without opening an editor. Claude Code cuts pauses and retakes by the audio, adds a virtual camera, on-brand graphics and word-timed subtitles in Remotion, checks that no text covers a face, masters the sound to −14 LUFS and renders 1080×1920. Nothing is cut before you approve the cut plan, and no inserts are rendered before you approve the visual plan.
+Turn a raw talking-head recording into a finished vertical video (Reels, Shorts, TikTok) without opening an editor. Claude Code cuts pauses and retakes by the audio, adds a virtual camera, on-brand graphics and word-timed subtitles in Remotion, checks that no text covers a face, masters the sound to −14 LUFS and renders 1080×1920, with the cover in the master and next to it as a picture. Nothing is cut before you approve the cut plan, and no inserts are rendered before you approve the visual plan.
 
 The plugin is a skill built on real client videos: the thresholds and numbers in it come from practice. It works for videos in any language.
 
