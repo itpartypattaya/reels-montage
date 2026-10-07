@@ -9,6 +9,7 @@ transitions, full scenes); to go beyond them on explicit request: reelcfg.py sav
 
     python scripts/reelcfg.py show edit/4821 [--set use_memes=true intensity=active] [--json]
     python scripts/reelcfg.py save edit/4821 --set brand=acme style=v2 use_broll=false use_memes=false
+    python scripts/reelcfg.py save edit/4821 --set profile=educational content_format=list
     python scripts/reelcfg.py save edit/4821 --set format=framed label="CANDIDATE INTERVIEW" [window=[25,340,1030,1240]]
     python scripts/reelcfg.py defaults [--set brand=acme use_memes=false] [--unset use_memes]   # the project's defaults
 
@@ -18,6 +19,10 @@ error: editing continues with what is available.
 `save` adds keys to edit/<id>/reel.json (only the ones given; defaults are not copied there); it creates the folder
 edit/<id> if it doesn't exist yet. reel.json is the only source of the video's settings: visual_plan.py takes them
 from here.
+profile=<id> (educational, entertaining, expert-clip, promo, ad) and content_format=<id> (insight, list, case, story,
+skit, testimonial, intro, offer, review, event, interview, scenes-only): the video's goal and its form; the profile's
+defaults sit after the project's and under the brand tone's ceiling, and visual_plan.py validate checks its checklist
+(references/profiles.md). content_format alone brings its default profile.
 format=framed: a horizontal source in a rounded window on the style's field, with an optional caps label above it
 (references/techniques.md); window (x, y, w, h on the 1080x1920 screen) and label are its options. The kit draws it
 from the props that visual_plan.py export writes; faces.py and visual_plan.py read the same window.
@@ -31,18 +36,36 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from reels_common import (PROJECT_DEFAULTS, SETTING_KEYS_BOOL, edit_dir, editing_json, effective, framed_issues,
-                          framed_of, is_project, load_config, load_json, online, parse_sets, project_root, tone_summary,
-                          utf8_stdio, warn)
+                          framed_of, is_project, load_config, load_defaults, load_json, online, parse_sets, profiles_of,
+                          project_root, tone_summary, utf8_stdio, warn)
 
 KNOWN = set(SETTING_KEYS_BOOL) | {"brand", "style", "subtitles", "intensity", "broll_priority", "meme_priority",
                                   "footage_dirs", "memes_dirs", "generation_engines", "library_dirs", "meme_size",
                                   "scene_tone", "tone_override", "subtitles_lang", "subtitles_shade",
-                                  "format", "window", "label"}  # format: "framed" (window, label) or "full"
+                                  "format", "window", "label",  # format: "framed" (window, label) or "full"
+                                  "profile", "content_format"}  # the video's goal and its form (references/profiles.md)
 
 
 def addon_keys(name):
     """Setting keys added by the online-sources add-on (its module's <name> list); empty when it is not installed."""
     return list(getattr(online(), name, None) or ())
+
+
+def profile_line(s, prov):
+    """The video's profile and content format, with their length, CTA and checklist (references/profiles.md)."""
+    pr = s.get("profile_rules")
+    if not pr:
+        return ("profile: — (none: no profile checklist; set one: reelcfg.py save edit/<id> --set profile=<id> or "
+                "content_format=<id>; references/profiles.md)")
+    src = prov.get("profile") or ("content_format " + str(s.get("content_format")))
+    lo, hi = pr.get("length") or (None, None)
+    parts = [f"profile: {pr['id']} ({pr['label']}) ← {src}",
+             f"format: {pr['format'] or '—'}", f"length {lo}–{hi} s" if lo else "",
+             f"CTA ≤ {pr['cta_max']}" + (", required" if pr.get("cta_required") else ""),
+             f"brand by {pr['brand_by_s']} s" if pr.get("brand_by_s") else "",
+             f"safe zone {pr['safe_zone']}" if pr.get("safe_zone") else "",
+             "checklist " + ", ".join(pr.get("checklist") or {})]
+    return "; ".join(x for x in parts if x) + "".join("\n  ⚠ " + n for n in pr.get("notes") or [])
 
 
 def cmd_show(a):
@@ -61,6 +84,7 @@ def cmd_show(a):
     print("format: " + (f"framed, window {fr['window']}" + (f", label “{fr['label']}”" if fr["label"] else ", no label")
                         + " (the kit draws the window)" if fr else "full frame (vertical)")
           + "".join("\n  ⚠ " + m for m in framed_issues(s)))
+    print(profile_line(s, prov))
     bt = s.get("brand_tone") or {}
     print(f"brand tone: {tone_summary(bt)}" + ("  [tone_override: the tone's ceilings are only warnings]" if s.get("tone_override") else ""))
     st = s.get("scene_tone")
@@ -94,6 +118,10 @@ def cmd_save(a):
     for k in over:
         if k not in known:
             warn(f"unknown key {k}, saving it as is")
+    pr, fm = profiles_of(load_defaults() or {})
+    for k, known_ids in (("profile", pr), ("content_format", fm)):
+        if over.get(k) is not None and over[k] not in known_ids:
+            sys.exit(f"not saved: unknown {k} {over[k]!r} (known: {', '.join(known_ids)}; references/profiles.md)")
     e = edit_dir(a.edit, create=True)  # step 0 of a new video: the edit/<id> folder doesn't exist yet
     if {"format", "window", "label"} & set(over):  # the framed format's keys are checked together, before saving
         bad = framed_issues({**(load_json(e / "reel.json", {}) or {}), **over})

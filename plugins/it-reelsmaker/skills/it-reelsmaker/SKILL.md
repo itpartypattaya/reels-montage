@@ -138,17 +138,20 @@ On top of subtitles, if the brief asks for them: “accent titles”, 2–4 key 
 
 **Where video departs from the static brand guidelines:** hook 92–120 px, cards 54–64 px, subtitles 54–72 px (otherwise unreadable on a phone); a shot change every 1.5–4 s is normal even for a “calm” brand; a live speaker on screen, not stock footage.
 
-## 5. Video formats ⟨YOURS: keep the ones you need, add your own⟩
+## 5. Video profiles and formats ⟨YOURS: keep the ones you need, add your own⟩
 
-| Format | Essence | Typical graphics (optional) | Length |
-|---|---|---|---|
-| Insight | one expert thought | hook, 2–3 thesis cards, ending | 30–60 s |
-| Case study | problem → how it was solved → result | big number in brackets, a “funnel” of cards | 30–45 s |
-| Job opening / offer | an open position or a product | card: role, city, terms, 2–3 points, CTA | 15–30 s |
-| Testimonial | a client quote | quotation marks, name and role in caps | 15–25 s |
-| Intro video | who I am → what I do → how I'm different → CTA | “NAME · ROLE” label, question hook, chips on their words | 25–35 s |
-| Skit / “Verdict” | two-person dialogue, expert conclusion | role tags, “Reject / Consider / Offer” scale ⟨YOURS: your own scale⟩ | 45–70 s |
-| Interview / Zoom | a segment of a horizontal recording | “framed” format (section 10) | 30–60 s |
+**The profile** is what the video is for and how loud it may be; it sets the video's defaults under the brand tone, turns on its rules and brings its checklist (`references/profiles.md`): `educational` · `entertaining` · `expert-clip` · `promo` · `ad` (a paid ad: the ad safe zone, the brand by 3 s, claims with a source). **The format** is what the video is made of, and brings its usual profile and length (`reel.json → content_format`):
+
+| Format (`content_format`) | Essence | Typical graphics (optional) | Profile | Length |
+|---|---|---|---|---|
+| Insight (`insight`), list (`list`) | one expert thought; steps or points | hook, 2–3 thesis cards, ending; numbered list | educational | 30–60 s |
+| Case study (`case`) | problem → how it was solved → result | big number in brackets, a “funnel” of cards | promo | 30–45 s |
+| Job opening / offer (`offer`) | an open position or a product | card: role, city, terms, 2–3 points, CTA | promo | 15–30 s |
+| Testimonial (`testimonial`) | a client quote | quotation marks, name and role in caps | promo | 15–25 s |
+| Intro video (`intro`) | who I am → what I do → how I'm different → CTA | “NAME · ROLE” label, question hook, chips on their words | promo | 25–35 s |
+| Review (`review`), event (`event`) | a place or product shown, often voice-over; an announcement | number cards, the date and place | promo | 20–45 / 15–30 s |
+| Skit / “Verdict” (`skit`), story (`story`) | two-person dialogue, expert conclusion; a told story | role tags, “Reject / Consider / Offer” scale ⟨YOURS: your own scale⟩ | entertaining | 45–70 / 30–60 s |
+| Interview / Zoom (`interview`) | a segment of a horizontal recording | “framed” format (section 10) | expert-clip | 30–60 s |
 
 **End card** (if chosen): `{{DARK}}` or light background, logo, `{{TAGLINE}}`, CTA. 2.4–3 s. A separate option is a **logo sting without a CTA** (2–3 s), when the call to action is spoken.
 
@@ -161,6 +164,7 @@ Three tools in sequence: **transcription and cut plan** (locally faster-whisper,
 File layout per video: `{{PROJECT_ROOT}}/edit/<id>/` with `cut.json`, `reel.json`, `project.md` (session · strategy · brief · decisions · open items), `transcripts/`, `final.mp4`, `captions.json`; in Remotion, `public/<id>/video.mp4`, plus `src/Reel<id>.tsx` only when the video needs its own composition (the kit's `ReelKit` with props covers the rest). `<id>` is the source file number; a promo without footage gets a short name (`promo-<brand>`) and skips steps 1–6 (`references/scenes.md`, the “scenes only” format). Start a new video from a copy of the last successful one, not from scratch.
 
 ### Step 0. Brand, style, subtitles, inserts — the first `AskUserQuestion`
+- **Profile and format** (section 5). Clear from the prompt or the footage → name them in the plan and save `reelcfg.py save edit/<id> --set profile=… content_format=…`; not clear → one separate question before the brief, 3 likely profiles with the recommendation first (`references/profiles.md`, “Choosing it”). The profile's defaults (intensity, scene tone, memes) stay under the brand tone: `reelcfg.py show` says what it held back; a brand's own tone for a profile is the owner's once-saved decision (`brand.py tone <slug> <preset> --profile <id>`), not a per-video `tone_override`.
 - **Brand.** If it is clear from the prompt, the folder or the project defaults (`settings.brand`), take its profile; otherwise offer the 3 most recent saved brands, and a new one via “Other” (name and colors). Read the brand's `rules.md` and its video guide `guide.md` (if set) before any graphics.
 - **Style.** Show the style table, 3–4 options (the tool's limit), with the recommendation for this video first and a one-line explanation.
 - **Subtitle mode.**
@@ -212,7 +216,7 @@ In the cut plan, list the takes and slips found, with source timecodes; if none 
 **Whisper cannot see a word fragment at an edge in any mode**: not on the whole file, not on a short segment, not with a prompt “with word fragments”. It does not drop the fragment; it attributes it to the word it expects, so the tail of a word at the start of a segment is recognized as the next word. Real case (Russian speech): the edge landed in a 40 ms dip inside *poteryali* (“lost”), the 0.23 s tail *‑(te)ryali* got into the segment and was recognized as the following *Na* (“On”), and in the video *teryali* was heard twice, while the text-based checks were green. Only the audio-based edge check (step 6) catches this.
 
 ### Step 3a. Structure: how it starts and ends — offered, not decided
-The order of the lines is a choice of its own: the same speech works very differently with the strongest line first. Name the video's format in one line (section 5), run `structure.py suggest edit/<id>` (`--from/--to` in source seconds when the video takes one fragment of a long recording; phrases with their signs, which can be cut out cleanly by audio, teaser candidates with exact `ranges`, a slow start, the payoff and ending, earlier edits of the source), read the transcript yourself (the script sees signs, not meaning), with two cameras run it per source (`--source KEY`, a key of `cut.json → sources`; before the cut list exists, `--transcript edit/<id>/transcripts/<stem>.json`) or on the main angle (it lists the sources rather than guess), and offer **2–3 structure variants** in one `AskUserQuestion`: each is start → middle → end with its length, why, and risk, with the order of lines and timecodes in the option's `preview`; the recommendation first. Start: in order · cut the slow start · **teaser** (a strong line from later plays first, then the video from its start) · proof first · question loop · detail first. Ending: payoff with a hold · CTA · logo sting · pull-out · callback to the hook · loop. **A skit or a dialogue always gets a teaser variant**; a teaser of the ending's payoff gives the punchline away, so say so. The menu with when and when not: `references/structure.md`.
+The order of the lines is a choice of its own: the same speech works very differently with the strongest line first. Name the video's format and profile in one line (section 5; the profile's start and ending rules: `references/profiles.md`), run `structure.py suggest edit/<id>` (`--from/--to` in source seconds when the video takes one fragment of a long recording; phrases with their signs, which can be cut out cleanly by audio, teaser candidates with exact `ranges`, a slow start, the payoff and ending, earlier edits of the source), read the transcript yourself (the script sees signs, not meaning), with two cameras run it per source (`--source KEY`, a key of `cut.json → sources`; before the cut list exists, `--transcript edit/<id>/transcripts/<stem>.json`) or on the main angle (it lists the sources rather than guess), and offer **2–3 structure variants** in one `AskUserQuestion`: each is start → middle → end with its length, why, and risk, with the order of lines and timecodes in the option's `preview`; the recommendation first. Start: in order · cut the slow start · **teaser** (a strong line from later plays first, then the video from its start) · proof first · question loop · detail first. Ending: payoff with a hold · CTA · logo sting · pull-out · callback to the hook · loop. **A skit or a dialogue always gets a teaser variant**; a teaser of the ending's payoff gives the punchline away, so say so. The menu with when and when not: `references/structure.md`.
 
 ### Step 4. Zoom margin and camera plan
 A shot-size change is the main source of dynamics and the best way to hide a cut. Calculate **before** the plan:
@@ -222,7 +226,7 @@ A shot-size change is the main source of dynamics and the best way to hide a cut
 A limit below ~×1.15 → the camera will not give any dynamics; say so before editing.
 
 ### Step 5. Cut plan → “yes”
-In one message: **start and ending** (the variant chosen in step 3a, with the teaser's source timecodes if any), phrase order (what stays, what goes, **what was rejected and why**), takes and slips, **pacing** (“tight”: pauses up to 50 ms, `speech_mask.py --density max`, the default; “natural”: up to 220 ms, `--density natural`) and **filler words** (keep / remove; by default keep: speech sounds livelier), each with a recommendation, speed-up via atempo with pitch preserved (insight monologue ×1.15–1.25, skit and calm delivery ×1.1–1.15; above ×1.3 sounds rushed), final length, zoom margin, transcription fixes, and **Supports**: the decisions that shape the video, each with the rule behind it (file › section or card ID, and its trust), what was not applied or departed from and why (`references/playbook.md`). **No cutting without a “yes”.** The message looks like the cut plan in `references/examples.md`.
+In one message: **start and ending** (the variant chosen in step 3a, with the teaser's source timecodes if any), phrase order (what stays, what goes, **what was rejected and why**), takes and slips, **pacing** (“tight”: pauses up to 50 ms, `speech_mask.py --density max`, the default; “natural”: up to 220 ms, `--density natural`) and **filler words** (keep / remove; by default keep: speech sounds livelier), each with a recommendation, speed-up via atempo with pitch preserved (insight monologue ×1.15–1.25, skit and calm delivery ×1.1–1.15; above ×1.3 sounds rushed), final length, zoom margin, transcription fixes, and **Supports**: the decisions that shape the video, each with the rule behind it (file › section or card ID, and its trust), what was not applied or departed from and why (`references/playbook.md`), opening with the line “Profile: <id> · format <id>”. **No cutting without a “yes”.** The message looks like the cut plan in `references/examples.md`.
 
 **Multiple cameras:** measure the speech rate for each source (syllables per second, step 1) and even them out with a separate speed for each; the rates that count are measured on the cut speech (`transcribe.py rate edit/<id>` after `cut.py`), adjust and rebuild. Real case: the sources measured 9.56 vs 7.55 syllables/s (27% apart) → ×0.915 and ×1.095, and the cut speech came out at 8.56 and 8.54; the source figures are only the first estimate. A take spoken faster than the rest shows up as one segment above the others: give it its own source key (the same file) with its own speed. No more than two **phrases** from the same angle in a row (count phrases, not the pieces a compressed pause splits a phrase into), and two in a row must differ in shot size; a phrase comes whole from one take; show the chain of angles in the plan.
 
@@ -301,7 +305,7 @@ Camera (section 9) → B-roll → only the chosen elements → memes → subtitl
 - **audio mastering, always** (section 12, `master_audio.py`), with an acceptance check: failing any checklist item (LUFS, true peak, duration) → non-zero exit code; do not deliver the master. A “scenes only” promo with no voice and no music: effects over silence have no −14 LUFS target, the true peak and durations are checked, and `--check` reads the master's tag and applies the same rule (`references/scenes.md`).
 
 ### Step 10. Delivery
-Show **measurable results, not “it got better”** (format: the report in `references/examples.md`): duration, remaining silence in ms, master loudness and peak, how many cuts and takes were removed, how many inserts and from where (and which ones did not land, with the reason), and the **Supports** of the finished video (decision → rule → trust; departures; checklist items skipped), so a disliked result points to the rule to change. Found a defect nobody asked about → say so and fix it. Update `project.md`. **On-screen facts need a source**: a number, place, price, contact or promise comes from the speaker's words or from the client; anything the agent took on its own (from a website, “from general knowledge”, by default) goes into “open items” as “to verify”. Attribution for CC files (and stock footage, if any) goes into the post description. A post caption `caption.txt` (1–3 sentences in the brand voice, the same CTA) follows `references/scenes.md`, on a “yes” from `{{APPROVER}}`.
+Show **measurable results, not “it got better”** (format: the report in `references/examples.md`): duration, remaining silence in ms, master loudness and peak, how many cuts and takes were removed, how many inserts and from where (and which ones did not land, with the reason), and the **Supports** of the finished video (the profile; decision → rule → trust; departures; the profile's checklist items skipped, by id), so a disliked result points to the rule to change. Found a defect nobody asked about → say so and fix it. Update `project.md`. **On-screen facts need a source**: a number, place, price, contact or promise comes from the speaker's words or from the client; anything the agent took on its own (from a website, “from general knowledge”, by default) goes into “open items” as “to verify”. Attribution for CC files (and stock footage, if any) goes into the post description. A post caption `caption.txt` (1–3 sentences in the brand voice, the same CTA) follows `references/scenes.md`, on a “yes” from `{{APPROVER}}`.
 
 ## 7. Two-person skit / “Verdict”
 
@@ -345,6 +349,7 @@ Without mastering, finished videos came out between −33 and −17 LUFS, some w
 ## 13. Pre-delivery checklist
 
 - [ ] The video has only what the brief chose; the brand comes from the profile (colors, fonts, logo); brand-level revisions are recorded in the brand folder (`rules.md`, `cta.md`, `guide.md`)
+- [ ] The video profile's checklist (`references/profiles.md`): `visual_plan.py validate` shows its automatic items passing (or the report says why not), the agent's items are confirmed on the draft, and the skipped ones are named by id under Supports
 - [ ] No text on a face: the render audit of faces shows 0 overlaps (subtitles, `keep_clear` cards, memes) + stills every ~2 s or the contact sheet; nothing in the UI zones (top 220, bottom 420, right 120 px)
 - [ ] Inserts (if on): each has a “why”, the intensity budget is kept, the plan was shown before rendering; B-roll has no third-party logos and no stock people “playing the client”; downloads and paid actions only after a “yes”, attribution recorded
 - [ ] Meme: on its line, rights known, no more than 460 px on the long side, at the edge of the frame, not over the face, subtitles or cards; no more than one full-frame meme
@@ -353,7 +358,7 @@ Without mastering, finished videos came out between −33 and −17 LUFS, some w
 - [ ] One style and one accent color; ≤ 6 words in a card or hook headline (designed scenes follow the reading-time floor); no outline or glow (unless the style calls for it)
 - [ ] A phrase is one block: parts of one thought tight together, shared axis, one zone; on a still at 25% size it reads as a single mass
 - [ ] Text is readable on a phone: headings ≥ 92–96 px, subtitles ≥ 54–64 px
-- [ ] The logo is not distorted; on a dark background, the light (white) variant; there is one CTA and it works
+- [ ] The logo is not distorted; on a dark background, the light (white) variant; there is one CTA (two for a job opening) and it works
 - [ ] No leftover takes or slips; no repeats at cuts; the first sound is not clipped; remaining silence stated as a number
 - [ ] All segment edges checked by audio (`--edl`): no edge inside a word, no fragments of neighboring words, no edges tight against sound
 - [ ] White balance measured on the graded result (`balance.py`): grays neutral, the correction before the LUT; skin natural on `verify/balance.png`
@@ -395,6 +400,7 @@ Several agent sessions in one editing folder are normal: write JSON (video setti
 | `references/skit.md`, `references/cta.md` | a two-person skit; the CTA library for the end card and the `cta` scene (how to offer it, audience and format per CTA) |
 | `references/library.md` | section 11: your own library, its catalog, sounds for events, music in the mix |
 | `references/shooting.md` | before the shoot: the memo for the speaker |
+| `references/profiles.md` | step 0 and before showing the draft: the video's profile and content format, their defaults under the brand tone, the brand's own tone for a profile, each profile's checklist with sources |
 | `references/structure.md` | step 3a: start, middle and ending mechanics (teaser, slow start, proof first, beat before the payoff, re-hook, payoff with a hold, callback, loop), how to offer them, a 20–30 s video in beats |
 | `references/examples.md` | steps 5 and 10: what the cut plan and the delivery report look like |
 | `references/playbook.md` | before the plan and at delivery: measurement vs taste, trust levels, the project playbook cards, conflicts, “Supports”, learning from a guide or a video, turning corrections into rules |

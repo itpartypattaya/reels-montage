@@ -2,6 +2,11 @@
 
 What changed in IT Reelsmaker Online. The newest version is on top.
 
+## 1.4.4
+
+- **The privacy policy and the README name Groq**: with `transcription_fallback=groq` (or `--provider groq`) the
+  speech audio goes to Groq for the transcript text, as it goes to OpenAI.
+
 ## 1.4.3
 
 - **Groq as a fallback for the transcript text.** When OpenAI is out of credits or unreachable, the text can come

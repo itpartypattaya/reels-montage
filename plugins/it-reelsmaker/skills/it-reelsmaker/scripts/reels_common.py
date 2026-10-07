@@ -630,10 +630,13 @@ def migrate_brand(b):
     return notes
 
 
-def tone_rules(brand=None, doc=None, slug=None):
+def tone_rules(brand=None, doc=None, slug=None, profile=None):
     """The brand tone, resolved: the preset from reel-defaults.json -> brand_tones, plus brand.json -> tone.overrides;
     an explicit brand.json -> motion overrides the preset's motion. Returns (rules, note): rules["preset"] is the
-    preset name, note is a warning (tone not set / not confirmed / unknown) or None. No tone -> expert."""
+    preset name, note is a warning (tone not set / not confirmed / unknown) or None. No tone -> expert.
+    profile: the video's profile id; the brand's own tone for that profile (brand.json -> tone.by_profile, saved once
+    by the brand owner with brand.py tone <slug> <preset> --profile <id>) replaces the preset, without the main tone's
+    overrides; rules["base_preset"] is then the brand's main tone."""
     doc = doc if doc is not None else load_defaults()
     tones = {k: v for k, v in (doc.get("brand_tones") or {}).items() if not k.startswith("_")}
     t = (brand or {}).get("tone") or {}
@@ -651,6 +654,18 @@ def tone_rules(brand=None, doc=None, slug=None):
         note = (f"the tone of brand {who} is not confirmed ({preset} by default); ask the brand owner: "
                 f"brand.py tone <slug> {'|'.join(TONE_PRESETS)}")
     preset = preset or TONE_DEFAULT
+    alt = (t.get("by_profile") or {}).get(profile) if profile and isinstance(t.get("by_profile"), dict) else None
+    if alt and alt not in tones:
+        note = note or f"brand {who}: unknown tone {alt!r} for profile {profile}: the main tone {preset} applies"
+        alt = None
+    if alt:
+        rules = dict(tones.get(alt, {}))
+        rules["preset"], rules["base_preset"], rules["for_profile"] = alt, preset, profile
+        if (brand or {}).get("motion"):
+            rules["motion"] = brand["motion"]
+        if rules.get("motion") == "calm":
+            rules["overshoot"] = rules["shake"] = False
+        return rules, note
     rules = _merge(tones.get(preset, {}), t.get("overrides") or {})
     rules["preset"] = preset
     if (brand or {}).get("motion"):  # an explicit motion in the profile overrides the preset
@@ -694,7 +709,9 @@ def tone_summary(rules):
                  f"{', full-frame allowed' if m.get('cutaway') else ''})")
     tr = ", ".join(rules.get("transitions") or [])
     extra = [x for x, ok in (("overshoot", rules.get("overshoot")), ("shake", rules.get("shake"))) if ok]
-    return (f"{rules.get('preset')} ({rules.get('label', '')}): {memes}, full <= {rules.get('full_scenes_max')}, "
+    via = (f" — the brand's tone for {rules['for_profile']} videos (main tone {rules['base_preset']})"
+           if rules.get("for_profile") else "")
+    return (f"{rules.get('preset')} ({rules.get('label', '')}){via}: {memes}, full <= {rules.get('full_scenes_max')}, "
             f"transitions {tr} (flash <= {rules.get('flash_max')}, whip <= {rules.get('whip_max')}), "
             f"scene tone {rules.get('scene_tone')} (allowed: {', '.join(rules.get('scene_tones') or [])}), "
             f"motion {rules.get('motion')}, technique loudness {rules.get('loudness')}"
@@ -702,9 +719,69 @@ def tone_summary(rules):
             + (f"; overridden in the profile: {', '.join(rules['overrides'])}" if rules.get("overrides") else ""))
 
 
+def profiles_of(doc):
+    """{profile id: rules} and {content format id: rules} from reel-defaults.json (references/profiles.md)."""
+    pr = {k: v for k, v in (doc.get("profiles") or {}).items() if not k.startswith("_") and isinstance(v, dict)}
+    pr.pop("common_checklist", None)
+    fm = {k: v for k, v in (doc.get("content_formats") or {}).items() if not k.startswith("_") and isinstance(v, dict)}
+    return pr, fm
+
+
+def profile_rules(s, doc):
+    """The video's profile, resolved: reel.json -> profile, else the content format's default profile. -> a dict with
+    id, label, format, length (the format's range, unless the profile's length_fixed), brand_by_s, cta_max (the
+    format's wins), cta_required, safe_zone, checklist (the common items first), or None (no profile: the video is
+    edited as before 1.8). Unknown ids -> a warning, and they are ignored."""
+    pr, fm = profiles_of(doc)
+    fid = s.get("content_format") or None
+    if fid and fid not in fm:
+        warn_once(f"unknown content_format {fid!r} (known: {', '.join(fm)}): ignored")
+        fid = None
+    pid = s.get("profile") or (fm[fid].get("profile") if fid else None)
+    if pid and pid not in pr:
+        warn_once(f"unknown profile {pid!r} (known: {', '.join(pr)}): the video is edited without a profile")
+        return None
+    if not pid:
+        return None
+    p, f = pr[pid], fm.get(fid) or {}
+    length = p.get("length") if p.get("length_fixed") or not f.get("length") else f["length"]
+    common = (doc.get("profiles") or {}).get("common_checklist") or {}
+    return {"id": pid, "label": p.get("label", pid), "format": fid, "length": length,
+            "brand_by_s": p.get("brand_by_s"), "cta_max": f.get("cta_max", p.get("cta_max", 1)),
+            "cta_required": bool(p.get("cta_required")), "safe_zone": p.get("safe_zone"),
+            "settings": dict(p.get("settings") or {}), "checklist": {**common, **(p.get("checklist") or {})}}
+
+
+INTENSITY_ORDER = ["minimal", "moderate", "active"]
+
+
+def profile_settings(prof, rules, doc, tone_override=False):
+    """The profile's defaults under the brand tone's ceiling -> (settings, notes). A louder intensity than the tone's
+    is held at the tone's (tone_override lifts it); scene_tone may be a list: the first tone the brand allows, none
+    allowed -> the key is left to the tone."""
+    out, notes = {}, []
+    for k, v in (prof.get("settings") or {}).items():
+        if k == "intensity":
+            cap = rules.get("intensity")
+            if (not tone_override and cap in INTENSITY_ORDER and v in INTENSITY_ORDER
+                    and INTENSITY_ORDER.index(v) > INTENSITY_ORDER.index(cap)):
+                notes.append(f"profile {prof['id']} asks for intensity {v}; the brand tone {rules.get('preset')} holds "
+                             f"{cap} (louder on explicit request: tone_override=true)")
+                v = cap
+        elif k == "scene_tone":
+            allowed = rules.get("scene_tones") or []
+            pick = [t for t in (v if isinstance(v, list) else [v]) if not allowed or t in allowed or tone_override]
+            if not pick:
+                continue
+            v = pick[0]
+        out[k] = v
+    return out, notes
+
+
 def load_config(edit=None, overrides=None, project=None):
     """Layers: skill defaults <- brand tone preset defaults (brand.json -> tone) <- the project's reel-defaults.json <-
-    brand profile (inserts) <- edit/<id>/reel.json <- overrides (words from the prompt). settings["brand_tone"] is the resolved brand tone (the
+    the video's profile (profile_rules, capped by the brand tone) <- brand profile (inserts) <- edit/<id>/reel.json <-
+    overrides (words from the prompt). settings["profile_rules"] is the resolved profile or None. settings["brand_tone"] is the resolved brand tone (the
     ceilings for visual_plan.py validate); it comes only from the profile, reel.json can't change it (going louder
     takes tone_override). Returns (settings, provenance, defaults_doc, brand_dir, brand)."""
     project = project or project_root()
@@ -721,13 +798,22 @@ def load_config(edit=None, overrides=None, project=None):
     if slug and brand is None:
         warn(f"brand '{slug}' not found in {', '.join(str(r) for r in brand_roots(project))}; "
              f"create it: brand.py new --name ... --colors ...")
-    rules, note = tone_rules(brand, doc, slug)
+    # the video's profile (references/profiles.md) is known before the tone: a brand may keep its own tone for it
+    asked = {**settings, **reel, **overrides}
+    prof = profile_rules(asked, doc)
+    rules, note = tone_rules(brand, doc, slug, prof["id"] if prof else None)
     if note:
         warn_once(note)
     for k, v in tone_settings(rules, doc).items():
         if prov.get(k) in ("project", "overlay") and k != "meme_size":
             continue  # your own project defaults beat the preset's guesses; meme_size is already capped by the tone
         settings[k], prov[k] = v, f"tone:{rules['preset']}"
+    # the profile's defaults: after the project's defaults, under the brand tone's ceiling
+    if prof:
+        vals, notes = profile_settings(prof, rules, doc, bool(asked.get("tone_override")))
+        for k, v in vals.items():
+            settings[k], prov[k] = v, f"profile:{prof['id']}"
+        prof["notes"] = notes
     for k, v in ((brand or {}).get("inserts") or {}).items():
         settings[k], prov[k] = v, f"brand:{slug}"
     for k, v in reel.items():
@@ -738,6 +824,7 @@ def load_config(edit=None, overrides=None, project=None):
         settings[k], prov[k] = v, "override"
     settings["brand"] = slug
     settings["brand_tone"] = rules
+    settings["profile_rules"] = prof
     prov["brand_tone"] = f"brand:{slug}" if brand and brand.get("tone") else f"tone:{rules['preset']} (not set)"
     if settings.get("intensity") not in (doc.get("intensity") or {}):
         warn(f"unknown intensity {settings.get('intensity')!r} -> moderate")

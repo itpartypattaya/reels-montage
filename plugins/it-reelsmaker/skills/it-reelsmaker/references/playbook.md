@@ -32,7 +32,7 @@ that brand's `rules.md` instead (`brand.py rule <slug> "…" --why "…" --scope
 
 ```markdown
 ### PACE-1 · The picture changes every 1.5–3.5 s
-- Applies to: dynamic reels, talking head. Not for: a calm explainer (one idea per shot, PACE-2).
+- Applies to: profile:entertaining, profile:promo; talking head. Not for: profile:educational (one idea per shot, PACE-2).
 - Why: viewers get bored when the frame does not change, not because the person stands still.
 - Source: verified — two edited talking-head videos (2026-10); external — a breakdown of a creator's reel.
 - Trust: verified

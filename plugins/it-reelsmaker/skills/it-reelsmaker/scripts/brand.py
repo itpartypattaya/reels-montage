@@ -249,6 +249,8 @@ def cmd_show(a):
     print(f"  default subtitles: {b.get('subtitles_default')}; motion: {rules.get('motion')}"
           + (" (set explicitly in the profile)" if b.get("motion") else f" (from tone {rules['preset']})"))
     print(f"  brand tone: {tone_summary(rules)}")
+    for pid, pre in sorted((((b.get("tone") or {}) if isinstance(b.get("tone"), dict) else {}).get("by_profile") or {}).items()):
+        print(f"    {pid} videos: tone {pre} (brand.py tone {a.slug} <preset> --profile {pid})")
     m = rules.get("memes") or {}
     print(f"    validate ceilings: memes <= {m.get('max', 0) if m.get('allowed') is not False else 0}"
           f" (and <= the intensity budget), size <= {m.get('size_max') or '-'}, full-frame "
@@ -621,13 +623,16 @@ def cmd_tone(a):
                 sys.exit(f"{k}: a number is needed, got {v!r}")
         else:
             sets[k] = parse_value(v)
+    if a.profile:
+        return tone_for_profile(a)
     with editing_brand(a.slug) as (d, b):
         t = b.get("tone") if isinstance(b.get("tone"), dict) else {}
         old = t.get("preset")
         over = {} if a.reset else dict(t.get("overrides") or {})
         for k, v in sets.items():
             set_path(over, k, v)
-        b["tone"] = {"preset": a.preset, **({"overrides": over} if over else {})}
+        b["tone"] = {"preset": a.preset, **({"overrides": over} if over else {}),
+                     **({"by_profile": t["by_profile"]} if t.get("by_profile") else {})}  # the profile tones stay
         rules, _ = tone_rules(b, slug=a.slug)
     print(f"{a.slug}: tone {old or '-'} -> {a.preset}" + (f"; overridden: {json.dumps(over, ensure_ascii=False)}" if over else ""))
     if over and not sets and old != a.preset:
@@ -637,6 +642,34 @@ def cmd_tone(a):
         print(f"  motion is set explicitly in the profile: {b['motion']} (overrides the preset's {base.get('motion')}; "
               f"to remove: brand.py set {a.slug} motion=null)")
     print(f"for Remotion: brand.py export {a.slug} --remotion <Remotion project>")
+
+
+def tone_for_profile(a):
+    """brand.py tone <slug> <preset> --profile <id>: the brand's own tone for one video profile (references/profiles.md),
+    an owner's decision saved once, so a louder profile (an entertaining skit at a calm expert brand) needs no per-video
+    tone_override. The main tone's preset removes the entry."""
+    from reels_common import load_defaults, profiles_of
+    pr, _ = profiles_of(load_defaults() or {})
+    if a.profile not in pr:
+        sys.exit(f"no profile {a.profile!r}; available: {', '.join(pr)}")
+    if a.set or a.reset:
+        sys.exit("--set/--reset change the main tone; a profile's tone is a preset as is")
+    with editing_brand(a.slug) as (d, b):
+        t = b.get("tone") if isinstance(b.get("tone"), dict) else {}
+        if not t.get("preset"):
+            sys.exit(f"{a.slug}: the brand has no main tone yet: brand.py tone {a.slug} <preset> first")
+        by = dict(t.get("by_profile") or {})
+        old = by.get(a.profile)
+        if a.preset == t["preset"]:
+            by.pop(a.profile, None)
+        else:
+            by[a.profile] = a.preset
+        t = {k: v for k, v in t.items() if k != "by_profile"}
+        b["tone"] = {**t, **({"by_profile": by} if by else {})}
+        rules, _ = tone_rules(b, slug=a.slug, profile=a.profile)
+    print(f"{a.slug}: {a.profile} videos -> tone {by.get(a.profile) or t['preset'] + ' (the main tone)'}"
+          f" (was {old or 'the main tone ' + t['preset']})")
+    print(f"  {tone_summary(rules)}")
 
 
 def cmd_use(a):
@@ -735,6 +768,8 @@ def main():
     p.add_argument("slug"); p.add_argument("preset", choices=TONE_PRESETS)
     p.add_argument("--set", nargs="*", metavar="KEY=VALUE", help="preset fields: memes.max=1 flash_max=1 scene_tone=calm ...")
     p.add_argument("--reset", action="store_true", help="remove the previous overrides")
+    p.add_argument("--profile", help="the brand's own tone for this video profile (educational, entertaining, "
+                                     "expert-clip, promo, ad); the main tone's preset removes it")
     p.set_defaults(fn=cmd_tone)
     p = sub.add_parser("use"); p.add_argument("slug"); p.add_argument("--edit", required=True); p.set_defaults(fn=cmd_use)
     p = sub.add_parser("export"); p.add_argument("slug"); p.add_argument("--remotion", required=True); p.set_defaults(fn=cmd_export)
