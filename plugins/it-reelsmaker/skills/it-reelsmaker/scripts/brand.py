@@ -566,7 +566,12 @@ def cmd_rule(a):
     with editing_brand(a.slug) as (d, b):  # the profile lock also covers rules.md: two sessions won't overwrite each other's rules
         p = inside(d, d / (b.get("rules") or "rules.md"), "rules file")
         text = p.read_text(encoding="utf-8") if p.exists() else f"# Brand design rules: {b.get('name')}\n"
-        save_text(p, add_rule(text, f"- {TODAY}: {a.text.strip()}"))
+        # an owner decision with its reason and scope (references/playbook.md): a disliked result is traced to it later
+        extra = "".join(f" {k}: {v.strip()}." for k, v in (("Applies to", a.scope), ("Why", a.why)) if v and v.strip())
+        base = a.text.strip()
+        if extra and base[-1:] not in ".!?…":
+            base += "."
+        save_text(p, add_rule(text, f"- {TODAY}: {base}{extra}"))
     print(f"rule added to {p}")
 
 
@@ -720,7 +725,11 @@ def main():
     p.add_argument("slug"); p.add_argument("files", nargs="+")
     p.add_argument("--role", default="auto", help="on_dark | on_light | mark_on_dark | mark_on_light | auto | your own name")
     p.set_defaults(fn=cmd_logo)
-    p = sub.add_parser("rule"); p.add_argument("slug"); p.add_argument("text"); p.set_defaults(fn=cmd_rule)
+    p = sub.add_parser("rule", help="a brand rule from a revision, dated (an owner decision: references/playbook.md)")
+    p.add_argument("slug"); p.add_argument("text")
+    p.add_argument("--why", help="the reason, so a later disliked result can be traced to this rule")
+    p.add_argument("--scope", help="which videos it applies to (a format, a style, a scene type)")
+    p.set_defaults(fn=cmd_rule)
     p = sub.add_parser("set"); p.add_argument("slug"); p.add_argument("pairs", nargs="+"); p.set_defaults(fn=cmd_set)
     p = sub.add_parser("tone", help="brand tone: preset + field overrides")
     p.add_argument("slug"); p.add_argument("preset", choices=TONE_PRESETS)

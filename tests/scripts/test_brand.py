@@ -73,3 +73,17 @@ def test_rule_goes_into_the_marked_revisions_section_in_any_language():
     assert plain.endswith("- a\n- b\n")
     fresh = brand.add_rule("# Rules\n", "- c")
     assert "## Rules from revisions\n- c" in fresh
+
+
+def test_rule_records_its_reason_and_scope(project):
+    # 1.7.0 (references/playbook.md): a brand rule is an owner decision; with its reason and scope a disliked result
+    # can be traced back to it
+    write_json(project / "brands" / "acme" / "brand.json", {"name": "Acme", "slug": "acme", "schema": 2,
+                                                            "colors": {"primary": "#0B3D2E", "accent": "#F2C14E"}})
+    run_script("brand.py", "rule", "acme", "Lists over the video, never shrink the speakers",
+               "--why", "the client found shrinking out of place", "--scope", "list scenes", cwd=project)
+    text = (project / "brands" / "acme" / "rules.md").read_text(encoding="utf-8")
+    assert ("Lists over the video, never shrink the speakers. Applies to: list scenes. "
+            "Why: the client found shrinking out of place.") in text
+    run_script("brand.py", "rule", "acme", "No red", cwd=project)  # the flags stay optional
+    assert "No red\n" in (project / "brands" / "acme" / "rules.md").read_text(encoding="utf-8")

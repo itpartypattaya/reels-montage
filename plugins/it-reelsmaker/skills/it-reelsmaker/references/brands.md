@@ -175,7 +175,7 @@ A variant you recolored yourself (for example white made from a dark one) goes i
 
 ## Rules from revisions
 
-A revision that applies to the brand rather than to one video is appended to `rules.md` → “Rules from revisions” with a date (`brand.py rule <slug> "…"`). Examples of such revisions: “cards only on the left”, “the mark goes on the card, not in the corner”, “accent only on numbers”. The brand's next video already knows it. Revisions for a single video stay in `edit/<id>/project.md`. If it's unclear what a revision applies to, ask in one line.
+A revision that applies to the brand rather than to one video is appended to `rules.md` → “Rules from revisions” with a date (`brand.py rule <slug> "…" [--why "…"] [--scope "…"]`: the reason and which videos it applies to, so a later disliked result can be traced back to it; such a rule is an owner decision in `references/playbook.md`). A revision becomes a brand rule when the person says it is always so, or when it comes up again on the brand's next video. Examples of such revisions: “cards only on the left”, “the mark goes on the card, not in the corner”, “accent only on numbers”. The brand's next video already knows it. Revisions for a single video stay in `edit/<id>/project.md`. If it's unclear what a revision applies to, ask in one line.
 
 Whatever the person says about the brand as a whole goes into the brand folder, not into one video's notes:
 

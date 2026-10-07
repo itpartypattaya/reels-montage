@@ -2,6 +2,21 @@
 
 What changed in IT Reelsmaker, written for the people who use it. The newest version is on top. The skill shows a short “What's new” note from this file once, on the first edit after an update.
 
+## 1.7.0
+
+- **Every decision comes with its reason.** The cut plan and the delivery report end with “Supports”: each decision
+  that shapes the video (structure, pace, shot sizes, text, inserts, color, sound) next to the rule behind it and how
+  far that rule is trusted, plus what was not applied or departed from and why. When you dislike something, you see
+  which rule produced it, and you change that rule instead of redoing the whole video.
+- **Three levels of trust for craft rules**: your own decisions (dated), rules checked on edited videos, and outside
+  advice. When rules disagree, the one meant for this kind of video wins, then the more trusted one; a real tie is
+  asked, and your answer becomes a rule.
+- **Your own playbook**: an optional `playbook.md` in your project holds your craft rules as cards (an ID that never
+  changes, where it applies and where not, why, source, trust). A guide or someone else's video you want to learn from
+  is saved into `refs/` and checked rule by rule against what the skill already knows: matches add a source, conflicts
+  are shown to you, new rules are added as outside advice. A correction you repeat, or say is “always”, becomes a rule.
+- `brand.py rule` records the reason and the scope of a brand rule (`--why`, `--scope`).
+
 ## 1.6.1
 
 - **Instructions fixed**, so the skill does what it describes:
