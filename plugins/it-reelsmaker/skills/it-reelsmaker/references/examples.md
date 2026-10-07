@@ -48,7 +48,7 @@ Two messages as the person should see them: the cut plan of step 5 and the repor
 >
 > **Did not land:** a B-roll shot of a team meeting at 0:12: nothing suitable in the project or the library, so the main footage stays.
 >
-> **Open items:** the number “3×” on the card is the speaker's (0:37.5), no check needed; the cover in frame 0 is `cover.jpg`, also attached for uploading by hand.
+> **Open items:** the number “3×” on the card is the speaker's (0:37.5), no check needed; the master carries the cover (frame 0 and cover art), and `…-cover.jpg` lies next to it for uploading by hand.
 >
 > **Caption** (`caption.txt`, waits for the approver's “yes”): “Most interviews test what candidates remember. Ours test how they think. Message us ‘SHORTLIST’ to see how it works.”
 >

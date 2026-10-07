@@ -1,7 +1,8 @@
 # -*- coding: utf-8 -*-
 """Audio mastering of a finished render: −14 LUFS, true peak ≤ −1 dBFS, music set below the voice.
 
-    python scripts/master_audio.py out/render.mp4 -o out/master.mp4
+    python scripts/master_audio.py out/render.mp4 -o out/<brand>-<slug>-<date>-master.mp4 --cover edit/<id>/cover.jpg
+    python scripts/master_audio.py out/render.mp4 -o out/master.mp4                # no cover: a warning
     python scripts/master_audio.py out/render.mp4 -o out/master.mp4 --music track.mp3 [--gap 15] \\
         [--music-start 12.4 | --drop-at 24.1 --drop-in-track 61.0] [--duck 21.3-23.9[:-14] ...]
     python scripts/master_audio.py track.mp3 --find-drops          # where the drops are in a track (candidates)
@@ -27,6 +28,12 @@ Ducking under a key line (--duck A-B[:dB], repeatable, seconds of the render): t
   the music after the sidechain, before the mix, and the voice is not touched. Two different things: "duck the music
   under the key line" (--duck) and "the track's drop" (a loud moment of the track itself, placed with --drop-at).
 The video is not re-encoded: the audio goes into the finished render (-c:v copy), +faststart.
+The cover (--cover edit/<id>/cover.jpg, picked with poster.py pick): the master is built with it in one run — frame 0
+  replaced by the cover (poster.py bake: the only re-encode, frame count and durations checked), the sound mastered, the
+  cover embedded as cover art (poster.py attach: the file manager's thumbnail) — and the cover is saved next to the
+  master as a picture for uploading it by hand: <name>-cover.jpg (out/x-master.mp4 -> out/x-cover.jpg). One file goes
+  out, the master; there is no separate "-final.mp4". Without --cover the master is made as before, with a warning:
+  messengers show its first frame and file managers a random one.
 At the end, the acceptance check from the checklist (SKILL.md): −14 ±0.7 LUFS, true peak ≤ −1 dBFS, audio = video track
 (and video = input). Exit code: 0, the check passed; 1, it failed, a measurement failed or ffmpeg failed.
 No voice and no music (the "scenes only" format): a few scene sounds over silence are not a −14 LUFS track, so the
@@ -193,6 +200,8 @@ def main():
     ap.add_argument("--sfx", help="edit/<id>/sfx.json: scene sound accents mixed in before mastering")
     ap.add_argument("--duck", action="append", default=[], metavar="A-B[:dB]",
                     help="duck the music under a key line: seconds of the render, dB down (default 14), repeatable")
+    ap.add_argument("--cover", help="edit/<id>/cover.jpg (poster.py pick): frame 0, the embedded cover art and "
+                                    "<name>-cover.jpg next to the master, in this run")
     a = ap.parse_args()
     if a.find_drops:
         find_drops(a.input)
@@ -203,19 +212,80 @@ def main():
         if not loud:
             print(f"no voice: the −14 LUFS rule does not apply ({'--no-loudness' if a.no_loudness else tag}); the true "
                   f"peak and the durations are checked")
+        print("cover art: " + ("embedded" if has_cover_art(a.input) else
+                                "none (master_audio.py ... --cover edit/<id>/cover.jpg builds the master with it)"))
         sys.exit(report(*acceptance(a.input, loudness=loud, sound=tag != TAG_NO_SOUND)))
     if not a.output:
         sys.exit("-o <output.mp4> is required")
+    if a.cover and not Path(a.cover).is_file():
+        sys.exit(f"cover not found: {a.cover} (poster.py pick edit/<id> --render <render> -o edit/<id>/cover.jpg)")
+    if a.cover and Path(a.output).resolve() == Path(a.input).resolve():
+        sys.exit("-o must differ from the input")
+    if not a.cover:
+        print("⚠ no cover (--cover): the master's frame 0 is the render's first frame (what messengers show) and a file "
+              "manager picks a random frame; poster.py pick edit/<id> --render <render> -o edit/<id>/cover.jpg, then "
+              "master again with --cover edit/<id>/cover.jpg")
 
     a.ducks = parse_ducks(a.duck)
     if a.ducks and not a.music:
         print("⚠ --duck needs --music: there is no music to duck, ignored")
     tmp = tempfile.mkdtemp(prefix="master_")
     try:
-        code = master(a, tmp)
+        code = with_cover(a, tmp) if a.cover else master(a, tmp)
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
     sys.exit(code)
+
+
+def poster(*args):
+    """poster.py bake / attach in a child process: their own checks decide (exit code 1 = do not deliver)."""
+    r = subprocess.run([sys.executable, str(Path(__file__).resolve().parent / "poster.py"), *map(str, args)],
+                       capture_output=True, text=True, encoding="utf-8", errors="replace")
+    out = (r.stdout + r.stderr).strip()
+    if out:
+        print("\n".join("  " + line for line in out.splitlines()))
+    return r.returncode
+
+
+def has_cover_art(p):
+    r = subprocess.run(local_media_args(["ffprobe", "-v", "error", "-show_entries",
+                                         "stream=codec_type:stream_disposition=attached_pic", "-of", "json", str(p)]),
+                       capture_output=True, text=True, encoding="utf-8", errors="replace")
+    try:
+        return any((s.get("disposition") or {}).get("attached_pic") for s in json.loads(r.stdout).get("streams", []))
+    except ValueError:
+        return False
+
+
+def cover_jpg_of(output):
+    """The cover picture next to the master: out/x-master.mp4 -> out/x-cover.jpg (out/x.mp4 -> out/x-cover.jpg)."""
+    p = Path(output)
+    stem = p.stem[:-len("-master")] if p.stem.endswith("-master") else p.stem
+    return p.with_name(stem + "-cover.jpg")
+
+
+def with_cover(a, tmp):
+    """The master with its cover in one run: bake frame 0 -> master the sound -> attach the cover art -> the jpg."""
+    out, cover = Path(a.output), Path(a.cover)
+    baked = os.path.join(tmp, "cover.mp4")
+    print(f"cover: frame 0 <- {cover.name} (poster.py bake)")
+    if poster("bake", a.input, "--cover", cover, "-o", baked):
+        print("the cover could not be put into frame 0: no master was made; check the cover and the render")
+        return 1
+    a.input, a.output = baked, os.path.join(tmp, "master.mp4")
+    code = master(a, tmp)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    print(f"cover: embedded as cover art (poster.py attach) -> {out}")
+    if poster("attach", a.output, "--cover", cover, "-o", out):
+        return 1
+    jpg = cover_jpg_of(out)
+    if jpg.resolve() == cover.resolve():  # remastering from the sidecar itself: ffmpeg can't write its own input (PR review)
+        print(f"cover picture for uploading it by hand: {jpg} (the cover given, kept as it is)")
+    else:
+        run(["ffmpeg", "-y", "-hide_banner", "-i", str(cover), "-frames:v", "1", "-q:v", "2", str(jpg)])
+        print(f"cover picture for uploading it by hand: {jpg}")
+    print("file:", str(out) + ("" if not code else " — do not publish it; deal with the failure first"))
+    return code
 
 
 DUCK_DB = -14.0   # dB: the music under a key line, against the bed around it ("near silence", references/library.md)
@@ -265,7 +335,8 @@ def master_no_voice(a, tmp, D, why):
         # a silent track fell through to the loudness measurement, which fails on silence (Codex review)
         run(["ffmpeg", "-y", "-hide_banner", "-i", a.input, "-map", "0", "-map", "-0:a", "-c", "copy",
              "-metadata", f"comment={TAG_NO_SOUND}", "-movflags", "+faststart", a.output])
-        print(f"{why}: no voice and no effects, mastering skipped, the file is copied as is (+faststart): {a.output}")
+        print(f"{why}: no voice and no effects, mastering skipped, the file is copied as is (+faststart)"
+              + ("" if a.cover else f": {a.output}"))
         print("the −14 LUFS check does not apply to a video without sound: add music in the app when publishing, or a "
               "track with a commercial license via --music; scene sounds (--sfx) go onto silence, with the true peak "
               "checked and no −14 LUFS target")
@@ -309,7 +380,8 @@ def master_no_voice(a, tmp, D, why):
         print("scene sounds only: the −14 LUFS check does not apply (add music in the app when publishing, or a "
               "licensed track via --music); the true peak and the durations are checked")
     code = report(*acceptance(a.output, D, loudness=bool(a.music)))
-    print("file:", a.output + ("" if not code else " — do not publish it; deal with the failure first"))
+    if not a.cover:
+        print("file:", a.output + ("" if not code else " — do not publish it; deal with the failure first"))
     return code
 
 
@@ -419,7 +491,8 @@ def master(a, tmp):
          "-c:v", "copy", "-c:a", "aac", "-b:a", "256k", "-ar", "48000", "-shortest", *clear, "-movflags", "+faststart",
          a.output])
     code = report(*acceptance(a.output, D))
-    print("file:", a.output + ("" if not code else " — do not publish it; deal with the failure first"))
+    if not a.cover:
+        print("file:", a.output + ("" if not code else " — do not publish it; deal with the failure first"))
     return code
 
 
