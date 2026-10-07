@@ -19,6 +19,8 @@ The plugin is a skill built on real client videos: the thresholds and numbers in
 7. **Remotion**: virtual camera, graphics on their spoken words, subtitles, render, and an audit of faces against text in the final file.
 8. **Mastering** with an acceptance check, then a report in numbers: duration, remaining silence, loudness and peak, cuts and retakes removed.
 
+The plan and the report list their **supports**: each decision next to the rule behind it and how far it is trusted (your decision, checked on your videos, or outside advice). Your own craft rules can live in a `playbook.md` in your project; a guide or a video you want to learn from is reconciled with them rule by rule, conflicts shown to you.
+
 ![Cutting by the sound: speech mask, edges and pause compression](https://raw.githubusercontent.com/itpartypattaya/reels-montage/main/docs/img/speech-mask.png)
 
 ![Face-aware layout: free zones, subtitle band and false-face filter](https://raw.githubusercontent.com/itpartypattaya/reels-montage/main/docs/img/face-layout.png)

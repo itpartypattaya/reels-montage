@@ -26,6 +26,13 @@ Two messages as the person should see them: the cut plan of step 5 and the repor
 >
 > **Transcript fixes:** “Akme” → “Acme”, “short list” → “shortlist”.
 >
+> **Supports** (`references/playbook.md`):
+> - the slow start cut, the video opens on the claim → `structure.md` › Start: Cut the slow start (external);
+> - pauses up to 50 ms, ×1.15 → SKILL.md step 5, an insight monologue (external) + brand `rules.md` 2026-09-12 “tight pace” (owner);
+> - a shot change every 1.5–3.5 s, punch-in on the key word → playbook PACE-1 (verified);
+> - the teaser not used → `structure.md` › Start: Teaser, “not when the line is the payoff” (external).
+> Not applied: a hook headline (HOOK-2) — the opening line is the hook.
+>
 > Cut it like this? A “yes” starts the cut; anything else, tell me what to change.
 
 ## Delivery report (step 10)
@@ -45,3 +52,5 @@ Two messages as the person should see them: the cut plan of step 5 and the repor
 > **Caption** (`caption.txt`, waits for the approver's “yes”): “Most interviews test what candidates remember. Ours test how they think. Message us ‘SHORTLIST’ to see how it works.”
 >
 > **Noticed on the way:** the source has a 2-frame black flash at 0:47.2 from the camera; it falls inside the aside that was cut, so it is not in the video.
+>
+> **Supports:** the `quote` scene in `split` → `scenes.md` › Quote (external) + brand `rules.md` 2026-09-20 “quotes only verbatim” (owner); subtitles in the accent style → chosen in step 0; no meme → the brand tone `expert` (owner). Departed from PACE-1 at 0:15–18.8: the quote holds 3.6 s for its reading time (`scenes.md`, reading-time floor). Checklist skipped: music (no licensed track chosen).
