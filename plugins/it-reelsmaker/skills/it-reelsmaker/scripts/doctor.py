@@ -81,10 +81,10 @@ def check_python_packages():
     add("Pillow", "recommended", has_module("PIL"), "", INSTALL["pillow"])
     add("OpenCV (faces.py)", "optional", has_module("cv2"), "", INSTALL["opencv"])
     fw = has_module("faster_whisper")
-    add("faster-whisper (transcribe.py)", "optional", fw, "", INSTALL["faster-whisper"])
-    hub = Path(os.environ.get("HF_HUB_CACHE") or Path(os.environ.get("HF_HOME") or Path.home() / ".cache" / "huggingface") / "hub")
-    models = sorted(p.name.split("faster-whisper-")[-1] for p in hub.glob("models--*faster-whisper-*")) if hub.is_dir() else []
-    add("faster-whisper model", "optional", models, ", ".join(models), INSTALL["whisper-model"])
+    # the model itself is not looked up: its download cache is where access tokens live too, and the plugin directory
+    # holds a plugin that reads that folder for review (1.9.1); transcribe.py downloads the model on its first run
+    add("faster-whisper (transcribe.py)", "optional", fw, "the model downloads on the first run of transcribe.py" if fw else "",
+        INSTALL["faster-whisper"] + "; to fetch the model ahead: " + INSTALL["whisper-model"])
 
 
 def check_node(remotion):
