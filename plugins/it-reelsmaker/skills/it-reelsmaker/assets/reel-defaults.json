@@ -6,6 +6,8 @@
   "style": null,
   "subtitles": null,
   "subtitles_shade": null,
+  "profile": null,
+  "content_format": null,
   "intensity": "moderate",
   "use_broll": true,
   "use_project_footage": true,
@@ -465,6 +467,247 @@
     22
    ],
    "coverage_min": 0.95
+  }
+ },
+ "profiles": {
+  "_comment": "Video profiles (references/profiles.md): the video's goal and loudness, chosen per video (reel.json -> profile, or the content format's default profile). A profile's settings are defaults layered after the project's defaults and before the brand profile's inserts and reel.json; the brand tone stays the ceiling: a louder intensity is held at the tone's (tone_override lifts it), a scene tone the brand doesn't allow is skipped (the first allowed one of a list is taken). length: the soft range in seconds (a content format's own range wins, unless length_fixed); brand_by_s: the brand seen or heard by this second; cta_max: CTAs per video; cta_required: the video needs a CTA; safe_zone: the box text, logos, CTA and subtitles keep inside (x0, y0, x1, y1). checklist: item id -> its automatic check in visual_plan.py validate (null: confirmed by the agent; \"validate\": an existing check covers it). The items' texts and sources: references/profiles.md. The common items (common_checklist) apply to every profile.",
+  "common_checklist": {
+   "ALL-1": "start",
+   "ALL-2": "length",
+   "ALL-3": "cta_count",
+   "ALL-4": null,
+   "ALL-5": null,
+   "ALL-6": null,
+   "ALL-7": null,
+   "ALL-8": null,
+   "ALL-9": null
+  },
+  "educational": {
+   "label": "Educational",
+   "length": [
+    30,
+    60
+   ],
+   "cta_max": 1,
+   "settings": {
+    "intensity": "moderate",
+    "scene_tone": [
+     "calm",
+     "feature"
+    ],
+    "use_memes": false
+   },
+   "checklist": {
+    "EDU-1": null,
+    "EDU-2": null,
+    "EDU-3": null,
+    "EDU-4": null,
+    "EDU-5": null,
+    "EDU-6": "validate",
+    "EDU-7": null
+   }
+  },
+  "entertaining": {
+   "label": "Entertaining",
+   "length": [
+    15,
+    45
+   ],
+   "cta_max": 1,
+   "settings": {
+    "intensity": "active",
+    "scene_tone": [
+     "punchy",
+     "deadpan",
+     "cinematic"
+    ],
+    "use_memes": true
+   },
+   "checklist": {
+    "FUN-1": null,
+    "FUN-2": null,
+    "FUN-3": null,
+    "FUN-4": null,
+    "FUN-5": "validate",
+    "FUN-6": null,
+    "FUN-7": "validate"
+   }
+  },
+  "expert-clip": {
+   "label": "Expert clip",
+   "length": [
+    30,
+    60
+   ],
+   "cta_max": 1,
+   "settings": {
+    "intensity": "minimal",
+    "scene_tone": [
+     "calm",
+     "deadpan"
+    ],
+    "use_memes": false
+   },
+   "checklist": {
+    "CLIP-1": null,
+    "CLIP-2": null,
+    "CLIP-3": null,
+    "CLIP-4": null,
+    "CLIP-5": null,
+    "CLIP-6": null,
+    "CLIP-7": "validate"
+   }
+  },
+  "promo": {
+   "label": "Promo",
+   "length": [
+    15,
+    45
+   ],
+   "cta_max": 1,
+   "cta_required": true,
+   "brand_by_s": 5,
+   "settings": {
+    "intensity": "moderate",
+    "scene_tone": [
+     "feature",
+     "calm"
+    ]
+   },
+   "checklist": {
+    "PROMO-1": "brand_early",
+    "PROMO-2": null,
+    "PROMO-3": null,
+    "PROMO-4": "cta_present",
+    "PROMO-5": null,
+    "PROMO-6": null,
+    "PROMO-7": null,
+    "PROMO-8": null
+   }
+  },
+  "ad": {
+   "label": "Paid ad",
+   "length": [
+    15,
+    34
+   ],
+   "length_fixed": true,
+   "cta_max": 1,
+   "cta_required": true,
+   "brand_by_s": 3,
+   "safe_zone": [
+    65,
+    269,
+    1015,
+    1248
+   ],
+   "settings": {
+    "intensity": "moderate",
+    "scene_tone": [
+     "punchy",
+     "feature"
+    ],
+    "use_memes": false
+   },
+   "checklist": {
+    "AD-1": "safe_zone",
+    "AD-2": "brand_early",
+    "AD-3": null,
+    "AD-4": null,
+    "AD-5": null,
+    "AD-6": "rights",
+    "AD-7": null,
+    "AD-8": null,
+    "AD-9": "cta_present"
+   }
+  }
+ },
+ "content_formats": {
+  "_comment": "Content formats (SKILL.md section 5, reel.json -> content_format): the form of the video, with its default profile and length range in seconds. cta_max overrides the profile's (a job opening: apply + recommend).",
+  "insight": {
+   "profile": "educational",
+   "length": [
+    30,
+    60
+   ]
+  },
+  "list": {
+   "profile": "educational",
+   "length": [
+    30,
+    60
+   ]
+  },
+  "case": {
+   "profile": "promo",
+   "length": [
+    30,
+    45
+   ]
+  },
+  "story": {
+   "profile": "entertaining",
+   "length": [
+    30,
+    60
+   ]
+  },
+  "skit": {
+   "profile": "entertaining",
+   "length": [
+    45,
+    70
+   ]
+  },
+  "testimonial": {
+   "profile": "promo",
+   "length": [
+    15,
+    25
+   ]
+  },
+  "intro": {
+   "profile": "promo",
+   "length": [
+    25,
+    35
+   ]
+  },
+  "offer": {
+   "profile": "promo",
+   "length": [
+    15,
+    30
+   ],
+   "cta_max": 2
+  },
+  "review": {
+   "profile": "promo",
+   "length": [
+    20,
+    45
+   ]
+  },
+  "event": {
+   "profile": "promo",
+   "length": [
+    15,
+    30
+   ]
+  },
+  "interview": {
+   "profile": "expert-clip",
+   "length": [
+    30,
+    60
+   ]
+  },
+  "scenes-only": {
+   "profile": "promo",
+   "length": [
+    15,
+    25
+   ]
   }
  }
 }

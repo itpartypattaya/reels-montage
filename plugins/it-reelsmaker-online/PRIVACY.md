@@ -1,6 +1,6 @@
 # Privacy policy — IT Reelsmaker Online
 
-Effective date: 2 October 2026. Maintainer: IT Party Pattaya, https://github.com/itpartypattaya. Contact: mr.a.vaskov@gmail.com or [GitHub Issues](https://github.com/itpartypattaya/reels-montage/issues).
+Effective date: 2 October 2026; updated 7 October 2026 (Groq). Maintainer: IT Party Pattaya, https://github.com/itpartypattaya. Contact: mr.a.vaskov@gmail.com or [GitHub Issues](https://github.com/itpartypattaya/reels-montage/issues).
 
 The add-on collects nothing. It has no server and no telemetry, and the maintainer receives no data from it. The core plugin's [privacy policy](../it-reelsmaker/PRIVACY.md) applies to everything else.
 
@@ -17,6 +17,7 @@ When a source is enabled, the agent may contact it while preparing the visual pl
 | GIPHY (reference only) | search queries, your API key | https://giphy.com/privacy |
 | fal.ai | generation prompts, an optional start frame, your API key | https://fal.ai/privacy |
 | OpenAI (cloud transcript) | the video's speech audio (16 kHz mono WAV), an optional prompt with names and terms, your API key | https://openai.com/policies/ |
+| Groq (fallback transcript text, only with `transcription_fallback=groq` or `--provider groq`) | the same speech audio (16 kHz mono WAV), the language and the optional prompt, your API key | https://groq.com/privacy-policy/ |
 | Anthropic, OpenAI or Google Gemini (subtitle translation) | the subtitle text of the video, the brand's voice and forbidden words, your API key | https://www.anthropic.com/legal/privacy · https://openai.com/policies/ · https://policies.google.com/privacy |
 | Your own server (figure cut-out) | frames of the rough cut's span (JPG), over your SSH client | your server, your policy; temporary files are deleted after each job |
 

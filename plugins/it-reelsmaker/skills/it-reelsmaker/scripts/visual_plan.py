@@ -70,7 +70,7 @@ import argparse, contextlib, datetime, filecmp, hashlib, json, math, re, shutil,
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from reels_common import (FRAMED_HOOK_MIN, FRAMED_RADIUS, MEME_SIZES, NUMBER_RE, SUB_BAND, SUB_BLOCK_H, SUB_MAX_TOP,
+from reels_common import (CORNER_BOX, FRAMED_HOOK_MIN, FRAMED_LABEL_UP, FRAMED_RADIUS, MEME_SIZES, NUMBER_RE, SUB_BAND, SUB_BLOCK_H, SUB_MAX_TOP,
                           SUB_TOP_KIT, budget, cam_fit, edit_dir, editing_json, effective, forbidden_hits, framed_area,
                           framed_at, framed_issues, framed_source, framed_view, inside, load_config, load_json, locked,
                           media_kind, online, parse_sets, probe, project_root, safe_slug, save_json, tokens, utf8_stdio,
@@ -1343,6 +1343,144 @@ def tone_issues(s, doc, brolls, memes, scenes, only=False):
     return out
 
 
+def end_now(a, plan):
+    """What follows the cut, whether the corner logo and the hook headline are drawn, for THIS run: export's own
+    --card/--sting/--corner/--hook, validate's flags, else what the last export recorded (Codex review: a first export
+    --card was not counted, and an export without a card after one with it still counted the old card).
+    -> (end kind or None, corner, hook)."""
+    if getattr(a, "card", None):
+        kind = "card"
+    elif getattr(a, "sting", False):
+        kind = "sting"
+    elif getattr(a, "cmd", None) == "export":
+        kind = None
+    else:
+        kind = (plan.get("end_card") or {}).get("kind")
+    last = getattr(a, "cmd", None) != "export"  # a standalone validate also trusts the last export's record
+    corner = bool(getattr(a, "corner", False)) or (last and bool(plan.get("corner")))
+    hook = bool(getattr(a, "hook", None)) or (last and bool(plan.get("hook")))
+    return kind, corner, hook
+
+
+def profile_issues(e, plan, s, brand, cap, scenes, memes, tail, corner=False, end_kind=None, hook=False):
+    """The video profile's automatic checklist items (references/profiles.md; reel-defaults.json -> profiles):
+    -> (errors, warnings, {item id: "ok" | "warn" | "error" | "check" | "validate"}). Only the paid-ad safe zone and
+    meme rights in an ad are errors; the rest are warnings, the person decides. "check": the agent confirms it (the
+    report's Supports name what was skipped); "validate": an existing check of validate covers it."""
+    pr = s.get("profile_rules")
+    if not pr:
+        return [], [], {}
+    errs, warns, st = [], [], {}
+    only = plan.get("format") == "scenes-only"
+    D = float(plan.get("duration") or 0.0)
+    total = D + tail
+    words = [w for w in (cap or {}).get("words") or [] if isinstance(w, dict) and w.get("start") is not None]
+    timeline = [x for x in scenes if x.get("type") != "cover"]
+    tag = f"profile {pr['id']}"
+
+    def put(item, ok, msg, err=False):
+        if ok:
+            st[item] = "ok"
+        else:
+            st[item] = "error" if err else "warn"
+            (errs if err else warns).append(f"{item} ({tag}): {msg}")
+
+    cards = 1 if end_kind == "card" else 0
+    ctas = [x for x in timeline if x.get("type") == "cta"]
+    said = lambda w: str(w.get("text") or w.get("word") or "")  # captions.json words: text (older: word)
+    spoken = " ".join(said(w) for w in words if float(w["start"]) >= D * 0.6)
+    for item, check in (pr.get("checklist") or {}).items():
+        if check is None:
+            st[item] = "check"
+        elif check == "validate":
+            st[item] = "validate"
+        elif check == "start":
+            if only:
+                st[item] = "check"
+                continue
+            first = float(words[0]["start"]) if words else None
+            early = [x for x in timeline if float(x.get("start", 99)) <= 0.5]
+            put(item, hook or early or (first is not None and first <= 1.0),
+                f"the first word starts at {first if first is None else round(first, 2)} s and no scene opens the "
+                f"video: a slow start (cut the lead-in, or open with a hook scene or the export --hook headline; "
+                f"validate --hook when the export will have one)")
+        elif check == "length":
+            lo, hi = pr.get("length") or (None, None)
+            put(item, not lo or lo - 0.5 <= total <= hi + 0.5,
+                f"the video is {total:.1f} s, the {pr.get('format') or pr['id']} range is {lo}-{hi} s (a soft range: "
+                f"say why in the report, or recut)")
+        elif check == "cta_count":
+            n = len(ctas) + cards
+            put(item, n <= pr.get("cta_max", 1),
+                f"{n} CTAs (scenes {', '.join(x['id'] for x in ctas) or '-'}{', the end card' if cards else ''}) > "
+                f"{pr.get('cta_max', 1)} per video: one call to action"
+                + (" (two only for a job opening: content_format offer)" if pr.get("cta_max", 1) < 2 else ""))
+        elif check == "cta_present":
+            put(item, ctas or cards or CTA_RE.search(spoken.lower()),
+                "no CTA: no cta scene, no end card (export --card) and none spoken in the last 40 % of the video")
+        elif check == "brand_early":
+            n = float(pr.get("brand_by_s") or 3)
+            names = [x for x in {str(brand.get("name") or ""), *(brand.get("aliases") or [])} if str(x).strip()]
+            line = lambda t: " " + " ".join(norm_words(t)) + " "  # whole words: "Acme" in "acme's" yes, in "acmes" no
+            keys = [line(x) for x in names if norm_words(x)]
+            heard = line(" ".join(said(w) for w in words if float(w["start"]) <= n))
+            seen = line(" ".join(scene_text(x) for x in timeline if float(x.get("start", 99)) <= n))
+            hit = corner or any(k in heard or k in seen for k in keys)
+            hit = hit or any(x.get("type") == "cover" for x in timeline if float(x.get("start", 99)) <= n)
+            put(item, hit, f"the brand ({', '.join(names) or 'no name in brand.json'}) is not heard or seen by {n:g} s: "
+                           f"say it, show it in the hook or a scene, or add the corner logo (export --corner; "
+                           f"validate --corner)")
+        elif check == "safe_zone":
+            z = pr.get("safe_zone")
+            if not z:
+                continue
+            x0, y0, x1, y1 = z
+            bad = []
+            boxes = [(m["id"], m["box"]) for m in memes if m.get("box") and m.get("mode") == "popup"]
+            boxes += [(x["id"], x.get("box") or default_box(x.get("mode"))) for x in timeline
+                      if x.get("mode") in ("overlay", "split", "window") and (x.get("box") or default_box(x.get("mode")))]
+            boxes += [(k.get("what") or "keep-clear", k["box"]) for k in plan.get("keep_clear", [])
+                      if k.get("box") and not k.get("scene") and not k.get("matte")]
+            for name, b in boxes:
+                if b[0] < x0 or b[1] < y0 or b[0] + b[2] > x1 or b[1] + b[3] > y1:
+                    bad.append(f"{name} {list(b)}")
+            # the subtitles: export lifts them into the zone itself (a band an earlier export recorded lower is not
+            # blocked: Codex review); only a block taller than the zone can't fit
+            h = SUB_BLOCK_H.get(str(s.get("subtitles") or "accent"), max(SUB_BLOCK_H.values()))
+            if not only and y1 - y0 < h:
+                bad.append(f"the subtitles ({h} px) do not fit between y {y0} and {y1}")
+            fr = None if only else framed_at(e)
+            if corner and not fr:  # export puts it at the zone's top for this profile (props.cornerTop)
+                cx, cy, cw, ch = CORNER_BOX
+                b = [cx, max(cy, y0), cw, ch]
+                if b[0] < x0 or b[0] + b[2] > x1 or b[1] + b[3] > y1:
+                    bad.append(f"the corner logo {b}")
+            elif corner and fr and fr["window"][1] - 12 - 112 < y0:
+                bad.append(f"the corner logo above the framed window (y {fr['window'][1] - 12 - 112}): drop --corner, or move "
+                           f"the window down (reel.json window y >= {y0 + 124})")
+            if fr and fr.get("label") and max(220, fr["window"][1] - FRAMED_LABEL_UP) < y0:
+                bad.append(f"the framed label above the window (y {max(220, fr['window'][1] - FRAMED_LABEL_UP)}): move the "
+                           f"window down (window y >= {y0 + FRAMED_LABEL_UP}) or drop the label")
+            put(item, not bad, f"outside the ad safe zone x {x0}-{x1}, y {y0}-{y1} (the platform's caption and button "
+                               f"cover the rest): " + "; ".join(bad), err=True)
+            fulls = [x["id"] for x in timeline if x.get("mode") in ("full", "panel")]
+            if fulls:
+                warns.append(f"{item} ({tag}): full-frame scenes {', '.join(fulls)}: check their text against the safe "
+                             f"zone on a still frame")
+        elif check == "rights":
+            # only the memes carry their rights in the plan: a bad one is an error; B-roll and music are not seen
+            # here, so the item never passes automatically (Codex review: "ok" read as cleared for everything)
+            bad = [m["id"] for m in memes if m.get("rights") not in ("own", "licensed", "cc")]
+            if bad:
+                put(item, False, f"memes {', '.join(bad)} without known rights (own, licensed or cc) in a paid ad: "
+                                 f"replace them or mark them skipped", err=True)
+            else:
+                st[item] = "check"
+        else:
+            st[item] = "check"
+    return errs, warns, st
+
+
 def meme_rights(meme_id):
     """A meme's rights from the meme index (memes.py index), so validate knows them before memes.py prepare (T5:
     "rights are unknown" for an own meme and a CC one). blocked: forbidden by third-party rights. None: no id, or the
@@ -1680,6 +1818,11 @@ def cmd_validate(a, quiet=False):
         else:
             errs.append(m + " (to go past it on explicit request: reelcfg.py save ... --set tone_override=true)")
             bad.update(ids)
+    end_kind, corner_now, hook_now = end_now(a, plan)
+    pe, pw, pst = profile_issues(e, plan, s, brand, cap if scenes else (load_json(e / "captions.json", {}) or {}),
+                                 scenes, memes, tail, corner_now, end_kind, hook_now)
+    errs += pe
+    warns += pw
     # scene status: there is no file, so ready when the fields are valid; an error -> planned
     moves = {x["id"]: ("planned" if x["id"] in bad else "ready") for x in scenes if x["status"] in ("planned", "ready")}
     moves = {k: v for k, v in moves.items() if next(x for x in scenes if x["id"] == k)["status"] != v}
@@ -1724,6 +1867,14 @@ def cmd_validate(a, quiet=False):
                     f"{(s.get('brand_tone') or {}).get('full_scenes_max')}") + "); " if scenes else "")
               + f"{len(errs)} error(s), {len(warns)} warning(s)"
               + (f"; the video is {plan['duration'] + tail:.2f} s with the {tail} s end card or sting" if tail else ""))
+        if pst:
+            pr = s["profile_rules"]
+            mark = {"ok": "ok", "warn": "WARN", "error": "ERROR", "validate": "ok (validate)", "check": "-"}
+            print(f"profile {pr['id']} ({pr['label']}" + (f", format {pr['format']}" if pr.get("format") else "")
+                  + "): " + ", ".join(f"{k} {mark[v]}" for k, v in pst.items() if v != "check"))
+            todo = [k for k, v in pst.items() if v == "check"]
+            if todo:
+                print(f"  confirm by eye (references/profiles.md); name the skipped ones under Supports: {', '.join(todo)}")
     return errs, warns
 
 
@@ -2486,6 +2637,15 @@ def cmd_export(a):
                 low = min(low, a1)
                 top = max(a0, min(top, a1 - h))
                 props["subtitlesTop"] = top
+            z = (s.get("profile_rules") or {}).get("safe_zone")
+            if z and a.corner and not fr:  # the corner logo inside the ad's zone (the kit's default top is 236)
+                props["cornerTop"] = max(CORNER_BOX[1], z[1])
+            if z and top + h > z[3]:  # a paid ad: the platform's caption and button cover y > the safe zone's bottom
+                lifted = max(z[1], z[3] - h)
+                print(f"subtitles: lifted from y {top} to {lifted} for profile {s['profile_rules']['id']} (the ad safe "
+                      f"zone ends at y {z[3]}); check the chin on the render: faces.py audit")
+                top = lifted
+                props["subtitlesTop"] = top
             with editing_plan(e) as p2:
                 p2["subtitles_band"] = [top, min(low, top + h)]
         if s.get("subtitles_shade") is not None:
@@ -2507,6 +2667,11 @@ def cmd_export(a):
     # counts "the last 2 s" from the whole video's end. Codex review: written before the Remotion project check, a
     # failed export left an end card that the next validate counted
     with editing_plan(e) as p2:
+        for k, on in (("corner", a.corner), ("hook", bool(a.hook))):  # the profile's items read them (profile_issues)
+            if on:
+                p2[k] = True
+            else:
+                p2.pop(k, None)
         if a.sting or a.card:
             p2["end_card"] = {"kind": "sting" if a.sting else "card", "seconds": END_CARD_S}
         else:
@@ -2564,6 +2729,10 @@ def main():
     g.add_argument("--sting", action="store_true", help="a logo sting will follow the cut (export --sting): the last 2 s "
                                                         "count from the end of the whole video")
     g.add_argument("--card", action="store_true", help="an end card will follow the cut (export --card)")
+    p.add_argument("--corner", action="store_true", help="the export will draw the corner logo (export --corner): the "
+                                                         "brand counts as seen from the first frame")
+    p.add_argument("--hook", action="store_true", help="the export will show a hook headline (export --hook): the video "
+                                                       "counts as opening on its hook")
     p.set_defaults(fn=lambda a: sys.exit(1 if cmd_validate(a)[0] else 0))
     p = sub.add_parser("md"); p.add_argument("edit"); p.set_defaults(fn=cmd_md)
     p = sub.add_parser("shade", help="measure the darkening behind \"Typewriter\" subtitles (reel.json subtitles_shade)")

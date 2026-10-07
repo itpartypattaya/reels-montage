@@ -63,6 +63,7 @@ When a source is enabled, these requests leave your computer:
 - **Stock and meme sites** receive your search queries.
 - **fal.ai** receives your generation prompts and, if you choose, a start frame.
 - **OpenAI**, only for a cloud transcript you asked for: the speech audio of the video.
+- **Groq**, only if you set it as the fallback (`transcription_fallback=groq`) or ask for it: the same speech audio, for the transcript text.
 - **Anthropic, OpenAI or Google**, only for a subtitle translation you asked for: the subtitle text.
 - **Services that need a key** receive their own API key with each request; Openverse needs none.
 - **Your own server**, only if you set one for cut-outs: frames of the span go there over your SSH client and are deleted after the job.

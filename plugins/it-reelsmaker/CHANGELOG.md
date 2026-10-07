@@ -2,6 +2,23 @@
 
 What changed in IT Reelsmaker, written for the people who use it. The newest version is on top. The skill shows a short “What's new” note from this file once, on the first edit after an update.
 
+## 1.8.0
+
+- **Video profiles.** Say what the video is for, or let the skill tell it from the prompt: educational,
+  entertaining, expert clip, promo or paid ad. The profile sets the video's defaults (how many inserts, the
+  scene tone, memes), turns on its own rules and brings a checklist; the plan check measures what it can (length,
+  a slow start, one CTA, the brand in the first seconds, the ad safe zone) and the rest is confirmed before you see
+  the draft. Without a profile a video is edited as before.
+- **Content formats are now settings**: insight, list, case, story, skit, testimonial, intro, job opening, review,
+  event, interview clip, scenes only. Each brings its usual profile and length range, and a job opening may have two
+  calls to action.
+- **The brand tone stays the ceiling, and a brand can have its own tone for one kind of video.** An entertaining skit
+  at a calm brand used to need a manual override in every video; now the brand owner records it once
+  (`brand.py tone <brand> <tone> --profile entertaining`) and those videos follow it.
+- **Paid ads**: text, memes, the CTA and the subtitles are kept inside the ad safe zone (the subtitles are lifted
+  above the platform's caption and button, the corner logo moved down), the brand is checked by 3 s, memes need known
+  rights. The Remotion kit is 1.8.0 for this (`kit.py update` in an existing project).
+
 ## 1.7.1
 
 - **A render no longer fails with “No frame found” when memory is short.** A new Remotion project gets a fixed video
