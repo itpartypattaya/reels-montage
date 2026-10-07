@@ -123,6 +123,42 @@ def test_master_audio_hits_the_loudness_target(project):
 
 @needs_ffmpeg
 @needs_pillow
+def test_master_with_cover_is_one_file_with_its_cover_next_to_it(project):
+    # The cover used to be four optional steps after the master and a second "-final.mp4", and it was forgotten:
+    # --cover builds the master with frame 0 = the cover and the cover art inside, and puts the jpg next to it
+    import subprocess
+    from PIL import Image
+    make_video(project / "render.mp4", 360, 640, 3.0)
+    Image.new("RGB", (1080, 1920), (200, 30, 30)).save(project / "cover.jpg")
+    r = run_script("master_audio.py", "render.mp4", "-o", "out/acme-tip-20261007-master.mp4", "--cover", "cover.jpg",
+                   cwd=project, check=False)
+    assert r.returncode == 0, r.stdout + r.stderr
+    master = project / "out" / "acme-tip-20261007-master.mp4"
+    assert (project / "out" / "acme-tip-20261007-cover.jpg").is_file()
+    assert not list((project / "out").glob("*final*"))
+    out = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "stream=codec_type:stream_disposition=attached_pic",
+                          "-of", "json", str(master)], capture_output=True, text=True).stdout
+    assert [s["disposition"]["attached_pic"] for s in json.loads(out)["streams"]] == [0, 0, 1]
+    before, after = probe_streams(project / "render.mp4"), probe_streams(master)
+    assert abs(float(before["video"]["duration"]) - float(after["video"]["duration"])) < 0.001
+    from conftest import ffmpeg
+    for n in (0, 1):  # the video stream itself (-map 0:v:0), not the 1080x1920 cover art ffmpeg would pick by size
+        ffmpeg("-i", master, "-map", "0:v:0", "-vf", rf"select='eq(n\,{n})'", "-fps_mode", "passthrough", "-frames:v", "1",
+               project / f"f{n}.png")
+    red = lambda n: Image.open(project / f"f{n}.png").convert("RGB").resize((1, 1)).getpixel((0, 0))
+    assert red(0)[0] > 150 and red(0)[1] < 90  # frame 0 is the red cover
+    assert not (red(1)[0] > 150 and red(1)[1] < 90)  # frame 1 is the render
+    r = run_script("master_audio.py", str(master), "--check", cwd=project, check=False)
+    assert r.returncode == 0 and "cover art: embedded" in r.stdout, r.stdout + r.stderr
+    # without a cover: made as before, with a warning
+    r = run_script("master_audio.py", "render.mp4", "-o", "plain.mp4", cwd=project, check=False)
+    assert r.returncode == 0 and "no cover" in r.stdout
+    r = run_script("master_audio.py", "render.mp4", "-o", "x.mp4", "--cover", "missing.jpg", cwd=project, check=False)
+    assert r.returncode != 0 and not (project / "x.mp4").exists()
+
+
+@needs_ffmpeg
+@needs_pillow
 def test_poster_bake_replaces_only_frame_zero(project):
     from PIL import Image
     make_video(project / "render.mp4", 1080, 1920, 3.0)

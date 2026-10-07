@@ -2,6 +2,14 @@
 
 What changed in IT Reelsmaker, written for the people who use it. The newest version is on top. The skill shows a short “What's new” note from this file once, on the first edit after an update.
 
+## 1.9.0
+
+- **The master comes with its cover.** The cover used to be four optional steps after mastering and a second
+  “-final” file, and it was easy to forget. Now the cover is picked before mastering and
+  `master_audio.py … --cover edit/<id>/cover.jpg` builds one file: the cover as its first frame (what messengers
+  show), the cover embedded as the file's thumbnail, and the cover saved next to it as `…-cover.jpg` for uploading
+  it by hand. Mastering without a cover warns; `--check` says whether the cover is in.
+
 ## 1.8.0
 
 - **Video profiles.** Say what the video is for, or let the skill tell it from the prompt: educational,
