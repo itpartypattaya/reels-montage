@@ -18,9 +18,9 @@ Taste lives in `structure.md`, `techniques.md`, `typography.md`, `scenes.md`, `i
 
 | Trust | Mark | Where it lives | What it is |
 |---|---|---|---|
-| **owner** | ⭐ | the brand's `rules.md` (each rule dated, `brand.py rule`), a card marked `owner` in the project playbook, the project's `CLAUDE.md` | a decision of the person or the brand owner, with its date |
+| **owner** | ⭐ | the brand's `rules.md` (each rule dated, `brand.py rule`), the brand tone once the owner chose or confirmed it, a card marked `owner` in the project playbook, the project's `CLAUDE.md` | a decision of the person or the brand owner, with its date |
 | **verified** | 🟢 | a card marked `verified` in the project playbook; in this skill's references, a rule that cites a real case or a test run | checked on edited videos |
-| **external** | ⚪ | the rest of the craft guidance in the references; a card marked `external`; files in `refs/` | advice from guides, articles, other people's videos |
+| **external** | ⚪ | the rest of the craft guidance in the references; a card marked `external`; files in `refs/`; a default nobody confirmed (a brand tone still marked `unconfirmed` in `brand.json`) | advice from guides, articles, other people's videos, the plugin's defaults |
 
 The plugin's references are replaced on every update: the person's own rules never go there, they go into the project
 (below) or the brand folder.

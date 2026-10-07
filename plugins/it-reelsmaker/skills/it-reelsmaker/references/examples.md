@@ -53,4 +53,4 @@ Two messages as the person should see them: the cut plan of step 5 and the repor
 >
 > **Noticed on the way:** the source has a 2-frame black flash at 0:47.2 from the camera; it falls inside the aside that was cut, so it is not in the video.
 >
-> **Supports:** the `quote` scene in `split` → `scenes.md` › Quote (external) + brand `rules.md` 2026-09-20 “quotes only verbatim” (owner); subtitles in the accent style → chosen in step 0; no meme → the brand tone `expert` (owner). Departed from PACE-1 at 0:15–18.8: the quote holds 3.6 s for its reading time (`scenes.md`, reading-time floor). Checklist skipped: music (no licensed track chosen).
+> **Supports:** the `quote` scene in `split` → `scenes.md` › Quote (external) + brand `rules.md` 2026-09-20 “quotes only verbatim” (owner); subtitles in the accent style → chosen in step 0; no meme → the brand tone `expert`, confirmed by the brand owner (owner; a tone the plugin set by default, still marked `unconfirmed`, is only external). Departed from PACE-1 at 0:15–18.8: the quote holds 3.6 s for its reading time (`scenes.md`, reading-time floor). Checklist skipped: music (no licensed track chosen).
