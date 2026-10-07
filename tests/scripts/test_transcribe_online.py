@@ -256,6 +256,11 @@ def test_groq_is_the_fallback_for_the_text_on_local_times(online, project, monke
     assert (local.parent / "IMG_4821.groq.raw.json").is_file()
     out = capsys.readouterr()
     assert "Fallback: groq" in out.err and KEY not in out.out + out.err
+    # the same source again while OpenAI still fails: the fallback's transcript is kept, nothing is sent (Codex review)
+    monkeypatch.setattr(online, "open_url", lambda *a, **k: pytest.fail("the audio was sent again"))
+    with pytest.raises(SystemExit) as ex:
+        online.main(["edit/4821", "IMG_4821.MOV"])
+    assert ex.value.code == 0 and "the fallback; --force to try openai again" in capsys.readouterr().out
 
 
 def test_groq_word_times_are_refused(online, project, monkeypatch, capsys):
@@ -269,3 +274,17 @@ def test_groq_word_times_are_refused(online, project, monkeypatch, capsys):
     with pytest.raises(SystemExit) as ex:
         online.main(["edit/4821", "IMG_4821.MOV", "--provider", "groq", "--words", "cloud", "--yes"])
     assert ex.value.code == 2 and "word times are not used" in capsys.readouterr().err
+
+
+def test_groq_without_local_word_times_says_so(online, project, monkeypatch, capsys):
+    # Codex review: with no local model, --provider groq crashed on the price of word times it does not sell
+    import shutil
+    if not shutil.which("ffmpeg"):
+        pytest.skip("ffmpeg")
+    late_audio_video(project / "IMG_4821.MOV")
+    monkeypatch.setenv("GROQ_API_KEY", KEY)
+    monkeypatch.setattr(online.core, "cmd_full", lambda a: (_ for _ in ()).throw(SystemExit("faster-whisper is not installed")))
+    monkeypatch.setattr(online, "open_url", lambda *a, **k: pytest.fail("nothing is sent"))
+    with pytest.raises(SystemExit) as ex:
+        online.main(["edit/4821", "IMG_4821.MOV", "--provider", "groq", "--yes"])
+    assert ex.value.code == 2 and "gives the text only" in capsys.readouterr().err

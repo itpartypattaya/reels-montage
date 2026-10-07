@@ -304,13 +304,19 @@ def approved(e, provider):
                         str(s.get("transcription_fallback") or "").lower())
 
 
-def fallback_of(e, provider):
-    """The fallback provider from the settings (transcription_fallback), when it is another one and has its key."""
+def fallback_name(e, provider):
+    """The fallback provider named in the settings (transcription_fallback), when it is another known one."""
     try:
         fb = str(load_config(e)[0].get("transcription_fallback") or "").lower()
     except Exception:
         return None
-    return fb if fb in PROVIDERS and fb != provider and api_key(PROVIDERS[fb]["key"]) else None
+    return fb if fb in PROVIDERS and fb != provider else None
+
+
+def fallback_of(e, provider):
+    """The fallback provider from the settings, when it has its key."""
+    fb = fallback_name(e, provider)
+    return fb if fb and api_key(PROVIDERS[fb]["key"]) else None
 
 
 NOTED = set()  # starts of the long words the core's local run has just warned about (see cmd_run)
@@ -371,6 +377,13 @@ def cmd_run(a):
     if out.exists() and not a.force and old.get("source_identity") == identity and old.get("model") == label:
         print(f"cached: {out} ({label}; --force to transcribe again)")
         return 0
+    # the fallback's text, made when the main provider failed, is a finished transcript of the same source: a second run
+    # does not send the audio to both again (Codex review); --force tries the main provider anew
+    fbn = None if cloud_words else fallback_name(e, a.provider)
+    if (fbn and out.exists() and not a.force and old.get("source_identity") == identity
+            and old.get("model") == f"{fbn} {PROVIDERS[fbn]['text_model']} text + faster-whisper timing"):
+        print(f"cached: {out} ({old['model']}, the fallback; --force to try {a.provider} again)")
+        return 0
     size = wav.stat().st_size
     print(f"{src.name}: {secs:.0f} s of audio, {size / 1e6:.1f} MB → {a.provider} {model}, ≈ ${price:.3f}")
     if size > p["max_bytes"]:
@@ -393,6 +406,11 @@ def cmd_run(a):
     if base is not None and not any(w.get("type", "word") == "word" and str(w.get("text", "")).strip()
                                     for w in base.get("words", [])):
         base = None  # the local model heard no words: no times to lay the text on (they would be made up)
+    if base is None and not cloud_words and not p["words_model"]:  # Groq: text only, it needs the local times
+        warn(f"{a.provider} gives the text only and lays it on the local word times, and there are none (no local "
+             f"model, or it heard no words): install the local transcriber (doctor.py) or use another provider. "
+             f"Nothing was sent")
+        return 2
     if base is None and not cloud_words:  # no local model: the cloud's own word times cost more, so ask again
         print(f"no local word times, so they would come from {a.provider} {p['words_model']} at "
               f"≈ ${secs / 60 * p['words_usd_min']:.3f} instead of ≈ ${price:.3f}: nothing was sent. After the "
