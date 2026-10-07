@@ -74,15 +74,15 @@ The length is a soft range: outside it, `validate` warns and the report says why
 ## Checklists
 
 Each item has a permanent id. **auto** — `visual_plan.py validate` checks it and prints `ALL-2 ok` or a warning
-(`AD-1` and `AD-6` are errors); **validate** — an existing check covers it; **agent** — confirmed by the agent on the
+(`AD-1` and a meme without rights under `AD-6` are errors); **validate** — an existing check covers it; **agent** — confirmed by the agent on the
 draft and stills before showing it. Evidence: [platform] official platform guidance, [data] a study with data,
 [standard] an industry standard, [practice] practitioners' advice, [ours] this plugin's own rule. All are ⚪ external
 unless marked “real case” (🟢 verified, `references/playbook.md`); the person's own rule overrides any of them.
 
 ### Every profile
 
-- **ALL-1** (auto) the video starts on speech or a hook within the first second: no logo intro, no greeting, no slow
-  lead-in. [platform] Meta, TikTok and YouTube Shorts all ask for the point within ~3 s; [data] a logo-only opening cut
+- **ALL-1** (auto) the video starts on speech or a hook within the first second (a scene, or the `export --hook`
+  headline: `validate --hook`): no logo intro, no greeting, no slow lead-in. [platform] Meta, TikTok and YouTube Shorts all ask for the point within ~3 s; [data] a logo-only opening cut
   6-second views by 14 % (Vidmob × TikTok).
 - **ALL-2** (auto) the length is within the format's (or the ad's) range.
 - **ALL-3** (auto) one CTA per video: CTA scenes plus the end card; two only for a job opening (`offer`). [ours]
@@ -159,15 +159,18 @@ unless marked “real case” (🟢 verified, `references/playbook.md`); the per
 ### Paid ad
 
 - **AD-1** (auto, error) all text, logos, CTAs, memes and the subtitles stay inside the ad safe zone (x 65–1015,
-  y 269–1248): `export` lifts the subtitles for this profile; full-frame scenes are checked on stills. [platform] Meta.
+  y 269–1248): `export` lifts the subtitles and moves the corner logo down into it (kit 1.8.0); in the framed format
+  the label and the corner logo above the window need the window low enough; full-frame scenes are checked on stills.
+  [platform] Meta.
 - **AD-2** (auto) the brand or the product within 3 s. [platform] Meta, TikTok.
 - **AD-3** (agent) the structure is hook → benefit → CTA, and the CTA matches the campaign's goal. [platform] TikTok.
 - **AD-4** (agent) no CTA button drawn at the bottom: the platform adds its own. [practice]
 - **AD-5** (agent) every claim (“No. 1”, “twice as fast”, “guaranteed”, a result) has its source in `project.md`; no
   before/after for weight loss, no lines that assert the viewer's personal traits (health, money, beliefs).
   [platform] Meta advertising standards, TikTok ad policies.
-- **AD-6** (auto, error) memes and reused clips only with known rights (own, licensed, CC); music only from a licensed
-  or commercial library. [platform] TikTok, Meta.
+- **AD-6** (auto for memes, error; agent for the rest) memes and reused clips only with known rights (own, licensed,
+  CC); music only from a licensed or commercial library. `validate` sees only the memes' rights, so the item is never
+  marked passed: B-roll and music are confirmed by the agent. [platform] TikTok, Meta.
 - **AD-7** (agent) 3–5 hook variants are offered for testing (other opening lines or teaser starts); made on request.
   [platform] TikTok: 3–5 creatives per ad group.
 - **AD-8** (agent) native, not low quality: a source of 720p or more, clear sound. [platform] TikTok.

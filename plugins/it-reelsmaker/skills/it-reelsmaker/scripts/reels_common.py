@@ -429,6 +429,7 @@ FORMATS = ("full", "framed")
 FRAMED_WINDOW = (25, 340, 1030, 1240)
 FRAMED_RADIUS = 50     # px, the window's corners (no feathering)
 FRAMED_PAD = 35        # px: text inside the window keeps this far from its sides (x 60 at the default window)
+CORNER_BOX = (828, 236, 112, 112)  # the kit's corner mark over the video (ReelKit.tsx Corner: right 140, top 236, 112 px)
 FRAMED_LABEL_UP = 48   # px: the caps label's top above the window (28 px letters end ~20 px above its edge)
 FRAMED_HOOK_MIN = 76   # px: the smallest hook line inside the window (the 92-120 px rule needs ~230 px of headroom)
 

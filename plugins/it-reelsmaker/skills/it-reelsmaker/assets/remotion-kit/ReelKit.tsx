@@ -44,6 +44,7 @@ export type ReelKitProps = {
   camera?: Shot[] | null;
   hook?: { text: string; until: number } | null;
   corner?: boolean; // brand mark in the corner
+  cornerTop?: number; // its top over the video (default 236); export: a paid ad's safe zone top (references/profiles.md)
   endCard?: { line1?: string; line2?: string; seconds?: number } | null; // no line1: a logo sting (logo with the tagline)
   scenes?: SceneSpec[] | null; // designed scenes (visual_plan.py export --props → scenes); absent — the video renders as before
   sceneTone?: string | null; // the video's scene tone (reel.json → tone, otherwise the brand tone): for scenes without their own tone
@@ -61,6 +62,7 @@ export type FramedGeo = { win: Box; r: number; video: Box; cx: number; cy: numbe
 export const FRAMED_WINDOW = [25, 340, 1030, 1240];
 const FRAMED_PAD = 35; // text keeps this far from the window's sides (reels_common.FRAMED_PAD)
 const FRAMED_LABEL_UP = 48; // the label's top above the window (reels_common.FRAMED_LABEL_UP)
+const CORNER_TOP = 236; // the corner mark's top over the video (reels_common.CORNER_BOX)
 /** The framed layout's geometry, the same rules as reels_common.py (framed_view, framed_area): the video's cover in the
  *  window; the text area inside the window (x 60–960, y ≤ 1500), with no label the field above the window joins it. */
 export const framedGeometry = (f: Framed): FramedGeo => {
@@ -264,7 +266,7 @@ export const Corner: React.FC<{ p: ReelKitProps }> = ({ p }) => {
   const g = p.framed ? framedGeometry(p.framed) : null;
   const size = g ? framedCornerSize(g) : 112;
   if (size < 56) return null;
-  return <Img src={staticFile(src)} style={{ position: "absolute", right: 140, top: g ? g.win.y - 12 - size : 236, width: size, height: size,
+  return <Img src={staticFile(src)} style={{ position: "absolute", right: 140, top: g ? g.win.y - 12 - size : p.cornerTop ?? CORNER_TOP, width: size, height: size,
     objectFit: "contain", opacity: 0.9 * a }} />;
 };
 

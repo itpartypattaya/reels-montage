@@ -136,3 +136,53 @@ def test_profiles_md_and_the_defaults_name_the_same_items():
             assert doc["content_formats"][k]["profile"] in doc["profiles"]
     in_md = set(re.findall(r"\*\*([A-Z]+-\d+)\*\*", md))
     assert in_md == ids, (sorted(in_md - ids), sorted(ids - in_md))
+
+
+def test_an_ad_export_lifts_an_older_subtitle_band_instead_of_blocking(project):
+    # Codex review: a band an earlier export recorded under the ad zone made validate (and so export) fail
+    e = plan_project(project, {"profile": "ad"})
+    run_script("visual_plan.py", "init", "edit/4821", cwd=project)
+    plan = load_plan(e)
+    plan["subtitles_band"] = [1290, 1427]
+    write_json(e / "visual_plan.json", plan)
+    r = run_script("visual_plan.py", "validate", "edit/4821", "--corner", cwd=project, check=False)
+    assert "AD-1 ok" in r.stdout, r.stdout
+
+
+def test_the_corner_logo_is_checked_in_the_ad_zone(project):
+    # Codex review: the kit's corner mark sits at y 236, above the ad zone; export moves it to the zone's top, and
+    # in the framed format (above the window) it can't move, so it is flagged
+    e = plan_project(project, {"profile": "ad", "format": "framed", "window": [25, 340, 1030, 1240]})
+    run_script("visual_plan.py", "init", "edit/4821", cwd=project)
+    r = run_script("visual_plan.py", "validate", "edit/4821", "--corner", cwd=project, check=False)
+    assert "AD-1 (profile ad)" in r.stdout and "the corner logo above the framed window" in r.stdout
+
+
+def test_the_cta_check_takes_this_runs_ending():
+    # Codex review: export --card was not counted on its first run, and an export without a card still counted the
+    # card of the previous export
+    import argparse
+    import visual_plan as vp
+    plan = {"end_card": {"kind": "card", "seconds": 2.6}, "corner": True}
+    plan["hook"] = True
+    ex = dict(cmd="export", sting=False)
+    assert vp.end_now(argparse.Namespace(**ex, card=None, corner=False, hook=None), plan) == (None, False, False)
+    assert vp.end_now(argparse.Namespace(**ex, card=["Write to us"], corner=True, hook="Hi"), {}) == ("card", True, True)
+    assert vp.end_now(argparse.Namespace(cmd="validate", card=False, sting=False, corner=False, hook=False),
+                      plan) == ("card", True, True)
+
+
+def test_a_hook_headline_covers_the_start_and_ad6_stays_manual(project):
+    # Codex review (PR): an export --hook headline opens the video, so ALL-1 passes with it; AD-6 sees only the memes,
+    # so with none of them bad it is left to the agent (B-roll and music), not marked passed
+    e = plan_project(project, {"profile": "ad"})
+    cap = captions()
+    for w in cap["words"]:
+        w["start"], w["end"] = round(w["start"] + 1.5, 3), round(w["end"] + 1.5, 3)
+    write_json(e / "captions.json", cap)
+    run_script("visual_plan.py", "init", "edit/4821", cwd=project)
+    r = run_script("visual_plan.py", "validate", "edit/4821", cwd=project, check=False)
+    assert "ALL-1 (profile ad)" in r.stdout and "AD-6 ok" not in r.stdout
+    assert "AD-6" in r.stdout.split("confirm by eye")[1]
+    r = run_script("visual_plan.py", "validate", "edit/4821", "--hook", cwd=project, check=False)
+    assert "ALL-1 ok" in r.stdout

@@ -16,7 +16,8 @@ What changed in IT Reelsmaker, written for the people who use it. The newest ver
   at a calm brand used to need a manual override in every video; now the brand owner records it once
   (`brand.py tone <brand> <tone> --profile entertaining`) and those videos follow it.
 - **Paid ads**: text, memes, the CTA and the subtitles are kept inside the ad safe zone (the subtitles are lifted
-  above the platform's caption and button), the brand is checked by 3 s, memes need known rights.
+  above the platform's caption and button, the corner logo moved down), the brand is checked by 3 s, memes need known
+  rights. The Remotion kit is 1.8.0 for this (`kit.py update` in an existing project).
 
 ## 1.7.1
 
