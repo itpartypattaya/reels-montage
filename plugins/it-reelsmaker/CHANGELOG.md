@@ -2,6 +2,13 @@
 
 What changed in IT Reelsmaker, written for the people who use it. The newest version is on top. The skill shows a short “What's new” note from this file once, on the first edit after an update.
 
+## 1.9.1
+
+- **Catalog housekeeping, no change to editing.** The listing icon is no longer shipped inside the plugin (the catalog
+  holds every version with a picture in it for a manual review; the icon is set in the listing instead), and
+  `doctor.py` no longer looks into the model download cache, a folder where access tokens are kept too: it shows the
+  one-time command that downloads the transcription model instead.
+
 ## 1.9.0
 
 - **The master comes with its cover.** The cover used to be four optional steps after mastering and a second
