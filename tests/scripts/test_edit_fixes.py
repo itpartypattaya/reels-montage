@@ -228,3 +228,13 @@ def test_audit_names_the_argument_order(project):
     plan_project(project)
     r = run_script("faces.py", "audit", "edit/4821", "--edit", "edit/4821", cwd=project, check=False)
     assert r.returncode != 0 and "audit out/<render>.mp4 --edit edit/<id>" in r.stderr, r.stdout + r.stderr
+
+
+def test_splice_orders_numeric_string_times_and_keeps_untimed_items_in_place():
+    # Codex review (PR #16): an outside transcript with times as numeric strings ("2.0") sorted every kept word first
+    import transcribe
+    doc = {"words": [{"text": "a", "start": "1.0", "end": "1.4"}, {"text": "b", "start": "2.0", "end": "2.4"},
+                     {"type": "spacing", "text": " "}, {"text": "c", "start": "3.0", "end": "3.4"}]}
+    snip = [{"text": "B", "start": 2.05, "end": 2.5}]
+    words, removed, added = transcribe.splice_words(doc, snip, 1.9, 2.9)
+    assert [w["text"] for w in words] == ["a", " ", "B", "c"] and [w["text"] for w in removed] == ["b"]

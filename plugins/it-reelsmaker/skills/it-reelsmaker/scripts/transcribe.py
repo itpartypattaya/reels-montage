@@ -329,8 +329,22 @@ def splice_words(doc, snip_words, t0, t1):
     removed = [w for w in items if isinstance(w, dict) and in_window(w, t0, t1)]
     added = [dict(w) for w in snip_words if isinstance(w, dict) and in_window(w, t0, t1)]
     kept = [w for w in items if not (isinstance(w, dict) and in_window(w, t0, t1))]
-    start = lambda w: float(w["start"]) if isinstance(w, dict) and isinstance(w.get("start"), (int, float)) else -1.0
-    return sorted(kept + added, key=start), removed, added
+    # the order by start time: any float-compatible start (an outside transcript may write "12.5"), and an item with no
+    # time stays after the item before it rather than jumping to the top (Codex review: numeric strings sorted first)
+    def start(w):
+        try:
+            return float(w["start"])
+        except (KeyError, TypeError, ValueError):
+            return None
+    seq, last = [], -1.0
+    for w in kept:
+        t = start(w) if isinstance(w, dict) else None
+        last = t if t is not None else last
+        seq.append((last, w))
+    for w in added:
+        t = start(w)
+        seq.append((t if t is not None else last, w))
+    return [w for _, w in sorted(seq, key=lambda x: x[0])], removed, added
 
 
 def backup_path(f, doc):
