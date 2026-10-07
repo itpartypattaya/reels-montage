@@ -6,8 +6,8 @@ What changed in IT Reelsmaker, written for the people who use it. The newest ver
 
 - **Catalog housekeeping, no change to editing.** The listing icon is no longer shipped inside the plugin (the catalog
   holds every version with a picture in it for a manual review; the icon is set in the listing instead), and
-  `doctor.py` no longer looks into the model download cache, a folder where access tokens are kept too: it says the
-  transcription model downloads on the first run instead.
+  `doctor.py` no longer looks into the model download cache, a folder where access tokens are kept too: it shows the
+  one-time command that downloads the transcription model instead.
 
 ## 1.9.0
 

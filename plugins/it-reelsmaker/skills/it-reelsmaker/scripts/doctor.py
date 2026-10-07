@@ -82,9 +82,11 @@ def check_python_packages():
     add("OpenCV (faces.py)", "optional", has_module("cv2"), "", INSTALL["opencv"])
     fw = has_module("faster_whisper")
     # the model itself is not looked up: its download cache is where access tokens live too, and the plugin directory
-    # holds a plugin that reads that folder for review (1.9.1); transcribe.py downloads the model on its first run
-    add("faster-whisper (transcribe.py)", "optional", fw, "the model downloads on the first run of transcribe.py" if fw else "",
-        INSTALL["faster-whisper"] + "; to fetch the model ahead: " + INSTALL["whisper-model"])
+    # holds a plugin that reads that folder for review (1.9.1). transcribe.py loads it from disk only (local_files_only)
+    # and stops when it is missing, so the one-time download command is always shown (PR review)
+    add("faster-whisper (transcribe.py)", "optional", fw,
+        "the model is not checked here; download it once before the first transcript: " + INSTALL["whisper-model"] if fw else "",
+        INSTALL["faster-whisper"] + "; then the model, once: " + INSTALL["whisper-model"])
 
 
 def check_node(remotion):
