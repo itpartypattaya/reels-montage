@@ -419,6 +419,13 @@ def cmd_init(a):
         s, prov, doc, bdir, brand = current_settings(e, old)
         plan = build_plan(e, cap, s, prov, doc)
         plan["keep_clear"] = (old or {}).get("keep_clear", [])
+        for d in load_defects(e)[0]:  # defects.py: a span with a bad picture gets the cover hint
+            for g in plan["segments"]:
+                if g["start"] < d["end"] and g["end"] > d["start"]:
+                    g["hints"].append(f"picture {d['id']}: {d['kind']} {fmt_t(d['start'])}-{fmt_t(d['end'])} -> cover it "
+                                      f"(full or code scene, replacing B-roll, cutaway) or accept it")
+        if (old or {}).get("accepted_defects"):
+            plan["accepted_defects"] = old["accepted_defects"]
         save_json(plan_path(e), plan)
     eff, why, dur = plan["effective"], plan["fallback"], plan["duration"]
     print(f"plan: {plan_path(e)}: {len(plan['segments'])} spans, {fmt_t(dur)}"
@@ -723,6 +730,114 @@ def scene_tone(sc, s):
     return sc.get("tone") or s.get("scene_tone") or bt.get("scene_tone") or "calm"
 
 
+# Picture defects (defects.py -> faces_defects.json): a stretch where the sound is good and the picture is not. An insert
+# that covers one says so (`add … --covers d03`); only a full scene, a replacing B-roll (a code scene is one) or a
+# cutaway meme takes the face off screen: overlay, split, panel and window leave it there. The insert has to be on
+# screen from COVER_PAD before the defect to COVER_PAD after it, its entrance finished by then (a fade shows the defect
+# through it); a defect left on purpose is accepted with a reason (`accept`). references/inserts.md, "Covering a bad
+# stretch".
+COVER_PAD = 0.25
+INSERT_IN = {"whip": 5, "slide": 8, "fade": 7}  # frames of an insert's entrance (kit/Inserts.tsx look())
+
+
+def load_defects(e):
+    """faces_defects.json -> (defects, a warning or None)."""
+    path = Path(e) / "faces_defects.json"
+    data = load_json(path)
+    if not data:
+        return [], None
+    cut = Path(e) / "final.mp4"
+    stale = cut.is_file() and cut.stat().st_mtime > path.stat().st_mtime + 1
+    return data.get("defects") or [], (f"{path.name} is older than the rough cut: run defects.py {Path(e).name} again"
+                                       if stale else None)
+
+
+def hides_face(i):
+    k, m = i.get("kind"), i.get("mode")
+    return (k == "scene" and m == "full" and i.get("type") != "cover") or (k == "broll" and m == "replace") \
+        or (k == "meme" and m == "cutaway")
+
+
+def entrance_s(i, s, doc, cap, fps=30):
+    """Seconds until the insert hides what is under it: 0 for a cut; a scene's layout change, an insert's fade."""
+    if i.get("kind") == "scene":
+        tones = {k: v for k, v in (doc.get("scene_tones") or {}).items() if not k.startswith("_")}
+        T = tones.get(scene_tone(i, s)) or tones.get("calm") or {"in": 14, "out": 9}
+        tl = scene_timeline(i, T, i.get("mode"), fps, (cap or {}).get("words") or [])
+        return layout_frames(tl["tin"], T, "in") / fps
+    return INSERT_IN.get(i.get("transition_in") or "cut", 0) / fps
+
+
+def defect_issues(e, plan, s, doc, cap):
+    """-> (errors, warnings, {defect id: how it is handled}) for the picture defects of edit/<id>."""
+    defects, stale = load_defects(e)
+    errs, warns, state = [], ([stale] if stale else []), {}
+    if not defects:
+        return errs, warns, state
+    by_id = {d["id"]: d for d in defects}
+    acc = plan.get("accepted_defects") or {}
+    live = [i for i in plan.get("inserts", []) if i.get("status") != "skipped"]
+    for i in live:
+        for did in i.get("covers") or []:
+            d = by_id.get(did)
+            if not d:
+                errs.append(f"{i['id']}: covers {did}, which faces_defects.json does not have")
+                continue
+            a, b = d["start"] - COVER_PAD, d["end"] + COVER_PAD
+            if not hides_face(i):
+                errs.append(f"{i['id']}: covers {did} ({d['kind']} {fmt_t(d['start'])}-{fmt_t(d['end'])}), but "
+                            f"{i['kind']} {i.get('mode')} leaves the face on screen: a full scene, a replacing B-roll or "
+                            f"a code scene, or a cutaway meme hides it")
+                continue
+            on = i["start"] + entrance_s(i, s, doc, cap)
+            if on > a + 1e-6 or i["start"] + i["dur"] < b - 1e-6:
+                errs.append(f"{i['id']}: covers {did} ({fmt_t(d['start'])}-{fmt_t(d['end'])}) from {fmt_t(on)} "
+                            f"to {fmt_t(i['start'] + i['dur'])}: it must hide the face {COVER_PAD} s before and after "
+                            f"({fmt_t(max(0, a))}-{fmt_t(b)})" + (f"; its {i.get('transition_in')} entrance shows the "
+                                                                  f"defect through it: enter by a cut"
+                                                                  if on > i["start"] + 1e-6 else ""))
+                continue
+            state[did] = f"covered by {i['id']}"
+    for d in defects:
+        if d["id"] in state:
+            continue
+        if d["id"] in acc:
+            state[d["id"]] = f"accepted: {acc[d['id']].get('why', '')}"
+            continue
+        a, b = d["start"] - COVER_PAD, d["end"] + COVER_PAD
+        by = next((i for i in live if hides_face(i) and i["start"] + entrance_s(i, s, doc, cap) <= a + 1e-6
+                   and i["start"] + i["dur"] >= b - 1e-6), None)
+        if by:  # an insert already hides it, without saying so
+            state[d["id"]] = f"covered by {by['id']}"
+            continue
+        state[d["id"]] = "open"
+        warns.append(f"{d['id']}: {d['kind']} {fmt_t(d['start'])}-{fmt_t(d['end'])} ({d.get('detail', '')})"
+                     + (f" under «{d['words'][:40]}»" if d.get("words") else "")
+                     + f": cover it (add … --covers {d['id']}: a full or code scene, a replacing B-roll or a cutaway, "
+                       f"entering by a cut) or accept it (visual_plan.py accept {Path(e).name} {d['id']} --why …)")
+    return errs, warns, state
+
+
+def cmd_accept(a):
+    e = edit_dir(a.edit)
+    defects, _ = load_defects(e)
+    by_id = {d["id"]: d for d in defects}
+    with editing_plan(e) as plan:
+        acc = plan.setdefault("accepted_defects", {})
+        for did in a.ids:
+            if a.remove:
+                acc.pop(did, None)
+                print(f"{did}: no longer accepted")
+                continue
+            d = by_id.get(did)
+            if not d:
+                sys.exit(f"{did}: not in {e / 'faces_defects.json'} (defects.py {e.name})")
+            if not (a.why or "").strip():
+                sys.exit("--why: say why it stays (a natural glance, a gesture, the only take)")
+            acc[did] = {"why": a.why.strip(), "kind": d["kind"], "start": d["start"], "end": d["end"]}
+            print(f"{did}: {d['kind']} {fmt_t(d['start'])}-{fmt_t(d['end'])} accepted: {a.why.strip()}")
+
+
 def default_box(mode):
     return {"overlay": WINDOW_DEFAULT, "split": SPLIT_BOX, "window": WINDOW_SCENE_BOX}.get(mode)
 
@@ -891,6 +1006,8 @@ def add_scene(a):
             sc["frame_at"] = round(a.frame_at, 3)  # the video second under the cover (the cover composition, export -> cover.frameAt)
         if a.cam:
             sc["cam"] = [float(x) for x in a.cam.split(",")]
+        if getattr(a, "covers", None):
+            sc["covers"] = list(a.covers)
         if not only and mode in ("overlay", "split", "window") and sc["box"] is None:
             if mode == "overlay":  # the first free slot, as for a B-roll window, then a low band in the headroom
                 slots = overlay_slots(e, plan, sc)
@@ -1526,6 +1643,8 @@ def cmd_add(a):
             ins["gen"] = {k: "" for k in GEN_FIELDS}
         if a.cam:
             ins["cam"] = [float(x) for x in a.cam.split(",")]
+        if a.covers:
+            ins["covers"] = list(a.covers)
         if kind == "broll" and mode == "window":  # the window box: the given one or the first free slot
             if a.box:
                 ins["box"] = [int(float(x)) for x in a.box.split(",")]
@@ -1846,6 +1965,10 @@ def cmd_validate(a, quiet=False):
                 if not quiet:
                     print(f"{x['id']}: {x['status']} -> {moves[x['id']]}")
                 x["status"] = moves[x["id"]]
+    if not only:  # picture defects (defects.py): covered, accepted, or a warning
+        de, dw, _ = defect_issues(e, plan, s, doc, load_json(e / "captions.json", {}))
+        errs += de
+        warns += dw
     if not quiet:
         for m in errs:
             print("error: " + m)
@@ -1954,6 +2077,13 @@ def cmd_md(a):
               + (f", presenter layer {k['matte']} (counts in the coverage)" if k.get("matte") else "")
               + (f" (scene {k['scene']}, written by export)" if k.get("scene") else "") for n, k in enumerate(keep, 1)]
         L += ["", "Remove a zone: `visual_plan.py keep-clear edit/<id> --remove N`."]
+    defects, _ = load_defects(e)
+    if defects:  # what the person sees about the picture: each defect and how it is handled
+        s_, _p, doc_, _b, _br = current_settings(e, plan)
+        _e, _w, state = defect_issues(e, plan, s_, doc_, load_json(e / "captions.json", {}))
+        L += ["", "## Picture defects (defects.py)", ""]
+        L += [f"- {d['id']} {d['kind']} {fmt_t(d['start'])}-{fmt_t(d['end'])}"
+              + (f" «{d['words']}»" if d.get("words") else "") + f": {state.get(d['id'], 'open')}" for d in defects]
     hs = plan.get("hide_subtitles") or []
     if hs:
         L += ["", "## Subtitles hidden (hide-subs)", ""]
@@ -2699,6 +2829,7 @@ def main():
     p.add_argument("--meme-id"); p.add_argument("--position", default="top")
     p.add_argument("--box", help="the window box x,y,w,h (B-roll --mode window); without it, the first free slot")
     p.add_argument("--cam", help="z,cx,cy of the camera at this point: the rough cut's faces are checked in screen coordinates")
+    p.add_argument("--covers", nargs="+", metavar="DNN", help="picture defects this insert covers (defects.py: d01…)")
     g = p.add_argument_group("scene (--kind scene)")
     g.add_argument("--type", choices=list(SCENE_TYPES)); g.add_argument("--lines", nargs="+", metavar="LINE")
     g.add_argument("--accent"); g.add_argument("--label"); g.add_argument("--source-ref", help="where the text or number comes from")
@@ -2721,6 +2852,10 @@ def main():
     p.add_argument("--why"); p.add_argument("--remove", type=int, nargs="+", metavar="N",
                                             help="remove window N (numbered in visual_plan.md, from 1)")
     p.set_defaults(fn=cmd_hide)
+    p = sub.add_parser("accept", help="leave a picture defect on purpose (defects.py), with a reason")
+    p.add_argument("edit"); p.add_argument("ids", nargs="+", metavar="DNN"); p.add_argument("--why")
+    p.add_argument("--remove", action="store_true", help="take the acceptance back")
+    p.set_defaults(fn=cmd_accept)
     p = sub.add_parser("remove", help="take inserts out of the plan"); p.add_argument("edit")
     p.add_argument("ids", nargs="+", help="insert ids: c03, b01, m02")
     p.set_defaults(fn=cmd_remove)

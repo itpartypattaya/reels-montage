@@ -2,6 +2,13 @@
 
 What changed in IT Reelsmaker, written for the people who use it. The newest version is on top. The skill shows a short “What's new” note from this file once, on the first edit after an update.
 
+## 1.11.0
+
+- **A bad picture on a good take.** `defects.py` finds the stretches where the sound is fine and the picture is not:
+  the speaker turned away or looked down, the face left the frame or blurred, someone else walked in. The plan then
+  covers each one (a full or code scene, a replacing B-roll, a cutaway, entering by a cut) or keeps it with a reason;
+  the plan check says when an insert meant to cover a defect does not, and the storyboard sheet can show every one.
+
 ## 1.10.0
 
 - **Takes found by the text.** `structure.py suggest` lists pairs of lines said twice, openings said again and
