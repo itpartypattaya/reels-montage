@@ -219,3 +219,21 @@ def test_a_check_with_frames_missing_from_the_log_does_not_pass(project, monkeyp
         tc.main()
     assert x.value.code == 1 and "incomplete: frames 12 were not measured" in capsys.readouterr().out
     assert json.loads((e / "textcheck.json").read_text(encoding="utf-8"))["missing"] == [12]
+
+
+def test_a_scene_without_its_own_tone_is_timed_by_the_videos_tone_and_mid_entrance_is_the_middle():
+    # review: a scene with no tone was timed as calm while the kit drew props.sceneTone; the mid-entrance frame of an
+    # overlay fade was halved twice (frame 3 of a 14-frame entrance instead of 7)
+    import board as bd
+    import visual_plan as vp
+    sc = scene(tone=None)
+    T = DOC["scene_tones"]["punchy"]
+    tl = vp.scene_timeline(sc, T, "overlay", FPS, [], False)
+    full = vp.text_full_on(sc, "quote", ["One line"], tl, FPS, [])
+    assert bd.panels(props(scenes=[sc], sceneTone="punchy"), {}, DOC, FPS)[0]["frame"] == 150 + full + 9
+    fade = scene(transition_in="fade")
+    mids = [p for p in bd.panels(props(scenes=[fade]), {}, DOC, FPS, transitions=True) if p["what"] == "mid-transition"]
+    assert [p["frame"] for p in mids] == [150 + DOC["scene_tones"]["calm"]["in"] // 2]
+    split = scene(mode="split", transition_in="fade")
+    mids = [p for p in bd.panels(props(scenes=[split]), {}, DOC, FPS, transitions=True) if p["what"] == "mid-transition"]
+    assert [p["frame"] for p in mids] == [150 + vp.layout_frames("fade", DOC["scene_tones"]["calm"], "in") // 2]

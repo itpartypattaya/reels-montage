@@ -135,7 +135,11 @@ def panels(props, plan, doc, fps, shots=False, transitions=False):
     for sc in props.get("scenes") or []:
         if sc.get("type") == "cover":
             continue
-        T = tones.get(sc.get("tone")) or tones.get("calm") or {"in": 14, "out": 9}
+        # the tone as the kit picks it (tones.ts pickTone): the scene's own → the video's (props.sceneTone) → the
+        # brand's → calm (review: a scene without its own tone was timed as calm while the kit drew the video's tone)
+        own = [x for x in (sc.get("tone"), props.get("sceneTone"), ((props.get("brand") or {}).get("tone") or {}).get("scene_tone"))
+               if x in tones]
+        T = tones.get(own[0] if own else "calm") or {"in": 14, "out": 9}
         mode, typ = sc.get("mode"), sc.get("type")
         tl = vp.scene_timeline(sc, T, mode, fps, words, only)
         lines = (sc.get("text") or {}).get("lines") or []
@@ -151,8 +155,11 @@ def panels(props, plan, doc, fps, shots=False, transitions=False):
         note = (what.get(sc.get("id")) or {}).get("what") or ""
         add(start + k, f"{sc.get('id')} {typ}/{mode}", body, sc.get("sound"), tl["tin"], tl["tout"], note)
         if transitions and tl["tin"] != "cut":
-            mid = max(vp.layout_frames(tl["tin"], T, "in"), tl["inF"]) // 2
-            add(start + tl["lead"] // 2 + mid // 2, f"{sc.get('id')} in:{tl['tin']} (mid)", body, tin=tl["tin"], note="mid-transition")
+            # the most blended frame: the middle of the layout change (split/panel/window/full: the speaker moves
+            # away), or of the content's own entrance in overlay, which changes no layout (review: it was halved twice)
+            lay = vp.layout_frames(tl["tin"], T, "in") if mode != "overlay" else 0
+            add(start + (lay // 2 if lay else tl["lead"] + tl["inF"] // 2), f"{sc.get('id')} in:{tl['tin']} (mid)", body,
+                tin=tl["tin"], note="mid-transition")
     for ins in props.get("inserts") or []:
         mid = (float(ins["start"]) + float(ins["dur"]) / 2) * fps
         add(mid, f"{ins.get('id')} {ins.get('kind')}/{ins.get('mode') or ''}".rstrip("/"),
