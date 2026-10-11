@@ -4,7 +4,7 @@ picture, numbered, before the full render. The person answers by number ("3 and 
 per minute of video on a laptop) runs once the sheet is approved.
 
     python scripts/board.py edit/4821 [--props edit/4821/reelkit-props.json] [--remotion reels] [--comp ReelKit]
-        [--shots] [--transitions] [--cols 5] [--per-page 20] [--scale 0.3334]
+        [--shots] [--transitions] [--defects] [--cols 5] [--per-page 20] [--scale 0.3334]
 
 When: after `visual_plan.py export … --props` (step 8), before `npx remotion render`. Again after fixes: it is cheap.
 
@@ -13,7 +13,8 @@ How:
      each insert and card is): a scene at the moment its whole text is on screen + 0.3 s (the timing validate uses,
      kit/scenes/tones.ts), never past its settled window; B-roll, a meme, a graphics card (keep_clear) at their middle;
      the hook headline and the end card once settled. --shots adds a frame per camera shot, --transitions the middle of
-     every smooth scene entrance (a muddy double exposure shows there).
+     every smooth scene entrance (a muddy double exposure shows there), --defects the middle of every picture defect
+     of defects.py with how it is handled (covered by …, accepted, open).
   2. One Remotion call renders them all: the props get `sample.frames`, frame k of the composition shows frame
      frames[k] of the video, frozen (kit/Sample.tsx, kit 1.10.0+), `render --sequence --frames=0-(n-1)`. Measured on a
      58 s video: 4 frames in 9 s, the same 4 as separate stills in 41 s, bit-identical to them. A per-video composition
@@ -114,8 +115,9 @@ def fmt_s(t):
     return f"{t:.1f}s"
 
 
-def panels(props, plan, doc, fps, shots=False, transitions=False):
-    """-> [{frame, label, text, sound, tin, tout, what}] sorted by frame; one panel per frame."""
+def panels(props, plan, doc, fps, shots=False, transitions=False, defects=()):
+    """-> [{frame, label, text, sound, tin, tout, what}] sorted by frame; one panel per frame. defects: picture defects
+    (defects.py) as [(defect, how it is handled)], a panel at the middle of each."""
     import visual_plan as vp
     tones = {k: v for k, v in (doc.get("scene_tones") or {}).items() if not k.startswith("_")}
     words = (props.get("captions") or {}).get("words") or []
@@ -172,6 +174,8 @@ def panels(props, plan, doc, fps, shots=False, transitions=False):
             nxt = cam[i + 1]["t"] if i + 1 < len(cam) else props["captions"]["duration"]
             add((float(sh["t"]) + min(0.5, (float(nxt) - float(sh["t"])) / 2)) * fps, f"shot z{float(sh.get('z', 1)):.2f}",
                 note="camera shot")
+    for d, how in defects:
+        add((d["start"] + d["end"]) / 2 * fps, f"{d['id']} {d['kind']}", d.get("words") or "", note=how)
     card = props.get("endCard")
     if card:
         v = round(float(props["captions"]["duration"]) * fps)
@@ -247,6 +251,7 @@ def main():
     ap.add_argument("--comp", default="ReelKit", help="composition (a per-video Reel<id> must wrap its content in <Sampled>)")
     ap.add_argument("--shots", action="store_true", help="also a frame per camera shot")
     ap.add_argument("--transitions", action="store_true", help="also the middle of every smooth scene entrance")
+    ap.add_argument("--defects", action="store_true", help="also the middle of every picture defect (defects.py): is it covered")
     ap.add_argument("--cols", type=int, default=5)
     ap.add_argument("--per-page", type=int, default=20)
     ap.add_argument("--scale", type=float, default=0.3334, help="render scale (0.3334: 360x640 panels)")
@@ -262,7 +267,14 @@ def main():
     plan = vp.load_plan(e) if vp.plan_path(e).is_file() else {}
     _s, _prov, doc, _bdir, _brand = vp.current_settings(e, plan)
     fps = (doc.get("scenes") or {}).get("fps", 30)
-    pans = panels(props, plan, doc, fps, a.shots, a.transitions)
+    found = []
+    if a.defects:
+        d_all, stale = vp.load_defects(e)
+        if stale:
+            print("warning: " + stale)
+        _e, _w, state = vp.defect_issues(e, plan, _s, doc, load_json(e / "captions.json", {}) or {})
+        found = [(d, state.get(d["id"], "open")) for d in d_all]
+    pans = panels(props, plan, doc, fps, a.shots, a.transitions, found)
     if not pans:
         sys.exit("nothing to put on the sheet: no hook, scenes, inserts, cards or end card in the props "
                  "(--shots adds the camera shots)")

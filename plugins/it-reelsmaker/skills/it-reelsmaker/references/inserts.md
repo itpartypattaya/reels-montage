@@ -145,6 +145,33 @@ It is handy to anchor the insert to a word: “start of the 1st occurrence of th
 1. The plan is shown to the person in full; if the online-sources add-on `it-reelsmaker-online` added downloads or paid actions, it comes with their list (source, MB, ≈ $).
 2. Rendering scenes, any download and any paid action happen **only after the person's approval (“yes”)**.
 
+## Covering a bad stretch (a picture defect)
+
+The sound is good, the picture is not: the speaker turned away or looked down at notes, the face left the frame, the
+face blurred (motion, focus), someone else walked in. `defects.py edit/<id>` finds these on the rough cut (step 6,
+after `faces.py scan`) and writes `faces_defects.json`: `d01`, `d02`… with the kind, the time and the words heard under
+it. Not found: a blink (not a defect anyway), eyes looking down at notes with the head level, a slight turn; a natural glance while thinking is often fine: look at it before covering.
+
+**In order of preference:**
+1. **another take** of the same line, if the speech has one (step 3): no insert at all;
+2. **another angle** of a multicamera cut;
+3. **a shot change** when the defect is at the edge of the frame (someone walking in at the side): a closer shot crops it;
+4. **a cutaway from the same footage** (`extract` in `cut.json`: hands, the product, the room);
+5. **a `full` designed scene or a code scene** about the words heard under the defect: a number, a list item, the idea
+   acted out, not filler;
+6. **B-roll** that replaces the frame.
+
+**What hides the face:** a `full` scene, a B-roll in `replace` mode (a code scene is one), a meme in `cutaway` mode.
+`overlay`, `split`, `panel` and `window` keep the speaker on screen: the defect stays visible, only smaller.
+
+**Timing:** the insert is on screen from 0.25 s before the defect to 0.25 s after it, and has finished entering by
+then and still there: enter and leave by a cut (a fade or a slide shows the defect through it for 7–14
+frames); leave in a pause or at a word boundary. Only a ready insert counts as covering (the export takes only ready
+ones); an acceptance holds for its stretch only, and a re-cut that moves the defect asks again. Mark it in the plan: `visual_plan.py add … --covers d03`; `validate` fails an insert that says it covers a
+defect and does not (wrong mode, too short, entering over it), and warns about a defect nothing covers. A defect left on
+purpose: `visual_plan.py accept edit/<id> d03 --why "a natural glance"` (into the report). `board.py --defects` puts a
+panel at the middle of every defect, so the person sees it covered.
+
 ## Modes and transitions
 
 | Mode | What | When |

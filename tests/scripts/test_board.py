@@ -237,3 +237,10 @@ def test_a_scene_without_its_own_tone_is_timed_by_the_videos_tone_and_mid_entran
     split = scene(mode="split", transition_in="fade")
     mids = [p for p in bd.panels(props(scenes=[split]), {}, DOC, FPS, transitions=True) if p["what"] == "mid-transition"]
     assert [p["frame"] for p in mids] == [150 + vp.layout_frames("fade", DOC["scene_tones"]["calm"], "in") // 2]
+
+
+def test_a_picture_defect_gets_a_panel_with_how_it_is_handled():
+    import board as bd
+    d = {"id": "d01", "kind": "turned", "start": 4.0, "end": 4.6, "words": "a glance away"}
+    pans = bd.panels(props(), {}, DOC, FPS, defects=[(d, "covered by b01")])
+    assert [(p["frame"], p["label"], p["what"], p["text"]) for p in pans] == [(129, "d01 turned", "covered by b01", "a glance away")]
