@@ -22,6 +22,18 @@ original order: a mechanic goes in only when the person picks it.
    folder whose `cut.json` or `transcripts/` has the file, or whose notes name the file itself (`sunrise.mp4`, a camera
    name like `IMG_1234`), not a word it shares with a brand (read their notes first: what was chosen then, what the
    person changed).
+   **Take candidates** (`structure.json → retakes[]`, block “Takes”): the transcript is cut into stretches (a pause
+   > 0.85 s, a sentence end after 7.5 s, 16 s, a speaker change, the edges of a run of ≥ 3 words with estimated times:
+   a take only the cloud transcript heard). Two stretches whose first 18 significant word stems (5 letters, so a
+   cut-off word matches) overlap by Jaccard ≥ 0.34 are a `take` (high from 0.45; from 0.24 with 2 of the first 4
+   shared: review); a short opening (< 6 s) said again within 12 s, or a run of words said again inside the speech, is
+   a `false start`; a whole sentence said again word for word is a `take` to review; a word said twice, or marked cut
+   off (“skil...”) and said whole, is a `stutter`. A restart word at the seam (“wait”, “once more”) raises the
+   confidence. The phrases of the earlier member get `take?` and leave the teaser list. Which take stays is your call
+   (SKILL.md step 3): real edits kept the first as often as the last. Tuned on real videos: every take the text shows
+   was found and none on clean footage; a repeat the recognizer merged into one word stays sign 1 (`retake?`). The
+   text-similarity idea is adapted from the cut-mistakes script of
+   [hyperframes-student-kit](https://github.com/nateherkai/hyperframes-student-kit), reworked for any script and stems.
 3. Read the transcript yourself: the script sees signs, not meaning. What is funny, controversial, surprising or the
    payoff is your call.
 4. Build 2–3 variants; each is “start → middle → end”, the final length, why it works for this video, and the risk.

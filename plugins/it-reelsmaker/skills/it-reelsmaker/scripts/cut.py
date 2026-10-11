@@ -54,6 +54,8 @@ as a pause (T4: a quiet two-letter word at -35..-40 dBFS under a -33.6 threshold
 without a word). Check it by ear; lower speech_mask.py --thr or extend the range over it.
 A word the transcript marks "est": true (heard only by a cloud transcript, its time estimated) that the cut shows
 is named too, in --dry-run as well: listen, and remove it with fix_at -> "" if it is not said.
+Two adjacent pieces whose subtitles share an identical run of 3+ words are named as well (a whole take left in next to
+its repeat: "the video jumps back"); a piece that replays the same seconds of its source (a teaser) is not.
 extract     extra clips from the sources for Remotion (cutaways from the same footage), same color, no sound:
             edit/<id>/<name>.mp4. A B-roll insert from the project's own videos gets the same look too:
             footage.py pick (project footage) and footage.py prepare --look edit/<id>.
@@ -74,13 +76,14 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from reels_common import (brand_file, edit_dir, inside, load_config, load_json, probe, project_root, run, safe_slug, save_json,
-                          speaker_of, utf8_stdio, warn)
+                          significant, speaker_of, take_words, utf8_stdio, warn)
 
 FADE = 0.03
 MIN_WORD = 0.08  # s: the shortest word on the subtitle timeline
 LUT_MIX = 0.6
 REPLAY = 0.2     # s: two pieces of one source overlapping by more than this replay the same speech (a teaser, a restart)
 GAP_MAX = 1.0    # s: a gap this short between two pieces of one pass is a removed pause, not a dropped line
+JOIN_REPEAT = 3  # words: an identical run this long in two adjacent pieces is a take said twice (repeats_at_joins)
 
 
 def resolve(p, project, e):
@@ -472,6 +475,35 @@ def estimated_words(c, words, captions):
             if w.get("est") and (src, round(w["start"], 3)) in shown]
 
 
+def repeats_at_joins(c, captions):
+    """An identical run of JOIN_REPEAT words or more (two of them significant, as structure.py compares takes) in the
+    subtitles of two adjacent pieces -> [(range index of the first piece, the words, its source second, the second
+    piece's source second)]: a whole take left in next to its repeat, which the video shows as "it jumps back"
+    (SKILL.md step 6 asked for this check by eye). Not a replay: a piece that shows the same seconds of its source
+    again (a teaser in its place, not same_pass) repeats on purpose."""
+    by = {}
+    for w in captions:
+        by.setdefault(w["seg"], []).extend((t, w["src"]) for t in take_words(w["text"]))
+    rs, out = c["ranges"], []
+    for k in range(len(rs) - 1):
+        a, b = by.get(k, []), by.get(k + 1, [])
+        if rs[k]["source"] == rs[k + 1]["source"] and not same_pass(rs[k], rs[k + 1]):
+            continue
+        best = None
+        for i in range(len(a)):
+            for j in range(len(b)):
+                n = 0
+                while i + n < len(a) and j + n < len(b) and a[i + n][0] == b[j + n][0]:
+                    n += 1
+                if (n >= JOIN_REPEAT and sum(1 for t, _ in a[i:i + n] if significant(t)) >= 2
+                        and (best is None or n > best[0])):
+                    best = (n, i, j)
+        if best:
+            n, i, j = best
+            out.append((k, " ".join(t for t, _ in a[i:i + n]), a[i][1], b[j][1]))
+    return out
+
+
 def hidden_at_edges(c, words, captions, skip=()):
     """Transcript words that a piece holds a part of (>= EDGE_TOUCH) but the subtitles leave out: owner() found them
     mostly outside the cut. Right for the tail of a removed line; wrong for a word heard inside whose time the
@@ -607,6 +639,10 @@ def main():
         warn(f"the word «{text}» ({src} {ws:.2f}) was heard only by the cloud transcript and its time is "
              f"estimated: listen; remove it with fix_at -> \"\" if it is not said "
              f"({json.dumps({'text': text, 'at': round(ws, 2), 'to': ''}, ensure_ascii=False)})")
+    for k, text, ta, tb in repeats_at_joins(c, captions):
+        warn(f"ranges {k} and {k + 1} both say «{text}» ({c['ranges'][k]['source']} {ta:.2f} and "
+             f"{c['ranges'][k + 1]['source']} {tb:.2f}): an identical run of {JOIN_REPEAT}+ words at adjacent pieces, a "
+             f"whole missed take? Keep one take (SKILL.md step 3); a repeat said on purpose stays")
     if a.dry_run:
         return
     clips = e / "clips"

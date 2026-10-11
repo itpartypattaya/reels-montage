@@ -127,6 +127,52 @@ def test_cut_names_words_the_cloud_transcript_only_estimated(project):
     assert "heard only by the cloud" not in r.stderr
 
 
+def test_cut_names_a_take_said_twice_at_adjacent_pieces():
+    # SKILL.md step 6 asked to look for an identical run of 3+ words at adjacent pieces by eye: a whole take left in
+    # next to its repeat ("the video jumps back"). A teaser replayed in its place repeats on purpose
+    import cut
+
+    def plan(ranges):
+        return {"fps": 30, "sources": {"main": {"speed": 1, "info": {"dur": 20}, "path": None}},
+                "ranges": [{"source": "main", "beat": "", "start": a, "end": b} for a, b in ranges], "fix": {}, "fix_at": []}
+
+    def said(text, t):
+        return [{"text": x, "start": t + 0.3 * k, "end": t + 0.3 * k + 0.25} for k, x in enumerate(text.split())]
+    words = {"main": said("Worked with objections. And so?", 0.5) + said("Worked with objections. What changed?", 6.5)
+             + said("Then the end of it.", 12.5)}
+    c = plan([(0, 4), (6, 10), (12, 14)])
+    _, caps, _ = cut.timeline(c, words)
+    assert cut.repeats_at_joins(c, caps) == [(0, "worked with objections", 0.5, 6.5)]
+    # the same line at pieces that are not adjacent, a teaser shown again inside its piece, two function words: no
+    for ranges in ([(0, 4), (12, 14), (6, 10)], [(6, 8), (6, 10), (12, 14)]):
+        c = plan(ranges)
+        _, caps, _ = cut.timeline(c, words)
+        assert cut.repeats_at_joins(c, caps) == [], ranges
+    c = plan([(0, 4), (6, 10)])
+    _, caps, _ = cut.timeline(c, {"main": said("And so it is.", 0.5) + said("And so it goes.", 6.5)})
+    assert cut.repeats_at_joins(c, caps) == []
+
+
+@needs_ffmpeg
+def test_cut_warns_about_a_take_said_twice(project):
+    e = cut_project(project)
+    doc = json.loads((e / "cut.json").read_text(encoding="utf-8"))
+    tr = {"words": [{"text": t, "start": s, "end": s + 0.3, "type": "word"} for t, s in
+                    (("Worked", 0.5), ("with", 0.85), ("objections.", 1.2), ("Worked", 4.5), ("with", 4.85),
+                     ("objections.", 5.2))]}
+    write_json(e / "transcripts" / "IMG_4821.json", tr)
+    doc.update(ranges=[{"source": "main", "start": 0.4, "end": 1.8}, {"source": "main", "start": 4.4, "end": 5.8}],
+               fix={}, fix_at=[], retime=[])
+    write_json(e / "cut.json", doc)
+    r = run_script("cut.py", "edit/4821", "--dry-run", cwd=project)
+    assert "ranges 0 and 1 both say «worked with objections» (main 0.50 and main 4.50)" in r.stderr, r.stderr
+    doc["ranges"] = [{"source": "main", "start": 4.4, "end": 5.8, "beat": "teaser"}, {"source": "main", "start": 0.4,
+                                                                                       "end": 5.8}]
+    write_json(e / "cut.json", doc)
+    r = run_script("cut.py", "edit/4821", "--dry-run", cwd=project)
+    assert "both say" not in r.stderr  # the teaser replays seconds of the next piece on purpose
+
+
 # 5. transcribe.py splice
 
 MAIN = {"language_code": "ru", "text": "one two three four", "source": "IMG_4821.MOV", "model": "x",

@@ -312,6 +312,29 @@ def test_framed_cover_corner_and_label():
     assert "1080 - 140 - cs - 16" in label
 
 
+def test_sampled_render_and_text_probe():
+    # board.py / textcheck.py: props.sample freezes frames[k] on frame k. Remotion clamps a frozen frame to the
+    # composition's length (a 4-frame composition froze frame 935 at frame 3), so the length stays the video's. The probe
+    # measures from the composition root (else y came out near -1e6) after the other delayRenders (else the first frame
+    # of every tab was measured before the kit's fonts and its line breaks).
+    reel = (KIT / "ReelKit.tsx").read_text(encoding="utf-8")
+    meta = reel.split("export const reelKitMetadata")[1].split("});")[0]
+    assert "sample" not in meta
+    assert "<Sampled sample={p.sample}><ReelKitFrame {...p} /></Sampled>" in reel
+    sample = (KIT / "kit" / "Sample.tsx").read_text(encoding="utf-8")
+    assert "<Freeze frame={f}>" in sample and "getBoundingClientRect()" in sample and "remotion_delayRenderTimeouts" in sample
+    assert 'const PROBE = "RK_TEXT ";' in sample
+    import textcheck
+    assert textcheck.PROBE == "RK_TEXT "
+    # media: false reaches every video and image layer the kit draws
+    for f, n in (("ReelKit.tsx", 2), ("kit/Inserts.tsx", 1), ("kit/Presenter.tsx", 1), ("kit/scenes/Ui.tsx", 1)):
+        assert (KIT / f).read_text(encoding="utf-8").count("useMedia()") == n, f
+    # the kit's text carries data-rk groups
+    for f, g in (("ReelKit.tsx", 'data-rk="hook"'), ("ReelKit.tsx", 'data-rk="endcard"'), ("ReelKit.tsx", 'data-rk="label"'),
+                 ("kit/Subtitles.tsx", 'data-rk="sub"'), ("kit/scenes/SceneLayer.tsx", "data-rk={`scene:${s.id}`}")):
+        assert g in (KIT / f).read_text(encoding="utf-8"), (f, g)
+
+
 def test_update_hints_name_the_real_script_paths(project):
     """kit.py check and doctor.py print commands that work from the project folder: the script's real path, quoted."""
     from pathlib import Path

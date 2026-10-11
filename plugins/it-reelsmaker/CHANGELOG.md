@@ -2,6 +2,17 @@
 
 What changed in IT Reelsmaker, written for the people who use it. The newest version is on top. The skill shows a short “What's new” note from this file once, on the first edit after an update.
 
+## 1.10.0
+
+- **Takes found by the text.** `structure.py suggest` lists pairs of lines said twice, openings said again and
+  stutters, with times, clean cut ranges and a confidence; it does not pick the take to keep. The earlier take is no
+  longer offered as a teaser, and `cut.py` warns when two adjacent pieces of the rough cut say the same 3+ words.
+- **The storyboard sheet before the render.** `board.py` puts a settled frame of every scene, insert and card on one
+  numbered picture in seconds; you answer “3 and 7: redo” before the full render instead of after it.
+- **Text checked on the frame.** `textcheck.py` measures every piece of text the video draws, every 0.1 s: text cut
+  off by the frame, two texts on top of each other, text on a face; it sees a per-video composition too.
+- Kit 1.10.0 (`kit.py update`): the sampled render and the text probe these two use.
+
 ## 1.9.1
 
 - **Catalog housekeeping, no change to editing.** The listing icon is no longer shipped inside the plugin (the catalog

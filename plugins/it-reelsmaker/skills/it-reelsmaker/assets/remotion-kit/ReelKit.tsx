@@ -18,6 +18,9 @@ import { Brand, Look, alpha, fullLogoOnDark, logoOnDark, styleLook, useLookFonts
 import { neutralBrand } from "./kit/defaultBrand";
 import { BrollLayer, Insert, MemeLayer } from "./kit/Inserts";
 import { Captions, KitSubtitles, SubtitleMode } from "./kit/Subtitles";
+import { Sample, Sampled, useMedia } from "./kit/Sample";
+export { MediaOn, Sampled, TextProbe, useMedia } from "./kit/Sample";
+export type { Sample } from "./kit/Sample";
 import { breakLines, fitSize, useFontsReady } from "./kit/Phrase";
 import { COVER_ZONE, COVER_ZONE_LOW, Cover, CoverText, ResolvedTone, SceneFrameBox, SceneLayer, SceneSpec, contrast, resolveBrandTone, sceneActivity,
   sceneHideIntervals, speakerRectAt, withRollTone } from "./kit/scenes";
@@ -50,6 +53,8 @@ export type ReelKitProps = {
   sceneTone?: string | null; // the video's scene tone (reel.json → tone, otherwise the brand tone): for scenes without their own tone
   cover?: SceneSpec | null; // cover scene (not part of the video — the ReelCover composition takes it with the same props)
   framed?: Framed | null; // the “framed” format (visual_plan.py export from reel.json format: framed); absent — the full frame
+  // board.py / textcheck.py: frame k shows frame frames[k] of the video, frozen; render --frames=0-(n−1) (kit/Sample.tsx)
+  sample?: Sample | null;
 };
 
 // The “framed” format: window — x, y, w, h on the 1080×1920 screen (reel.json → window, default 25, 340, 1030, 1240);
@@ -135,7 +140,8 @@ const Footage: React.FC<{ p: ReelKitProps; bt: ResolvedTone }> = ({ p, bt }) => 
     const k = interpolate(t, [seg.out_start, seg.out_start + seg.out_dur], [0, 1], clamp);
     z = seg.i % 2 === 0 ? 1 + 0.05 * k : 1.05 - 0.05 * k;
   }
-  if (!p.video) return null;
+  const media = useMedia(); // before the early returns
+  if (!p.video || !media) return null;
   if (p.framed) return <FramedFootage p={p} z={z} />;
   const cam = p.camera?.length ? cameraAt(p.camera, t, p.captions.duration, KIT_FPS) : null;
   // speaker frame from the scenes (split/panel/window); without scenes — the whole frame. The markup is the same on every frame: the video
@@ -159,7 +165,8 @@ const Footage: React.FC<{ p: ReelKitProps; bt: ResolvedTone }> = ({ p, bt }) => 
  *  (x' = (x − cx)·z + the window's center), clamped to the window. z — the template's drift when there is no camera. */
 export const FramedFootage: React.FC<{ p: ReelKitProps; z?: number }> = ({ p, z = 1 }) => {
   const frame = useCurrentFrame();
-  if (!p.framed || !p.video) return null;
+  const media = useMedia();
+  if (!p.framed || !p.video || !media) return null;
   const t = frame / KIT_FPS;
   const g = framedGeometry(p.framed);
   const view = { win: g.win, video: g.video };
@@ -217,7 +224,7 @@ export const FramedLabel: React.FC<{ p: Pick<ReelKitProps, "framed" | "brand" | 
   const size = fitSize({ text: g.label, size: 28, font, weight: 600, maxWidth, tracking: 0.2, upper: true, ready });
   const a = still ? 1 : interpolate(frame, [2, 16], [0, 1], { ...clamp, easing: easeOut });
   return (
-    <div style={{ position: "absolute", left: g.area.x, top: Math.max(220, g.win.y - FRAMED_LABEL_UP), fontFamily: font, fontWeight: 600,
+    <div data-rk="label" style={{ position: "absolute", left: g.area.x, top: Math.max(220, g.win.y - FRAMED_LABEL_UP), fontFamily: font, fontWeight: 600,
       fontSize: size, lineHeight: 1, letterSpacing: "0.2em", textTransform: "uppercase", whiteSpace: "nowrap", color: ink, opacity: a,
       transform: `translateY(${(1 - a) * 12}px)` }}>
       {g.label}
@@ -245,7 +252,7 @@ const Hook: React.FC<{ p: ReelKitProps; look: Look; font: string }> = ({ p, look
   const maxW = g ? g.area.w : 900;
   const size = Math.min(100, ...lines.map((l) => fitSize({ text: l, size: 100, font, weight: 800, maxWidth: maxW, padEm: 0.2, ready })));
   return (
-    <div style={{ position: "absolute", left: g ? g.area.x : 60, top: g ? g.area.y + 10 : 300, opacity: out }}>
+    <div data-rk="hook" style={{ position: "absolute", left: g ? g.area.x : 60, top: g ? g.area.y + 10 : 300, opacity: out }}>
       {lines.map((l, k) => (
         <div key={k}>
           <Mark look={look} font={font} size={size} p={interpolate(frame, [3 + 5 * k, 12 + 5 * k], [0, 1], { ...clamp, easing: easeOut })}>{l}</Mark>
@@ -298,7 +305,7 @@ export const EndCard: React.FC<{ p: ReelKitProps; look: Look; fonts: { heading: 
   const st = tag ? fitSize({ text: tag, size: 34, font: fonts.body, weight: 500, maxWidth: TEXT_W, ready }) : 34;
   const c = p.brand.colors;
   return (
-    <AbsoluteFill style={{ backgroundColor: c.primary, opacity: bg }}>
+    <AbsoluteFill data-rk="endcard" style={{ backgroundColor: c.primary, opacity: bg }}>
       {logo ? <Img src={staticFile(logo)} style={{ position: "absolute", ...box, objectFit: "contain", opacity: a }} />
         : <div style={{ position: "absolute", top: tag ? 560 : 600, width: "100%", textAlign: "center", fontFamily: fonts.heading, fontWeight: 800, fontSize: 96, color: c.text_on_primary, opacity: a }}>{p.brand.name}</div>}
       {tag ? (
@@ -318,7 +325,10 @@ export const EndCard: React.FC<{ p: ReelKitProps; look: Look; fonts: { heading: 
   );
 };
 
-export const ReelKit: React.FC<ReelKitProps> = (p) => {
+export const ReelKit: React.FC<ReelKitProps> = (p) =>
+  p.sample?.frames?.length ? <Sampled sample={p.sample}><ReelKitFrame {...p} /></Sampled> : <ReelKitFrame {...p} />;
+
+const ReelKitFrame: React.FC<ReelKitProps> = (p) => {
   const look = styleLook(p.brand, p.style); // marker color and fonts of the chosen style (kit/brand.ts)
   const fonts = useLookFonts(look);
   const bt = withRollTone(resolveBrandTone(p.brand), p.sceneTone);

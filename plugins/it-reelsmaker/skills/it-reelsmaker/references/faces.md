@@ -89,7 +89,7 @@ Every card, hook or CTA card over the video is entered in the plan as a `keep_cl
 
 Zones (`faces.py zones`) split a span at a change of camera angle (the rough cut's source changes): each piece gets the faces of its own angle, never a union of two (a wide shot's small face and a close-up's big one).
 
-**Result.** Overlaps with timecodes, exit code 1 → fix and re-render. The audit does not see graphics that were not entered in `keep_clear`. Those are checked with still frames and the storyboard.
+**Result.** Overlaps with timecodes, exit code 1 → fix and re-render. The audit does not see graphics that were not entered in `keep_clear`. Those are checked before the render by `textcheck.py` (every text box the composition draws against the faces, through the camera) and on the storyboard sheet (`board.py`).
 
 **Verified.** An approved video (subtitles at 1350): 107 frames, 0 overlaps. The same layout with subtitles at 1290: overlaps along almost the whole length. A card deliberately placed on a face was caught.
 

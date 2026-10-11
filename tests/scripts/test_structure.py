@@ -416,3 +416,102 @@ def test_beat_by_the_audio_and_the_source_in_the_teaser_range(project):
     ps = doc["phrases"]
     assert "beat" in ps[0]["signs"] and ps[0]["gap_after"] > 0.9, ps[0]
     assert '"source": "main", "start":' in r.stdout
+
+# ---- takes by the text (retakes) ----
+
+def test_take_words_and_stems():
+    from reels_common import restart_at, significant, take_stems, take_words
+    # Russian yo as ye, NFKC (a full-width letter, a ligature), a hyphen splits a word
+    assert take_words("\u0401\u043b\u043a\u0430 \u0451\u0436") == ["\u0435\u043b\u043a\u0430", "\u0435\u0436"]
+    assert take_words("\uff21BC \ufb01ne month-two, two") == ["abc", "fine", "month", "two", "two"]
+    # a word cut off in a broken take ("give him a situa-") matches the whole one ("...a situation") by its stem; the
+    # pronoun is a stop word
+    cut = take_stems("\u0414\u0430\u0439\u0442\u0435 \u0435\u043c\u0443 \u0441\u0438\u0442\u0443\u0430")
+    whole = take_stems("\u0414\u0430\u0439\u0442\u0435 \u0435\u043c\u0443 "
+                       "\u0441\u0438\u0442\u0443\u0430\u0446\u0438\u044e")
+    assert cut == whole == ["\u0434\u0430\u0439\u0442\u0435", "\u0441\u0438\u0442\u0443\u0430"]
+    assert take_stems("Situation, situational") == ["situa", "situa"]
+    assert not significant("of") and not significant("very") and not significant("\u0435\u0449\u0435")
+    assert significant("sales") and significant("two")
+    assert restart_at(take_words("OK, let me start over.")) == "start over"
+    # "let's once more", written with yo
+    assert restart_at(take_words("\u0434\u0430\u0432\u0430\u0439 \u0435\u0449\u0451 \u0440\u0430\u0437")) \
+        == "\u0434\u0430\u0432\u0430\u0439 \u0435\u0449\u0435 \u0440\u0430\u0437"
+
+
+def retakes_of(rows):
+    import structure
+    return structure.retakes(words_of(rows))
+
+
+def test_a_take_said_again_is_one_pair():
+    rs = retakes_of([("Most candidates write what they did at work.", 0.5, 3.5),
+                     ("Most candidates write what they did, not results.", 5.0, 8.0), ("Show the numbers instead.", 9.5, 11.0)])
+    # the stretch pair and the run said again are one spot: listed once, the stronger reading
+    assert len(rs) == 1, rs
+    r = rs[0]
+    assert (r["kind"], r["confidence"], r["score"], r["est"]) == ("take", "high", 0.5, 0)
+    assert r["a"]["start"] == 0.5 and r["b"]["start"] == 5.0 and r["b"]["text"].endswith("not results.")
+    assert r["a"]["range"] is None  # no audio: no clean range
+
+
+def test_a_restart_word_raises_the_confidence():
+    a, b = ("Candidates write tasks and duties.", 0.5, 3.0), ("Candidates write results and numbers here.", 5.5, 9.0)
+    assert [(r["kind"], r["confidence"]) for r in retakes_of([a, b])] == [("take", "review")]
+    rs = retakes_of([a, ("Wait.", 4.0, 4.4), b])
+    assert [(r["kind"], r["confidence"], r["restart"]) for r in rs] == [("take", "medium", "wait")]
+
+
+def test_a_false_start_short_or_inside_the_speech():
+    rs = retakes_of([("If you want to grow", 1.0, 2.0),
+                     ("If you want to grow your sales skills fast and make more money every month.", 3.0, 8.0)])
+    assert [(r["kind"], r["a"]["text"], r["opening"]) for r in rs] == [("false start", "If you want to grow", 2)]
+    # no pause before the second attempt: the run of words said again inside one stretch
+    rs = retakes_of([("Therefore if you want to improve sales skills therefore if you want to improve sales abilities "
+                      "start today.", 1.0, 8.0)])
+    assert len(rs) == 1 and rs[0]["kind"] == "false start", rs
+    assert rs[0]["a"]["text"] == "Therefore if you want to improve sales skills"
+    assert rs[0]["b"]["text"].startswith("therefore if you want to improve sales abilities")
+
+
+def test_a_stutter_but_not_a_repeat_for_emphasis():
+    rs = retakes_of([("It took a month or two, two at most.", 0.5, 3.0), ("Never, never, never again.", 4.0, 6.0),
+                     ("A long-long road, no, no.", 7.0, 8.0), ("We need ski... skills and feel feeling.", 9.0, 12.0)])
+    # a word twice: a stutter; three times: emphasis (the "repeat" sign); a hyphenated double and function words are no
+    # stutter; a cut-off word marked "..." and the whole one is; "feel feeling" with nothing marking a cut is not
+    assert [(r["kind"], r["a"]["text"], r["b"]["text"]) for r in rs] == [("stutter", "two,", "two"),
+                                                                       ("stutter", "ski...", "skills")], rs
+
+
+def test_a_take_only_the_cloud_heard_is_a_stretch_of_its_own():
+    # the online add-on lays a take the local model merged as estimated words of ~0.02 s with no pause between them:
+    # the run's edges end the stretch, so the two takes are compared as two stretches, not as one
+    import structure
+    from reels_common import take_words
+    take = "Second. Terms change during the interview."
+    words = words_of([(take, 10.0, 13.0)])
+    words += [{"text": t, "start": round(13.0 + 0.02 * k, 2), "end": round(13.02 + 0.02 * k, 2), "est": True}
+              for k, t in enumerate(take.split())]
+    words += words_of([("First one salary, then another.", 13.12, 15.0)])
+    segs = structure.take_segments(words, [take_words(w["text"]) for w in words])
+    assert [(s["w0"], s["w1"]) for s in segs] == [(0, 6), (6, 12), (12, 17)]
+    rs = structure.retakes(words)
+    assert [(r["kind"], r["confidence"], r["est"], r["b"]["start"]) for r in rs] == [("take", "high", 6, 13.0)], rs
+
+
+def test_takes_in_the_report_and_out_of_the_teasers(project):
+    # T4 offered the fragment of a broken take as a teaser; the earlier take of a line said twice is flagged "take?"
+    # and left out, the later one stays a candidate
+    rows = [("Intro line goes first here.", 0.5, 2.0), ("Results matter more than duties!", 3.0, 4.5),
+            ("Results matter more than any duties!", 6.0, 7.5), ("Then the end.", 9.0, 10.0)]
+    e = setup_exact(project, rows, [(s, e) for _, s, e in rows], 11.0)
+    r, doc = suggest(project, e)
+    ps, takes = doc["phrases"], doc["retakes"]
+    assert [(t["kind"], t["confidence"]) for t in takes] == [("take", "high")]
+    assert takes[0]["a"]["range"] and takes[0]["a"]["range"] == ps[1]["range"]  # cut out cleanly by the audio
+    assert ps[1]["take"] == [0] and "take" not in ps[2]
+    assert 1 not in doc["teasers"] and 2 in doc["teasers"], doc["teasers"]
+    assert "Takes (candidates; which one to keep: SKILL.md step 3)" in r.stdout and "take?" in r.stdout
+    # a fragment lists the pairs that touch it only
+    r, doc = suggest(project, e, "--from", "8.5")
+    assert doc["retakes"] == [] and "none by the text" in r.stdout

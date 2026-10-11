@@ -134,7 +134,7 @@ Scene texts, like card texts, are **shown to the person before rendering** in th
 
 **Transitions.** Don't crossfade two busy layouts: you get a muddy double exposure. The old one leaves, then the new one enters, or the transition goes through the brand's background color. A transition over a pause is a hard cut; in “scenes only” every join is one (above), and no join shows more than a frame or two of bare field: validate warns at more than 4 frames. Stills both settled and **mid-transition**.
 
-**Every still is postable.** If a settled frame of the scene wouldn't work as a picture for a post, the scene isn't ready.
+**Every still is postable.** If a settled frame of the scene wouldn't work as a picture for a post, the scene isn't ready. `board.py` puts the settled frame of every scene on one numbered sheet before the full render (`--transitions` adds the mid-entrance frames), and `textcheck.py` measures what the eye misses: text past the frame or its box, two texts touching (the numbered sheet and the per-frame text check follow the [animate](https://github.com/cth9191/animate) skill, MIT).
 
 **Data on screen.** Other people's names, emails, phone numbers and amounts in interface screenshots are replaced with fictional ones, and the plan says so.
 

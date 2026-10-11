@@ -12,6 +12,7 @@
 // ~60 px on entry; window slides in from its side. Before, the whole layer dissolved in (~5 frames) and out (8 frames)
 // over the main video: a muddy double exposure of two layouts.
 import React from "react";
+import { useMedia } from "./Sample";
 import { AbsoluteFill, Easing, OffthreadVideo, Sequence, interpolate, staticFile, useCurrentFrame, useVideoConfig } from "remotion";
 
 export type PresenterLayout = "review" | "stream" | "window";
@@ -45,6 +46,7 @@ const EXIT = 8; // frames
 const Inner: React.FC<PresenterProps> = (p) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
+  const media = useMedia(); // false in a sample without media (kit/Sample.tsx)
   const n = Math.round(p.dur * fps);
   const enter = p.enter ?? 14;
   const inP = interpolate(frame, [0, enter], [0, 1], { ...clamp, easing: easeOut });
@@ -66,8 +68,8 @@ const Inner: React.FC<PresenterProps> = (p) => {
           transform: `translateY(${((1 - inP) + outP) * drop}px)`,
         }}
       >
-        <OffthreadVideo src={staticFile(p.src)} transparent muted startFrom={Math.round((p.srcFrom ?? 0) * fps)}
-          style={{ width: "100%", height: "100%" }} />
+        {media ? <OffthreadVideo src={staticFile(p.src)} transparent muted startFrom={Math.round((p.srcFrom ?? 0) * fps)}
+          style={{ width: "100%", height: "100%" }} /> : null}
       </div>
     );
 
@@ -110,8 +112,8 @@ const Inner: React.FC<PresenterProps> = (p) => {
       <div style={{ position: "absolute", left: wx + sideSign * ((1 - inP) + outP) * (w.w + 160), top: wy, width: w.w, height: w.h, borderRadius: r,
         overflow: "hidden", boxShadow: p.ring ? `0 0 0 4px ${p.ring}` : undefined }}>
         <div style={{ position: "absolute", left, top, width: 1080 * k, height: 1920 * k }}>
-          <OffthreadVideo src={staticFile(p.src)} muted startFrom={Math.round((p.srcFrom ?? p.from) * fps)}
-            style={{ width: "100%", height: "100%" }} />
+          {media ? <OffthreadVideo src={staticFile(p.src)} muted startFrom={Math.round((p.srcFrom ?? p.from) * fps)}
+            style={{ width: "100%", height: "100%" }} /> : null}
         </div>
       </div>
     </AbsoluteFill>
