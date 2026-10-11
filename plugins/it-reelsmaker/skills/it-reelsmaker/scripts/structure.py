@@ -20,6 +20,10 @@ phrases (sentence end, pause > 0.5 s, speaker change, at most 40 words) and prin
     clean edge" though the mask had >= 0.4 s of silence between almost all of them); that silence needs the same
     >= 0.1 s of raw silence as any edge (T7: a 0.24 s pause, a 0.18 s gap in the widened mask, was "no clean edge"
     while speech_mask.py cut it cleanly and the --edl check gave no warning);
+  • take candidates by the text ("retakes"): two stretches of speech that say the same words, an opening said again,
+    a word said twice; each pair with its times, clean ranges and a confidence. The phrases of the earlier member are
+    flagged "take?" and left out of the teasers. The script never picks the take to keep (SKILL.md step 3: real
+    edits kept the first as often as the last). With --from/--to, the pairs that touch the fragment;
   • teaser candidates: a short list by signs (3-12 words, 0.8-4.5 s of speech, no word with an estimated time or a
     retake sign, not trailing off; clean edges, a whole sentence and a beat after it rank higher) of lines from later in
     the video that could open it (a cold open), with the exact "ranges" entry for cut.json (or "no clean edge": only
@@ -42,7 +46,8 @@ import argparse, json, re, sys, unicodedata
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from reels_common import NUMBER_RE, VIDEO_EXT, edit_dir, load_json, project_root, save_json, speaker_of, utf8_stdio, warn
+from reels_common import (NUMBER_RE, STEM_LEN, VIDEO_EXT, edit_dir, load_json, project_root, restart_at, save_json,
+                          significant, speaker_of, stem as stem_of, take_words, utf8_stdio, warn)
 from cut import punct_only
 from transcribe import join_hyphen_parts
 
@@ -67,7 +72,19 @@ GLUED = 0.1         # transcript times of two phrases closer than this touch: th
 MASK_WIDEN = 4      # 10 ms windows: the speech mask is widened by ~30 ms each side, so raw silence reaches past its gap
 EARLY = 1 / 3       # the slow start looks for its strong line in this share of the speech, never near the end
 UNFINISHED = re.compile(r"(\.\.\.|…)['\")»”]*$")  # a cut-off word or a line that trails off
+CUT_OFF = re.compile(r"(\.\.\.|…|[-‐‑–—])$")  # a word the transcript marks cut off: "skil...", "skil-"
 NORM = re.compile(r"[^\w]+", re.U)
+# takes by the text (retakes): starting points, set by a calibration on real recordings
+TAKE_PAUSE = 0.85    # s: a pause this long ends a stretch compared as one take
+TAKE_SENTENCE = 7.5  # s: a sentence end ends the stretch once it runs this long
+TAKE_LONG = 16.0     # s: ...and it ends anyway at this length
+EST_RUN = 3          # words in a row with estimated times: a take only the cloud heard, a stretch of its own
+TAKE_NEXT, TAKE_SPAN = 8, 75.0   # a stretch is compared with the next 8 within 75 s
+SIGNATURE = 18       # the first significant stems of a stretch that are compared
+TAKE_HIGH, TAKE_MIN, TAKE_LOW = 0.45, 0.34, 0.24  # Jaccard of the signatures: a take, high; a take; to review
+FALSE_START = (6.0, 12.0)  # s: a broken opening shorter than this, said again within this
+REPEAT_RUN, REPEAT_SIG = 3, 2  # a run of words said again: this many words, this many significant (+1 mid-stretch)
+STUTTER_GAP, PREFIX_GAP = 0.5, 1.0  # s: a word said twice within this; a cut-off word and the whole one within this
 
 
 def norm(t):
@@ -292,9 +309,11 @@ def bounds(m, p, q):
 
 def usable(p, lo=TEASER_WORDS[0]):
     """A phrase that can stand alone as a teaser or a payoff: at least `lo` words, every word heard with a measured
-    time (no estimated word), no retake sign, and it does not trail off. T4 offered an interjection with an estimated
-    word and the fragment of a broken take while a clean statement was left out."""
-    return p["words"] >= lo and not p.get("est") and not p.get("suspect") and not p.get("unfinished")
+    time (no estimated word), no retake sign, not in the earlier member of a take pair (retakes), and it does not trail
+    off. T4 offered an interjection with an estimated word and the fragment of a broken take while a clean statement
+    was left out."""
+    return (p["words"] >= lo and not p.get("est") and not p.get("suspect") and not p.get("take")
+            and not p.get("unfinished"))
 
 
 def speech_len(p):
@@ -336,6 +355,211 @@ def cut_range(m, p, prev=None, nxt=None):
     nxt = next((x for x in range(j, len(mask)) if mask[x]), None)
     e = min(b + 0.03, len(mask) * hop) if nxt is None else min(b + 0.03, nxt * hop - 0.03)
     return snap(max(0.0, a - 0.02)), min(snap(e), round(len(mask) * hop, 3))
+
+
+# ---- takes: the same words said again (SKILL.md step 3) ----
+# Another source of take candidates besides the stretched word ("retake?"): two stretches of speech that say the same
+# words, an opening said again, a word said twice. The script lists the pairs and never picks the take to keep: real
+# edits kept the first take as often as the last, and that is the agent's call by the rules of step 3.
+
+def take_segments(words, toks):
+    """Words -> stretches of speech compared as takes: [{w0, w1 (word indexes, w1 excluded), start, end, stems}].
+    Not phrases(): those end at every sentence end, and two one-sentence phrases matched on a single word. A stretch
+    ends at a pause over TAKE_PAUSE, at a sentence end once it runs TAKE_SENTENCE, at TAKE_LONG, at a speaker change,
+    and at either edge of a run of EST_RUN words with estimated times: the online add-on lays a take the local model
+    merged as cloud words of ~0.02 s with no pause between them, so no pause marks where that take begins.
+    toks: take_words of each word."""
+    n = len(words)
+    cuts, k = set(), 0
+    while k < n:
+        j = k
+        while j < n and words[j].get("est"):
+            j += 1
+        if j - k >= EST_RUN:
+            cuts |= {k, j}
+        k = max(j, k + 1)
+    out, w0 = [], 0
+    for k in range(1, n + 1):
+        if k < n:
+            prev, w = words[k - 1], words[k]
+            run = float(prev["end"]) - float(words[w0]["start"])
+            if not (k in cuts or float(w["start"]) - float(prev["end"]) > TAKE_PAUSE or speaker_of(w) != speaker_of(prev)
+                    or run >= TAKE_LONG or (run >= TAKE_SENTENCE and SENTENCE_END.search(str(prev["text"]).strip()))):
+                continue
+        out.append({"w0": w0, "w1": k, "start": float(words[w0]["start"]), "end": float(words[k - 1]["end"]),
+                    "stems": [stem_of(t) for x in range(w0, k) for t in toks[x] if significant(t)]})
+        w0 = k
+    return out
+
+
+def jaccard(a, b):
+    a, b = set(a), set(b)
+    return len(a & b) / len(a | b) if a | b else 0.0
+
+
+def lead(a, b):
+    """How many stems two stretches open with in the same order."""
+    n = 0
+    for x, y in zip(a, b):
+        if x != y:
+            break
+        n += 1
+    return n
+
+
+def stream_repeats(words, toks, opens=()):
+    """An opening broken off and said again inside the speech ("If you want to grow your skills | If you want to grow
+    your abilities"): a run of REPEAT_RUN words or more said again within FALSE_START[1] s -> [(i, j, e)]: word
+    indexes of the two runs' first words and the word after the second run. Words are compared by their stems, so a
+    cut-off word matches the whole one; a run said again right after itself is a take too (two takes 0.5 s apart are
+    one stretch for take_segments). The run needs 3 significant words, or 2 when the second run opens a stretch
+    (opens: word indexes after a pause): "choose those who know" said twice in a closing pair of lines is rhetoric."""
+    flat = [(k, t) for k, ts in enumerate(toks) for t in ts]
+    key = [stem_of(t) if significant(t) else t for _, t in flat]
+    out, seen = [], set()
+    for i in range(len(flat)):
+        t0 = float(words[flat[i][0]]["start"])
+        for j in range(i + 1, len(flat)):
+            if float(words[flat[j][0]]["start"]) - t0 > FALSE_START[1]:
+                break
+            if key[j] != key[i] or (i - 1, j - 1) in seen:
+                continue
+            n = 0
+            while j + n < len(flat) and i + n < j and key[i + n] == key[j + n]:
+                n += 1
+            sig = sum(1 for _, t in flat[i:i + n] if significant(t))
+            opening = flat[j][0] in opens and flat[j - 1][0] != flat[j][0]  # the first word of a stretch, from its start
+            if n >= REPEAT_RUN and sig >= REPEAT_SIG + (not opening):
+                out.append((flat[i][0], flat[j][0], flat[j + n - 1][0] + 1))
+                seen |= {(i + x, j + x) for x in range(n)}
+                break
+    return out
+
+
+def sentence_repeats(words, toks):
+    """A whole sentence said again word for word within TAKE_SPAN ("Worked with objections." twice, the second time
+    with another question after it): [(i, i1, j, j1)] word ranges. REPEAT_RUN words or more, REPEAT_SIG significant.
+    Needs the transcript's punctuation: a transcript without it has no sentences here."""
+    sents, s0 = [], 0
+    for k, w in enumerate(words):
+        if SENTENCE_END.search(str(w["text"]).strip()):
+            sents.append((s0, k + 1))
+            s0 = k + 1
+    out = []
+    for x, (i, i1) in enumerate(sents):
+        ka = [stem_of(t) if significant(t) else t for k in range(i, i1) for t in toks[k]]
+        if len(ka) < REPEAT_RUN or sum(1 for k in range(i, i1) for t in toks[k] if significant(t)) < REPEAT_SIG:
+            continue
+        for j, j1 in sents[x + 1:]:
+            if float(words[j]["start"]) - float(words[i]["start"]) > TAKE_SPAN:
+                break
+            if [stem_of(t) if significant(t) else t for k in range(j, j1) for t in toks[k]] == ka:
+                out.append((i, i1, j, j1))
+                break
+    return out
+
+
+def stutters(words, toks):
+    """A word said twice in a row (within STUTTER_GAP), or cut off and said whole (a start of 3-5 letters that trails
+    off in the transcript, "skil...", and the next word begins with, within PREFIX_GAP) -> [(k, k2)] word indexes.
+    Not a word said three times in a row (a repeat for emphasis, the "repeat" sign), not a doubled word written with a
+    hyphen ("long-long ago" is one word), not a function word ("no, no"), not two forms of one word ("from sales,
+    sales stay with you"), and not a short word the next one begins with when nothing marks it cut off (Russian "each
+    other" is such a pair, "feeling | to feel" another)."""
+    flat = [(k, t) for k, ts in enumerate(toks) for t in ts]
+    out = []
+    for x in range(len(flat) - 1):
+        (k, a), (k2, b) = flat[x], flat[x + 1]
+        if k == k2 or not significant(a):
+            continue
+        gap = float(words[k2]["start"]) - float(words[k]["end"])
+        if a == b and gap < STUTTER_GAP:
+            if not any(flat[y][1] == a for y in (x - 1, x + 2) if 0 <= y < len(flat)):
+                out.append((k, k2))
+        elif (len(a) <= STEM_LEN and len(b) > len(a) and b.startswith(a) and gap < PREFIX_GAP
+              and CUT_OFF.search(str(words[k]["text"]).strip())):
+            out.append((k, k2))
+    return out
+
+
+def retakes(words, m=None):
+    """Take candidates in a transcript -> [{kind, a, b, score, opening, est, confidence}]; a and b are the earlier and
+    the later member, {start, end, text, range} (range: the member cut out cleanly by the audio, or None).
+    kind "take": two stretches whose first SIGNATURE significant stems are alike (Jaccard >= TAKE_MIN, "high" from
+    TAKE_HIGH; from TAKE_LOW with 2 of the first 4 stems shared: "review"); "false start": an opening said again,
+    as a short stretch (< FALSE_START[0] s) whose 2-3 first stems open the next one within FALSE_START[1] s, or as a
+    run of words said again inside the speech; "stutter": a word said twice or cut off and said whole. A restart word
+    ("wait", "once more") at the seam raises the confidence. opening: the stems the two members open with."""
+    toks = [take_words(w["text"]) for w in words]
+    segs = take_segments(words, toks)
+    found = []
+
+    def add(kind, w0, w1, v0, v1, score, conf):
+        sa = [stem_of(t) for x in range(w0, w1) for t in toks[x] if significant(t)]
+        sb = [stem_of(t) for x in range(v0, v1) for t in toks[x] if significant(t)]
+        seam = [t for x in list(range(max(w0, w1 - 3), w1)) + list(range(w1, v0) if v0 - w1 <= 6 else [])
+                + list(range(v0, min(v1, v0 + 3))) for t in toks[x]]
+        said = restart_at(seam)
+        if said:
+            conf = {"review": "medium", "medium": "high"}.get(conf, conf)
+        found.append({"kind": kind, "a": member(words, w0, w1, m), "b": member(words, v0, v1, m),
+                      "score": round(score, 2), "opening": lead(sa, sb),
+                      "est": sum(1 for x in list(range(w0, w1)) + list(range(v0, v1)) if words[x].get("est")),
+                      "confidence": conf, **({"restart": said} if said else {}), "_w": (w0, w1, v0, v1)})
+
+    for i, a in enumerate(segs):
+        sa = a["stems"][:SIGNATURE]
+        for b in segs[i + 1:i + 1 + TAKE_NEXT]:
+            if b["start"] - a["start"] > TAKE_SPAN:
+                break
+            sb = b["stems"][:SIGNATURE]
+            if len(sa) < 2 or len(sb) < 2:  # one word alike is no take
+                continue
+            j = jaccard(sa, sb)
+            if j >= TAKE_MIN:
+                add("take", a["w0"], a["w1"], b["w0"], b["w1"], j, "high" if j >= TAKE_HIGH else "medium")
+            elif j >= TAKE_LOW and len(set(sa[:4]) & set(sb[:4])) >= 2:
+                add("take", a["w0"], a["w1"], b["w0"], b["w1"], j, "review")
+            elif (lead(sa, sb) >= min(3, len(sa)) >= 2 and a["end"] - a["start"] < FALSE_START[0]
+                  and b["start"] - a["end"] <= FALSE_START[1]):
+                add("false start", a["w0"], a["w1"], b["w0"], b["w1"], j, "medium")
+    seg_of = {k: s for s in segs for k in range(s["w0"], s["w1"])}
+    for i, j, e in stream_repeats(words, toks, {s["w0"] for s in segs}):
+        end = max(seg_of[j]["w1"], e)
+        sa = [stem_of(t) for x in range(i, j) for t in toks[x] if significant(t)][:SIGNATURE]
+        sb = [stem_of(t) for x in range(j, end) for t in toks[x] if significant(t)][:SIGNATURE]
+        add("false start", i, j, j, end, jaccard(sa, sb), "medium")
+    for i, i1, j, j1 in sentence_repeats(words, toks):
+        add("take", i, i1, j, j1, 1.0, "review")
+    for k, k2 in stutters(words, toks):
+        add("stutter", k, k + 1, k2, k2 + 1, 1.0, "medium")
+    # one spot found twice (a stretch pair and a run said again): the stronger reading stays
+    rank = {"take": 0, "false start": 1, "stutter": 2}
+    conf = {"high": 0, "medium": 1, "review": 2}
+    found.sort(key=lambda r: (conf[r["confidence"]], rank[r["kind"]], -r["score"]))
+    out = []
+    for r in found:
+        w0, w1, v0, v1 = r["_w"]
+        if not any(w0 < x1 and x0 < w1 and v0 < y1 and y0 < v1 for x0, x1, y0, y1 in (q["_w"] for q in out)):
+            out.append(r)
+    out.sort(key=lambda r: (r["a"]["start"], r["b"]["start"]))
+    for r in out:
+        r.pop("_w")
+    return out
+
+
+def member(words, w0, w1, m=None):
+    """A take member: words[w0:w1] -> {start, end, text, range}. range: cut out cleanly by the audio between the
+    word before and the word after it (cut_range), or None."""
+    span = {"start": float(words[w0]["start"]), "end": float(words[w1 - 1]["end"]),
+            "inner": (float(words[w0 + 1]["start"]), float(words[w1 - 2]["end"])) if w1 - w0 > 1 else None}
+
+    def one(k):
+        return {"start": float(words[k]["start"]), "end": float(words[k]["end"]), "inner": None} \
+            if 0 <= k < len(words) else None
+    r = cut_range(m, span, one(w0 - 1), one(w1)) if m is not None else None
+    return {"start": round(span["start"], 3), "end": round(span["end"], 3),
+            "text": " ".join(str(words[k]["text"]).strip() for k in range(w0, w1)), "range": list(r) if r else None}
 
 
 # ---- history: earlier edits of the same source ----
@@ -473,6 +697,12 @@ def cmd_suggest(a):
         p["range"] = list(r) if r else None
     for p in allp:  # after all ranges: a boundary reads both phrases' inner points
         p.pop("inner", None)
+    # takes by the text, over the whole transcript: a take of a line inside the fragment may lie outside it
+    takes = [r for r in retakes(words, m) if any(x["start"] < hi_t and x["end"] > lo_t for x in (r["a"], r["b"]))]
+    for p in allp:  # the earlier member's phrases: "take?", never a teaser
+        t = [k for k, r in enumerate(takes) if min(p["end"], r["a"]["end"]) - max(p["start"], r["a"]["start"]) > 0.05]
+        if t:
+            p["take"] = t
     # a fragment of a long recording: its phrases only, the neighbors outside it have bounded the edges above
     ps = [p for p in allp if lo_t <= p["start"] < hi_t]
     if not ps:
@@ -504,7 +734,7 @@ def cmd_suggest(a):
     hist = history(project_root(), stem, skip=e)
     out = {"transcript": str(tp), "audio": str(wav) if wav else None,
            "window": [a.start, a.end] if a.start is not None or a.end is not None else None, "phrases": ps,
-           "teasers": [p["i"] for p in teasers], "slow_start_s": slow, "strong_first": strong["i"] if strong else None,
+           "retakes": takes, "teasers": [p["i"] for p in teasers], "slow_start_s": slow, "strong_first": strong["i"] if strong else None,
            "ending": {"last": last["i"], "payoff": payoff["i"] if payoff else None},
            "history": [{"dir": d, "why": w, "note": n} for d, w, n in hist]}
     save_json(e / "structure.json", out)
@@ -518,12 +748,28 @@ def cmd_suggest(a):
           + ("" if m is not None else " (clean edges not checked: no audio)"))
     for p in ps:
         cl = "" if p["clean"] is None else ("clean" if p["clean"] else "no clean edge")
-        flags = (["est"] if p["est"] else []) + (["retake?"] if p["suspect"] else []) + (["unfinished"] if p["unfinished"] else [])
+        flags = ((["est"] if p["est"] else []) + (["retake?"] if p["suspect"] else []) + (["take?"] if p.get("take") else [])
+                 + (["unfinished"] if p["unfinished"] else []))
         print(f"  {p['i']:2d} {p['start']:7.2f}-{p['end']:6.2f}  {cl:13s} {','.join(p['signs'] + flags):24s} {p['text'][:70]}")
     print("  signs: question, exclaim, repeat (a word three times), number, answer (after a question), beat (a pause "
           f">= {BEAT} s after it); flags: est = a word whose time is estimated (a word the online add-on's transcript added "
           "between its neighbors: not heard by the local model, so its edges are a guess; not a teaser), retake? = a "
-          f"word longer than {LONG_WORD} s or of no length (a merged retake), unfinished = the line trails off")
+          f"word longer than {LONG_WORD} s or of no length (a merged retake), take? = in the earlier member of a take "
+          "pair below (not a teaser), unfinished = the line trails off")
+    print("\nTakes (candidates; which one to keep: SKILL.md step 3): the same words said again, by the text. take = two "
+          "stretches alike, false start = an opening said again, stutter = a word said twice or cut off; the script "
+          "does not pick the take to keep. A repeat the recognizer merged into one word is not here: see retake? above")
+    if not takes:
+        print("  none by the text")
+    for r in takes:
+        x, y = r["a"], r["b"]
+        notes = [f"opening {r['opening']}"] + ([f"est {r['est']}"] if r["est"] else []) \
+            + ([f"restart word “{r['restart']}”"] if r.get("restart") else [])
+        print(f"  {r['kind']}, {r['confidence']} ({r['score']:.2f}; {', '.join(notes)})\n"
+              f"      {x['start']:7.2f}-{x['end']:7.2f} “{x['text'][:70]}”"
+              + (f" range {x['range'][0]:.3f}-{x['range'][1]:.3f}" if x["range"] else "") + "\n"
+              f"      {y['start']:7.2f}-{y['end']:7.2f} “{y['text'][:70]}”"
+              + (f" range {y['range'][0]:.3f}-{y['range'][1]:.3f}" if y["range"] else ""))
     print("\nteaser candidates: a short list by signs only (3-12 words, 0.8-4.5 s, no estimated or retake-suspect word; "
           "clean edges, a whole sentence and a beat after it rank higher). The script cannot judge meaning: pick the line "
           "by meaning, from here or from any clean phrase above")

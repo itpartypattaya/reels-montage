@@ -307,8 +307,10 @@ export const SceneLayer: React.FC<{ scenes?: SceneSpec[] | null; brand: Brand; l
       {list.map((s) => (
         <React.Fragment key={s.id}>
           <Sequence from={Math.round(s.start * fps)} durationInFrames={Math.max(1, Math.round(s.dur * fps))} layout="none">
-            <SceneFrame spec={s} brand={p.brand} look={p.look} fonts={fonts} bt={bt} words={p.words ?? []} scenesOnly={!!p.scenesOnly}
-              framed={p.framed} />
+            <div data-rk={`scene:${s.id}`} style={{ display: "contents" }}>
+              <SceneFrame spec={s} brand={p.brand} look={p.look} fonts={fonts} bt={bt} words={p.words ?? []} scenesOnly={!!p.scenesOnly}
+                framed={p.framed} />
+            </div>
           </Sequence>
           {flashes(s, bt, p.words ?? [], fps, !!p.scenesOnly, !!p.framed).map((t) => <FlashAt key={`${s.id}-${t}`} t={t} brand={p.brand} />)}
         </React.Fragment>

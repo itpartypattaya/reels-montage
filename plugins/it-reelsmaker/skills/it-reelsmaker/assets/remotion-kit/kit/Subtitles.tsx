@@ -332,7 +332,7 @@ export const KitSubtitles: React.FC<{
     const bg = s === 0 ? l.mark : own ?? (same(c.accent, l.mark) ? c.light : c.accent);
     const ink = s === 0 ? l.onMark : inkOn(bg, c.primary, c.text_on_primary);
     return (
-      <div style={{ position: "absolute", left, top: b.top, display: "flex", flexDirection: "column", alignItems: "flex-start", gap: g.gap }}>
+      <div data-rk="sub" style={{ position: "absolute", left, top: b.top, display: "flex", flexDirection: "column", alignItems: "flex-start", gap: g.gap }}>
         {b.lines.map((ln, i) => {
           const shown = ln.filter((w) => w === b.words[0] || t >= w.start - 0.03);
           return shown.length ? (
@@ -350,7 +350,7 @@ export const KitSubtitles: React.FC<{
     return (
       <>
         {shadeEl}
-        <div style={{ position: "absolute", left, top: b.top }}>
+        <div data-rk="sub" style={{ position: "absolute", left, top: b.top }}>
           {b.lines.map((ln, i) => (
             <div key={i} style={type}>
               {ln.map((w, k) => (
@@ -367,7 +367,7 @@ export const KitSubtitles: React.FC<{
     );
   }
   return (
-    <div style={{ position: "absolute", left, top: b.top }}>
+    <div data-rk="sub" style={{ position: "absolute", left, top: b.top }}>
       <div style={{ ...type, display: "inline-block", backgroundColor: alpha(c.primary, 0.92), padding: pad }}>
         {b.lines.map((ln, i) => (
           <div key={i}>

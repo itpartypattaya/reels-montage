@@ -14,6 +14,7 @@ import {
 } from "remotion";
 import { Brand, alpha } from "./brand";
 import { FlashAt } from "./LightFlash";
+import { useMedia } from "./Sample";
 
 export type Transition = "cut" | "whip" | "fade" | "flash" | "slide";
 export type Insert = {
@@ -87,6 +88,7 @@ const look = (k: number, n: number, tin: Transition, tout: Transition) => {
 const Media: React.FC<{ ins: Insert; style: React.CSSProperties; zoom?: boolean }> = ({ ins, style, zoom }) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
+  if (!useMedia()) return null; // a sample without media (kit/Sample.tsx): text checks only
   if (ins.media === "image") {
     const z = zoom ? interpolate(frame, [0, ins.dur * fps], [1, 1.06], clamp) : 1;
     return <Img src={staticFile(ins.file)} style={{ ...style, transform: `scale(${z})` }} />;

@@ -5,7 +5,7 @@ Imported by the other scripts (brand.py, reelcfg.py, visual_plan.py, footage.py,
 only. No network access and no credentials here: online sources live in the it-reelsmaker-online add-on, which this
 module loads only when it is installed (see online()).
 """
-import contextlib, importlib, json, math, os, re, subprocess, sys, time, uuid
+import contextlib, importlib, json, math, os, re, subprocess, sys, time, unicodedata, uuid
 from pathlib import Path
 
 SKILL = Path(__file__).resolve().parent.parent
@@ -1038,3 +1038,89 @@ def forbidden_hits(brand, text):
         if ft and all(near(t) for t in ft):
             hits.append(f)
     return hits
+
+
+# --- Stems for comparing takes: structure.py retakes, cut.py repeats at the joins ---------------------------------
+# A take is the same line said again, often cut off mid-word ("situa-" for "situation"), so words are compared by a
+# stem: the first STEM_LEN letters, a shorter word whole. Function words, pronouns and particles do not make two lines
+# alike: they are left out, with every word of one or two letters. Russian ones are given as code points.
+STEM_LEN = 5
+TAKE_STOP = STOP | SHORT_WORDS | AFTER_WORDS | set(
+    "you your yours we our ours they them their he him his she her it its is are was were be been being am have has had "
+    "do does did done so just that this these those there here then than what when where who whom which how why very "
+    "also too even still yet can could will would should shall may might must not no yes yeah oh ok okay well like "
+    "really all any some one me my mine us about out up down over again more most much many only own same such now "
+    "let lets".split()) | set(
+    ("\u0442\u0430\u043a \u0432\u043e\u0442 \u0435\u0441\u043b\u0438 \u0447\u0442\u043e\u0431\u044b "
+     "\u0435\u0433\u043e \u0435\u043c\u0443 \u043d\u0430\u0441 \u0432\u0430\u0441 \u0432\u0430\u043c "
+     "\u043d\u0430\u043c \u0443\u0436\u0435 \u0435\u0449\u0435 \u0442\u043e\u0436\u0435 "
+     "\u0442\u0430\u043c \u0442\u0443\u0442 \u0433\u0434\u0435 \u043a\u043e\u0433\u0434\u0430 "
+     "\u043e\u0447\u0435\u043d\u044c \u043f\u0440\u043e\u0441\u0442\u043e \u0434\u0430\u0436\u0435 "
+     "\u0435\u0441\u0442\u044c \u0431\u044b\u043b \u0431\u044b\u043b\u0430 \u0431\u044b\u043b\u0438 "
+     "\u0431\u044b\u043b\u043e \u0431\u044b\u0442\u044c \u043c\u043e\u0436\u0435\u0442 "
+     "\u043d\u0430\u0434\u043e \u043d\u0443\u0436\u043d\u043e \u043e\u043d\u0438 \u043e\u043d\u0430 "
+     "\u043e\u043d\u043e \u043c\u043d\u0435 \u043c\u0435\u043d\u044f \u0442\u0435\u0431\u0435 "
+     "\u0442\u0435\u0431\u044f \u0441\u0435\u0431\u044f \u0441\u0435\u0431\u0435 \u0432\u0441\u0435 "
+     "\u0432\u0441\u0435\u0445 \u0432\u0441\u0435\u043c \u044d\u0442\u043e\u0442 \u044d\u0442\u0430 "
+     "\u044d\u0442\u0438 \u044d\u0442\u043e\u0433\u043e \u044d\u0442\u043e\u0439 "
+     "\u044d\u0442\u043e\u043c \u0442\u043e\u0442 \u0442\u043e\u0433\u043e \u0442\u043e\u043c "
+     "\u0442\u043e\u0439 \u0442\u0435 \u043a\u0442\u043e \u0447\u0435\u043c \u0447\u0435\u0433\u043e "
+     "\u043a\u043e\u0433\u043e \u043d\u0438\u043c \u043d\u0438\u043c\u0438 \u043d\u0438\u0445 "
+     "\u043d\u0435\u043c \u043d\u0435\u0439 \u043d\u0443 \u043d\u0435\u0442 \u0432\u0435\u0434\u044c "
+     "\u0432\u043e\u043e\u0431\u0449\u0435 \u0430\u0433\u0430 \u0442\u0430\u043a\u0436\u0435 "
+     "\u0442\u043e\u043b\u044c\u043a\u043e \u043f\u043e\u0442\u043e\u043c \u0442\u043e\u0433\u0434\u0430 "
+     "\u0441\u0435\u0439\u0447\u0430\u0441 \u0431\u0443\u0434\u0435\u0442 \u0431\u0443\u0434\u0443 "
+     "\u0431\u0443\u0434\u0435\u043c \u0431\u0443\u0434\u0443\u0442 \u043a\u0430\u043a\u043e\u0439 "
+     "\u043a\u0430\u043a\u0430\u044f \u043a\u0430\u043a\u0438\u0435 "
+     "\u043a\u043e\u0442\u043e\u0440\u044b\u0439 \u043a\u043e\u0442\u043e\u0440\u0430\u044f "
+     "\u043a\u043e\u0442\u043e\u0440\u044b\u0435 \u043a\u043e\u0442\u043e\u0440\u044b\u0445 "
+     "\u043a\u043e\u0442\u043e\u0440\u043e\u0439 \u043a\u043e\u0442\u043e\u0440\u043e\u0433\u043e "
+     "\u043a\u043e\u0442\u043e\u0440\u043e\u043c \u043a\u043e\u0442\u043e\u0440\u0443\u044e "
+     "\u043a\u043e\u0442\u043e\u0440\u044b\u043c \u0431\u0443\u0434\u0435\u0442\u0435 "
+     "\u0431\u0443\u0434\u0435\u0448\u044c \u043a\u0435\u043c \u0442\u0435\u0445 \u0442\u0435\u043c "
+     "\u0442\u0435\u043c\u0438 "
+     "\u0441\u0432\u043e\u0439 \u0441\u0432\u043e\u044f \u0441\u0432\u043e\u0438 "
+     "\u0441\u0432\u043e\u0435 \u0441\u0432\u043e\u0438\u0445 \u043c\u043e\u0439 \u043c\u043e\u044f "
+     "\u043c\u043e\u0438 \u043d\u0430\u0448 \u0432\u0430\u0448 \u0442\u0432\u043e\u0439 "
+     "\u043f\u0440\u0438 \u043f\u0440\u043e \u0431\u0435\u0437 \u043d\u0430\u0434 \u043f\u043e\u0434 "
+     "\u0447\u0435\u0440\u0435\u0437 \u043f\u043e\u0441\u043b\u0435 \u0438\u043b\u0438 "
+     "\u043b\u0438\u0431\u043e \u0440\u0430\u0437").split())
+# words a speaker says when they break off a take and start it again (SKILL.md step 3, sign 3): English, and Russian
+# wait (two forms), stop, over again, take (as in "take two"), let's once more, once more, sorry (two forms)
+RESTART_WORDS = [tuple(p.split()) for p in (
+    "wait", "hold on", "start over", "again", "one more time", "scratch that", "sorry",
+    "\u043f\u043e\u0434\u043e\u0436\u0434\u0438", "\u043f\u043e\u0433\u043e\u0434\u0438", "\u0441\u0442\u043e\u043f",
+    "\u0437\u0430\u043d\u043e\u0432\u043e", "\u0434\u0443\u0431\u043b\u044c",
+    "\u0434\u0430\u0432\u0430\u0439 \u0435\u0449\u0435 \u0440\u0430\u0437", "\u0435\u0449\u0435 \u0440\u0430\u0437",
+    "\u0438\u0437\u0432\u0438\u043d\u0438\u0442\u0435", "\u0438\u0437\u0432\u0438\u043d\u0438")]
+
+
+def take_words(text):
+    """The words of a text for comparing takes: NFKC, lowercase, Russian yo as ye, split on anything that is not a
+    letter or a digit, a hyphen too ("month-two" is two words)."""
+    t = unicodedata.normalize("NFKC", str(text or "")).lower().replace(_YO, _YE)
+    return [x for x in re.split(r"[\W_]+", t) if x]
+
+
+def stem(word):
+    """The first STEM_LEN letters: a word cut off mid-way in a broken take still matches the whole one."""
+    return word[:STEM_LEN]
+
+
+def significant(word):
+    """A word that makes two lines alike: longer than two letters and not a function word."""
+    return len(word) > 2 and word not in TAKE_STOP
+
+
+def take_stems(text):
+    """The stems of the text's significant words, in order."""
+    return [stem(w) for w in take_words(text) if significant(w)]
+
+
+def restart_at(ws):
+    """The restart phrase (RESTART_WORDS) in a list of take_words, or None."""
+    for k in range(len(ws)):
+        for p in RESTART_WORDS:
+            if tuple(ws[k:k + len(p)]) == p:
+                return " ".join(p)
+    return None

@@ -5,6 +5,7 @@
 import React from "react";
 import { Img, OffthreadVideo, interpolate, staticFile } from "remotion";
 import { alpha } from "../brand";
+import { useMedia } from "../Sample";
 import { glue } from "../Phrase";
 import { LABEL_SIZE, TextBlock, caretOn } from "./parts";
 import { both, easeInOut, easeOut } from "./tones";
@@ -13,6 +14,7 @@ import type { SceneCtx } from "./types";
 const clamp = { extrapolateLeft: "clamp", extrapolateRight: "clamp" } as const;
 
 export const Ui: React.FC<{ c: SceneCtx }> = ({ c }) => {
+  const mediaOn = useMedia(); // false in a sample without media (kit/Sample.tsx)
   const { spec, frame, tl, tone, bt, surf, fonts, brand } = c;
   if (!spec.media) return null;
   const end = tl.n - tl.tail;
@@ -107,7 +109,7 @@ export const Ui: React.FC<{ c: SceneCtx }> = ({ c }) => {
       ) : null}
       <div style={{ position: "relative", width: fw, height: fh, opacity: m.opacity, transform: m.transform, transformOrigin: "0% 50%" }}>
         <div style={{ position: "absolute", inset: 0, borderRadius: c.radius ? 28 : 8, overflow: "hidden", backgroundColor: c.surfaces.card.bg }}>
-          {spec.media.kind === "video" ? (
+          {!mediaOn ? null : spec.media.kind === "video" ? (
             <OffthreadVideo src={staticFile(spec.media.file)} muted style={media} />
           ) : (
             <Img src={staticFile(spec.media.file)} style={media} />
