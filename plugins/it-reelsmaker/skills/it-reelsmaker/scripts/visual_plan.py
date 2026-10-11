@@ -792,13 +792,15 @@ def defect_issues(e, plan, s, doc, cap):
     acc = plan.get("accepted_defects") or {}
     live = [i for i in plan.get("inserts", []) if i.get("status") != "skipped"]
     planned = {}
+    D = float(plan.get("duration") or (cap or {}).get("duration") or 1e9)
+    pad = lambda d: (max(0.0, d["start"] - COVER_PAD), min(D, d["end"] + COVER_PAD))  # the margin stops at the video's ends
     for i in live:
         for did in i.get("covers") or []:
             d = by_id.get(did)
             if not d:
                 errs.append(f"{i['id']}: covers {did}, which faces_defects.json does not have")
                 continue
-            a, b = d["start"] - COVER_PAD, d["end"] + COVER_PAD
+            a, b = pad(d)
             if not hides_face(i):
                 errs.append(f"{i['id']}: covers {did} ({d['kind']} {fmt_t(d['start'])}-{fmt_t(d['end'])}), but "
                             f"{i['kind']} {i.get('mode')} leaves the face on screen: a full scene, a replacing B-roll or "
@@ -813,7 +815,7 @@ def defect_issues(e, plan, s, doc, cap):
                     why.append(f"its {i.get('transition_out')} exit starts before that: leave by a cut or later")
                 errs.append(f"{i['id']}: covers {did} ({fmt_t(d['start'])}-{fmt_t(d['end'])}) from {fmt_t(on)} to "
                             f"{fmt_t(off)}: it must hide the face {COVER_PAD} s before and after "
-                            f"({fmt_t(max(0, a))}-{fmt_t(b)})" + ("; " + "; ".join(why) if why else ""))
+                            f"({fmt_t(a)}-{fmt_t(b)})" + ("; " + "; ".join(why) if why else ""))
                 continue
             if i.get("status") == "ready":
                 state[did] = f"covered by {i['id']}"
@@ -826,7 +828,7 @@ def defect_issues(e, plan, s, doc, cap):
         if ac and same_defect(ac, d):
             state[d["id"]] = f"accepted: {ac.get('why', '')}"
             continue
-        a, b = d["start"] - COVER_PAD, d["end"] + COVER_PAD
+        a, b = pad(d)
         by = next((i for i in live if i.get("status") == "ready" and hides_face(i)
                    and hidden_span(i, s, doc, cap)[0] <= a + 1e-6 and hidden_span(i, s, doc, cap)[1] >= b - 1e-6), None)
         if by:  # a ready insert already hides it, without saying so

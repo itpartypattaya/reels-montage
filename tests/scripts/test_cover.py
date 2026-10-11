@@ -107,3 +107,13 @@ def test_an_acceptance_holds_for_its_stretch_only(project):
     write_json(e / "faces_defects.json", {"step": 0.1, "on_camera": True, "defects": [moved]})
     w = lines(validate(project), "warning:")
     assert any("accept it again" in l for l in w) and any("d01: blur" in l for l in w)
+
+
+def test_the_margin_stops_at_the_ends_of_the_video(project):
+    # PR review: a defect in the first 0.25 s could never be covered: the margin ran before frame 0
+    e = setup(project)
+    write_json(e / "faces_defects.json", {"step": 0.1, "on_camera": True,
+                                          "defects": [dict(DEFECT, start=0.1, end=0.6)]})
+    broll(project, "--covers", "d01", at="0.0", dur="1.0")
+    r = validate(project)
+    assert not lines(r, "error:") and not lines(r, "warning:")
