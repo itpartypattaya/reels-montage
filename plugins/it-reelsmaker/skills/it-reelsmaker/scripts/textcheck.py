@@ -20,12 +20,13 @@ How:
        error    off the frame — more than 4 px of a box past the frame's edge;
        error    overlap — two different texts share more than 10 % of the smaller box (its core: without the top and
                 bottom fifth of the line box, which run above and below the letters);
-       error    on a face — a box over a measured face (faces.json, through camera.json as the kit draws it) with a 30 px
+       error    on a face — a box over a measured face (faces.json, through the props' camera as the kit draws it) with a 30 px
                 margin, as `faces.py audit` takes it; not where the rough cut is covered or moved (a full or split
                 scene, a replacing B-roll, a cutaway meme, a presenter layer) and not on the end card;
        warning  clipped — less than 98 % of the box is visible inside the boxes that clip it;
        warning  UI zone — above y 220, below y 1500 or right of x 960 (the app's caption, buttons and likes column).
-  3. Report lines `✗ kind a-b s group «text»`, edit/<id>/textcheck.json; exit code 1 on errors. Faces come from the
+  3. Report lines `✗ kind a-b s group «text»`, edit/<id>/textcheck.json; exit code 1 on errors, and on a pass with
+     frames missing from the log (a gap would hide a problem: the check is then incomplete, not passed). Faces come from the
      rough cut's faces.json (faces.py scan); without it the face check is skipped and the report says so.
 
 The kit's own text carries data-rk groups; in a per-video composition text without one is grouped by its block, and
@@ -110,23 +111,33 @@ def hits(rect, b):
 
 def face_source(e, plan, props, fps):
     """-> faces_at(t) giving the screen face boxes at second t (the rough cut's faces through the camera), or None
-    without faces.json."""
+    without faces.json. The camera and the framed window are the props' own (what the checked render will draw:
+    ReelKit's Footage reads props.camera, not camera.json). The samples come from t's own camera angle: next to a
+    change of source the nearest sample on the other side is not used (review: a face of the other angle, up to a
+    0.25 s step away, gave "on a face" where that face is not on screen)."""
     import faces as fc
     import visual_plan as vp
     fdata = fc.load(e)
     if not fdata or not fdata.get("samples"):
         return None
-    shots = vp.plan_camera(e, plan)
-    view = vp.camera_view(e, fdata)
+    shots = sorted(props.get("camera") or [], key=lambda x: x["t"])
+    view = vp.camera_view(e, fdata) if props.get("framed") else None
     win = fc.window(fdata)
     dur = float(props["captions"]["duration"])
     hidden = fc.covered(plan)
+    cuts = sorted(g["out_start"] for p, g in zip(props["captions"].get("segments") or [],
+                                                  (props["captions"].get("segments") or [])[1:])
+                  if g.get("source") != p.get("source"))
+    st = fdata.get("step", 0.25)
 
     def faces_at(t):
         if t >= dur or any(a - 1e-6 <= t <= b + 1e-6 for a, b in hidden):
             return []
+        lo = max([t - st] + [c for c in cuts if c <= t + 1e-6])
+        hi = min([t + st] + [c - 1e-6 for c in cuts if c > t + 1e-6])
+        boxes = [f[:4] for x in fdata["samples"] if lo - 1e-6 <= x["t"] <= hi + 1e-6 for f in x["faces"]]
         cam = vp.camera_at(shots, t, dur, fps, view) if shots else None
-        return [fc.grow(b, FACE_MARGIN) for b in fc.screen_faces(fc.between(fdata, t, t), cam, win)]
+        return [fc.grow(b, FACE_MARGIN) for b in fc.screen_faces(boxes, cam, win)]
     return faces_at
 
 
@@ -222,14 +233,14 @@ def main():
     if not per_frame:
         sys.exit("no text boxes in Remotion's output: the composition has no probe (kit 1.10.0+: kit.py check / update; "
                  "a per-video composition needs <Sampled sample={p.sample}>)")
-    missing = len(frames) - len(per_frame)
+    missing = sorted(set(frames) - set(per_frame))
     faces_at = None if props.get("video") == "" else face_source(e, plan, props, fps)
     issues = check(per_frame, faces_at, step, fps)
     errs = [i for i in issues if i["level"] == "error"]
     save_json(e / "textcheck.json", {"props": str(pf), "step": step, "frames": len(frames), "measured": len(per_frame),
-                                     "faces": faces_at is not None, "issues": issues})
+                                     "missing": missing, "faces": faces_at is not None, "issues": issues})
     print(f"text measured on {len(per_frame)} of {len(frames)} frames (every {step}) in {time.time() - t0:.0f} s"
-          + (f"; {missing} frame(s) missing from the log" if missing else ""))
+          + (f"; {len(missing)} frame(s) missing from the log" if missing else ""))
     if faces_at is None:
         print("faces: " + ("no speaker (scenes only)" if props.get("video") == "" else
                            "no faces.json, the face check is skipped (faces.py scan, references/faces.md)"))
@@ -237,7 +248,10 @@ def main():
         mark = "✗" if i["level"] == "error" else "!"
         print(f"  {mark} {i['kind']}: {i['start']:.1f}-{i['end']:.1f} s  {i['group']}  «{i['text'][:40]}»  ({i['detail']})")
     print(f"{len(errs)} error(s), {len(issues) - len(errs)} warning(s); {e / 'textcheck.json'}")
-    if errs:
+    if missing:  # a gap hides what is there and splits a lasting problem into short runs that do not count
+        print(f"incomplete: frames {', '.join(map(str, missing[:8]))}{' …' if len(missing) > 8 else ''} were not measured; "
+              f"run it again (--keep-log keeps Remotion's output)")
+    if errs or missing:
         sys.exit(1)
 
 

@@ -184,3 +184,38 @@ def test_faces_are_not_checked_where_the_rough_cut_is_covered(project, monkeypat
     assert faces_at(1.0) and all(f == [370, 370, 340, 420] for f in faces_at(1.0))  # the face + 30 px
     assert faces_at(3.0) == []  # under a replacing B-roll
     assert faces_at(10.5) == []  # the end card
+
+
+def test_faces_follow_the_props_camera_and_stay_on_their_camera_angle(project):
+    # review: the camera came from camera.json, not from the props the render draws; next to a change of source the
+    # nearest sample of the other angle (up to a 0.25 s step away) put that angle's face on the frame
+    import faces as fc
+    import textcheck as tc
+    e = project / "edit" / "t"
+    samples = [{"t": k * 0.25, "faces": [[400, 400, 280, 360, 0.95] if k * 0.25 < 5.0 else [100, 1000, 200, 260, 0.95]]}
+               for k in range(41)]
+    write_json(e / "faces.json", {"video": "final.mp4", "step": 0.25, "geometry": "cover", "w": 1080, "h": 1920,
+                                  "samples": samples, "filter": {"v": fc.FILTER_V}})
+    cap = {"duration": 10.0, "words": [], "segments": [{"out_start": 0.0, "source": "a"}, {"out_start": 4.9, "source": "b"}]}
+    zoom = [{"t": 0.0, "z": 2.0, "cx": 540, "cy": 580, "drift": 0, "whip": False}]
+    faces_at = tc.face_source(e, {}, props(captions=cap, camera=zoom), FPS)
+    assert faces_at(1.0)[0] == [230, 570, 620, 780]  # x (400-540)*2+540-30, y (400-580)*2+960-30: the props' camera
+    near = tc.face_source(e, {}, props(captions=cap), FPS)
+    assert near(4.8) and all(f == [370, 370, 340, 420] for f in near(4.8))  # angle a only, though 5.0 s is 0.2 s away
+    assert all(f == [70, 970, 260, 320] for f in near(4.95))  # angle b from its cut on, not a's sample at 4.75
+
+
+def test_a_check_with_frames_missing_from_the_log_does_not_pass(project, monkeypatch, capsys):
+    import board as bd
+    import textcheck as tc
+    e = project / "edit" / "t"
+    write_json(e / "reelkit-props.json", props(captions={"duration": 1.0, "segments": [], "words": []}))
+    (project / "reels" / "src").mkdir(parents=True)
+    (project / "reels" / "package.json").write_text("{}", encoding="utf-8")
+    log = "\n".join(f"RK_TEXT {json.dumps({'f': f, 'b': [box('sub/0', 60, 1250, 500, 68)]})}" for f in range(0, 30, 3) if f != 12)
+    monkeypatch.setattr(bd, "render_frames", lambda *a, **k: ([], log))
+    monkeypatch.setattr(sys, "argv", ["textcheck.py", "edit/t", "--remotion", str(project / "reels")])
+    with pytest.raises(SystemExit) as x:
+        tc.main()
+    assert x.value.code == 1 and "incomplete: frames 12 were not measured" in capsys.readouterr().out
+    assert json.loads((e / "textcheck.json").read_text(encoding="utf-8"))["missing"] == [12]
