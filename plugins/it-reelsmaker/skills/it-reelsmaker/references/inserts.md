@@ -165,8 +165,9 @@ it. Not found: a blink (not a defect anyway), eyes looking down at notes with th
 `overlay`, `split`, `panel` and `window` keep the speaker on screen: the defect stays visible, only smaller.
 
 **Timing:** the insert is on screen from 0.25 s before the defect to 0.25 s after it, and has finished entering by
-then: enter by a cut (a fade or a slide shows the defect through it for 7–14 frames); leave in a pause or at a word
-boundary. Mark it in the plan: `visual_plan.py add … --covers d03`; `validate` fails an insert that says it covers a
+then and still there: enter and leave by a cut (a fade or a slide shows the defect through it for 7–14
+frames); leave in a pause or at a word boundary. Only a ready insert counts as covering (the export takes only ready
+ones); an acceptance holds for its stretch only, and a re-cut that moves the defect asks again. Mark it in the plan: `visual_plan.py add … --covers d03`; `validate` fails an insert that says it covers a
 defect and does not (wrong mode, too short, entering over it), and warns about a defect nothing covers. A defect left on
 purpose: `visual_plan.py accept edit/<id> d03 --why "a natural glance"` (into the report). `board.py --defects` puts a
 panel at the middle of every defect, so the person sees it covered.

@@ -23,9 +23,15 @@ def lines(r, kind):
     return [l for l in r.stdout.splitlines() if l.startswith(kind) and "d01" in l]
 
 
-def broll(project, *extra, at="12.0", dur="1.3"):
-    return run_script("visual_plan.py", "add", "edit/4821", "--kind", "broll", "--at", at, "--dur", dur,
-                      "--what", "an office", "--why", "covers a glance away", *extra, cwd=project, check=False)
+def broll(project, *extra, at="12.0", dur="1.3", ready=True):
+    r = run_script("visual_plan.py", "add", "edit/4821", "--kind", "broll", "--at", at, "--dur", dur,
+                   "--what", "an office", "--why", "covers a glance away", *extra, cwd=project, check=False)
+    if ready:  # as footage.py pick leaves it: export takes only ready inserts
+        e = project / "edit" / "4821"
+        plan = load_plan(e)
+        plan["inserts"][-1].update(status="ready", file="inserts/b.mp4")
+        write_json(e / "visual_plan.json", plan)
+    return r
 
 
 def test_an_open_defect_is_a_hint_and_a_warning_and_accept_takes_it(project):
@@ -77,3 +83,27 @@ def test_covers_that_do_not_cover(project):
     broll(project, "--covers", "d07")
     assert any("covers d07, which faces_defects.json does not have" in l for l in validate(project).stdout.splitlines())
     assert json.loads((e / "faces_defects.json").read_text(encoding="utf-8"))["defects"][0]["id"] == "d01"
+
+
+def test_a_planned_insert_does_not_cover_yet_and_an_exit_slide_shows_the_defect(project):
+    # review: a planned B-roll counted as covering, though export takes only ready ones; a slide out starting during
+    # the defect passed because the full length counted
+    e = setup(project)
+    broll(project, "--covers", "d01", ready=False)
+    w = lines(validate(project), "warning:")
+    assert w and "will cover it once it is ready" in w[0]
+    run_script("visual_plan.py", "remove", "edit/4821", "b01", cwd=project)
+    broll(project, "--covers", "d01", "--transition-out", "slide", at="12.0", dur="1.16")
+    err = lines(validate(project), "error:")
+    assert err and "exit starts before that" in err[0]
+
+
+def test_an_acceptance_holds_for_its_stretch_only(project):
+    # review: defects.py numbers the defects again after a re-cut; the old d01's acceptance hid another stretch
+    e = setup(project)
+    run_script("visual_plan.py", "accept", "edit/4821", "d01", "--why", "a glance", cwd=project)
+    assert not lines(validate(project), "warning:")
+    moved = dict(DEFECT, kind="blur", start=20.0, end=20.6)
+    write_json(e / "faces_defects.json", {"step": 0.1, "on_camera": True, "defects": [moved]})
+    w = lines(validate(project), "warning:")
+    assert any("accept it again" in l for l in w) and any("d01: blur" in l for l in w)
