@@ -12,11 +12,13 @@ them as a jump. cut.py runs this step by itself after joining the audio (cut.jso
 
 How (measured on the speech only, so pauses and room noise never set the gain):
   - the envelope: RMS over 10 ms windows of a 16 kHz mono copy, the same analysis as speech_mask.py; speech = windows
-    at or above the speech threshold (the speech level's 95th percentile − 20 dB, at most −30 dBFS, at least −60: a
-    silent file has no speech, not quiet speech);
+    at or above the speech threshold of their own source (the source's speech level, its 95th percentile, − 20 dB, at
+    most −30 dBFS, at least −60: a silent file has no speech, not quiet speech). Per source, not one for the video: a
+    take 20+ dB quieter than the loudest would fall under a shared threshold whole and get no gain at all;
   - the level of a stretch = the power mean of its speech windows (like LUFS, which is a gated power mean);
   - each piece of the cut (captions.json segments) gets its own level; a piece with under 1 s of speech takes the level
-    of its source (too little to measure). The target is the level of all the speech of the video;
+    of its source (too little to measure). The target is the mean of the sources' speech levels in dB, weighted by
+    their speech time (a power mean would lean to the loudest take);
   - inside a piece the local level is measured over ±1.5 s of speech and corrects the piece's gain by at most ±4 dB
     (a speaker turning away, a phrase said closer to the phone); a stress on one word does not move a 3 s window much;
   - the gain holds through pauses (no speech within 0.3 s) instead of following the noise, is smoothed over ±0.4 s and
@@ -87,6 +89,7 @@ def analyze(path):
 
 
 def speech_threshold(env):
+    """The speech threshold of an envelope (the windows of one source)."""
     srt = sorted(env)
     p95 = srt[int(len(srt) * 0.95)] if srt else -20
     return max(QUIETEST, min(-30.0, p95 - 20))
@@ -102,20 +105,41 @@ def _windows(segs, n):
     return out
 
 
-def gain_curve(env, segs, peak=None, thr=None):
+def thresholds(env, wins):
+    """{source: speech threshold} from the windows of each source's pieces."""
+    by = {}
+    for src, a, b in wins:
+        by.setdefault(src, []).extend(env[a:b])
+    return {k: speech_threshold(v) for k, v in by.items()}
+
+
+def speech_flags(env, wins, thr):
+    """True for a speech window: at or above the threshold of the source whose piece holds it."""
+    sp = [False] * len(env)
+    for src, a, b in wins:
+        t = thr[src]
+        for i in range(a, b):
+            sp[i] = env[i] >= t
+    return sp
+
+
+def gain_curve(env, segs, peak=None):
     """Gain in dB per 10 ms window + a report. env: dB per window; segs: [(source, out_start, out_dur)] in seconds."""
     n = len(env)
-    thr = speech_threshold(env) if thr is None else thr
-    sp = [x >= thr for x in env]
     wins = _windows(segs, n)
+    thr = thresholds(env, wins)
+    sp = speech_flags(env, wins, thr)
     by_src = {}
     for src, a, b in wins:
         by_src.setdefault(src, []).extend(env[i] for i in range(a, b) if sp[i])
     src_level = {k: pmean(v) for k, v in by_src.items()}
-    every = [env[i] for i in range(n) if sp[i]]
-    target = pmean(every)
+    # the target: the sources' levels in dB weighted by their speech time. A power mean of all the speech would lean to
+    # the loudest take (a −20 and a −41 dB take give −23: the loud one barely moves, the quiet one hits the limit)
+    weighted = [(lv, len(by_src[k])) for k, lv in src_level.items() if lv is not None]
+    total = sum(w for _, w in weighted)
+    target = sum(lv * w for lv, w in weighted) / total if total else None
     g = [0.0] * n
-    report = {"threshold_db": round(thr, 1), "target_db": None if target is None else round(target, 2), "pieces": [],
+    report = {"threshold_db": {k: round(v, 1) for k, v in thr.items()}, "target_db": None if target is None else round(target, 2), "pieces": [],
               "sources": {}}
     if target is None:
         return g, report
@@ -244,18 +268,20 @@ def describe(rep):
     gains = [p["gain_db"] for p in rep.get("pieces", []) if p.get("level_db") is not None]
     span = f"pieces {min(gains):+.1f}..{max(gains):+.1f} dB" if gains else "no speech"
     trim = f", peak trim -{rep['peak_trim_db']} dB" if rep.get("peak_trim_db") else ""
-    return (f"speech leveling: target {rep.get('target_db')} dB (speech threshold {rep.get('threshold_db')}); "
+    thr = rep.get("threshold_db") or {}
+    thr = ", ".join(f"{k} {v}" for k, v in thr.items()) if isinstance(thr, dict) else thr
+    return (f"speech leveling: target {rep.get('target_db')} dB (speech thresholds {thr}); "
             + "; ".join(parts) + f"; {span}; largest gain {rep.get('max_gain_db')} dB{trim}")
 
 
 def measure(path, segs):
     """Speech level per source and per piece of a file, no change: {source: dB}, [piece dB]."""
     env, _ = analyze(path)
-    thr = speech_threshold(env)
     wins = _windows(segs, len(env))
+    thr = thresholds(env, wins)
     per_src, pieces = {}, []
     for src, a, b in wins:
-        v = [env[i] for i in range(a, b) if env[i] >= thr]
+        v = [env[i] for i in range(a, b) if env[i] >= thr[src]]
         per_src.setdefault(src, []).extend(v)
         pieces.append(None if len(v) * HOP < MIN_SPEECH else round(pmean(v), 2))
     return {k: (None if not v else round(pmean(v), 2)) for k, v in per_src.items()}, pieces

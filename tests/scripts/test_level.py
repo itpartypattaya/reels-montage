@@ -32,6 +32,15 @@ def test_two_sources_at_different_levels_meet_at_one_level():
     assert rep["sources"]["a"]["before_db"] == -20 and rep["sources"]["b"]["before_db"] == -28
 
 
+def test_a_take_more_than_20_db_quieter_is_still_leveled():
+    # a shared threshold (-20 - 20 = -40) would put the -41 dB take under it whole: no speech, no gain
+    env = env_of([(0.2, 3.8, -20), (4.2, 7.8, -41)], 8.0, floor=-75.0)
+    g, rep = L.gain_curve(env, [("a", 0.0, 4.0), ("b", 4.0, 4.0)])
+    assert rep["sources"]["b"]["before_db"] == -41
+    assert at(g, 6.0) >= L.MAX_GAIN - 0.01 and at(g, 2.0) <= -L.MAX_GAIN + 0.01   # both to the middle, both capped
+    assert rep["threshold_db"]["b"] < rep["threshold_db"]["a"]
+
+
 def test_a_pause_holds_the_gain_of_the_speech_around_it():
     env = env_of([(0.2, 1.8, -24), (2.6, 3.8, -24)], 4.0)
     g, _ = L.gain_curve(env, [("a", 0.0, 4.0)])
@@ -52,12 +61,15 @@ def test_a_speaker_turning_away_inside_a_piece_is_corrected_gently():
 
 
 def test_the_gain_is_limited_and_the_peak_is_kept_under_full_scale():
-    env = env_of([(0.2, 3.8, -10), (4.2, 7.8, -40)], 8.0)
+    env = env_of([(0.2, 3.8, -10), (4.2, 7.8, -40)], 8.0, floor=-75.0)
     g, rep = L.gain_curve(env, [("a", 0.0, 4.0), ("b", 4.0, 4.0)])
     assert max(abs(x) for x in g) <= L.MAX_GAIN + 1e-9
-    peak = [x + 3 for x in env]  # peaks 3 dB over the RMS
-    g2, rep2 = L.gain_curve([x + 12 for x in env], [("a", 0.0, 4.0), ("b", 4.0, 4.0)], peak=[x + 12 for x in peak])
-    assert max(p + x for p, x in zip([x + 12 for x in peak], g2)) <= L.PEAK_LIMIT + 1e-6
+    # a quiet take with one loud click (peak -1 dBFS): raising the take would push the click over full scale
+    env = env_of([(0.2, 3.8, -20), (4.2, 7.8, -30)], 8.0, floor=-75.0)
+    peak = [x + 3 for x in env]
+    peak[int(6.0 / HOP)] = -1.0
+    g2, rep2 = L.gain_curve(env, [("a", 0.0, 4.0), ("b", 4.0, 4.0)], peak=peak)
+    assert max(p + x for p, x in zip(peak, g2)) <= L.PEAK_LIMIT + 1e-6
     assert rep2.get("peak_trim_db", 0) > 0
 
 
