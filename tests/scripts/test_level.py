@@ -84,6 +84,17 @@ def test_no_speech_means_no_gain():
     assert set(g) == {0.0} and rep["target_db"] is None
 
 
+@needs_ffmpeg
+def test_the_peak_is_read_on_every_channel_at_the_own_rate(tmp_path):
+    # a loud click only in the right channel: a mono downmix halves it (-6 dB), the real peak is near full scale
+    wav = tmp_path / "click.wav"
+    ffmpeg("-f", "lavfi", "-i", "anullsrc=r=48000:cl=stereo:d=1", "-af",
+           r"aeval='0|if(between(t\,0.5\,0.5005)\,0.95\,0)':c=stereo", wav)
+    env, peak = L.analyze(wav)
+    assert len(peak) == len(env)
+    assert max(peak) > -1.0
+
+
 def _source(path, volume, dur=6.0):
     """A test video whose sound is two tone 'phrases' (0.5-2.5 s, 3.5-5.5 s) at a given volume."""
     on = "between(t,0.5,2.5)+between(t,3.5,5.5)"

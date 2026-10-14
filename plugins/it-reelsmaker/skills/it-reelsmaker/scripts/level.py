@@ -24,8 +24,9 @@ How (measured on the speech only, so pauses and room noise never set the gain):
   - the gain holds through pauses (no speech within 0.3 s) instead of following the noise, is smoothed over ±0.4 s and
     changes inside a piece by at most 3 dB per second; between pieces it may step: a join is on silence with a 30 ms
     fade (cut.py), so the step is not heard;
-  - limits: ±8 dB in total; the peak after leveling stays 2 dB under full scale (the peak on the 16 kHz copy
-    under-reads the real one), otherwise every gain is lowered by the excess: the level is evened, not raised;
+  - limits: ±8 dB in total; the sample peak after leveling, measured over every channel at the file's own rate (a mono
+    16 kHz copy under-reads it), stays 2 dB under full scale (room for the AAC encode), otherwise every gain is
+    lowered by the excess: the level is evened, not raised;
   - the gain curve is applied with ffmpeg amultiply (the audio times a 48 kHz gain track), the video is copied.
 Report: the speech level per source and per piece before and after, the largest gain; captions.json -> "leveling".
 """
@@ -46,7 +47,7 @@ MAX_GAIN = 8.0       # dB: the largest gain either way
 HOLD = 0.3           # s: no speech this close -> a pause: the gain holds
 SMOOTH = 0.4         # s: half-width of the moving average of the gain
 SLEW = 3.0           # dB per s inside a piece
-PEAK_LIMIT = -2.0    # dBFS on the 16 kHz copy after the gain
+PEAK_LIMIT = -2.0    # dBFS sample peak after the gain (all channels, own rate): room for the AAC encode
 QUIETEST = -60.0     # dBFS: nothing quieter is speech (silence, a source without sound: its threshold sinks with it)
 SR_OUT = 48000
 
@@ -58,8 +59,38 @@ def pmean(dbs):
     return 10 * log10(sum(10 ** (x / 10) for x in dbs) / len(dbs))
 
 
+def peaks(path, n):
+    """Sample peak in dBFS per 10 ms window over every channel at the file's own rate, n windows. The peak is measured on
+    the audio that gets amplified: a mono 16 kHz copy under-reads it (channels that partly cancel, high-frequency
+    transients cut by the resampling), and a click raised over full scale would clip for good. Float samples, so a
+    peak already over full scale is seen as such."""
+    r = subprocess.run(local_media_args(["ffprobe", "-v", "error", "-select_streams", "a:0", "-show_entries",
+                                         "stream=sample_rate,channels", "-of", "csv=p=0", str(path)]),
+                       capture_output=True, text=True)
+    try:
+        sr, ch = (int(x) for x in r.stdout.strip().split(",")[:2])
+    except ValueError:
+        raise RuntimeError(f"ffprobe found no audio stream in {path}")
+    r = subprocess.run(local_media_args(["ffmpeg", "-v", "error", "-i", str(path), "-vn", "-f", "f32le", "-acodec", "pcm_f32le",
+                                         "-"]), capture_output=True)
+    if r.returncode != 0:
+        raise RuntimeError(f"ffmpeg could not read the audio of {path}: {r.stderr.decode('utf-8', 'replace').strip()[-300:]}")
+    data = array("f")
+    data.frombytes(r.stdout[:len(r.stdout) // 4 * 4])
+    if sys.byteorder != "little":
+        data.byteswap()
+    k = int(sr * HOP) * ch
+    out = []
+    for i in range(n):
+        chunk = data[i * k:(i + 1) * k]
+        p = max(abs(min(chunk)), abs(max(chunk))) if chunk else 0.0
+        out.append(20 * log10(p) if p > 1e-6 else -120.0)
+    return out
+
+
 def analyze(path):
-    """(rms_db, peak_db) per 10 ms window of a mono 16 kHz copy of the file's audio."""
+    """(rms_db, peak_db) per 10 ms window: the RMS of a mono 16 kHz copy (speech detection, as in speech_mask.py), the
+    peak over every channel at the file's own rate (headroom, see peaks())."""
     fd, tmp = tempfile.mkstemp(prefix="level_", suffix=".wav")
     os.close(fd)
     try:
@@ -77,15 +108,11 @@ def analyze(path):
         except OSError:
             pass
     n = int(sr * HOP)
-    rms, peak = [], []
+    rms = []
     for i in range(0, len(data) - n + 1, n):
-        chunk = data[i:i + n]
-        s = sum(v * v for v in chunk)
-        x = sqrt(s / n) / 32768
-        p = max(abs(min(chunk)), abs(max(chunk))) / 32768
+        x = sqrt(sum(v * v for v in data[i:i + n]) / n) / 32768
         rms.append(20 * log10(x) if x > 1e-6 else -120.0)
-        peak.append(20 * log10(p) if p > 1e-6 else -120.0)
-    return rms, peak
+    return rms, peaks(path, len(rms))
 
 
 def speech_threshold(env):
