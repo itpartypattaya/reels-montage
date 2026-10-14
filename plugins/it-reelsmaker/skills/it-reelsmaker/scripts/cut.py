@@ -19,7 +19,8 @@ cut.json (paths are relative to the project root, or to edit/<id>, or absolute):
      "fix": {"recruter": "recruiter"},
      "fix_at": [{"text": "all", "at": 16.16, "to": "everything"}],
      "retime": [{"text": "Hi", "at": 0.0, "start": 0.68, "end": 0.84}],
-     "extract": {"broll_pool": {"source": "main", "start": 25.75, "end": 27.05}}
+     "extract": {"broll_pool": {"source": "main", "start": 25.75, "end": 27.05}},
+     "level": true
     }
 
 sources     one or more source files; each may set its own "speed" (two angles recorded at different paces).
@@ -56,6 +57,7 @@ A word the transcript marks "est": true (heard only by a cloud transcript, its t
 is named too, in --dry-run as well: listen, and remove it with fix_at -> "" if it is not said.
 Two adjacent pieces whose subtitles share an identical run of 3+ words are named as well (a whole take left in next to
 its repeat: "the video jumps back"); a piece that replays the same seconds of its source (a teaser) is not.
+level       speech leveling over the whole cut, on by default (false: the audio as recorded, only the cut fades).
 extract     extra clips from the sources for Remotion (cutaways from the same footage), same color, no sound:
             edit/<id>/<name>.mp4. A B-roll insert from the project's own videos gets the same look too:
             footage.py pick (project footage) and footage.py prepare --look edit/<id>.
@@ -67,6 +69,10 @@ How it is built (checked on real renders):
     the audio with the concat filter, each segment padded and trimmed to its video length, one AAC encode, then
     mux with -c copy +faststart. A combined concat of segments with AAC audio shifts the video start by ~21 ms
     (AAC priming), and Remotion then fails with "No frame found at position";
+  - speech leveling (on by default; "level": false in cut.json or --no-level turns it off): the joined audio is
+    measured on its speech only and every piece, and every stretch inside a long piece, is brought to one speech
+    level (two takes in different places, a speaker who leans back or turns away), pauses hold their gain, ±8 dB at
+    most; details in level.py. The audio before leveling stays in clips/audio_only.m4a;
   - at the end: video and audio start at 0 and have the same duration, otherwise exit code 1.
 Output in edit/<id>/: final.mp4, captions.json (segments src_start/src_end/out_start/out_dur + words on the new
 timeline), edl.json (sources and ranges for speech_mask.py --edl), clips/ (intermediate segments).
@@ -75,6 +81,7 @@ import argparse, json, math, sys, unicodedata
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+from level import describe as describe_level, level_audio
 from reels_common import (brand_file, edit_dir, inside, load_config, load_json, probe, project_root, run, safe_slug, save_json,
                           significant, speaker_of, take_words, utf8_stdio, warn)
 
@@ -181,7 +188,8 @@ def load_cut(e, project, speed_arg=None):
     return {"fps": fps, "speed": speed, "sources": sources, "ranges": ranges, "grade": grade, "correct": correct,
             "lut": str(lut) if lut else None, "lut_mix": float(look.get("lut_mix", LUT_MIX)),
             "fix": fix_map(cut.get("fix")), "fix_at": word_fixes(cut.get("fix_at"), "fix_at", ("to",)),
-            "retime": word_fixes(cut.get("retime"), "retime", ("start", "end")), "extract": extras}
+            "retime": word_fixes(cut.get("retime"), "retime", ("start", "end")), "extract": extras,
+            "level": cut.get("level", True) is not False}
 
 
 def fix_map(v):
@@ -543,8 +551,9 @@ def encode_segment(c, g, out):
          "-c:v", "libx264", "-preset", "medium", "-crf", "16", "-c:a", "aac", "-b:a", "192k", "-ar", "48000", out])
 
 
-def join(e, parts, segments):
-    """Video and audio joined separately (see the module docstring), then muxed into final.mp4."""
+def join(e, parts, segments, level=True):
+    """Video and audio joined separately (see the module docstring), then muxed into final.mp4. With level, the joined
+    audio is leveled first (level.py); returns its report (None without leveling or when it could not run)."""
     clips = e / "clips"
     lst = clips / "list.txt"
     lst.write_text("".join(f"file '{p.name}'\n" for p in parts), encoding="utf-8")
@@ -555,8 +564,22 @@ def join(e, parts, segments):
     afc += "".join(f"[a{k}]" for k in range(len(parts))) + f"concat=n={len(parts)}:v=0:a=1[a]"
     run(["ffmpeg", "-v", "error", "-y", *ains, "-filter_complex", afc, "-map", "[a]", "-c:a", "aac", "-b:a", "192k",
          "-ar", "48000", atmp])
-    run(["ffmpeg", "-v", "error", "-y", "-i", vtmp, "-i", atmp, "-map", "0:v", "-map", "1:a", "-c", "copy",
+    report, audio = None, atmp
+    if level:
+        segs, t = [], 0.0
+        for g in segments:
+            d = g["_n"] / g["_fps"]
+            segs.append((g["source"], t, d))
+            t += d
+        alev = clips / "audio_level.m4a"
+        try:
+            report = level_audio(atmp, alev, segs)
+            audio = alev
+        except RuntimeError as x:
+            warn(f"speech leveling skipped: {x}")
+    run(["ffmpeg", "-v", "error", "-y", "-i", vtmp, "-i", audio, "-map", "0:v", "-map", "1:a", "-c", "copy",
          "-movflags", "+faststart", e / "final.mp4"])
+    return report
 
 
 def check_final(f, fps, expected_frames=None):
@@ -612,6 +635,7 @@ def main():
     ap.add_argument("edit", help="the video folder, edit/<id>")
     ap.add_argument("--speed", type=float, help="speed-up for every source (overrides cut.json)")
     ap.add_argument("--dry-run", action="store_true", help="only print the segments, lengths and words; encode nothing")
+    ap.add_argument("--no-level", action="store_true", help="no speech leveling (same as cut.json \"level\": false)")
     a = ap.parse_args()
     project = project_root()
     e = edit_dir(a.edit, project)
@@ -652,7 +676,9 @@ def main():
         out = clips / f"seg_{g['i']:02d}.mp4"
         encode_segment(c, g, out)
         parts.append(out)
-    join(e, parts, segments)
+    leveling = join(e, parts, segments, c["level"] and not a.no_level)
+    if leveling:
+        print(describe_level(leveling))
     extract(c, e)
     expected_frames = sum(g["_n"] for g in segments)
     for g in segments:
@@ -667,7 +693,8 @@ def main():
                                            "speed": g["speed"], "beat": g["beat"]} for g in segments],
                                "total_duration_s": round(total, 3)})
     save_json(e / "captions.json", {"duration": round(total, 3), "segments": segments, "words": captions,
-                                    **({"speakers": speakers_of(captions)} if speakers_of(captions) else {})})
+                                    **({"speakers": speakers_of(captions)} if speakers_of(captions) else {}),
+                                    **({"leveling": leveling} if leveling else {})})
     problems = check_final(e / "final.mp4", c["fps"], expected_frames)
     if problems:
         print("final.mp4 check FAILED: " + "; ".join(problems))

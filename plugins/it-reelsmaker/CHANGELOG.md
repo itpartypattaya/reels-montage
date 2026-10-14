@@ -2,6 +2,16 @@
 
 What changed in IT Reelsmaker, written for the people who use it. The newest version is on top. The skill shows a short “What's new” note from this file once, on the first edit after an update.
 
+## 1.12.0
+
+- **One speech level over the whole video.** The rough cut now evens out the voice: two takes recorded in different
+  places, a take closer to the phone, a speaker who leans back in the middle of a line no longer jump in loudness at a
+  cut or inside a piece. It is measured on the speech only, so the pauses and the room noise are not raised; `cut.py`
+  prints the level of each source before and after. A video that should keep a quiet moment turns it off with
+  `"level": false`.
+- The mastering step now says plainly that sound accents need `--sfx`: the kit plays none, so a master made without
+  it is silent where the scenes expected a sound.
+
 ## 1.11.0
 
 - **A bad picture on a good take.** `defects.py` finds the stretches where the sound is fine and the picture is not:
