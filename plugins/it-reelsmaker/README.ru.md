@@ -100,7 +100,7 @@ claude plugin install it-reelsmaker@itparty
 **Нужно:**
 - [Claude Code](https://claude.com/claude-code);
 - `ffmpeg` / `ffprobe`;
-- Node.js 18+ и проект [Remotion](https://www.remotion.dev/); если его нет, `python scripts/kit.py new reels` создаст проект с подключённым набором компонентов плагина, дальше `npm install` в этой папке;
+- Node.js 18+ и проект [Remotion](https://www.remotion.dev/); если его нет, `python scripts/kit.py new reels` создаст проект с подключённым набором компонентов плагина, дальше `npm install` в этой папке. У Remotion своя лицензия: бесплатно для частных лиц, некоммерческих организаций и компаний до 3 сотрудников, компании побольше (например, агентству) нужна платная лицензия Remotion ([условия](https://github.com/remotion-dev/remotion/blob/main/LICENSE.md));
 - Python 3.9 или новее — для скриптов плагина (черновой монтаж, маска речи, визуальный план, бренды, обложка, мастеринг) и [Pillow](https://pypi.org/project/pillow/) (`pip install Pillow`) для обзорных листов, обложек и логотипов;
 - расшифровка по словам: локальный `faster-whisper` (облачный распознаватель — только по вашему выбору).
 

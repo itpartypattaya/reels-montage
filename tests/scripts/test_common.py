@@ -87,6 +87,21 @@ def test_settings_layers(project):
     assert (s["use_memes"], prov["use_memes"]) == (False, "override")
 
 
+def test_a_brand_tone_never_turns_inserts_on(project):
+    # Review 2026-10-17 (Fable P1): B-roll was on in every tone preset and memes in friendly and bold, so a plain edit
+    # held only while the agent remembered to save false; now inserts come only from the person's choice
+    e = project / "edit" / "4821"
+    for preset in ("premium", "warm", "expert", "story", "tech", "friendly", "drive", "bold"):
+        write_json(project / "brands" / "acme" / "brand.json", {"name": "Acme", "slug": "acme", "schema": 2,
+                                                                "tone": {"preset": preset, "overrides": {}}})
+        write_json(e / "reel.json", {"brand": "acme"})
+        s, prov, *_ = rc.load_config(e)
+        assert (s["use_broll"], s["use_memes"], s["use_scenes"]) == (False, False, False), (preset, prov)
+    write_json(e / "reel.json", {"brand": "acme", "use_broll": True, "use_memes": True})
+    s, prov, *_ = rc.load_config(e)
+    assert (s["use_broll"], prov["use_broll"], s["use_memes"]) == (True, "reel.json", True)
+
+
 def test_online_sources_are_off_without_the_add_on(project):
     eff, why = rc.effective({"use_broll": True, "use_online_footage": True, "use_memes": True, "use_online_memes": True,
                              "use_generated_footage": True, "use_project_footage": True})

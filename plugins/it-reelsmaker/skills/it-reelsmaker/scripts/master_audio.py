@@ -197,7 +197,10 @@ def main():
     ap.add_argument("--no-loudness", action="store_true", help="with --check: no −14 LUFS requirement (scene sounds over "
                                                                "silence, a master made before the tag); the peak still counts")
     ap.add_argument("--no-denoise", action="store_true")
-    ap.add_argument("--sfx", help="edit/<id>/sfx.json: scene sound accents mixed in before mastering")
+    ap.add_argument("--sfx", help="edit/<id>/sfx.json: scene sound accents mixed in before mastering (default: the "
+                                  "sfx.json of the video's folder, the one of --cover or --edit)")
+    ap.add_argument("--no-sfx", action="store_true", help="master without the scene sounds even when sfx.json is there")
+    ap.add_argument("--edit", help="edit/<id>: the video's folder, where sfx.json is looked for (default: the folder of --cover)")
     ap.add_argument("--duck", action="append", default=[], metavar="A-B[:dB]",
                     help="duck the music under a key line: seconds of the render, dB down (default 14), repeatable")
     ap.add_argument("--cover", help="edit/<id>/cover.jpg (poster.py pick): frame 0, the embedded cover art and "
@@ -217,6 +220,7 @@ def main():
         sys.exit(report(*acceptance(a.input, loudness=loud, sound=tag != TAG_NO_SOUND)))
     if not a.output:
         sys.exit("-o <output.mp4> is required")
+    auto_sfx(a)
     if a.cover and not Path(a.cover).is_file():
         sys.exit(f"cover not found: {a.cover} (poster.py pick edit/<id> --render <render> -o edit/<id>/cover.jpg)")
     if a.cover and Path(a.output).resolve() == Path(a.input).resolve():
@@ -392,6 +396,21 @@ def peak_db(p):
 
 
 NO_VOICE_BELOW = 6.0  # no voice: an accent sits this much under the music's peak (or under −1 dBFS over silence)
+
+
+def auto_sfx(a):
+    """--sfx not given: the video's own sfx.json (in --edit, else next to --cover) is mixed in, so the sound accents the
+    brief chose reach the master (review 2026-10-17: a master went out without them, the flag was not in the command).
+    --no-sfx keeps them out on purpose."""
+    if a.sfx and a.no_sfx:
+        sys.exit("--sfx and --no-sfx together: pick one")
+    if a.sfx or a.no_sfx:
+        return
+    for d in ([Path(a.edit)] if a.edit else []) + ([Path(a.cover).parent] if a.cover else []):
+        if (d / "sfx.json").is_file():
+            a.sfx = str(d / "sfx.json")
+            print(f"sfx: {a.sfx}, {len(sfx_sounds(a))} sound(s) go into the master (--no-sfx: without them)")
+            return
 
 
 def sfx_sounds(a):

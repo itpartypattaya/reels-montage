@@ -51,6 +51,21 @@ def test_add_on_defaults_and_reasons(project, tmp_path):
     assert "unknown" not in (r.stdout + r.stderr).lower()  # the add-on's keys are known once it is linked
 
 
+def test_the_add_on_does_not_turn_model_prompts_on_by_itself(project, tmp_path):
+    # Review 2026-10-17 (Fable P2): installing the add-on switched the code-scene default to ["code", "model"], so
+    # inserts got the model engine, stayed pending and wrote prompts.md without anyone choosing a video model
+    import json
+    link(project, tmp_path)
+    write_json(project / "edit" / "4821" / "reel.json", {"use_broll": True, "use_generated_footage": True})
+    r = run_script("reelcfg.py", "show", "edit/4821", "--json", cwd=project, env=env(tmp_path))
+    j = json.loads(r.stdout)
+    assert j["settings"]["generation_engines"] == ["code"] and not j["effective"]["generated_prompts"]
+    write_json(project / "edit" / "4821" / "reel.json", {"use_broll": True, "use_generated_footage": True,
+                                                       "generation_engines": ["code", "model"]})
+    j = json.loads(run_script("reelcfg.py", "show", "edit/4821", "--json", cwd=project, env=env(tmp_path)).stdout)
+    assert j["effective"]["generated_prompts"]
+
+
 @needs_ffmpeg
 def test_stock_providers_listed_but_unavailable_offline(project, tmp_path):
     link(project, tmp_path)

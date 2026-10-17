@@ -8,7 +8,7 @@ Two questions about a video are kept apart:
   paid ad (`reel.json → profile`). A format brings its usual profile; the same skit can be entertaining for reach or a
   paid ad, and then the ad's rules apply.
 
-A profile does three things: it sets the video's **defaults** (intensity, scene tone, memes on or off), it turns on the
+A profile does three things: it sets the video's **defaults** (intensity, scene tone; memes off where they hurt, never on), it turns on the
 **rules** written for it below and in the project playbook (`Applies to: profile:<id>`), and it brings its **checklist**:
 `visual_plan.py validate` checks the items it can measure, the agent confirms the rest before showing the draft, and the
 report's Supports name every item skipped (`references/playbook.md`, “Supports”).

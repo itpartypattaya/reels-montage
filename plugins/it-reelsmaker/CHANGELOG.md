@@ -2,6 +2,22 @@
 
 What changed in IT Reelsmaker, written for the people who use it. The newest version is on top. The skill shows a short “What's new” note from this file once, on the first edit after an update.
 
+## 1.13.0
+
+- **A plain edit by default, for real.** B-roll, memes and designed scenes are off until you choose them in the first
+  question: a brand tone or a video profile no longer turns them on behind your back. A video planned with an older
+  version, whose inserts came from the tone, gets a one-line fix from `visual_plan.py validate`.
+- **A re-export keeps what you approved.** The hook headline, the corner logo and the end card or logo sting are kept
+  in the plan, so a quick re-export for a late fix no longer drops them or changes the video's length. `--no-hook`,
+  `--no-corner` and `--no-end` take them off. A plan exported with an older version asks once for the texts again.
+- **Sound accents reach the master by themselves.** `master_audio.py` mixes in the video's `sfx.json` (next to the
+  cover, or with `--edit`); `--no-sfx` masters without them.
+- **No `init` for a plain edit.** With every insert off, `validate`, `md` and `export` create the plan themselves.
+- **One set of numbers.** A shot lasts 1.5–3.5 s, the subtitles use the kit's sizes, the end card and the sting are
+  2.6 s everywhere in the docs; the face check's 30 px tolerance on finished frames is named and explained (the 60 px
+  margin stays the rule when planning).
+- The README says what Remotion's own license asks of companies with more than 3 employees.
+
 ## 1.12.0
 
 - **One speech level over the whole video.** The rough cut now evens out the voice: two takes recorded in different

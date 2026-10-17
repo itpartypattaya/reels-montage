@@ -58,7 +58,6 @@ CORE = 0.2  # a line box runs above the capitals and below the baseline: overlap
 VISIBLE = 0.98  # share of a box left by the boxes that clip it
 ALPHA = 0.25  # text fainter than this is fading in or out
 MIN_RUN_S = 0.3
-FACE_MARGIN = 30  # as faces.py audit grows a face for graphics (MARGIN // 2)
 UI_TOP, UI_BOTTOM, UI_RIGHT = 220, 1500, 960
 
 
@@ -137,7 +136,7 @@ def face_source(e, plan, props, fps):
         hi = min([t + st] + [c - 1e-6 for c in cuts if c > t + 1e-6])
         boxes = [f[:4] for x in fdata["samples"] if lo - 1e-6 <= x["t"] <= hi + 1e-6 for f in x["faces"]]
         cam = vp.camera_at(shots, t, dur, fps, view) if shots else None
-        return [fc.grow(b, FACE_MARGIN) for b in fc.screen_faces(boxes, cam, win)]
+        return [fc.grow(b, fc.CHECK_MARGIN) for b in fc.screen_faces(boxes, cam, win)]  # the checks' tolerance
     return faces_at
 
 

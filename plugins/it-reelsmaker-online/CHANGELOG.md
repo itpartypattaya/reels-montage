@@ -2,6 +2,11 @@
 
 What changed in IT Reelsmaker Online. The newest version is on top.
 
+## 1.4.5
+
+- **Installing the add-on no longer switches on the video model.** Code scenes stay code scenes; model prompts and
+  paid generation need `generation_engines: ["code", "model"]` for the video or the project.
+
 ## 1.4.4
 
 - **The privacy policy and the README name Groq**: with `transcription_fallback=groq` (or `--provider groq`) the

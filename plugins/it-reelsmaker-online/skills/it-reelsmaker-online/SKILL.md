@@ -62,7 +62,7 @@ Online sources are off until turned on for a video (`reelcfg.py save edit/<id> -
 |---|---|
 | `use_online_footage` | online stock as a B-roll source |
 | `use_online_memes` | online memes — CC with commercial use only |
-| `generation_engines` | `code` — code scenes (core), `model` — a video model; the core's `use_generated_footage=true` turns on both by default, so model prompts are written too: `["code"]` keeps code scenes only |
+| `generation_engines` | `code` — code scenes (core), `model` — a video model. Default `["code"]`: installing the add-on does not change the core's code scenes; `["code", "model"]` (for the video or the project) writes model prompts too |
 | `generate_now` | whether to start **paid** generation; without it only a ready prompt is written and the insert stays `pending` |
 | `online_*_providers`, `generation_*` | providers, model and clip length (`references/sources.md`) |
 

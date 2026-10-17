@@ -663,3 +663,27 @@ def test_a_silent_track_is_left_out_of_a_master_tagged_without_sound(project):
     assert "audio" not in probe_streams(project / "silent.mp4")
     r = run_script("master_audio.py", "silent.mp4", "--check", cwd=project, check=False)
     assert r.returncode == 0 and "no audio track" in r.stdout, r.stdout + r.stderr
+
+
+@needs_ffmpeg
+@needs_pillow
+def test_the_edits_sfx_json_goes_into_the_master_by_itself(project):
+    # Review 2026-10-17 (Codex P1): the master command in SKILL.md had no --sfx, and a master went out without the
+    # sound accents the brief chose; the video's own sfx.json (next to --cover, or in --edit) is now mixed in
+    from conftest import ffmpeg
+    from PIL import Image
+    e = project / "edit" / "4821"
+    e.mkdir(parents=True)
+    make_video(project / "render.mp4", 360, 640, 4.0)
+    ffmpeg("-f", "lavfi", "-i", "sine=f=1500:d=0.3", e / "hit.wav")
+    write_json(e / "sfx.json", {"sounds": [{"file": "hit.wav", "at": 2.0, "what": "test"}]})
+    Image.new("RGB", (1080, 1920), (200, 30, 30)).save(e / "cover.jpg")
+    r = run_script("master_audio.py", "render.mp4", "-o", "out/m.mp4", "--cover", "edit/4821/cover.jpg", cwd=project,
+                   check=False)
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert "1 sound(s) go into the master" in r.stdout and "scene sounds: 1" in r.stdout
+    r = run_script("master_audio.py", "render.mp4", "-o", "out/m2.mp4", "--edit", "edit/4821", cwd=project, check=False)
+    assert r.returncode == 0 and "scene sounds: 1" in r.stdout, r.stdout + r.stderr
+    r = run_script("master_audio.py", "render.mp4", "-o", "out/m3.mp4", "--cover", "edit/4821/cover.jpg", "--no-sfx",
+                   cwd=project, check=False)
+    assert r.returncode == 0 and "scene sounds" not in r.stdout, r.stdout + r.stderr
