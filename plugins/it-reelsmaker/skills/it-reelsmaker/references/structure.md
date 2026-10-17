@@ -78,7 +78,7 @@ A teaser in the edit:
 |---|---|---|
 | **Payoff with a hold** | end on the punchline or the answer, hold the reaction (a smile, a look) 0.4–1 s, no card | entertainment, skits; a logo can sit small over the last 1.5 s |
 | **CTA** | a card or a `cta` scene with one call to action | the video has a clear next step (`cta.md`) |
-| **Logo sting** | 2–3 s of the logo with the brand line, no CTA | the CTA is spoken, the brand should stay in memory |
+| **Logo sting** | 2.6 s of the logo with the brand line, no CTA (the kit) | the CTA is spoken, the brand should stay in memory |
 | **Pull-out** | the camera pulls out to the wide shot on the last line | the final thought, the situation as a whole |
 | **Callback** | the last line or the CTA returns to the hook (the same object, word or situation) | a hook in the scene itself (`shooting.md`) |
 | **Loop** | the last line runs into the first, so a replay feels seamless | short videos (< 20 s) where the first and last lines connect; check the join by ear |

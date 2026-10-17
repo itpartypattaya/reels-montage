@@ -6,7 +6,7 @@ Code scenes (Remotion) are described in `inserts.md` of the core skill `it-reels
 |---|---|
 | Used for | photorealism: hands, objects, places, atmosphere |
 | Price | ≈ $0.18–0.60 per 6 s; providers and models — `sources.md` in this folder |
-| Conditions | an API key, `generate_now=true` and the person's approval (“yes”) of the amount |
+| Conditions | `model` listed in `generation_engines` (off by default), an API key, `generate_now=true` and the person's approval (“yes”) of the amount |
 | If conditions are not met | the prompt goes to `edit/<id>/generated/prompts.md`, the insert stays `pending`, the edit continues |
 
 **Prompt fields** (`gen` on the insert; for the model — in English):

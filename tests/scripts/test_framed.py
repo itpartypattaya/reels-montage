@@ -201,4 +201,4 @@ def test_subtitle_top_drifts_around_the_window_center(project):
     chin = win[1] + (win[3] - SRC[1] * k) / 2 + 418 * k  # the source chin (300 + 118) on screen
     s = load_config(e)[0]
     top, _ = vp.subtitle_top(e, s, None, quiet=True)
-    assert abs(top - round((chin - 1100) * 1.05 + 1100 + faces.MARGIN // 2)) <= 1, (top, chin)
+    assert abs(top - round((chin - 1100) * 1.05 + 1100 + faces.SUB_FACE_GAP)) <= 1, (top, chin)

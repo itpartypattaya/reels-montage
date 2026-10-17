@@ -1,6 +1,6 @@
 {
  "schema": 1,
- "_comment": "Default video settings. Layers, each overriding the previous: this file (+ the online add-on's defaults) <- brand tone preset (brand_tones, from brand.json -> tone; broll_default turns use_broll on, memes.default turns use_memes on) <- the project's reel-defaults.json <- the file named in REELS_DEFAULTS_OVERLAY <- brand profile (brands/<slug>/brand.json -> inserts) <- edit/<id>/reel.json <- words from the prompt (--set). All use_* false in reel.json -> a plain edit without inserts. Online sources and generation are added by the it-reelsmaker-online add-on, not here.",
+ "_comment": "Default video settings. Layers, each overriding the previous: this file (+ the online add-on's defaults) <- brand tone preset (brand_tones, from brand.json -> tone: intensity, meme size, scene tone and the ceilings; a tone never turns inserts on) <- the project's reel-defaults.json <- the file named in REELS_DEFAULTS_OVERLAY <- brand profile (brands/<slug>/brand.json -> inserts) <- edit/<id>/reel.json <- words from the prompt (--set). Inserts are off unless chosen (use_broll, use_memes, use_scenes true in reel.json, the project's defaults or the brand profile): a plain edit by default. Online sources and generation are added by the it-reelsmaker-online add-on, not here.",
  "settings": {
   "brand": null,
   "style": null,
@@ -9,7 +9,7 @@
   "profile": null,
   "content_format": null,
   "intensity": "moderate",
-  "use_broll": true,
+  "use_broll": false,
   "use_project_footage": true,
   "use_local_footage": true,
   "use_generated_footage": true,
@@ -110,7 +110,7 @@
   "cutaway_max": 1
  },
  "brand_tones": {
-  "_comment": "Brand tone (brand.json -> tone: {preset, overrides}). The preset sets the defaults of the brand layer (intensity, use_memes = memes.default, meme_size <= size_max, scene_tone) and the CEILINGS that visual_plan.py validate enforces: memes, transitions, flash/whip, full-frame scenes, scene tones. A ceiling, not a target. reel.json -> tone_override: true turns violations into warnings (going louder on explicit request for one video). Same values as references/brands.md.",
+  "_comment": "Brand tone (brand.json -> tone: {preset, overrides}). The preset sets the defaults of the brand layer (intensity, meme_size <= size_max, scene_tone; never turns inserts on) and the CEILINGS that visual_plan.py validate enforces: memes, transitions, flash/whip, full-frame scenes, scene tones. A ceiling, not a target. reel.json -> tone_override: true turns violations into warnings (going louder on explicit request for one video). Same values as references/brands.md.",
   "premium": {
    "label": "Premium, restrained",
    "for": "luxury, finance, law, premium B2B",
@@ -119,12 +119,10 @@
    "loudness": "quiet",
    "memes": {
     "allowed": false,
-    "default": false,
     "max": 0,
     "size_max": null,
     "cutaway": false
    },
-   "broll_default": true,
    "transitions": [
     "cut",
     "fade"
@@ -150,12 +148,10 @@
    "loudness": "calm",
    "memes": {
     "allowed": false,
-    "default": false,
     "max": 0,
     "size_max": null,
     "cutaway": false
    },
-   "broll_default": true,
    "transitions": [
     "cut",
     "fade",
@@ -182,12 +178,10 @@
    "loudness": "calm",
    "memes": {
     "allowed": true,
-    "default": false,
     "max": 1,
     "size_max": "s",
     "cutaway": false
    },
-   "broll_default": true,
    "transitions": [
     "cut",
     "fade",
@@ -217,12 +211,10 @@
    "loudness": "calm",
    "memes": {
     "allowed": false,
-    "default": false,
     "max": 0,
     "size_max": null,
     "cutaway": false
    },
-   "broll_default": true,
    "transitions": [
     "cut",
     "fade",
@@ -251,12 +243,10 @@
    "loudness": "lively",
    "memes": {
     "allowed": true,
-    "default": false,
     "max": 2,
     "size_max": "s",
     "cutaway": false
    },
-   "broll_default": true,
    "transitions": [
     "cut",
     "fade",
@@ -286,12 +276,10 @@
    "loudness": "lively",
    "memes": {
     "allowed": true,
-    "default": true,
     "max": 2,
     "size_max": "m",
     "cutaway": false
    },
-   "broll_default": true,
    "transitions": [
     "cut",
     "fade",
@@ -321,12 +309,10 @@
    "loudness": "loud",
    "memes": {
     "allowed": true,
-    "default": false,
     "max": 1,
     "size_max": "m",
     "cutaway": false
    },
-   "broll_default": true,
    "transitions": [
     "cut",
     "fade",
@@ -356,12 +342,10 @@
    "loudness": "loud",
    "memes": {
     "allowed": true,
-    "default": true,
     "max": 4,
     "size_max": "l",
     "cutaway": true
    },
-   "broll_default": true,
    "transitions": [
     "cut",
     "fade",
@@ -520,8 +504,7 @@
      "punchy",
      "deadpan",
      "cinematic"
-    ],
-    "use_memes": true
+    ]
    },
    "checklist": {
     "FUN-1": null,

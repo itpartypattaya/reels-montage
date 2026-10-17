@@ -109,34 +109,34 @@ The nearest neighbors differ on at least two of these: memes, cutaways, loudness
 The presets in full (exact values, for the plan check):
 
 ```json
-{"premium":  {"intensity": "minimal",  "motion": "calm",      "memes": {"allowed": false, "default": false, "max": 0, "size_max": null, "cutaway": false},
+{"premium":  {"intensity": "minimal",  "motion": "calm",      "memes": {"allowed": false, "max": 0, "size_max": null, "cutaway": false},
               "transitions": ["cut", "fade"], "flash_max": 0, "whip_max": 0, "shake": false, "overshoot": false, "full_scenes_max": 1,
               "scene_tones": ["calm", "deadpan", "cinematic"], "scene_tone": "calm", "sfx": "sparse"},
- "expert":   {"intensity": "moderate", "motion": "calm",      "memes": {"allowed": true,  "default": false, "max": 1, "size_max": "s",  "cutaway": false},
+ "expert":   {"intensity": "moderate", "motion": "calm",      "memes": {"allowed": true,  "max": 1, "size_max": "s",  "cutaway": false},
               "transitions": ["cut", "fade", "whip", "slide", "flash"], "flash_max": 2, "whip_max": 3, "shake": false, "overshoot": false, "full_scenes_max": 2,
               "scene_tones": ["calm", "feature", "cinematic", "deadpan"], "scene_tone": "calm", "sfx": "sparse"},
- "friendly": {"intensity": "moderate", "motion": "lively",    "memes": {"allowed": true,  "default": true,  "max": 2, "size_max": "m",  "cutaway": false},
+ "friendly": {"intensity": "moderate", "motion": "lively",    "memes": {"allowed": true,  "max": 2, "size_max": "m",  "cutaway": false},
               "transitions": ["cut", "fade", "whip", "slide", "flash"], "flash_max": 2, "whip_max": 4, "shake": false, "overshoot": true, "full_scenes_max": 2,
               "scene_tones": ["punchy", "feature", "calm", "deadpan"], "scene_tone": "punchy", "sfx": "moderate"},
- "bold":     {"intensity": "active",   "motion": "energetic", "memes": {"allowed": true,  "default": true,  "max": 4, "size_max": "l",  "cutaway": true},
+ "bold":     {"intensity": "active",   "motion": "energetic", "memes": {"allowed": true,  "max": 4, "size_max": "l",  "cutaway": true},
               "transitions": ["cut", "fade", "whip", "slide", "flash"], "flash_max": 3, "whip_max": 6, "shake": true, "overshoot": true, "full_scenes_max": 3,
               "scene_tones": ["punchy", "hype", "parody", "cinematic", "deadpan"], "scene_tone": "punchy", "sfx": "dense"},
- "warm":     {"intensity": "moderate", "motion": "calm",      "memes": {"allowed": false, "default": false, "max": 0, "size_max": null, "cutaway": false},
+ "warm":     {"intensity": "moderate", "motion": "calm",      "memes": {"allowed": false, "max": 0, "size_max": null, "cutaway": false},
               "transitions": ["cut", "fade", "slide"], "flash_max": 0, "whip_max": 0, "shake": false, "overshoot": false, "full_scenes_max": 1,
               "scene_tones": ["calm", "feature", "cinematic"], "scene_tone": "calm", "sfx": "sparse"},
- "story":    {"intensity": "active",   "motion": "calm",      "memes": {"allowed": false, "default": false, "max": 0, "size_max": null, "cutaway": false},
+ "story":    {"intensity": "active",   "motion": "calm",      "memes": {"allowed": false, "max": 0, "size_max": null, "cutaway": false},
               "transitions": ["cut", "fade", "slide", "whip", "flash"], "flash_max": 1, "whip_max": 2, "shake": false, "overshoot": false, "full_scenes_max": 3,
               "scene_tones": ["cinematic", "calm", "deadpan"], "scene_tone": "cinematic", "sfx": "moderate"},
- "tech":     {"intensity": "moderate", "motion": "lively",    "memes": {"allowed": true,  "default": false, "max": 2, "size_max": "s",  "cutaway": false},
+ "tech":     {"intensity": "moderate", "motion": "lively",    "memes": {"allowed": true,  "max": 2, "size_max": "s",  "cutaway": false},
               "transitions": ["cut", "fade", "slide", "whip", "flash"], "flash_max": 1, "whip_max": 4, "shake": false, "overshoot": false, "full_scenes_max": 3,
               "scene_tones": ["feature", "punchy", "calm", "deadpan"], "scene_tone": "feature", "sfx": "moderate"},
- "drive":    {"intensity": "active",   "motion": "energetic", "memes": {"allowed": true,  "default": false, "max": 1, "size_max": "m",  "cutaway": false},
+ "drive":    {"intensity": "active",   "motion": "energetic", "memes": {"allowed": true,  "max": 1, "size_max": "m",  "cutaway": false},
               "transitions": ["cut", "fade", "slide", "whip", "flash"], "flash_max": 3, "whip_max": 5, "shake": false, "overshoot": true, "full_scenes_max": 3,
               "scene_tones": ["punchy", "feature", "cinematic", "calm"], "scene_tone": "punchy", "sfx": "dense"}}
 ```
 
 How it works:
-- **A ceiling, not a target.** The preset sets the defaults (intensity, B-roll on or off by `broll_default`, on in every preset; memes on by `memes.default`, which `friendly` and `bold` set; meme size; scene tone). These are settings, not the person's choice: a tone default stays on unless your project's `reel-defaults.json`, the profile's `inserts` or the video's `reel.json` says otherwise, which is why step 0 saves every insert the person did not choose as `false` and the ceilings the visual plan check enforces: number and size of memes, a full-frame meme, allowed transitions, number of light flashes and whips, number of full-frame scenes, scene tone. A violation is an error.
+- **A ceiling, not a target.** The preset sets the defaults (intensity, meme size, scene tone; it never turns B-roll, memes or scenes on: those are the person's choice in step 0) and the ceilings the visual plan check enforces: number and size of memes, a full-frame meme, allowed transitions, number of light flashes and whips, number of full-frame scenes, scene tone. A violation is an error.
 - **Settings layers:** skill defaults (with the add-on's) ← tone preset defaults ← the project's `reel-defaults.json` (section “Your settings in the project”) ← the file named in `REELS_DEFAULTS_OVERLAY` ← the video profile's defaults (`references/profiles.md`) ← the profile's `inserts` ← the video's `reel.json` ← words from the prompt. Ceilings: the preset plus `tone.overrides`, whatever the layers say; a video profile asking for more (an entertaining video's `active` intensity at an `expert` brand) is held at the tone's, and `reelcfg.py show` says so.
 - **The brand's own tone for a video profile:** a brand that makes louder (or quieter) videos of one kind on purpose records it once, as the owner's decision: `brand.py tone <slug> drive --profile entertaining` writes `brand.json → tone.by_profile`, keeps the main tone for every other video, and the profile's videos take that preset as their ceiling with no per-video override (the main tone's `overrides` don't apply to it). The main tone's preset removes the entry; changing the main tone keeps it. Offer it when the person asks twice for a louder video of the same profile; the brand owner confirms.
 - **Louder than the brand tone** only on the person's explicit request for this video: `reel.json → "tone_override": true`; violations become warnings and go into the report.

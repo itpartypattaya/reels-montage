@@ -47,7 +47,7 @@ For the hook, cards, designed scenes and the end card: everything that doesn't r
 
 ## Style specs (starting values; tune on a live frame)
 
-- **“Marker”**: the marker bar is a line background (`box-decoration-break: clone`), square corners, no shadow. Hook ~92 px bold; card text 54–58 px semibold; labels 26 px all caps, +0.2 em, muted gray. Thesis cards on a light backing at ~94 % opacity, square corners. In a list, the item being spoken sits on the marker bar, the past items stay on light plates, with no outline (the kit's `list` scene, `references/scenes.md`). Subtitles at x 60 in the kit's sizes: “Bar” (plate) 60 px / 700, “Accent” 66 px / 800, “Typewriter” 56 px / 500.
+- **“Marker”**: the marker bar is a line background (`box-decoration-break: clone`), square corners, no shadow. Hook 92–120 px bold (the kit starts at 100; ≥ 76 inside the “framed” window); card text 54–64 px semibold; labels 26 px all caps, +0.2 em, muted gray. Thesis cards on a light backing at ~94 % opacity, square corners. In a list, the item being spoken sits on the marker bar, the past items stay on light plates, with no outline (the kit's `list` scene, `references/scenes.md`). Subtitles at x 60 in the kit's sizes: “Bar” (plate) 60 px / 700, “Accent” 66 px / 800, “Typewriter” 56 px / 500.
 - **“Minimal”**: a dense bold grotesque (for example Manrope 800 or Inter Tight 800–900), 2–3 lines bottom left.
 - **“Editorial”**: a serif for the key words (for example Playfair Display or Cormorant Garamond) + one sans (for example Manrope); secondary words in a thin sans or in serif italic.
 - **“Bold”**: Inter Tight 900 or Onest 800, capitals; the marker bar has square corners and no shadow.

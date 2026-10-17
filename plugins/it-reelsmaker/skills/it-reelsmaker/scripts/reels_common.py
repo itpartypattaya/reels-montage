@@ -681,15 +681,13 @@ def tone_rules(brand=None, doc=None, slug=None, profile=None):
 
 
 def tone_settings(rules, doc):
-    """Defaults of the brand-tone layer: intensity, use_broll, use_memes, meme_size (<= size_max), scene_tone."""
+    """Defaults of the brand-tone layer: intensity, meme_size (<= size_max), scene_tone. A tone never turns inserts on
+    (review 2026-10-17: B-roll was on in every preset and memes in two, so "a plain edit by default" held only while the
+    agent remembered to save false): B-roll, memes and scenes come from the person's choice in step 0."""
     out = {}
     if rules.get("intensity"):
         out["intensity"] = rules["intensity"]
-    if "broll_default" in rules:
-        out["use_broll"] = bool(rules["broll_default"])
     m = rules.get("memes") or {}
-    if "default" in m:
-        out["use_memes"] = bool(m["default"]) and m.get("allowed", True) is not False
     cap = m.get("size_max")
     if cap in MEME_SIZES:
         base = (doc.get("settings") or {}).get("meme_size") or "m"
@@ -706,7 +704,7 @@ def tone_summary(rules):
         memes = "no memes"
     else:
         memes = (f"memes <= {m.get('max')} ({m.get('size_max') or '-'}, "
-                 f"{'on by default' if m.get('default') else 'only on request'}"
+                 f"only on request"
                  f"{', full-frame allowed' if m.get('cutaway') else ''})")
     tr = ", ".join(rules.get("transitions") or [])
     extra = [x for x, ok in (("overshoot", rules.get("overshoot")), ("shake", rules.get("shake"))) if ok]

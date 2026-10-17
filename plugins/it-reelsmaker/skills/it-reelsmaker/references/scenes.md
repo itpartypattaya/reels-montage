@@ -58,7 +58,7 @@ A list over a clean take goes in `overlay`: the speaker is not moved. Real case:
 
 In every mode except `overlay` the layout changes first (the speaker moves, or the field covers the frame): about 0.6 of the transition, ≈ 0.27 s for a fade, nothing for a cut. The text enters after it, and the same happens in reverse on the way out. In the “scenes only” format there is no layout to change (no speaker, and the field is the background), so every transition between scenes is a cut and the texts hand over at the join: the old one has left by its scene's last frame, the new one enters from its first (T6: the fade's lead and tail left 14–15 frames of bare field at every join).
 
-`full` stays within the brand tone's ceiling (1–3); two `full` scenes in a row (gap < 2 s) are not allowed; a `full` hook lasts at most 1.5 s, which only the fast tones fit (`feature`, `punchy`, `hype`, with a cut): in `calm`, `deadpan` and `cinematic` the entrance, the exit and 0.8 s of reading already take longer, so there the hook goes in `overlay` or `split`. These limits protect the speaker's face, so they do not apply in the “scenes only” format (no speaker, every scene is `full`, the hook is 2–3 s). Not on the CTA line (except the `cta` scene) and not in the last 2 s (that is for `cta` or a logo sting).
+`full` stays within the brand tone's ceiling (1–3); two `full` scenes in a row (gap < 2 s) are not allowed; a `full` hook lasts at most 1.5 s (with the reading floor that is up to 3 words in `feature` and `punchy`, 4 in `hype`), which only the fast tones fit (`feature`, `punchy`, `hype`, with a cut): in `calm`, `deadpan` and `cinematic` the entrance, the exit and 0.8 s of reading already take longer, so there the hook goes in `overlay` or `split`. These limits protect the speaker's face, so they do not apply in the “scenes only” format (no speaker, every scene is `full`, the hook is 2–3 s). Not on the CTA line (except the `cta` scene) and not in the last 2 s (that is for `cta` or a logo sting).
 
 ## Brand tone and scene tone
 
@@ -150,7 +150,7 @@ Sounds come from your own library `{{ASSETS_DIR}}`; CC0 packs are the easiest (n
 | tap, cursor, toggle | short click | `tap` |
 | payoff, number lands, logo | bell or glass, once | `bell` |
 
-`none`: the scene stays silent. The value is a note for mixing (the kit plays no sound): the files themselves go into `sfx.json` for `master_audio.py --sfx`.
+`none`: the scene stays silent. The value is a note for mixing (the kit plays no sound): the files themselves go into `edit/<id>/sfx.json`, which `master_audio.py` mixes in.
 
 The sound goes on the **start** of the motion (0–0.1 s before the first visible frame). In a sequence, sound the first, the last or the strongest item, not every one. Repeated sounds should have no sharp, ringing highs: they are fatiguing. Density follows the brand tone, and no more than one effect every 2–3 s.
 

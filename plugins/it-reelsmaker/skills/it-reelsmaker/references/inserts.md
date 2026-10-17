@@ -8,13 +8,13 @@ Inserts are an optional layer on top of the regular edit. If everything is off, 
 
 Stored in the video's `edit/<id>/reel.json`. Layers apply in order, and each one overrides the previous:
 1. skill defaults (below; with the online add-on, its defaults too);
-2. the brand tone preset (`use_broll` is on in every preset, `use_memes` in `friendly` and `bold`);
+2. the brand tone preset (intensity, meme size, scene tone; it never turns inserts on);
 3. your project's `reel-defaults.json` (`references/brands.md`, “Your settings in the project”), then the file named in `REELS_DEFAULTS_OVERLAY`;
 4. `brand.json → inserts` of the selected brand;
 5. the video's `reel.json`;
 6. words from the prompt.
 
-So an insert the person did not choose in step 0 is saved in `reel.json` as `false`: otherwise the tone's default turns it on.
+Inserts are off in the skill defaults (`use_broll`, `use_memes`, `use_scenes` are `false`), but the project defaults or the brand profile can turn some on, so step 0 saves the person's answer whole: the chosen ones `true`, the others `false`. A plan made before 1.13, when tones turned B-roll on, fails `validate` with the `reelcfg.py save … use_broll=true` line to keep its inserts.
 
 ```json
 {
