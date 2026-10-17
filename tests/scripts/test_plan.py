@@ -935,4 +935,4 @@ def test_a_plain_plan_needs_the_rough_cut(project):
 def test_tone_summary_says_memes_are_on_request():
     import reels_common as rc
     line = rc.tone_summary({"preset": "old", "memes": {"allowed": True, "default": True, "max": 2, "size_max": "m"}})
-    assert "only on request" in line and "on by default" not in line
+    assert "only on request" in line and "on by default" not in line
