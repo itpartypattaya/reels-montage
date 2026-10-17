@@ -235,3 +235,17 @@ def test_memes_fetch_reads_the_file_type_from_the_bytes(project, monkeypatch, tm
     monkeypatch.setattr(mo, "http_json", lambda url, **kw: {"results": [dict(item, filetype="svg")]})
     mo.cmd_online(type("A", (), {"query": "heart eyes", "provider": "openverse", "limit": 4})())
     assert "SVG: not usable until converted" in capsys.readouterr().out
+
+
+def test_model_marked_inserts_get_no_prompts_while_the_model_is_off(project, tmp_path):
+    # review 2026-10-18 (Fable P3): a plan marked "model" by add-on <= 1.4.4 kept writing prompts after the default
+    # engines became ["code"]
+    from test_codescene import generated_plan
+    link(project, tmp_path)
+    e, code_id, model_id = generated_plan(project)
+    r = run_script("addon.py", "gen", "manifest", "edit/4821", cwd=project, env=env(tmp_path), check=False)
+    out = r.stdout + r.stderr
+    assert "no prompts written" in out and model_id in out
+    import json
+    items = json.loads((e / "generated" / "prompts.json").read_text(encoding="utf-8"))["items"]
+    assert items == []

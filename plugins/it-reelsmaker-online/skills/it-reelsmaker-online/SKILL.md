@@ -46,7 +46,7 @@ Online sources are off until turned on for a video (`reelcfg.py save edit/<id> -
 {
  "use_online_footage": true,
  "use_online_memes": false,
- "generation_engines": ["code", "model"],
+ "generation_engines": ["code"],
  "generate_now": false,
  "broll_priority": ["project", "local", "online", "generated"],
  "meme_priority": ["local", "online"],

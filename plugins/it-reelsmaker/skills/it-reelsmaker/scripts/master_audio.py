@@ -404,20 +404,30 @@ def auto_sfx(a):
     --no-sfx keeps them out on purpose."""
     if a.sfx and a.no_sfx:
         sys.exit("--sfx and --no-sfx together: pick one")
+    if a.edit and not Path(a.edit).is_dir():
+        sys.exit(f"--edit {a.edit}: no such folder")
     if a.sfx or a.no_sfx:
         return
-    for d in ([Path(a.edit)] if a.edit else []) + ([Path(a.cover).parent] if a.cover else []):
+    dirs = ([Path(a.edit)] if a.edit else []) + ([Path(a.cover).parent] if a.cover else [])
+    for d in dirs:
         if (d / "sfx.json").is_file():
             a.sfx = str(d / "sfx.json")
-            print(f"sfx: {a.sfx}, {len(sfx_sounds(a))} sound(s) go into the master (--no-sfx: without them)")
+            n = len(sfx_sounds(a))
+            print(f"sfx: {a.sfx}, {n} sound(s) go into the master (--no-sfx: without them)" if n else
+                  f"sfx: {a.sfx} has no sounds: none go into the master")
             return
+    if dirs:
+        print(f"sfx: no sfx.json in {', '.join(str(d) for d in dirs)}: no scene sounds in the master")
 
 
 def sfx_sounds(a):
     """The sounds of --sfx (a list, empty without --sfx)."""
     if not a.sfx:
         return []
-    doc = json.load(open(a.sfx, encoding="utf-8"))
+    try:
+        doc = json.load(open(a.sfx, encoding="utf-8"))
+    except (OSError, ValueError) as ex:
+        sys.exit(f"--sfx {a.sfx}: not readable as JSON ({ex}); fix the file or master with --no-sfx")
     return (doc.get("sounds", []) if isinstance(doc, dict) else doc) or []
 
 

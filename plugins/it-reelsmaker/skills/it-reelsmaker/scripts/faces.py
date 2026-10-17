@@ -58,10 +58,11 @@ MODEL_HELP = (f"download {MODEL_FILE} yourself from the opencv_zoo project on Gi
               f"main/models/face_detection_yunet/{MODEL_FILE}), keep it outside the plugin folder and pass its path: "
               f"--model <file>, the REELS_FACE_MODEL environment variable or \"face_model\" in it-reelsmaker.json")
 MARGIN = 60          # margin around a face for any graphics: the rule, enforced when planning (zones, keep_clear, validate)
-# The subtitles' gap under the chin, and the tolerance of the checks on the finished frames (audit, textcheck): half
-# the rule. Measured 2026-10-17 on 6 finished videos: the full 60 px flagged 4 moments in 3 of them, one a card just
-# under a chin and the rest single 0.25 s samples with the text far from the face on the still (detector jitter)
-CHECK_MARGIN = MARGIN // 2
+# The tolerance of the checks on finished frames (render audit, textcheck): an overlap counts from 30 px. Measured
+# 2026-10-17 on 6 finished videos: the full 60 px flagged 4 moments in 3 of them, one a card just under a chin and the
+# rest single 0.25 s samples with the text far from the face on the still (detector jitter)
+CHECK_MARGIN = 30
+SUB_FACE_GAP = 30    # the subtitles' top sits this far under the measured chin (a design choice, not the check above)
 UI_TOP, UI_BOTTOM, UI_RIGHT = 220, 420, 120
 SUB = SUB_BAND       # the subtitle band graphics keep out of (reels_common: the same as validate); --sub top,bottom
 FRAME = (25, 340, 1030, 1240)  # the "framed" window for a horizontal source (references/techniques.md), x, y, w, h
@@ -495,7 +496,7 @@ def zone_report(f, sub, fr=None):
     ceil = [top, fy0] if fy0 - top >= 120 else None
     chest = [fy1, sub[0] - 20] if sub[0] - 20 - fy1 >= 120 else None
     return {"face": f, "ceiling": ceil, "chest": chest, "left": max(0, fx0 - lft), "right": max(0, rgt - fx1),
-            "sub_ok": f[1] + f[3] + CHECK_MARGIN <= sub[0], "cut_top": f[1] < (fr[1] if fr else 0)}
+            "sub_ok": f[1] + f[3] + SUB_FACE_GAP <= sub[0], "cut_top": f[1] < (fr[1] if fr else 0)}
 
 
 def sub_band(e, given=None, rendered=False):
@@ -546,7 +547,7 @@ def cmd_zones(a):
         out.append({"id": sid, "start": t0, "end": t1, **z})
         ce = f"{z['ceiling'][0]}-{z['ceiling'][1]}" if z["ceiling"] else "none"
         ch = f"{z['chest'][0]}-{z['chest'][1]}" if z["chest"] else "none"
-        need = f[1] + f[3] + CHECK_MARGIN if f else 0
+        need = f[1] + f[3] + SUB_FACE_GAP if f else 0
         flag = "ok" if z["sub_ok"] else (
             f"chin {f[1] + f[3]}: lower the subtitles to y >= {need}" if need <= SUB_MAX_TOP else
             f"chin {f[1] + f[3]}: no room for subtitles; a wider shot (smaller z) or camera cy +{need - SUB_MAX_TOP}")

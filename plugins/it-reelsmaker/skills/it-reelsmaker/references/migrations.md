@@ -23,6 +23,6 @@ Brand profiles and project settings live in your project, so a plugin update doe
 
 **Changes with no schema step** (no file is rewritten; the scripts say what to do the first time they meet an older edit):
 - 1.13: a brand tone or a video profile no longer turns B-roll or memes on. A video planned before, with inserts that came from the tone, fails `visual_plan.py validate` with the line that keeps them (`reelcfg.py save edit/<id> --set use_broll=true`) or the advice to remove them.
-- 1.13: `visual_plan.py export` stores the hook, the corner logo and the end card in the plan and keeps them on a later export. A plan exported before stored no texts: the next export keeps the corner logo and a logo sting and asks once for `--hook` and `--card` again.
+- 1.13: `visual_plan.py export` stores the hook, the corner logo and the end card in the plan and keeps them on a later export. A plan exported before stored no texts: the next export keeps the corner logo and a logo sting, and stops, the plan unchanged, until `--hook` and `--card` are given again (or `--no-hook`, `--no-end`).
 
 **Adding a step** (for the maintainers): a new key with a default or a renamed key goes in a new row with the next schema number; `assets/brand-template/brand.json` gets that number, and the CHANGELOG mentions it.

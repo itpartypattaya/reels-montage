@@ -167,10 +167,11 @@ def test_the_cta_check_takes_this_runs_ending():
     plan = {"end_card": {"kind": "card", "seconds": 2.6}, "corner": True}
     plan["hook"] = True
     ex = dict(cmd="export", sting=False)
-    # since 1.13 an export keeps the last export's choice (review 2026-10-17); a plan exported before kept no texts,
-    # so its card and hook are not counted until passed again, while the corner logo (no text) stays on
-    assert vp.end_now(argparse.Namespace(**ex, card=None, corner=False, hook=None), plan) == (None, True, False)
-    assert vp.end_now(argparse.Namespace(**ex, card=None, corner=False, no_corner=True, hook=None), plan) == (None, False, False)
+    # since 1.13 an export keeps the last export's choice (review 2026-10-17); a plan exported before kept no texts:
+    # its card and hook still count (the export itself stops until they are given again, reviews 2026-10-18)
+    assert vp.end_now(argparse.Namespace(**ex, card=None, corner=False, hook=None), plan) == ("card", True, True)
+    assert vp.end_now(argparse.Namespace(**ex, card=None, corner=False, no_corner=True, hook=None), plan) == ("card", False, True)
+    assert vp.end_now(argparse.Namespace(**ex, card=None, corner=False, hook=None, no_end=True, no_hook=True), plan) == (None, True, False)
     stored = {**plan, "export": {"hook": "Hi", "corner": True, "end": {"kind": "card", "lines": ["Write to us"]}}}
     assert vp.end_now(argparse.Namespace(**ex, card=None, corner=False, hook=None), stored) == ("card", True, True)
     assert vp.end_now(argparse.Namespace(**ex, card=None, corner=False, hook=None, no_end=True), stored) == (None, True, True)

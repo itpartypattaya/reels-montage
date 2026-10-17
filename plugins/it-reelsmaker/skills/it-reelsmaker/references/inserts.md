@@ -14,7 +14,7 @@ Stored in the video's `edit/<id>/reel.json`. Layers apply in order, and each one
 5. the video's `reel.json`;
 6. words from the prompt.
 
-Inserts are off by default (`use_broll`, `use_memes` and `use_scenes` are `false` in the skill defaults): step 0 saves only the inserts the person chose, as `true`. A plan made before 1.13, when tones turned B-roll on, fails `validate` with the `reelcfg.py save … use_broll=true` line to keep its inserts.
+Inserts are off in the skill defaults (`use_broll`, `use_memes`, `use_scenes` are `false`), but the project defaults or the brand profile can turn some on, so step 0 saves the person's answer whole: the chosen ones `true`, the others `false`. A plan made before 1.13, when tones turned B-roll on, fails `validate` with the `reelcfg.py save … use_broll=true` line to keep its inserts.
 
 ```json
 {

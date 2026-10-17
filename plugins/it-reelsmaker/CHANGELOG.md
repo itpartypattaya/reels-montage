@@ -9,7 +9,7 @@ What changed in IT Reelsmaker, written for the people who use it. The newest ver
   version, whose inserts came from the tone, gets a one-line fix from `visual_plan.py validate`.
 - **A re-export keeps what you approved.** The hook headline, the corner logo and the end card or logo sting are kept
   in the plan, so a quick re-export for a late fix no longer drops them or changes the video's length. `--no-hook`,
-  `--no-corner` and `--no-end` take them off. A plan exported with an older version asks once for the texts again.
+  `--no-corner` and `--no-end` take them off. A plan exported with an older version stops the export until the texts are given again (or taken off).
 - **Sound accents reach the master by themselves.** `master_audio.py` mixes in the video's `sfx.json` (next to the
   cover, or with `--edit`); `--no-sfx` masters without them.
 - **No `init` for a plain edit.** With every insert off, `validate`, `md` and `export` create the plan themselves.

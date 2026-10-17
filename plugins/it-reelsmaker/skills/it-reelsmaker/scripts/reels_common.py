@@ -704,7 +704,7 @@ def tone_summary(rules):
         memes = "no memes"
     else:
         memes = (f"memes <= {m.get('max')} ({m.get('size_max') or '-'}, "
-                 f"{'on by default' if m.get('default') else 'only on request'}"
+                 f"only on request"
                  f"{', full-frame allowed' if m.get('cutaway') else ''})")
     tr = ", ".join(rules.get("transitions") or [])
     extra = [x for x, ok in (("overshoot", rules.get("overshoot")), ("shake", rules.get("shake"))) if ok]

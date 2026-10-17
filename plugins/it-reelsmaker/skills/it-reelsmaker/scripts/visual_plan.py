@@ -205,24 +205,45 @@ def plan_path(e):
 def load_plan(e):
     p = load_json(plan_path(e))
     if p is None:
-        sys.exit(f"no plan: {plan_path(e)}; run visual_plan.py init first")
+        sys.exit(f"no plan: {plan_path(e)}; run visual_plan.py validate (a plain edit) or init (with inserts) first")
     return p
+
+
+# what a rebuilt plan (init, init --force) keeps from the old one besides keep_clear: the last export's hook, corner
+# logo and end (review 2026-10-18: init after an export lost them, the next export dropped the card), the subtitle band
+# the render has, the subtitles hidden by a per-video composition
+KEEP_ON_INIT = ("export", "hook", "corner", "end_card", "subtitles_band", "hide_subtitles")
 
 
 def ensure_plan(e):
     """No plan yet and inserts and designed scenes off: a plan without inserts is created on the spot (as keep-clear
     does), so a plain edit needs no `init` before validate, md or export. Inserts or scenes on and no plan: still an
     error, since `init` is where they are planned."""
-    if plan_path(e).is_file():
-        return
     s, prov, doc, bdir, brand = current_settings(e)
     eff, why = effective(s)
-    if eff.get("broll") or eff.get("memes") or s.get("use_scenes"):
+    inserts_on = eff.get("broll") or eff.get("memes") or s.get("use_scenes")
+    old = load_json(plan_path(e)) if plan_path(e).is_file() else None
+    if old is not None:
+        if old.get("auto") and inserts_on:  # made by keep-clear or a plain edit, before inserts were turned on
+            sys.exit(f"{plan_path(e)} was made without inserts and they are on now: run visual_plan.py init (it keeps "
+                     f"keep_clear and the last export's choices)")
+        return
+    if inserts_on:
         sys.exit(f"no plan: {plan_path(e)}; inserts or designed scenes are on, so run visual_plan.py init first")
+    if not load_json(e / "captions.json"):  # review 2026-10-18: a plan without it exported "captions": null to the kit
+        sys.exit(f"no {e / 'captions.json'}: the plan follows the rough cut, build it first (cut.py)")
     with locked(plan_path(e)):
         if load_json(plan_path(e)) is None:
-            save_json(plan_path(e), build_plan(e, load_json(e / "captions.json"), s, prov, doc))
+            save_json(plan_path(e), auto_plan(e, load_json(e / "captions.json"), s, prov, doc))
             print(f"there was no plan: created {plan_path(e)} without inserts (inserts and scenes are off)")
+
+
+def auto_plan(e, cap, s, prov, doc):
+    """A plan without inserts made on the way (a plain edit, keep-clear before init), marked so that validate asks for
+    init once inserts are turned on."""
+    plan = build_plan(e, cap, s, prov, doc)
+    plan["auto"] = True
+    return plan
 
 
 @contextlib.contextmanager
@@ -435,6 +456,7 @@ def cmd_init(a):
         s, prov, doc, bdir, brand = current_settings(e, old)
         plan = build_plan(e, cap, s, prov, doc)
         plan["keep_clear"] = (old or {}).get("keep_clear", [])
+        plan.update({k: old[k] for k in KEEP_ON_INIT if k in (old or {})})  # the last export's finish, the subtitle band
         for d in load_defects(e)[0]:  # defects.py: a span with a bad picture gets the cover hint
             for g in plan["segments"]:
                 if g["start"] < d["end"] and g["end"] > d["start"]:
@@ -480,6 +502,7 @@ def init_scenes_only(a):
             print(f"{e / 'reel.json'}: " + ", ".join(f"{k}={v}" for k, v in over.items()))
         s, prov, doc, bdir, brand = current_settings(e, old)
         plan = build_plan(e, {"duration": round(float(a.duration), 3), "segments": [], "words": []}, s, prov, doc)
+        plan.update({k: old[k] for k in KEEP_ON_INIT if k in (old or {})})
         plan["format"] = "scenes-only"
         save_json(plan_path(e), plan)
     so = (doc.get("scenes") or {}).get("scenes_only") or {}
@@ -869,6 +892,7 @@ def defect_issues(e, plan, s, doc, cap):
 
 def cmd_accept(a):
     e = edit_dir(a.edit)
+    ensure_plan(e)  # a plain edit has no init (SKILL.md step 7a)
     defects, _ = load_defects(e)
     by_id = {d["id"]: d for d in defects}
     with editing_plan(e) as plan:
@@ -1114,8 +1138,10 @@ def finish_of(a, plan):
             last["end"] = {"kind": "sting"}
         elif kind == "card" and not (getattr(a, "card", None) or getattr(a, "sting", False) or getattr(a, "no_end", False)):
             notes.append("the last export had an end card, but its lines are not stored: pass --card again (or --no-end)")
+            last["end"] = {"kind": "card", "lines": None}  # still on: validate and this export count its 2.6 s
         if plan.get("hook") and not (getattr(a, "hook", None) or getattr(a, "no_hook", False)):
             notes.append("the last export had a hook headline, but its text is not stored: pass --hook again (or --no-hook)")
+            last["hook"] = True
     kept = []
     if getattr(a, "no_hook", False):
         hook = None
@@ -2250,7 +2276,7 @@ def cmd_keep(a):
         plan = load_json(plan_path(e))
         if plan is None:  # inserts are off and no plan was built: a plan without inserts is created (a graphics registry)
             s, prov, doc, bdir, brand = current_settings(e)
-            plan = build_plan(e, load_json(e / "captions.json"), s, prov, doc)
+            plan = auto_plan(e, load_json(e / "captions.json"), s, prov, doc)
             print(f"there was no plan: created {plan_path(e)} without inserts (spans and keep_clear only)")
         plan.setdefault("keep_clear", []).append(entry)
         save_json(plan_path(e), plan)
@@ -2276,6 +2302,7 @@ def cmd_hide(a):
     accent title in a per-video composition): export puts them into props.hideSubtitles, faces.py audit reads them.
     --remove N takes windows out (numbered as in visual_plan.md, from 1)."""
     e = edit_dir(a.edit)
+    ensure_plan(e)  # a plain edit has no init (SKILL.md step 7a)
     with editing_plan(e) as plan:
         hs = plan.setdefault("hide_subtitles", [])
         if a.remove:
@@ -2556,7 +2583,7 @@ def subtitle_top(e, s, cam, quiet=False):
                  for t, b in boxes]
         if chins:
             low, lt, lb = max(chins, key=lambda c: c[0])
-            need = round(low + fc.CHECK_MARGIN)
+            need = round(low + fc.SUB_FACE_GAP)
             top = max(band[0], min(SUB_MAX_TOP, need))
             if not quiet:
                 print(f"subtitles: top at y {top} (chin down to {round(low)} per faces.json: box "
@@ -2738,9 +2765,9 @@ def cmd_export(a):
         sys.exit("the plan has errors: fix them (or use --force)")
     plan = load_plan(e)  # after validate the settings snapshot is current
     fin, notes, kept = finish_of(a, plan)  # hook, corner logo, end: this run's flags, else the last export's choice
+    if notes:  # reviews 2026-10-18: a warning and a dropped card made the video 2.6 s shorter, and the next export was silent
+        sys.exit("nothing exported, the plan is unchanged: " + "; ".join(notes))
     end = fin["end"] or {}
-    for m in notes:
-        warn(m)
     if kept:
         print(f"kept from the last export: {', '.join(kept)} (--no-hook, --no-corner, --no-end take them off)")
     rem = Path(a.remotion).resolve()

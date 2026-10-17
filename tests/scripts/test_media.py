@@ -687,3 +687,8 @@ def test_the_edits_sfx_json_goes_into_the_master_by_itself(project):
     r = run_script("master_audio.py", "render.mp4", "-o", "out/m3.mp4", "--cover", "edit/4821/cover.jpg", "--no-sfx",
                    cwd=project, check=False)
     assert r.returncode == 0 and "scene sounds" not in r.stdout, r.stdout + r.stderr
+    r = run_script("master_audio.py", "render.mp4", "-o", "out/m4.mp4", "--edit", "edit/9999", cwd=project, check=False)
+    assert r.returncode != 0 and "no such folder" in (r.stdout + r.stderr)
+    (e / "sfx.json").unlink()
+    r = run_script("master_audio.py", "render.mp4", "-o", "out/m5.mp4", "--edit", "edit/4821", cwd=project, check=False)
+    assert r.returncode == 0 and "no sfx.json in" in r.stdout, r.stdout + r.stderr

@@ -59,6 +59,7 @@ VISIBLE = 0.98  # share of a box left by the boxes that clip it
 ALPHA = 0.25  # text fainter than this is fading in or out
 MIN_RUN_S = 0.3
 UI_TOP, UI_BOTTOM, UI_RIGHT = 220, 1500, 960
+FACE_PX = 30  # = faces.CHECK_MARGIN, the checks' tolerance (faces.py imports cv2: read lazily there)
 
 
 def parse_log(text):
@@ -156,7 +157,7 @@ def frame_issues(boxes, faces):
         if zones:
             out.append(("warning", "UI zone", ident(key), text, "/".join(zones)))
         if faces and any(hits(f, b) for f in faces):
-            out.append(("error", "on a face", ident(key), text, "a measured face + 30 px"))
+            out.append(("error", "on a face", ident(key), text, f"a measured face + {FACE_PX} px"))
     for i, a in enumerate(seen):
         for b in seen[i + 1:]:
             if a[0] == b[0]:

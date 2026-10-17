@@ -885,15 +885,54 @@ def test_a_re_export_keeps_the_hook_corner_and_end_card(project):
 
 
 def test_a_plan_exported_before_1_13_asks_for_the_texts_again(project):
+    # reviews 2026-10-18 (Codex P1, Fable): a warning and a dropped card made the video 2.6 s shorter and the next
+    # export was silent; now the export stops, the plan unchanged, until the texts come back or are taken off
     e = plan_project(project, {"use_broll": False, "use_scenes": False, "use_memes": False})
     run_script("visual_plan.py", "validate", "edit/4821", cwd=project)
     plan = load_plan(e)
     plan.update({"hook": True, "corner": True, "end_card": {"kind": "card", "seconds": 2.6}})
     write_json(e / "visual_plan.json", plan)
     rem = _export_project(project, e)
-    r = run_script("visual_plan.py", "export", "edit/4821", "--remotion", rem, "--props", rem / "props.json", cwd=project)
+    r = run_script("visual_plan.py", "export", "edit/4821", "--remotion", rem, "--props", rem / "props.json", cwd=project,
+                   check=False)
     out = r.stdout + r.stderr
-    assert "pass --hook again" in out and "pass --card again" in out
+    assert r.returncode != 0 and "pass --hook again" in out and "pass --card again" in out
+    assert not (rem / "props.json").exists()
+    kept = load_plan(e)
+    assert kept["end_card"] == {"kind": "card", "seconds": 2.6} and kept["hook"] is True and "export" not in kept
+    assert "the video is 32.60 s" in run_script("visual_plan.py", "validate", "edit/4821", cwd=project, check=False).stdout
+    run_script("visual_plan.py", "export", "edit/4821", "--remotion", rem, "--props", rem / "props.json",
+               "--card", "Message us", "--no-hook", cwd=project)
     props = json.loads((rem / "props.json").read_text(encoding="utf-8"))
-    assert props["corner"] is True and props["hook"] is None and props["endCard"] is None
-    assert "end_card" not in load_plan(e) and "hook" not in load_plan(e)
+    assert props["corner"] is True and props["hook"] is None and props["endCard"]["line1"] == "Message us"
+
+
+def test_init_keeps_the_last_exports_choices(project):
+    # review 2026-10-18 (Fable P2): init after an export lost the hook and the end card
+    e = plan_project(project, {"use_broll": False, "use_scenes": False, "use_memes": False})
+    rem = _export_project(project, e)
+    run_script("visual_plan.py", "export", "edit/4821", "--remotion", rem, "--card", "Message us", "--corner", cwd=project)
+    run_script("reelcfg.py", "save", "edit/4821", "--set", "use_scenes=true", cwd=project)
+    r = run_script("visual_plan.py", "validate", "edit/4821", cwd=project, check=False)
+    assert r.returncode != 0 and "run visual_plan.py init" in (r.stdout + r.stderr)  # the auto plan asks for init
+    run_script("visual_plan.py", "init", "edit/4821", cwd=project)
+    plan = load_plan(e)
+    assert plan["export"]["end"] == {"kind": "card", "lines": ["Message us"]} and plan["corner"] is True
+    assert "auto" not in plan
+    r = run_script("visual_plan.py", "export", "edit/4821", "--remotion", rem, "--props", rem / "p.json", cwd=project)
+    assert "kept from the last export" in r.stdout
+
+
+def test_a_plain_plan_needs_the_rough_cut(project):
+    # review 2026-10-18 (Codex on GitHub): a plan without captions.json exported "captions": null to the kit
+    e = plan_project(project, {"use_broll": False, "use_scenes": False, "use_memes": False})
+    (e / "captions.json").unlink()
+    r = run_script("visual_plan.py", "validate", "edit/4821", cwd=project, check=False)
+    assert r.returncode != 0 and "build it first (cut.py)" in (r.stdout + r.stderr)
+    assert not (e / "visual_plan.json").exists()
+
+
+def test_tone_summary_says_memes_are_on_request():
+    import reels_common as rc
+    line = rc.tone_summary({"preset": "old", "memes": {"allowed": True, "default": True, "max": 2, "size_max": "m"}})
+    assert "only on request" in line and "on by default" not in line
