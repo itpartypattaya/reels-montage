@@ -38,7 +38,9 @@ phrases (sentence end, pause > 0.5 s, speaker change, at most 40 words) and prin
     name like IMG_1234 alone); a bare word in the notes is not the source (T5: a brand with the same name as the file
     counted another video's notes).
 --from/--to (source seconds) analyze one fragment of a long recording: the teasers, the slow start and the ending are
-looked for inside it, while the neighbors outside still bound the clean edges.
+looked for inside it, while the neighbors outside still bound the clean edges. The audio is read only for the fragment
+and AUDIO_ROOM around it (a 90-minute WAV takes minutes to read whole): the threshold comes from that stretch, and a take
+member farther out gets no clean range.
 It writes edit/<id>/structure.json. Nothing is cut: the variants go into the cut plan (SKILL.md, step 3a) and the
 person chooses.
 """
@@ -71,6 +73,7 @@ TEASER_WORDS = (3, 12)  # an interjection ("OK, let's go") is not a line; a long
 GLUED = 0.1         # transcript times of two phrases closer than this touch: the pause between them is in a word
 MASK_WIDEN = 4      # 10 ms windows: the speech mask is widened by ~30 ms each side, so raw silence reaches past its gap
 EARLY = 1 / 3       # the slow start looks for its strong line in this share of the speech, never near the end
+AUDIO_ROOM = 5.0    # s of audio read past --from/--to: the neighbor phrases that bound the fragment's clean edges
 UNFINISHED = re.compile(r"(\.\.\.|…)['\")»”]*$")  # a cut-off word or a line that trails off
 CUT_OFF = re.compile(r"(\.\.\.|…|[-‐‑–—])$")  # a word the transcript marks cut off: "skil...", "skil-"
 NORM = re.compile(r"[^\w]+", re.U)
@@ -185,14 +188,16 @@ def signs(ps, end_of_speech, m=None):
 
 # ---- clean edges by the speech mask ----
 
-def load_mask(wav):
+def load_mask(wav, start=None, end=None):
     """(speech mask, quiet, hop) or None. The mask gives where speech starts and ends; `quiet` measures the silence at
     an edge: the raw 10 ms level under the threshold, except a voiceless sound the mask took into a word (a final
     "s" is quiet in the level but is speech). The mask itself is widened by ±30 ms and grown through short sounds, so
     its gaps are not the silence SKILL.md step 3 counts. A stray hiss outside the mask (the tail of a "zh") is not
-    speech: counting it broke the silence after a clean line."""
+    speech: counting it broke the silence after a clean line.
+    start/end (seconds): read only that stretch of the WAV; the lists still count windows from the file's start (the
+    windows before the stretch are silence with no speech), so every index below is the file's."""
     import speech_mask as sm
-    env, hf = sm.load_envs(str(wav))
+    env, hf, t0 = sm.load_span(str(wav), start, end)
     if not env:
         return None
     sdb = sm.smax(env)
@@ -201,7 +206,8 @@ def load_mask(wav):
     thr, vl = min(-30.0, p95 - 20), sm.voiceless(hf)
     mask = sm.speech_mask(sdb, thr, vl=vl)
     quiet = [x < thr and not (mask[k] and vl and vl[k]) for k, x in enumerate(env)]
-    return mask, quiet, sm.HOP
+    pad = int(round(t0 / sm.HOP))
+    return [False] * pad + mask, [True] * pad + quiet, sm.HOP
 
 
 def clean_before(quiet, i, need):
@@ -680,7 +686,11 @@ def cmd_suggest(a):
         sys.exit(f"{tp}: no words")
     stem = Path(str(doc.get("source") or tp.stem)).stem
     wav = Path(a.audio) if a.audio else next((p for p in (e / f"audio16k-{stem}.wav", e / "audio16k.wav") if p.exists()), None)
-    m = load_mask(wav) if wav and wav.exists() else None
+    win = None
+    if a.start is not None or a.end is not None:
+        win = (max(0.0, a.start - AUDIO_ROOM) if a.start is not None else None,
+               a.end + AUDIO_ROOM if a.end is not None else None)
+    m = load_mask(wav, *(win or (None, None))) if wav and wav.exists() else None
     if m is None:
         warn("no analysis audio (transcribe.py makes audio16k-<stem>.wav): clean edges are not checked")
     lo_t = a.start if a.start is not None else float("-inf")
@@ -733,7 +743,8 @@ def cmd_suggest(a):
     last = ps[-1]
     hist = history(project_root(), stem, skip=e)
     out = {"transcript": str(tp), "audio": str(wav) if wav else None,
-           "window": [a.start, a.end] if a.start is not None or a.end is not None else None, "phrases": ps,
+           "window": [a.start, a.end] if a.start is not None or a.end is not None else None,
+           **({"audio_read": [win[0] or 0.0, win[1]]} if win and m is not None else {}), "phrases": ps,
            "retakes": takes, "teasers": [p["i"] for p in teasers], "slow_start_s": slow, "strong_first": strong["i"] if strong else None,
            "ending": {"last": last["i"], "payoff": payoff["i"] if payoff else None},
            "history": [{"dir": d, "why": w, "note": n} for d, w, n in hist]}
@@ -745,7 +756,8 @@ def cmd_suggest(a):
     print(f"{tp.name}: {len(ps)} phrases, speech {first:.2f}-{end_speech:.2f} s"
           + (f" (fragment {a.start if a.start is not None else 'start'}-{a.end if a.end is not None else 'end'} s"
              f" of {len(allp)} phrases)" if out["window"] else "")
-          + ("" if m is not None else " (clean edges not checked: no audio)"))
+          + ("" if m is not None else " (clean edges not checked: no audio)")
+          + (f"; audio read {win[0] or 0:g}-{'end' if win[1] is None else format(win[1], 'g')} s only" if win and m is not None else ""))
     for p in ps:
         cl = "" if p["clean"] is None else ("clean" if p["clean"] else "no clean edge")
         flags = ((["est"] if p["est"] else []) + (["retake?"] if p["suspect"] else []) + (["take?"] if p.get("take") else [])

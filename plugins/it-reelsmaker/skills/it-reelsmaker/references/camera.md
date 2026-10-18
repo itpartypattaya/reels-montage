@@ -57,6 +57,14 @@ used to grow with the zoom, 7.8 px at ×1.3, and the faces went unreadable). The
 `camera.json` the template keeps its plain slow drift. While a card sits on the chest (hook, contrast, CTA), keep `cy`
 at 960 or lower the zoom: the chin must stay 60 px above the card; check the stills and the render audit.
 
+A framed clip (a horizontal source in the window, `references/techniques.md`) can start from a proposal:
+`longform.py camera edit/<id> [--side guest=left] [--write]` reads `faces.json` and `captions.json` and writes these
+shots by the rules above (changes on pauses and joins, the size cycle, the speaker in frame, push-ins within the
+window's margin, `source` on each shot of a clip of several pieces); it prints them first and never writes over a
+`camera.json` written or edited by hand. It works on any framed folder, not only a long recording's clip
+(`references/longform.md`, “The camera of a framed clip”). Then adjust the shots by meaning: a push-in on the main
+thought, a close-up on the CTA.
+
 ## Zoom margin from a 4K source
 
 The margin is counted from the resolution of `final.mp4`, not of the source. With `"scale": "auto"` (the default), `cut.py` scales a vertical 4K source down to 1080×1920, which leaves about ×1.3. To keep up to ~×2.0, build the rough cut at the source size (`"scale": "none"` in `cut.json`) and draw the video at 1080×1920 in Remotion; a 1440×2560 rough cut gives only ×1.33 without upscaling. Not verified: a 2160×3840 rough cut is heavy on an 8 GB machine (memory and render time), so offer it only when the video needs deep push-ins, and state the margin you will actually get.
