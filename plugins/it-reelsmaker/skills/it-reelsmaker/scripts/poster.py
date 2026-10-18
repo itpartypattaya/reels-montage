@@ -26,7 +26,7 @@ pick  — a "settled" frame from the render: --t; otherwise from the visual plan
         half-closed eyes). --sheet saves up to 6 candidates from the window's pauses side by side, numbered left to
         right, with their seconds printed (those on speech marked so): pick the one with open eyes and a mouth at rest,
         then pick --t <second>.
-        A cover with text over the frame is drawn by the ReelCover composition (`npx remotion still ReelCover cover.png --props=…`).
+        A cover with text over the frame is drawn by the ReelCover composition (`kit.py still edit/<id> --comp ReelCover --frame 0`).
 bake  — replaces ONLY frame 0 with the cover image (overlay enable='eq(n,0)'); video libx264 crf 18 preset slow yuv420p,
         audio copied, +faststart. Check: the frame count (ffprobe -count_frames) and the video and audio durations are
         the same before and after, and frame 0 = the cover; otherwise exit code 1 (do not deliver the file). Order

@@ -51,6 +51,8 @@ fix, fix_at transcription fixes: every occurrence of a word, or one occurrence n
             transcript has it and "at" its start AFTER retime: for a retimed word, its new "start". "fix" may also
             be a list of ["word", "replacement"] pairs.
 retime      exact timings of key words measured on the waveform: (word, transcript start) -> (start, end).
+            fix_at and retime entries may name a "source": then only that source's words (the pieces of one long
+            recording, longform.py extract, each start at 0 s, so "at" alone can match a word of another piece).
 
 A transcript word that the cut leaves out of every range although it sits in a short gap (up to 1 s) removed between
 two ranges of one source is named in a warning, in --dry-run too: a quiet syllable below the speech threshold is cut
@@ -190,8 +192,8 @@ def load_cut(e, project, speed_arg=None):
         validate_range(x, sources[src], fps, f"extract {name}")
     return {"fps": fps, "speed": speed, "sources": sources, "ranges": ranges, "grade": grade, "correct": correct,
             "lut": str(lut) if lut else None, "lut_mix": float(look.get("lut_mix", LUT_MIX)),
-            "fix": fix_map(cut.get("fix")), "fix_at": word_fixes(cut.get("fix_at"), "fix_at", ("to",)),
-            "retime": word_fixes(cut.get("retime"), "retime", ("start", "end")), "extract": extras,
+            "fix": fix_map(cut.get("fix")), "fix_at": word_fixes(cut.get("fix_at"), "fix_at", ("to",), sources),
+            "retime": word_fixes(cut.get("retime"), "retime", ("start", "end"), sources), "extract": extras,
             "level": cut.get("level", True) is not False}
 
 
@@ -209,9 +211,11 @@ def fix_map(v):
     return v
 
 
-def word_fixes(v, name, fields):
+def word_fixes(v, name, fields, sources=None):
     """cut.json "fix_at" / "retime": a list of {"text", "at", ...} entries, checked (a dict or an entry without "at"
-    crashed the cut with an AttributeError or a KeyError)."""
+    crashed the cut with an AttributeError or a KeyError). An optional "source" (a key of "sources") limits the entry to
+    that source: the pieces of a long recording each start at 0 s, so the same word at the same second of two pieces
+    would otherwise both get the fix."""
     if not v:
         return []
     shape = ('[{"text": "word", "at": 16.16, "to": "replacement"}]' if name == "fix_at" else
@@ -235,8 +239,15 @@ def word_fixes(v, name, fields):
         except (KeyError, TypeError, ValueError):
             sys.exit(f"cut.json: {name}[{n}] {json.dumps(x, ensure_ascii=False)}: expected {shape}"
                      + (" with end after start" if name == "retime" else ""))
+        if r.get("source") is not None and sources is not None and r["source"] not in sources:
+            sys.exit(f"cut.json: {name}[{n}]: unknown source {r['source']!r} (sources: {', '.join(sources)})")
         out.append(r)
     return out
+
+
+def for_source(r, src):
+    """A fix_at / retime entry applies to this source: it names no source, or this one."""
+    return r.get("source") is None or r["source"] == src
 
 
 def speaker_switches(r, k):
@@ -326,7 +337,7 @@ def load_words(c):
         for w in words:
             w["speaker"] = speaker_of(w)  # "speaker_id" on input becomes "speaker"
             for r in c["retime"]:
-                if w["text"] == r["text"] and abs(w["start"] - float(r["at"])) < 0.02:
+                if for_source(r, name) and w["text"] == r["text"] and abs(w["start"] - float(r["at"])) < 0.02:
                     w["start"], w["end"] = float(r["start"]), float(r["end"])
             if w["end"] - w["start"] < MIN_WORD:  # Whisper gives some short words zero length; they would vanish
                 w["end"] = w["start"] + MIN_WORD
@@ -334,9 +345,9 @@ def load_words(c):
     return out
 
 
-def fixed(w, c):
+def fixed(w, c, src=None):
     for r in c["fix_at"]:
-        if w["text"] == r["text"] and abs(w["start"] - float(r["at"])) < 0.02:
+        if (src is None or for_source(r, src)) and w["text"] == r["text"] and abs(w["start"] - float(r["at"])) < 0.02:
             return r["to"]
     return c["fix"].get(w["text"], w["text"])
 
@@ -422,7 +433,7 @@ def timeline(c, words):
             if owner(w, group) != i:
                 continue
             ws, we = min(max(w["start"], s), e), min(max(w["end"], s), e)
-            text = str(fixed(w, c))
+            text = str(fixed(w, c, r["source"]))
             if we - ws <= 0 or not text.strip():  # "to": "" removes the word from the subtitles (T2: a stray "you")
                 continue
             if punct_only(text):
@@ -467,7 +478,7 @@ def dropped_in_gaps(c, words, captions):
                 if 0 < b["start"] - a["end"] <= GAP_MAX and same_pass(a, b)
                 and not any(x["start"] < b["start"] and x["end"] > a["end"] for x in rs if x is not a and x is not b)]
         for w in ws:
-            if (src, round(w["start"], 3)) in shown or punct_only(w["text"]) or not str(fixed(w, c)).strip():
+            if (src, round(w["start"], 3)) in shown or punct_only(w["text"]) or not str(fixed(w, c, src)).strip():
                 continue
             d = max(w["end"] - w["start"], 1e-3)
             for g0, g1 in gaps:
@@ -527,7 +538,7 @@ def hidden_at_edges(c, words, captions, skip=()):
         rs = [(k, r) for k, r in enumerate(c["ranges"]) if r["source"] == src]
         for w in ws:
             key = (src, round(w["start"], 3))
-            if key in shown or key in skip or punct_only(w["text"]) or not str(fixed(w, c)).strip():
+            if key in shown or key in skip or punct_only(w["text"]) or not str(fixed(w, c, src)).strip():
                 continue
             o, k = max(((min(w["end"], r["end"]) - max(w["start"], r["start"]), k) for k, r in rs), default=(0.0, None))
             if o >= EDGE_TOUCH:

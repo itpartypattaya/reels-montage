@@ -2,6 +2,23 @@
 
 What changed in IT Reelsmaker, written for the people who use it. The newest version is on top. The skill shows a short “What's new” note from this file once, on the first edit after an update.
 
+## 1.16.0
+
+- **A long recording → a series of clips.** A podcast, webinar or interview of 10–90 minutes: `longform.py` takes the
+  whole recording's transcript (made once on your computer, or subtitles you already have), lays it out in parts to
+  read, and checks the clips the agent proposes: each piece found by its first and last words, a piece found twice, a
+  start or end mid-sentence, a clip that leans on what came before, two clips about the same thing, anything inside a
+  stretch you excluded. You approve the list once; each approved clip becomes an ordinary video folder with its pieces
+  as files and their transcripts, so no clip needs Whisper again. No virality score, no fixed number of clips
+  (`references/longform.md`).
+- **Renders clean up after themselves.** Remotion copied the Remotion project's whole `public/` into the temp folder on
+  every run and, on Windows, left those folders behind (tens of GB in a month). `kit.py render` and `kit.py still`, and
+  the storyboard sheet, the text check and the patch render, now give each run its own temp folder, remove it when the
+  run ends and copy only that video's files. `kit.py clean-temp` lists what older runs left; `doctor.py` counts it.
+- **A render that failed is never mastered.** `kit.py render` keeps the whole Remotion output in the video's
+  `render.log` and fails unless the render finished and its file is new.
+- `cut.py`: `fix_at` and `retime` entries can name their `source` (several pieces of one recording each start at 0 s).
+
 ## 1.15.0
 
 - **Rare techniques leave the menus.** The message-thread, interface and icon scenes, the split, slide-panel and

@@ -27,6 +27,10 @@ Each video can have a **profile**: educational, entertaining, expert clip, promo
 
 ![Face-aware layout: free zones, subtitle band and false-face filter](https://raw.githubusercontent.com/itpartypattaya/reels-montage/main/docs/img/face-layout.png)
 
+## A long recording → a series of clips
+
+A podcast, webinar or interview of 10–90 minutes becomes a series of vertical clips. The whole recording is transcribed once on your computer (or the subtitles you already have are imported), the agent reads it part by part and writes one card per clip: its pieces named by their first and last words, the hook, the ending and why it stands alone. A clip can join two or three places of the recording and drop the host's interjections. There is no virality score and no fixed number of clips: the script finds every piece in the transcript, flags a piece found twice, a start or end mid-sentence, a clip that leans on what came before, two clips about the same thing, and anything inside a stretch you excluded. You approve the list once; each approved card becomes an ordinary video folder, finished by the steps above, one clip at a time.
+
 ## Designed scenes
 
 A hook set large, a quote taken verbatim from the speech, the main thought as a punch, a number with a counter and its source, a list item by item, “before → after”, the call to action as an action, a cover in frame 0. Claude draws them in code in your brand's colors and fonts and places each one on its spoken word. By default the speaker's face stays in the frame: the scene sits in a free zone of the shot. The plan check counts reading time (0.8 s for a short line, 0.3 s per word in a phrase), compares quotes with the transcript and asks for a source for every number. A promo without footage uses the same scenes on their own, 15–25 s. The scene planning method is adapted from [brag](https://github.com/latent-spaces/brag) (MIT).
