@@ -77,6 +77,37 @@ def test_face_groups_split_people_by_x():
     assert lf.side_names(2) == ["left", "right"] and lf.side_names(4) == ["1", "2", "3", "4"]
 
 
+def test_a_briefly_seen_person_is_not_noise():
+    # review of PR #28: a host on screen for one short turn of a long clip is under 5 % of the faces, yet a person
+    samples = [{"t": k * 0.25, "faces": [[100, 600, 90, 120, 0.9]]} for k in range(240)]
+    for k in range(100, 106):  # 1.5 s of the host
+        samples[k]["faces"].append([1100, 590, 95, 125, 0.9])
+    samples[20]["faces"].append([700, 1400, 60, 50, 0.62])  # stray boxes at one spot, 10 s apart: 0.5 s seen, noise
+    samples[60]["faces"].append([705, 1400, 60, 50, 0.62])
+    g = lf.face_groups(samples, [(0, 100)], 0.25)
+    assert [round(x["x"]) for x in g] == [145, 1148] and g[1]["n"] == 6
+
+
+def test_a_turn_is_measured_from_its_first_word():
+    # review of PR #28: a 0.3 s "wow" after a 2.8 s pause counted the pause as speech and got a shot of its own
+    words = [{"text": "one", "start": 2.0, "end": 5.0, "speaker": "guest"},
+             {"text": "wow.", "start": 7.8, "end": 8.1, "speaker": "host"},
+             {"text": "two", "start": 8.3, "end": 12.0, "speaker": "guest"}]
+    who = lambda w: w["speaker"]  # noqa: E731
+    assert lf.turn_len(words, who, 6.4) == pytest.approx(0.3)
+    assert lf.turn_len(words, who, 8.2) == pytest.approx(3.7)
+    assert lf.brief_turns(words, who) == {1}
+    # the whole proposal: the "wow" is heard over a guest shot even where a pause cut lands right before it
+    segs = [{"i": 0, "source": "a", "src_start": 0.0, "src_end": 14.0, "out_start": 0.0, "out_dur": 14.0}]
+    cap = {"duration": 14.0, "segments": segs, "words": [dict(w, seg=0, src=w["start"]) for w in words]}
+    data = {"step": 0.25, "frame": [25, 340, 1030, 1240], "source": {"w": SRC_W, "h": SRC_H},
+            "samples": [{"t": k * 0.25, "faces": [[250, 600, 100, 130, 0.9], [750, 590, 100, 130, 0.9]]}
+                        for k in range(56)]}
+    shots, rows, _, unknown, _ = lf.camera_plan(Path("."), data, cap, {"guest": "left", "host": "right"}, "guest")
+    assert not unknown and any(r["t"] < 7.8 < r["t"] + r["hold"] for r in rows)
+    assert {s["who"] for s in shots} == {"guest"}
+
+
 def test_zoom_ceiling_by_the_source_rows():
     from reels_common import framed_view
     win = [25, 340, 1030, 1240]
@@ -225,6 +256,10 @@ def test_speech_mask_window_matches_the_whole_file(tmp_path):
     assert len(every) == 5 and listed == [x for x in every if 19 <= float(x.split("–")[0]) < 27]  # file seconds
     r = run_script("speech_mask.py", wav, "--from", "19", "--to", "25", "--spans", "19.8-26.2", check=False)
     assert r.returncode != 0 and "outside --from" in r.stderr
+    short = tone_wav(tmp_path / "short.wav", [(0.2, 0.8)], 1.0)
+    r = run_script("speech_mask.py", short, "--from", "10", check=False)  # review of PR #28: a traceback, not a message
+    assert r.returncode != 0 and "has no audio" in r.stderr and "between 9 s and the end" in r.stderr
+    assert "Traceback" not in r.stderr
 
 
 def test_edge_warning_times_stay_seconds_of_the_file(tmp_path):

@@ -1073,6 +1073,7 @@ CAM_LEAN = 0.15       # a wide shot leans this share from the speaker toward the
 CAM_TOWARD = 0.35     # a medium shot sits this share of the way from the close-up's frame to the wide one's
 CAM_CHIN = 0.2        # the frame's center this share of the face's height below the face's center (below the eyes)
 CAM_PAIR = 60         # px kept around both faces for a wide two-shot
+CAM_SEEN = 1.0        # s of samples a face group needs to be a person, whatever its share of the faces
 CYCLE = ("wide", "medium", "close", "medium")
 SIDE_NAMES = {1: ["center"], 2: ["left", "right"], 3: ["left", "center", "right"]}
 
@@ -1096,15 +1097,17 @@ def clip_card(ce, project):
     return None, None, None
 
 
-def face_groups(samples, spans):
+def face_groups(samples, spans, step=0.25):
     """The faces of the samples inside spans [(t0, t1)] -> the people, left to right: [{x, y, w, h, n}] (median center
     and size, screen coordinates). 1D on x: a gap between face centers wider than 1.5 face widths (at least 80 px)
-    parts two people; a group with under 5 % of the faces is noise (a false face the filter kept, a passer-by)."""
-    pts = sorted(((f[0] + f[2] / 2, f) for s in samples if any(a - 1e-6 <= s["t"] < b for a, b in spans)
+    parts two people. A group is noise (a false face the filter kept) only when it has under 5 % of the faces AND is
+    seen on less than CAM_SEEN of samples: a host on screen for one 1.5 s turn of a long clip is a person (review of
+    PR #28: dropped, the host's shot went to the guest without asking who sits where)."""
+    pts = sorted(((f[0] + f[2] / 2, f, s["t"]) for s in samples if any(a - 1e-6 <= s["t"] < b for a, b in spans)
                   for f in s["faces"]), key=lambda p: p[0])
     if not pts:
         return []
-    gap = max(80.0, 1.5 * median([f[2] for _, f in pts]))
+    gap = max(80.0, 1.5 * median([p[1][2] for p in pts]))
     groups, cur = [], [pts[0]]
     for p in pts[1:]:
         if p[0] - cur[-1][0] > gap:
@@ -1112,9 +1115,9 @@ def face_groups(samples, spans):
             cur = []
         cur.append(p)
     groups.append(cur)
-    return [{"x": median([x for x, _ in g]), "y": median([f[1] + f[3] / 2 for _, f in g]),
-             "w": median([f[2] for _, f in g]), "h": median([f[3] for _, f in g]), "n": len(g)}
-            for g in groups if len(g) >= 0.05 * len(pts)]
+    keep = [g for g in groups if len(g) >= 0.05 * len(pts) or len({p[2] for p in g}) * step >= CAM_SEEN - 1e-6]
+    return [{"x": median([p[0] for p in g]), "y": median([p[1][1] + p[1][3] / 2 for p in g]),
+             "w": median([p[1][2] for p in g]), "h": median([p[1][3] for p in g]), "n": len(g)} for g in keep]
 
 
 def side_names(n):
@@ -1194,7 +1197,8 @@ def cut_points(words, segs, who_of):
 
 
 def turn_len(words, who_of, t):
-    """How long the speaker who starts at t speaks before the next change (s)."""
+    """How long the speaker who starts after t speaks before the next change (s), from their first word: the pause
+    before it is not their speech (review of PR #28: a 0.3 s "wow" after a 2.8 s pause counted 1.7 s and got a shot)."""
     nxt = [w for w in words if w["start"] >= t - 1e-6]
     if not nxt:
         return 0.0
@@ -1203,7 +1207,22 @@ def turn_len(words, who_of, t):
         if who_of(w) != who:
             break
         end = w["end"]
-    return end - t
+    return end - nxt[0]["start"]
+
+
+def brief_turns(words, who_of):
+    """The indices of the words in turns shorter than CAM_MIN (from a turn's first word to its last): the host's "wow"
+    between two stretches of the guest. They never choose whom a shot frames (review of PR #28: a pause cut just before
+    such a "wow" gave the host a shot of its own)."""
+    out, k = set(), 0
+    while k < len(words):
+        j = k
+        while j + 1 < len(words) and who_of(words[j + 1]) == who_of(words[k]):
+            j += 1
+        if words[j]["end"] - words[k]["start"] < CAM_MIN:
+            out.update(range(k, j + 1))
+        k = j + 1
+    return out
 
 
 def plan_cuts(cands, words, who_of, end):
@@ -1297,8 +1316,9 @@ def camera_plan(ce, data, cap, sides, default_who, zmax=None):
     groups = {}
     for k in keys:
         spans = [(g["out_start"], g["out_start"] + g["out_dur"]) for g in segs if str(g.get("source")) == k]
-        groups[k] = face_groups(data["samples"], spans)
+        groups[k] = face_groups(data["samples"], spans, float(data.get("step") or 0.25))
     cuts = plan_cuts(cut_points(words, segs, who_of), words, who_of, end)
+    brief = brief_turns(words, who_of)
     starts = [(0.0, {"kind": "start", "seg": segs[0], "gap": None, "after": "", "change": False, "source": False})]
     starts += [(c["t"], c) for c in cuts]
     shots, rows, notes, unknown = [], [], [], {}
@@ -1307,9 +1327,9 @@ def camera_plan(ce, data, cap, sides, default_who, zmax=None):
         g = c["seg"] if c["kind"] in ("start", "join") else seg_at(segs, t0)
         key = str(g.get("source"))
         talk = {}
-        for w in words:
+        for j, w in enumerate(words):
             d = min(w["end"], t1) - max(w["start"], t0)
-            if d > 0:
+            if d > 0 and j not in brief:  # a short interjection is heard over the shot, it does not take it
                 talk[who_of(w)] = talk.get(who_of(w), 0.0) + d
         who = max(talk, key=talk.get) if talk else (rows[-1]["who"] if rows else default_who)
         size = CYCLE[n % len(CYCLE)]

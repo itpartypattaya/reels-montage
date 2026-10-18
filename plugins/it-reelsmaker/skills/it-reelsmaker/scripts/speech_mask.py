@@ -411,7 +411,8 @@ def main():
     vl = voiceless(hf)
     if not env:
         sys.exit(f"{a.audio} has no audio (empty or shorter than {HOP * 1000:.0f} ms): can't build the mask"
-                 + (f" between {lo:g} and {hi:g} s" if lo is not None or hi is not None else ""))
+                 + (f" between {'the start' if lo is None else format(lo, 'g') + ' s'} and "
+                    f"{'the end' if hi is None else format(hi, 'g') + ' s'}" if lo is not None or hi is not None else ""))
     sdb = smax(env)
     srt = sorted(x for x in sdb if x > -90)
     p95 = srt[int(len(srt) * 0.95)] if srt else -20
