@@ -3,6 +3,17 @@
   python scripts/kit.py new reels                # a new Remotion project in ./reels with the kit wired in
   python scripts/kit.py check --remotion reels   # is the kit there, which version, which files differ
   python scripts/kit.py update --remotion reels  # copy the plugin's kit over the project's copy (backup first)
+  python scripts/kit.py render edit/4821 [--concurrency 2] [--out out/4821.mp4]   # the full render (SKILL.md step 9)
+  python scripts/kit.py still edit/4821 --frame 120 [--comp ReelCover]             # one frame
+  python scripts/kit.py clean-temp [--yes]       # old Remotion temp folders: listed; --yes removes them
+
+render and still run Remotion in the Remotion project (it-reelsmaker.json -> remotion_dir, or --remotion) with the
+video's props (edit/<id>/reelkit-props.json), each with a temp folder of its own that is removed when the run ends:
+Remotion leaves its bundle (a full copy of public/), asset cache and Chrome profile in the system temp folder on
+Windows (a real laptop: 571 folders, 33.5 GB in a month). A ReelKit / ReelCover run also reads a public/ of hard links
+to only this video's files (--public-dir), not a copy of every video in public/. render writes the whole Remotion
+output to edit/<id>/render.log, shows the progress, and fails (exit 1, edit/<id>/render.json "ok": false) unless the
+exit code is 0 and the file is new and plays. "temp_cleanup": false in it-reelsmaker.json keeps Remotion's own ways.
 
 What the kit is: src/ReelKit.tsx (the ReelKit and ReelCover compositions: the rough cut, subtitles, brand, inserts,
 designed scenes, all from props written by `visual_plan.py export --props`) and src/kit/ (its components). The
@@ -15,11 +26,13 @@ replaces only the kit's own files (src/ReelKit.tsx, src/kit/**); Root.tsx, src/g
 yours. Files it replaces are copied to .kit-backup/<time>/ first. With a project folder (edit/, brands/ or
 it-reelsmaker.json), `new` writes remotion_dir into it-reelsmaker.json unless it is already set.
 """
-import argparse, json, os, re, shutil, sys, time
+import argparse, fnmatch, json, os, re, shlex, shutil, subprocess, sys, tempfile, time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from reels_common import SETTINGS_FILE, SKILL, editing_json, is_project, project_root, utf8_stdio
+from reels_common import (REMOTION_LEFTOVERS, SETTINGS_FILE, SKILL, edit_dir, editing_json, is_project, probe,
+                          project_root, remotion_leftovers, remotion_tmp, remove_tree, save_json, sweep_tmp, tmp_root,
+                          utf8_stdio)
 
 KIT = SKILL / "assets" / "remotion-kit"
 STARTER = SKILL / "assets" / "remotion-starter"
@@ -225,6 +238,124 @@ def cmd_update(a):
     print(f"kit {kit_version(KIT)} is in {rem}; check the types: npx tsc (in that folder)")
 
 
+PROGRESS_RE = re.compile(r"\b(Rendered|Encoded|Stitched)\b\D{0,12}(\d+)\s*/\s*(\d+)")
+ANSI_RE = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
+
+
+def npx():
+    return shutil.which("npx") or shutil.which("npx.cmd") or "npx"
+
+
+def run_logged(cmd, rem, env, log):
+    """Run a Remotion command: every line into the log, on the screen only errors, warnings and the progress in steps
+    of 20 %. -> the exit code."""
+    shown = {}
+    with open(log, "w", encoding="utf-8", errors="replace") as f:
+        p = subprocess.Popen(cmd, cwd=rem, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
+                             encoding="utf-8", errors="replace")
+        for line in p.stdout:  # universal newlines: a "\r" progress update counts as a line too
+            f.write(line if line.endswith("\n") else line + "\n")
+            plain = ANSI_RE.sub("", line).strip()
+            m = PROGRESS_RE.search(plain)
+            if m:
+                k, n = int(m.group(2)), int(m.group(3))
+                step = 5 * k // n if n else 0
+                if shown.get(m.group(1)) != step:
+                    shown[m.group(1)] = step
+                    print(f"  {m.group(1).lower()} {k}/{n}", flush=True)
+            elif plain and re.search(r"\b(error|warn\w*|fail\w*)\b", plain, re.I):
+                print("  " + plain[:300], flush=True)
+        return p.wait()
+
+
+def log_tail(log, n=15):
+    try:
+        lines = [ANSI_RE.sub("", l).rstrip() for l in Path(log).read_text(encoding="utf-8", errors="replace").splitlines()]
+    except OSError:
+        return ""
+    keep = [l for l in lines if l.strip() and not re.match(r"\s*(at |\d+: )", l)]
+    return "\n".join(keep[-n:])
+
+
+def cmd_render(a, still=False):
+    """The full render (or one still) of a video with its props, through remotion_tmp(): the run's temp files are
+    removed when it ends, and a ReelKit / ReelCover run reads a public/ of only this video's files. The render counts
+    only with exit code 0 AND a new, non-empty file (SKILL.md step 9: a render | tail chain hid a failure, and the
+    master was silently built from the old file)."""
+    from board import props_path, remotion_dir  # noqa: E402 (board imports visual_plan's neighbors only when needed)
+    e = edit_dir(a.edit)
+    rem = remotion_dir(a.remotion)
+    props = props_path(e, a.props)
+    if still:
+        out = Path(a.out).resolve() if a.out else e / "verify" / f"still-{a.comp}-{a.frame}.png"
+        cmd = [npx(), "--no", "remotion", "still", a.comp, str(out), f"--props={props}", f"--frame={a.frame}"]
+    else:
+        out = Path(a.out).resolve() if a.out else rem / "out" / f"{e.name}.mp4"
+        cmd = [npx(), "--no", "remotion", "render", a.comp, str(out), f"--props={props}"]
+        if a.concurrency:
+            cmd.append(f"--concurrency={a.concurrency}")
+        if a.frames:
+            cmd.append(f"--frames={a.frames}")
+    cmd += shlex.split(a.extra or "")
+    out.parent.mkdir(parents=True, exist_ok=True)
+    log = e / ("still.log" if still else "render.log")
+    t0 = time.time()
+    try:
+        with remotion_tmp(rem, props, a.comp) as (env, extra):
+            code = run_logged(cmd + extra, rem, env, log)
+    except OSError as x:
+        sys.exit(f"cannot run npx ({x}): Node.js with Remotion is needed (doctor.py)")
+    fresh = out.is_file() and out.stat().st_mtime >= t0 - 1 and out.stat().st_size > 0
+    took = time.time() - t0
+    if still:
+        if code != 0 or not fresh:
+            sys.exit(f"the still failed (code {code}); log {log}:\n{log_tail(log)}")
+        print(f"still: {out} (frame {a.frame}, {took:.0f} s)")
+        return 0
+    dur = probe(out).get("dur") if fresh else None
+    save_json(e / "render.json", {"out": str(out), "comp": a.comp, "props": str(props), "ok": bool(code == 0 and dur),
+                                  "code": code, "seconds": round(took, 1), "duration": dur,
+                                  "at": time.strftime("%Y-%m-%d %H:%M:%S")})
+    if code != 0 or not fresh or not dur:
+        why = f"code {code}" + ("" if fresh else (", the file is from an earlier render" if out.exists() else ", no file"))
+        sys.exit(f"the render failed ({why}); do not master it. Log {log}:\n{log_tail(log)}")
+    print(f"render: {out} — {dur:.2f} s of video, {out.stat().st_size / (1 << 20):.1f} MB, in {took / 60:.1f} min "
+          f"(log {log.name})")
+    return 0
+
+
+def cmd_clean_temp(a):
+    """Old Remotion temp folders: this plugin's own run folders (always), and folders that runs outside the plugin
+    left in the system temp folder (listed; removed with --yes)."""
+    freed = sweep_tmp()
+    if freed:
+        print(f"removed {freed / (1 << 20):.0f} MB of this plugin's old run folders ({tmp_root()})")
+    left = remotion_leftovers(a.hours)
+    base = tempfile.gettempdir()
+    if not left:
+        print(f"no Remotion leftovers older than {a.hours:g} h in {base}")
+        return 0
+    total = sum(n for _, n in left)
+    kinds = {}
+    for q, _ in left:
+        k = next((p for p in REMOTION_LEFTOVERS if fnmatch.fnmatch(q.name, p)), q.name)
+        kinds[k] = kinds.get(k, 0) + 1
+    print(f"{len(left)} folder(s), {total / (1 << 20):.0f} MB left by Remotion runs in {base}, unchanged for over "
+          f"{a.hours:g} h: " + ", ".join(f"{k} × {n}" for k, n in sorted(kinds.items())))
+    if not a.yes:
+        print("remove them: kit.py clean-temp --yes (puppeteer_dev_chrome_profile-* folders can also belong to another "
+              "program that drives Chrome: close it first; runs through this plugin remove their own files)")
+        return 0
+    gone, held, nbytes = 0, 0, 0
+    for q, n in left:
+        if remove_tree(q, wait=1):
+            gone, nbytes = gone + 1, nbytes + n
+        else:
+            held += 1
+    print(f"removed {gone} folder(s), {nbytes / (1 << 20):.0f} MB" + (f"; {held} still in use, left" if held else ""))
+    return 0
+
+
 def main(argv=None):
     utf8_stdio()
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -234,8 +365,26 @@ def main(argv=None):
     p = sub.add_parser("update", help="copy the plugin's kit into the project")
     p.add_argument("--remotion", required=True); p.add_argument("--dry-run", action="store_true")
     p.add_argument("--force", action="store_true", help="also when the project's kit is newer (rolls it back)")
+    for name in ("render", "still"):
+        p = sub.add_parser(name, help="the full render of a video" if name == "render" else "one frame of a video")
+        p.add_argument("edit"); p.add_argument("--remotion", help="default: it-reelsmaker.json -> remotion_dir")
+        p.add_argument("--props", help="default: edit/<id>/reelkit-props.json")
+        p.add_argument("--comp", default="ReelKit", help="ReelKit (default), ReelCover, or Reel<id>")
+        p.add_argument("--out", help="render: default <remotion>/out/<id>.mp4; still: edit/<id>/verify/still-<comp>-<frame>.png")
+        p.add_argument("--extra", help="more Remotion flags, quoted: \"--scale=0.5 --log=verbose\"")
+        if name == "render":
+            p.add_argument("--concurrency", type=int, help="Remotion's threads (1-2 on an 8 GB laptop with other apps open)")
+            p.add_argument("--frames", help="a range of frames, A-B")
+        else:
+            p.add_argument("--frame", type=int, required=True)
+    p = sub.add_parser("clean-temp", help="old Remotion temp folders: list them, --yes removes them")
+    p.add_argument("--hours", type=float, default=24.0, help="only folders unchanged for this long (default 24)")
+    p.add_argument("--yes", action="store_true")
     a = ap.parse_args(argv)
-    return {"new": cmd_new, "check": cmd_check, "update": cmd_update}[a.cmd](a) or 0
+    if a.cmd == "still":
+        return cmd_render(a, still=True)
+    return {"new": cmd_new, "check": cmd_check, "update": cmd_update, "render": cmd_render,
+            "clean-temp": cmd_clean_temp}[a.cmd](a) or 0
 
 
 if __name__ == "__main__":

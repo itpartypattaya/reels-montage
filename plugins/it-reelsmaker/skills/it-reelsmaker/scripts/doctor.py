@@ -15,7 +15,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from kit import KIT, kit_version, script_cmd
-from reels_common import SETTINGS_FILE, editing_json, is_project, load_json, online, project_root, project_settings, utf8_stdio
+from reels_common import (SETTINGS_FILE, editing_json, is_project, load_json, online, project_root, project_settings,
+                          remotion_leftovers, utf8_stdio)
 
 OS = {"Windows": "windows", "Darwin": "macos"}.get(platform.system(), "linux")
 PY = Path(sys.executable).name if OS != "windows" else "python"
@@ -121,6 +122,14 @@ def check_node(remotion):
         f"{script_cmd('kit.py')} update --remotion \"{Path(remotion).resolve()}\" (replaced files are backed up first)")
 
 
+def check_temp():
+    """Folders that Remotion runs outside this plugin's commands left in the system temp folder (runs through
+    kit.py render, board.py, textcheck.py and patch_render.py remove their own)."""
+    left = remotion_leftovers(measure=False)  # counted only: their size takes seconds to add up
+    add("Remotion temp leftovers", "optional", not left, f"{len(left)} folder(s) older than a day" if left else "none",
+        f"{script_cmd('kit.py')} clean-temp shows their size, --yes removes them")
+
+
 def check_models(settings):
     fm = os.environ.get("REELS_FACE_MODEL") or settings.get("face_model") or ""
     if str(fm).startswith("${"):
@@ -152,6 +161,7 @@ def main():
     check_ffmpeg()
     check_python_packages()
     check_node(remotion)
+    check_temp()
     check_models(settings)
     ext = online()
     add("online add-on (optional)", "optional", ext, str(Path(ext.__file__).parent) if ext else "not linked",

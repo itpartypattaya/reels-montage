@@ -39,7 +39,7 @@ import argparse, os, re, shutil, subprocess, sys, tempfile, time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from reels_common import local_media_args
+from reels_common import local_media_args, remotion_tmp
 
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -48,8 +48,9 @@ if hasattr(sys.stdout, "reconfigure"):
 PSNR_MIN = 35.0  # a frame redrawn by Remotion vs the old one: 41-45 dB in a measured case; neighbors catch a shift
 
 
-def run(args, cwd=None, what="command"):
-    r = subprocess.run(local_media_args(args), cwd=cwd, capture_output=True, text=True, encoding="utf-8", errors="replace")
+def run(args, cwd=None, what="command", env=None):
+    r = subprocess.run(local_media_args(args), cwd=cwd, env=env, capture_output=True, text=True, encoding="utf-8",
+                       errors="replace")
     if r.returncode != 0:
         # the gist of the error is at the start; the tail is a Node/Rust stack trace, drop it
         txt = re.sub(r"\x1b\[[0-9;]*m", "", (r.stderr or "") + (r.stdout or ""))
@@ -265,7 +266,8 @@ def main():
         if a.props:
             cmd.append(f"--props={a.props}")
         t = time.time()
-        run(cmd, cwd=rem, what="patch render (Remotion)")
+        with remotion_tmp(rem, a.props, a.comp) as (env, extra):  # a run folder of its own, removed afterwards
+            run(cmd + extra, cwd=rem, what="patch render (Remotion)", env=env)
         pm = probe_video(patch)
         if pm["frames"] != k2 - k1:
             sys.exit(f"patch: {pm['frames']} frames instead of {k2 - k1}")
@@ -282,7 +284,8 @@ def main():
             cmd = [npx(), "--no", "remotion", "render", a.comp, str(wav), "--codec=wav", "--log=error"]
             if a.props:
                 cmd.append(f"--props={a.props}")
-            run(cmd, cwd=rem, what="audio render (Remotion)")
+            with remotion_tmp(rem, a.props, a.comp) as (env, extra):
+                run(cmd + extra, cwd=rem, what="audio render (Remotion)", env=env)
             audio_src = wav
             print(f"audio re-rendered in {time.time() - t:.0f} s")
 

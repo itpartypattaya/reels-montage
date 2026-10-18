@@ -5,7 +5,7 @@ Imported by the other scripts (brand.py, reelcfg.py, visual_plan.py, footage.py,
 only. No network access and no credentials here: online sources live in the it-reelsmaker-online add-on, which this
 module loads only when it is installed (see online()).
 """
-import contextlib, importlib, json, math, os, re, subprocess, sys, time, unicodedata, uuid
+import contextlib, importlib, json, math, os, re, shutil, subprocess, sys, tempfile, time, unicodedata, uuid
 from pathlib import Path
 
 SKILL = Path(__file__).resolve().parent.parent
@@ -1151,3 +1151,214 @@ def restart_at(ws):
             if tuple(ws[k:k + len(p)]) == p:
                 return " ".join(p)
     return None
+
+
+# Remotion runs and their temp files. Remotion 4 puts every temp folder of a run into os.tmpdir() (TEMP, then TMP on
+# Windows; TMPDIR elsewhere): the webpack bundle with a full copy of the Remotion project's public/, the asset cache,
+# the render's working folder, Chrome's profile. Its own cleanup tries three times in a row and gives up, and on Windows
+# the compositor and Chrome hold their files for seconds after the end, so the folders stay (a real laptop: 571 folders,
+# 33.5 GB in a month; then 824 Chrome profiles, 1.7 GB). And the bundle copies public/ whole on every run: a project
+# with the videos of a series in it (1.5 GB) copied 1.5 GB for each render, storyboard sheet and text check.
+# remotion_tmp() gives a run its own folder and removes it when the run ends, however it ends; a ReelKit or ReelCover
+# run with props also gets a public/ of hard links to only the files its props use (--public-dir).
+TMP_ROOT = "it-reelsmaker"         # <temp>/it-reelsmaker/r-<pid>-<n>/: one folder per Remotion run
+TMP_STALE_S = 6 * 3600             # a run folder older than this was left by a killed run
+TMP_PENDING = "pending.json"       # run folders a run could not remove yet (files still held)
+TMP_WAIT_S = 15.0                  # how long a run waits for Windows to release its files
+KIT_COMPS = ("ReelKit", "ReelCover")  # compositions that read only what their props name (a per-video one may not)
+REMOTION_LEFTOVERS = ("remotion-v*-assets*", "remotion-webpack-bundle-*", "react-motion-render*",
+                      "puppeteer_dev_chrome_profile-*")  # what Remotion 4 runs leave in the system temp folder
+
+
+def tmp_root():
+    return Path(tempfile.gettempdir()) / TMP_ROOT
+
+
+def dir_size(p):
+    """Bytes in a folder, links not followed."""
+    n = 0
+    for root, _dirs, files in os.walk(p):
+        for f in files:
+            try:
+                n += os.lstat(os.path.join(root, f)).st_size
+            except OSError:
+                pass
+    return n
+
+
+def remove_tree(p, wait=TMP_WAIT_S):
+    """Remove a folder, retrying while another process still holds its files. -> True when it is gone."""
+    t0 = time.time()
+    while True:
+        shutil.rmtree(p, ignore_errors=True)
+        if not os.path.exists(p):
+            return True
+        if time.time() - t0 >= wait:
+            return False
+        time.sleep(0.5)
+
+
+def temp_cleanup_on(project=None):
+    """it-reelsmaker.json -> "temp_cleanup": false turns the run folders and the trimmed public/ off."""
+    try:
+        return project_settings(project).get("temp_cleanup", True) is not False
+    except (OSError, ValueError):
+        return True
+
+
+def sweep_tmp(now=None):
+    """What earlier runs left in <temp>/it-reelsmaker: the folders in pending.json and run folders older than
+    TMP_STALE_S. -> bytes freed. Only this plugin's own folders: names elsewhere in the temp folder are never touched
+    here (kit.py clean-temp lists those)."""
+    root = tmp_root()
+    if not root.is_dir():
+        return 0
+    now = time.time() if now is None else now
+    freed, pend = 0, root / TMP_PENDING
+    with locked(pend, timeout=10):
+        listed = [p for p in (load_json(pend, []) or []) if isinstance(p, str)]
+        keep = []
+        for p in listed:
+            q = Path(p)
+            if q.parent != root or not q.exists():
+                continue
+            n = dir_size(q)
+            if remove_tree(q, wait=1):
+                freed += n
+            else:
+                keep.append(p)
+        for q in root.iterdir():
+            try:
+                old = q.is_dir() and q.name.startswith("r-") and now - q.stat().st_mtime > TMP_STALE_S
+            except OSError:
+                continue
+            if old and str(q) not in keep:
+                n = dir_size(q)
+                if remove_tree(q, wait=1):
+                    freed += n
+        if keep:
+            save_json(pend, keep)
+        elif pend.exists():
+            pend.unlink()
+    return freed
+
+
+def _strings(x):
+    if isinstance(x, str):
+        yield x
+    elif isinstance(x, dict):
+        for v in x.values():
+            yield from _strings(v)
+    elif isinstance(x, list):
+        for v in x:
+            yield from _strings(v)
+
+
+def public_files(rem, props):
+    """The files of the Remotion project's public/ that a ReelKit run with these props reads: every path the props
+    name, the whole folder of the video (public/<id>/: the rough cut, inserts, the cut-out) and public/brands/ (logos,
+    fonts). -> sorted paths, or [] when the props name nothing there."""
+    pub = Path(rem) / "public"
+    if not pub.is_dir() or not isinstance(props, dict):
+        return []
+    want, dirs = set(), set()
+    for s in _strings(props):
+        r = s.strip().replace("\\", "/").lstrip("/")
+        if not r or len(r) > 400 or ":" in r or ".." in r.split("/"):  # ":": a URL, data: or a drive (C:/…)
+            continue
+        try:
+            f = pub / r
+            if f.is_file():
+                want.add(f)
+                if len(Path(r).parts) > 1:
+                    dirs.add(pub / Path(r).parts[0])
+        except (OSError, ValueError):
+            continue
+    if not want:
+        return []
+    dirs.add(pub / "brands")
+    for d in dirs:
+        if d.is_dir() and d.name != "public":
+            want.update(f for f in d.rglob("*") if f.is_file())
+    return sorted(want)
+
+
+def stage_public(rem, props, dest):
+    """public/ for one run in dest: hard links to public_files() (a copy where a link is impossible, another disk).
+    -> the number of files, 0 when nothing could be staged (the run then reads the project's own public/)."""
+    files = public_files(rem, props)
+    pub = Path(rem) / "public"
+    n = 0
+    for f in files:
+        t = Path(dest) / f.relative_to(pub)
+        t.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            os.link(f, t)
+        except OSError:
+            try:
+                shutil.copy2(f, t)
+            except OSError:
+                return 0
+        n += 1
+    return n
+
+
+@contextlib.contextmanager
+def remotion_tmp(rem=None, props=None, comp=None, quiet=False):
+    """with remotion_tmp(rem, props, comp) as (env, args): subprocess.run(cmd + args, cwd=rem, env=env)
+    A run folder <temp>/it-reelsmaker/r-<pid>-<n>/ as the run's TEMP, TMP and TMPDIR, removed when the block ends
+    (success, error, Ctrl+C), waiting up to TMP_WAIT_S for Windows to release the files; what is still held goes to
+    pending.json and the next run removes it. A ReelKit / ReelCover run with props also gets args =
+    ["--public-dir=<run folder>/public"] with only that video's files. props: the dict, or a path to the props file.
+    "temp_cleanup": false in it-reelsmaker.json -> the old behavior: no run folder, the project's public/."""
+    if not temp_cleanup_on():
+        yield dict(os.environ), []
+        return
+    try:
+        freed = sweep_tmp()
+    except (OSError, SystemExit):
+        freed = 0
+    root = tmp_root()
+    root.mkdir(parents=True, exist_ok=True)
+    d = root / f"r-{os.getpid()}-{uuid.uuid4().hex[:6]}"
+    d.mkdir()
+    env = {**os.environ, "TEMP": str(d), "TMP": str(d), "TMPDIR": str(d)}
+    args = []
+    if rem and comp in KIT_COMPS and props:
+        doc = props if isinstance(props, dict) else load_json(props, None)
+        if stage_public(rem, doc, d / "public"):
+            args = [f"--public-dir={d / 'public'}"]
+    try:
+        yield env, args
+    finally:
+        n = dir_size(d)
+        if remove_tree(d):
+            freed += n
+        else:
+            try:
+                with editing_json(root / TMP_PENDING, []) as pend:
+                    if str(d) not in pend:
+                        pend.append(str(d))
+            except (OSError, SystemExit):
+                pass
+            warn(f"Remotion still holds files in {d}: the next run removes them")
+        if freed >= 1 << 20 and not quiet:
+            print(f"temp files of Remotion removed: {freed / (1 << 20):.0f} MB", file=sys.stderr)
+
+
+def remotion_leftovers(hours=24.0, now=None, measure=True):
+    """Folders that Remotion runs outside remotion_tmp() left in the system temp folder (REMOTION_LEFTOVERS), not
+    changed for `hours`. -> [(path, bytes)] (bytes None with measure=False: ~10 s for 800 Chrome profiles). Chrome
+    profiles of that name can belong to other programs too, so these are removed only on request (kit.py clean-temp
+    --yes)."""
+    base = Path(tempfile.gettempdir())
+    now = time.time() if now is None else now
+    out = []
+    for pat in REMOTION_LEFTOVERS:
+        for q in base.glob(pat):
+            try:
+                if q.is_dir() and now - q.stat().st_mtime > hours * 3600:
+                    out.append((q, dir_size(q) if measure else None))
+            except OSError:
+                continue
+    return sorted(out)

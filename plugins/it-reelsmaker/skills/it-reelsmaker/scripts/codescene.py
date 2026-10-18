@@ -19,7 +19,8 @@ import argparse, math, os, re, subprocess, sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from reels_common import SKILL, edit_dir, effective, forbidden_hits, locked, online, rel, save_json, save_text, utf8_stdio, warn
+from reels_common import (SKILL, edit_dir, effective, forbidden_hits, locked, online, rel, remotion_tmp, save_json,
+                          save_text, utf8_stdio, warn)
 
 FIELDS = ["subject", "action", "camera", "composition", "lighting", "mood", "start", "end"]
 CODE_STYLE = "clean flat motion graphics in the brand colors, calm easing, no photorealism"
@@ -369,7 +370,8 @@ def cmd_render(a):
     # --no: use the project's own Remotion, never install packages on the fly
     cmd = [npx, "--no", "remotion", "render", comp, str(raw), "--codec=h264", "--muted", "--log=error"]
     try:
-        r = subprocess.run(cmd, cwd=rem, capture_output=True, text=True, encoding="utf-8", errors="replace")
+        with remotion_tmp(rem) as (env, _):  # its temp files go when it ends; a code scene keeps the whole public/
+            r = subprocess.run(cmd, cwd=rem, env=env, capture_output=True, text=True, encoding="utf-8", errors="replace")
         code, out, err = r.returncode, r.stdout, r.stderr
     except OSError as ex:  # npx is not installed or not on PATH
         code, out, err = 1, "", f"{npx}: {ex}"

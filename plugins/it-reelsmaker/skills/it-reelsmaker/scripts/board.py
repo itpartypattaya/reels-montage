@@ -6,7 +6,7 @@ per minute of video on a laptop) runs once the sheet is approved.
     python scripts/board.py edit/4821 [--props edit/4821/reelkit-props.json] [--remotion reels] [--comp ReelKit]
         [--shots] [--transitions] [--defects] [--cols 5] [--per-page 20] [--scale 0.3334]
 
-When: after `visual_plan.py export … --props` (step 8), before `npx remotion render`. Again after fixes: it is cheap.
+When: after `visual_plan.py export … --props` (step 8), before the full render (`kit.py render`). Again after fixes: it is cheap.
 
 How:
   1. Panels from the props the render will use (scene times, tones and transitions as exported) and the plan (what
@@ -35,7 +35,7 @@ import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from reels_common import edit_dir, load_json, project_root, project_settings, save_json  # noqa: E402
+from reels_common import edit_dir, load_json, project_root, project_settings, remotion_tmp, save_json  # noqa: E402
 
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -92,7 +92,9 @@ def render_frames(rem, comp, props_file, n, outdir, scale, fmt="jpeg", log="erro
     cmd = [npx(), "--no", "remotion", "render", comp, str(outdir), "--sequence", f"--frames=0-{n - 1}",
            f"--image-format={fmt}", f"--scale={scale}", "--muted", f"--log={log}", f"--props={Path(props_file).resolve()}"]
     try:
-        r = subprocess.run(cmd, cwd=rem, capture_output=True, text=True, encoding="utf-8", errors="replace")
+        with remotion_tmp(rem, props_file, comp, quiet=True) as (env, extra):  # its temp files go when it ends
+            r = subprocess.run(cmd + extra, cwd=rem, env=env, capture_output=True, text=True, encoding="utf-8",
+                               errors="replace")
     except OSError as x:
         sys.exit(f"cannot run npx ({x}): Node.js with Remotion is needed (doctor.py)")
     txt = (r.stdout or "") + (r.stderr or "")

@@ -4,7 +4,7 @@ Each one only if the brief chose it (step 7). The cut-out figure itself is in `r
 
 **Experimental** (out of the menus, offered only where the content clearly asks for it, with the word “experimental” in the plan; SKILL.md section 10): the cut-out figure, text behind the person, presenter over a scene, the phone mockup on the CTA and the slide scene.
 
-**Verification status.** Not yet verified in a finished video: the light flash and the slide scene; presenter over a scene was tested on a 1 s piece only. The “framed” format was checked on one test render from a simulated horizontal source (a 608-row crop, not a real Zoom recording). The numbers for them are starting values: check stills and the preview with extra care, and say in the plan that the technique is new.
+**Verification status.** Not yet verified in a finished video: the light flash and the slide scene; presenter over a scene was tested on a 1 s piece only. The numbers for them are starting values: check stills and the preview with extra care, and say in the plan that the technique is new. The “framed” format is verified: a series of 12 finished clips from a 36-minute 1080p two-person interview (a caps label per rubric, camera shots within ×1.13, the face audit on every render).
 
 **Cut-out figure**: everything is in `references/figure.md`: `rembg` cut-out with `matte.py` on this computer, or on your own server with the online add-on (frames from `final.mp4` as JPG; the WebM with alpha and edge cleanup; a check frame on a light and a dark background shows furniture in the mask right away), source-edge cuts, layouts.
 

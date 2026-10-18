@@ -564,7 +564,7 @@ def test_patch_render_gives_remotion_an_absolute_props_path(project, monkeypatch
     class Stop(Exception):
         pass
 
-    def run(cmd, cwd=None, what=""):
+    def run(cmd, cwd=None, what="", env=None):  # env: the run's own temp folder (reels_common.remotion_tmp)
         calls.append((cmd, cwd))
         raise Stop
     monkeypatch.setattr(pr, "find_remotion", lambda old, given: project / "reels")
