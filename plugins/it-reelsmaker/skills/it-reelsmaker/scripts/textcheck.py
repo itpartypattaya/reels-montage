@@ -58,8 +58,8 @@ CORE = 0.2  # a line box runs above the capitals and below the baseline: overlap
 VISIBLE = 0.98  # share of a box left by the boxes that clip it
 ALPHA = 0.25  # text fainter than this is fading in or out
 MIN_RUN_S = 0.3
-FACE_MARGIN = 30  # as faces.py audit grows a face for graphics (MARGIN // 2)
 UI_TOP, UI_BOTTOM, UI_RIGHT = 220, 1500, 960
+FACE_PX = 30  # = faces.CHECK_MARGIN, the checks' tolerance (faces.py imports cv2: read lazily there)
 
 
 def parse_log(text):
@@ -137,7 +137,7 @@ def face_source(e, plan, props, fps):
         hi = min([t + st] + [c - 1e-6 for c in cuts if c > t + 1e-6])
         boxes = [f[:4] for x in fdata["samples"] if lo - 1e-6 <= x["t"] <= hi + 1e-6 for f in x["faces"]]
         cam = vp.camera_at(shots, t, dur, fps, view) if shots else None
-        return [fc.grow(b, FACE_MARGIN) for b in fc.screen_faces(boxes, cam, win)]
+        return [fc.grow(b, fc.CHECK_MARGIN) for b in fc.screen_faces(boxes, cam, win)]  # the checks' tolerance
     return faces_at
 
 
@@ -157,7 +157,7 @@ def frame_issues(boxes, faces):
         if zones:
             out.append(("warning", "UI zone", ident(key), text, "/".join(zones)))
         if faces and any(hits(f, b) for f in faces):
-            out.append(("error", "on a face", ident(key), text, "a measured face + 30 px"))
+            out.append(("error", "on a face", ident(key), text, f"a measured face + {FACE_PX} px"))
     for i, a in enumerate(seen):
         for b in seen[i + 1:]:
             if a[0] == b[0]:

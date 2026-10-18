@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 
 import reels_common as rc
-from conftest import CORE, write_json
+from conftest import CORE, run_script, write_json
 
 
 def test_defaults_have_every_tone_and_no_private_or_online_keys(project):
@@ -87,13 +87,71 @@ def test_settings_layers(project):
     assert (s["use_memes"], prov["use_memes"]) == (False, "override")
 
 
+def test_a_brand_tone_never_turns_inserts_on(project):
+    # Review 2026-10-17 (Fable P1): B-roll was on in every tone preset and memes in friendly and bold, so a plain edit
+    # held only while the agent remembered to save false; now inserts come only from the person's choice
+    e = project / "edit" / "4821"
+    for preset in ("premium", "warm", "expert", "story", "tech", "friendly", "drive", "bold"):
+        write_json(project / "brands" / "acme" / "brand.json", {"name": "Acme", "slug": "acme", "schema": 2,
+                                                                "tone": {"preset": preset, "overrides": {}}})
+        write_json(e / "reel.json", {"brand": "acme"})
+        s, prov, *_ = rc.load_config(e)
+        assert (s["use_broll"], s["use_memes"], s["use_scenes"]) == (False, False, False), (preset, prov)
+    write_json(e / "reel.json", {"brand": "acme", "use_broll": True, "use_memes": True})
+    s, prov, *_ = rc.load_config(e)
+    assert (s["use_broll"], prov["use_broll"], s["use_memes"]) == (True, "reel.json", True)
+
+
 def test_online_sources_are_off_without_the_add_on(project):
     eff, why = rc.effective({"use_broll": True, "use_online_footage": True, "use_memes": True, "use_online_memes": True,
-                             "use_generated_footage": True, "use_project_footage": True})
+                             "use_code_scenes": True, "use_project_footage": True})
     assert eff["broll"] and eff["project_footage"] and eff["generated_code"]
     assert not eff["online_footage"] and not eff["online_memes"] and not eff["generate_now"]
     assert why["online_footage"] == "the online add-on is not installed"
     assert eff["online_footage_providers"] == []
+
+
+def test_the_old_name_of_code_scenes_is_still_read_in_every_layer(project):
+    # 1.15: use_generated_footage -> use_code_scenes (the old name read as AI generation in a core with none)
+    assert rc.renamed({"use_generated_footage": False, "use_broll": True}) == {"use_code_scenes": False, "use_broll": True}
+    assert rc.renamed({"use_generated_footage": False, "use_code_scenes": True}) == {"use_code_scenes": True}
+    e = project / "edit" / "4821"
+    write_json(e / "reel.json", {"use_broll": True, "use_generated_footage": False})
+    s, prov, *_ = rc.load_config(e)
+    assert s["use_code_scenes"] is False and prov["use_code_scenes"] == "reel.json"
+    assert s["use_generated_footage"] is False  # the mirror the add-on <= 1.4.5 reads
+    assert not rc.effective(s)[0]["generated_code"]
+    write_json(project / rc.PROJECT_DEFAULTS, {"settings": {"use_generated_footage": False}})
+    write_json(e / "reel.json", {"use_broll": True})
+    s, prov, *_ = rc.load_config(e)
+    assert s["use_code_scenes"] is False and prov["use_code_scenes"] == "project"
+    s, prov, *_ = rc.load_config(e, overrides={"use_generated_footage": True})
+    assert s["use_code_scenes"] is True and prov["use_code_scenes"] == "override"
+    # review 2026-10-18 (Codex): a profile's own settings with the old name
+    write_json(project / rc.PROJECT_DEFAULTS, {"profiles": {"educational": {"settings": {"use_generated_footage": False}}}})
+    write_json(e / "reel.json", {"use_broll": True, "profile": "educational"})
+    s, prov, *_ = rc.load_config(e)
+    assert s["use_code_scenes"] is False and prov["use_code_scenes"] == "profile:educational"
+    assert s["use_generated_footage"] is False and not rc.effective(s)[0]["generated_code"]
+
+
+def test_reelcfg_writes_the_new_name_of_code_scenes(project):
+    e = project / "edit" / "4821"
+    write_json(e / "reel.json", {"use_broll": True, "use_generated_footage": False})
+    r = run_script("reelcfg.py", "save", "edit/4821", "--set", "use_generated_footage=true", cwd=project)
+    assert "is now use_code_scenes" in (r.stdout + r.stderr) and "unknown key" not in (r.stdout + r.stderr)
+    reel = json.loads((e / "reel.json").read_text(encoding="utf-8"))
+    assert reel["use_code_scenes"] is True and "use_generated_footage" not in reel
+    write_json(e / "reel.json", {"use_broll": True, "use_generated_footage": False})  # review 2026-10-18 (Codex)
+    run_script("reelcfg.py", "save", "edit/4821", "--set", "intensity=minimal", cwd=project)
+    reel = json.loads((e / "reel.json").read_text(encoding="utf-8"))
+    assert reel["use_code_scenes"] is False and "use_generated_footage" not in reel  # another key saved: still renamed
+    write_json(project / rc.PROJECT_DEFAULTS, {"settings": {"use_generated_footage": False}})
+    run_script("reelcfg.py", "defaults", "--unset", "use_code_scenes", cwd=project)
+    assert json.loads((project / rc.PROJECT_DEFAULTS).read_text(encoding="utf-8"))["settings"] == {}
+    run_script("reelcfg.py", "preset", "save", "series", "--from", "edit/4821", cwd=project)
+    preset = json.loads((project / "presets" / "series.json").read_text(encoding="utf-8"))
+    assert preset["settings"]["use_code_scenes"] is False and "use_generated_footage" not in preset["settings"]
 
 
 def test_memes_blocked_by_brand_tone_unless_override(project):

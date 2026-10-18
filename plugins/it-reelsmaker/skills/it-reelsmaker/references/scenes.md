@@ -20,9 +20,9 @@ When the plan is built, spans get `scene:*` hints. A hint is a prompt to think, 
 | `scene:list` | “first”, “firstly”, three or more parallel items separated by commas (or the same in the speaker's language) | `list` (`overlay` keeps the speaker as is; `panel` also hides choppy cuts) |
 | `scene:quote` | “said”, “says”, “writes”, someone else's words, a strong line from the speaker | `quote` |
 | `scene:slogan` | “the main thing”, “the point is”, “remember”, “that's why”, a repeated thought | `slogan` (once per video) |
-| `scene:ui` | website, app, service, bot, “in my profile” | `ui`, only with real screenshots or a screen recording |
+| `scene:ui` | website, app, service, bot, “in my profile” | `ui` (experimental), only with real screenshots or a screen recording |
 | `scene:cta` | the last span with an action verb: message, follow, save | `cta` |
-| `scene:word` | a segment > 6 s where a shot-size change was already used; an abstract idea with nothing to show | `word` or B-roll |
+| `scene:word` | a segment > 6 s where a shot-size change was already used; an abstract idea with nothing to show | `word` (experimental) or B-roll |
 
 A scene is **not needed** when the face and intonation matter more (a personal story, a punchline), when other graphics are already on screen, or when a card is enough.
 
@@ -36,11 +36,21 @@ A scene is **not needed** when the face and intonation matter more (a personal s
 | `stat` | a big number with a from → to counter, a caption, a source | `value`, `text.lines`, `source` | overlay, split, full |
 | `list` | 3–5 items, each on its own word; in `overlay` on plates over the video: the spoken item on the marker plate, past items on light plates, an optional title line above | `items` (≥ 2, each with `at` or `t`) | overlay, panel, split, full |
 | `contrast` | “before → after”: the first word is crossed out, the second appears | `text.lines` = [before, after] | overlay, split, full |
-| `word` | a word made visual: an icon from the library, a mini diagram, “200 → 5” as a grid of cards, a funnel, a timeline | `text.lines` (caption), `media` or `variant` | overlay, split, panel, full |
-| `chat` | messages and notifications, one at a time; bubbles are interface text: smaller than the 54–64 px of cards, never below ~40 px (the kit: 40 in a window or split, 42 full; names and status lines are labels) | `items` (`from`: me / them / system) | split, full, window |
-| `ui` | the product in use: entry → action → result; a cursor along a path, a tap ripple, a typing caret | `media`, `interaction` | split, full, window |
+| `word` (experimental) | a word made visual: an icon from the library, a mini diagram, “200 → 5” as a grid of cards, a funnel, a timeline | `text.lines` (caption), `media` or `variant` | overlay, split, panel, full |
+| `chat` (experimental) | messages and notifications, one at a time; bubbles are interface text: smaller than the 54–64 px of cards, never below ~40 px (the kit: 40 in a window or split, 42 full; names and status lines are labels) | `items` (`from`: me / them / system) | split, full, window |
+| `ui` (experimental) | the product in use: entry → action → result; a cursor along a path, a tap ripple, a typing caret | `media`, `interaction` | split, full, window |
 | `cta` | the CTA as an action: a tap on “Message”, a code word typed into a comment, a pointer to the link in the profile | `text.lines` (the 2 CTA lines), `variant`: tap / comment / bio | overlay, full |
 | `cover` | a cover: the hook large over a frame of the video | `text.lines` | still only |
+
+## Experimental: `word`, `chat`, `ui` and the `split`, `panel`, `window` modes
+
+The kit draws them, but none is checked in a finished video yet (review 2026-10-17: no use in the plugin's own
+edits), so they are not in the menus (SKILL.md section 10). The agent offers one only where the content clearly asks
+for it: `ui` when the product itself is shown, `chat` when a message thread is retold, `word` for an abstract idea with
+nothing to show, `panel` for a choppy take, `split` or `window` when a scene needs the frame and the face must stay.
+`visual_plan.py scene` and `md` say “experimental” next to such a scene or mode, so the person sees it before the
+“yes”; look at its storyboard frame before the full render. A scene's default mode is the first one of its row in the
+catalog (a slogan is `full`); an experimental mode is set with `--mode`.
 
 ## Modes: the face stays in the frame
 
@@ -49,16 +59,16 @@ In a talking-head video the face and intonation are the main asset, so by defaul
 | Mode | What | Subtitles |
 |---|---|---|
 | `overlay` | graphics over the shot in a free zone from the face measurement (“headroom” or “chest” zone), like a card; recorded in `keep_clear` | stay, unless the scene repeats the speech (hook, quote) or is a list: hidden by default, the scene's text replaces them |
-| `split` | the speaker scales to ×0.56 and moves down to the center (top of the video at y 900); the scene sits above in y 220–880 on a field in the style color | hidden: the scene's text replaces them |
-| `panel` | a slide scene: the speaker at ×0.42 moves to the free edge, a panel comes in from the other side | hidden while the panel is on |
-| `window` | the scene fills the frame, the speaker is in a rounded 360×480 window in a bottom corner | hidden |
+| `split` (experimental) | the speaker scales to ×0.56 and moves down to the center (top of the video at y 900); the scene sits above in y 220–880 on a field in the style color | hidden: the scene's text replaces them |
+| `panel` (experimental) | a slide scene: the speaker at ×0.42 moves to the free edge, a panel comes in from the other side | hidden while the panel is on |
+| `window` (experimental) | the scene fills the frame, the speaker is in a rounded 360×480 window in a bottom corner | hidden |
 | `full` | the scene fills the frame, the speaker is hidden, the voice continues | hidden |
 
 A list over a clean take goes in `overlay`: the speaker is not moved. Real case: a three-item list in a two-person skit; shrinking both speakers into a panel was out of place and was rejected in review. `panel` is for a choppy take, where the slide also hides the cuts.
 
 In every mode except `overlay` the layout changes first (the speaker moves, or the field covers the frame): about 0.6 of the transition, ≈ 0.27 s for a fade, nothing for a cut. The text enters after it, and the same happens in reverse on the way out. In the “scenes only” format there is no layout to change (no speaker, and the field is the background), so every transition between scenes is a cut and the texts hand over at the join: the old one has left by its scene's last frame, the new one enters from its first (T6: the fade's lead and tail left 14–15 frames of bare field at every join).
 
-`full` stays within the brand tone's ceiling (1–3); two `full` scenes in a row (gap < 2 s) are not allowed; a `full` hook lasts at most 1.5 s, which only the fast tones fit (`feature`, `punchy`, `hype`, with a cut): in `calm`, `deadpan` and `cinematic` the entrance, the exit and 0.8 s of reading already take longer, so there the hook goes in `overlay` or `split`. These limits protect the speaker's face, so they do not apply in the “scenes only” format (no speaker, every scene is `full`, the hook is 2–3 s). Not on the CTA line (except the `cta` scene) and not in the last 2 s (that is for `cta` or a logo sting).
+`full` stays within the brand tone's ceiling (1–3); two `full` scenes in a row (gap < 2 s) are not allowed; a `full` hook lasts at most 1.5 s (with the reading floor that is up to 3 words in `feature` and `punchy`, 4 in `hype`), which only the fast tones fit (`feature`, `punchy`, `hype`, with a cut): in `calm`, `deadpan` and `cinematic` the entrance, the exit and 0.8 s of reading already take longer, so there the hook goes in `overlay` or `split`. These limits protect the speaker's face, so they do not apply in the “scenes only” format (no speaker, every scene is `full`, the hook is 2–3 s). Not on the CTA line (except the `cta` scene) and not in the last 2 s (that is for `cta` or a logo sting).
 
 ## Brand tone and scene tone
 
@@ -150,7 +160,7 @@ Sounds come from your own library `{{ASSETS_DIR}}`; CC0 packs are the easiest (n
 | tap, cursor, toggle | short click | `tap` |
 | payoff, number lands, logo | bell or glass, once | `bell` |
 
-`none`: the scene stays silent. The value is a note for mixing (the kit plays no sound): the files themselves go into `sfx.json` for `master_audio.py --sfx`.
+`none`: the scene stays silent. The value is a note for mixing (the kit plays no sound): the files themselves go into `edit/<id>/sfx.json`, which `master_audio.py` mixes in.
 
 The sound goes on the **start** of the motion (0–0.1 s before the first visible frame). In a sequence, sound the first, the last or the strongest item, not every one. Repeated sounds should have no sharp, ringing highs: they are fatiguing. Density follows the brand tone, and no more than one effect every 2–3 s.
 

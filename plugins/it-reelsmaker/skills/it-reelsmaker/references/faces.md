@@ -81,6 +81,8 @@ Every card, hook or CTA card over the video is entered in the plan as a `keep_cl
 
 **When.** Before showing the video to the person.
 
+**Tolerance.** The 60 px margin is the rule and is enforced when planning (zones, `keep_clear`, `validate`). The checks on finished frames (this audit and `textcheck.py`) count an overlap from 30 px (`faces.py` `CHECK_MARGIN`, half the rule; the subtitles also sit 30 px under the chin). Measured on 6 finished videos: the full 60 px flagged 4 moments in 3 of them, one a card just under a chin and the rest single 0.25 s samples with the text far from the face on the still (detector jitter). A card closer than 60 px that the audit lets through is still a planning error: `validate` catches it before the render.
+
 **How.** The same measurement, but on the **render**: the camera, B-roll and graphics are already applied, so the faces are where the viewer sees them. Samples every 0.25 s are checked:
 - **against the subtitle band** — wherever speech is heard and the subtitles are on: scenes that hide them and the plan's `hide-subs` windows (subtitles hidden by a per-video composition, `visual_plan.py hide-subs`) are left out. Pass the actual band: the top and bottom of the subtitle card;
 - **against the `keep_clear` zones** — cards, hook, CTA; a presenter layer's own face (`keep-clear --own-face`) is not an overlap with its own zone;

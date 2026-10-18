@@ -76,7 +76,7 @@ from reels_common import (CORNER_BOX, FRAMED_HOOK_MIN, FRAMED_LABEL_UP, FRAMED_R
                           media_kind, online, parse_sets, probe, project_root, safe_slug, save_json, tokens, utf8_stdio,
                           warn)
 
-SCENE_MODES = ["overlay", "split", "panel", "window", "full"]  # order = default preference (the face stays)
+SCENE_MODES = ["overlay", "split", "panel", "window", "full"]  # a scene's default mode: the first of its own list
 KINDS = {"broll": {"modes": ["replace", "window"], "prefix": "b"}, "meme": {"modes": ["popup", "cutaway"], "prefix": "m"},
          "scene": {"modes": SCENE_MODES, "prefix": "c"}}
 # B-roll "window" (the Inserts component of the Remotion template): the box inserts[].box in 1080x1920 screen
@@ -146,6 +146,10 @@ SCENE_TYPES = {
     "cta": {"modes": ["overlay", "full"], "need": ["lines"], "variants": ["tap", "comment", "bio"]},
     "cover": {"modes": ["full"], "need": ["lines"]},
 }
+# Out of the menu (review 2026-10-17, wave 3): the kit draws them, but none is in a finished video yet. The agent offers
+# one only where the content asks for it, and the plan and the scene command say "experimental" (references/scenes.md).
+EXPERIMENTAL_SCENES = ("word", "chat", "ui")
+EXPERIMENTAL_MODES = ("split", "panel", "window")
 SCENE_SOURCES = ["speech", "brief", "brand", "client", "agent"]
 SCENE_SOUNDS = ["card", "type", "tap", "hit", "paper", "bell", "none"]  # bell: payoff, a number lands, the logo (scenes.md)
 CHAT_FROM = ["me", "them", "system"]
@@ -205,8 +209,45 @@ def plan_path(e):
 def load_plan(e):
     p = load_json(plan_path(e))
     if p is None:
-        sys.exit(f"no plan: {plan_path(e)}; run visual_plan.py init first")
+        sys.exit(f"no plan: {plan_path(e)}; run visual_plan.py validate (a plain edit) or init (with inserts) first")
     return p
+
+
+# what a rebuilt plan (init, init --force) keeps from the old one besides keep_clear: the last export's hook, corner
+# logo and end (review 2026-10-18: init after an export lost them, the next export dropped the card), the subtitle band
+# the render has, the subtitles hidden by a per-video composition
+KEEP_ON_INIT = ("export", "hook", "corner", "end_card", "subtitles_band", "hide_subtitles")
+
+
+def ensure_plan(e):
+    """No plan yet and inserts and designed scenes off: a plan without inserts is created on the spot (as keep-clear
+    does), so a plain edit needs no `init` before validate, md or export. Inserts or scenes on and no plan: still an
+    error, since `init` is where they are planned."""
+    s, prov, doc, bdir, brand = current_settings(e)
+    eff, why = effective(s)
+    inserts_on = eff.get("broll") or eff.get("memes") or s.get("use_scenes")
+    old = load_json(plan_path(e)) if plan_path(e).is_file() else None
+    if old is not None:
+        if old.get("auto") and inserts_on:  # made by keep-clear or a plain edit, before inserts were turned on
+            sys.exit(f"{plan_path(e)} was made without inserts and they are on now: run visual_plan.py init (it keeps "
+                     f"keep_clear and the last export's choices)")
+        return
+    if inserts_on:
+        sys.exit(f"no plan: {plan_path(e)}; inserts or designed scenes are on, so run visual_plan.py init first")
+    if not load_json(e / "captions.json"):  # review 2026-10-18: a plan without it exported "captions": null to the kit
+        sys.exit(f"no {e / 'captions.json'}: the plan follows the rough cut, build it first (cut.py)")
+    with locked(plan_path(e)):
+        if load_json(plan_path(e)) is None:
+            save_json(plan_path(e), auto_plan(e, load_json(e / "captions.json"), s, prov, doc))
+            print(f"there was no plan: created {plan_path(e)} without inserts (inserts and scenes are off)")
+
+
+def auto_plan(e, cap, s, prov, doc):
+    """A plan without inserts made on the way (a plain edit, keep-clear before init), marked so that validate asks for
+    init once inserts are turned on."""
+    plan = build_plan(e, cap, s, prov, doc)
+    plan["auto"] = True
+    return plan
 
 
 @contextlib.contextmanager
@@ -375,6 +416,12 @@ def enumeration(text):
     return best >= 3
 
 
+def experimental(i):
+    """' (experimental)' for a designed scene of an experimental type or in an experimental mode, else ''."""
+    exp = i.get("kind", "scene") == "scene" and (i.get("type") in EXPERIMENTAL_SCENES or i.get("mode") in EXPERIMENTAL_MODES)
+    return " (experimental)" if exp else ""
+
+
 def scene_hints(n, total, text, start, end, cuts, long_cuts):
     """Hints for "a scene the video lacks" (references/scenes.md). A hint is not a decision: a scene has its own what
     and why."""
@@ -390,11 +437,12 @@ def scene_hints(n, total, text, start, end, cuts, long_cuts):
     if SLOGAN_RE.search(text):
         out.append("scene:slogan - the main thought -> a slogan scene (one per video)")
     if UI_RE.search(text):
-        out.append("scene:ui - a website, service or bot is mentioned -> a ui scene (your own screenshots, fictional data)")
+        out.append("scene:ui - a website, service or bot is mentioned -> a ui scene (your own screenshots, fictional data; "
+                   "experimental: offer it only when the product is shown)")
     if n == total - 1 and CTA_RE.search(text):
         out.append("scene:cta - a call to action with no action on screen -> a cta scene")
     if any(c in long_cuts for c in cuts) and ABSTRACT_RE.search(text):
-        out.append("scene:word - a long segment with an abstraction -> a word scene (a weak hint)")
+        out.append("scene:word - a long segment with an abstraction -> a word scene (a weak hint; experimental)")
     return out
 
 
@@ -419,6 +467,7 @@ def cmd_init(a):
         s, prov, doc, bdir, brand = current_settings(e, old)
         plan = build_plan(e, cap, s, prov, doc)
         plan["keep_clear"] = (old or {}).get("keep_clear", [])
+        plan.update({k: old[k] for k in KEEP_ON_INIT if k in (old or {})})  # the last export's finish, the subtitle band
         for d in load_defects(e)[0]:  # defects.py: a span with a bad picture gets the cover hint
             for g in plan["segments"]:
                 if g["start"] < d["end"] and g["end"] > d["start"]:
@@ -464,6 +513,7 @@ def init_scenes_only(a):
             print(f"{e / 'reel.json'}: " + ", ".join(f"{k}={v}" for k, v in over.items()))
         s, prov, doc, bdir, brand = current_settings(e, old)
         plan = build_plan(e, {"duration": round(float(a.duration), 3), "segments": [], "words": []}, s, prov, doc)
+        plan.update({k: old[k] for k in KEEP_ON_INIT if k in (old or {})})
         plan["format"] = "scenes-only"
         save_json(plan_path(e), plan)
     so = (doc.get("scenes") or {}).get("scenes_only") or {}
@@ -853,6 +903,7 @@ def defect_issues(e, plan, s, doc, cap):
 
 def cmd_accept(a):
     e = edit_dir(a.edit)
+    ensure_plan(e)  # a plain edit has no init (SKILL.md step 7a)
     defects, _ = load_defects(e)
     by_id = {d["id"]: d for d in defects}
     with editing_plan(e) as plan:
@@ -1007,7 +1058,9 @@ def add_scene(a):
             sys.exit("'scenes only' format: there is no speech, so --at is in seconds only (3.0)")
         s, prov, doc, bdir, brand = current_settings(e, plan)
         start = round(resolve_at(a.at, plan, cap) + a.offset, 3)
-        mode = a.mode or ("full" if only else next(m for m in SCENE_MODES if m in spec["modes"]))
+        # the first mode of the type's own list: a slogan is full, not the experimental split (wave 3); the others
+        # were already the first of their list
+        mode = a.mode or ("full" if only else spec["modes"][0])
         if mode not in SCENE_MODES:
             sys.exit(f"scene mode {mode}: allowed {', '.join(SCENE_MODES)}")
         if only and mode != "full":  # T6: accepted here, refused only by validate
@@ -1057,6 +1110,9 @@ def add_scene(a):
                 warn(f"{sc['id']}: {m}: validate will not pass it; set --box or move the scene")
         plan["inserts"].append(sc)
         plan["inserts"].sort(key=lambda i: i["start"])
+    if experimental(sc):
+        print(f"{sc['id']}: {a.type} {mode} is experimental (the kit draws it, not yet checked in a finished video): say so "
+              f"in the plan and look at its storyboard frame")
     print(f"{sc['id']}: scene {a.type} {mode} {fmt_t(start)} +{a.dur} s ({sc['segment'] or '-'}), tone {tone}, "
           f"transition {sc['transition_in']}/{sc['transition_out']}: {a.what}"
           + (f"; box {sc['box']}" if sc.get("box") else "") + ". Status planned -> ready after validate.")
@@ -1073,13 +1129,65 @@ END_CARD_S = 2.6  # the end card / logo sting the kit appends after the rough cu
 def end_tail(a, plan):
     """Seconds the export appends after the rough cut (an end card or a logo sting): "the last 2 s" count from the end
     of the whole video (T5: a stat scene ending 1.95 s before the end of a 25.0 s cut was flagged, while a 2.6 s sting
-    followed and the video was 27.6 s). During export its own --card/--sting decide; validate takes --card/--sting
-    before the export, else what the last export recorded in the plan ("end_card")."""
+    followed and the video was 27.6 s). During export: its --card/--sting/--no-end, else the last export's choice
+    (finish_of); validate takes --card/--sting before the export, else what the last export recorded ("end_card")."""
     if getattr(a, "sting", False) or getattr(a, "card", None):
         return END_CARD_S
     if getattr(a, "cmd", None) == "export":
-        return 0.0
+        return END_CARD_S if finish_of(a, plan)[0]["end"] else 0.0
     return float((plan.get("end_card") or {}).get("seconds") or 0.0)
+
+
+def finish_of(a, plan):
+    """What export draws around the cut: the hook headline, the corner logo, the end card or the logo sting. A flag sets
+    it, --no-hook/--no-corner/--no-end take it off, and with neither the last export's choice stays (review 2026-10-17:
+    a re-export for a late fix dropped the approved hook and end card, and the missing card changed the video's length).
+    -> ({"hook": text|None, "corner": bool, "end": {"kind": "card", "lines": [...]}|{"kind": "sting"}|None},
+        notes for the person, names of what was kept from the last export)."""
+    last = dict(plan.get("export") or {})
+    notes = []
+    preset = (plan.get("settings") or {}).get("finish")  # a series preset's finish (reelcfg.py preset use)
+    legacy = plan.get("corner") or plan.get("end_card") or plan.get("hook")  # markers of an export before 1.13
+    if not last and not legacy and isinstance(preset, dict) and preset:  # only a video with no ending of its own
+        last = {"hook": None, "corner": bool(preset.get("corner")), "end": preset.get("end")}
+    elif not last:  # a plan exported before 1.13 kept only markers: the corner and a sting come back, texts cannot
+        if plan.get("corner"):
+            last["corner"] = True
+        kind = (plan.get("end_card") or {}).get("kind")
+        if kind == "sting":
+            last["end"] = {"kind": "sting"}
+        elif kind == "card" and not (getattr(a, "card", None) or getattr(a, "sting", False) or getattr(a, "no_end", False)):
+            notes.append("the last export had an end card, but its lines are not stored: pass --card again (or --no-end)")
+            last["end"] = {"kind": "card", "lines": None}  # still on: validate and this export count its 2.6 s
+        if plan.get("hook") and not (getattr(a, "hook", None) or getattr(a, "no_hook", False)):
+            notes.append("the last export had a hook headline, but its text is not stored: pass --hook again (or --no-hook)")
+            last["hook"] = True
+    kept = []
+    if getattr(a, "no_hook", False):
+        hook = None
+    elif isinstance(getattr(a, "hook", None), str) and a.hook:
+        hook = a.hook
+    else:
+        hook = last.get("hook")
+        kept += ["hook"] if hook else []
+    if getattr(a, "no_corner", False):
+        corner = False
+    elif getattr(a, "corner", False):
+        corner = True
+    else:
+        corner = bool(last.get("corner"))
+        kept += ["corner logo"] if corner else []
+    card = getattr(a, "card", None)
+    if getattr(a, "no_end", False):
+        end = None
+    elif isinstance(card, list) and card:
+        end = {"kind": "card", "lines": list(card)}
+    elif getattr(a, "sting", False):
+        end = {"kind": "sting"}
+    else:
+        end = last.get("end")
+        kept += [f"end ({end['kind']})"] if end else []
+    return {"hook": hook, "corner": corner, "end": end}, notes, kept
 
 
 JOIN_EMPTY_MAX = 4  # frames: a "scenes only" join may show this much bare field (the exit's last frame and the
@@ -1496,19 +1604,21 @@ def tone_issues(s, doc, brolls, memes, scenes, only=False):
 def end_now(a, plan):
     """What follows the cut, whether the corner logo and the hook headline are drawn, for THIS run: export's own
     --card/--sting/--corner/--hook, validate's flags, else what the last export recorded (Codex review: a first export
-    --card was not counted, and an export without a card after one with it still counted the old card).
+    --card was not counted, and an export without a card after one with it still counted the old card). Export keeps
+    the last export's choice unless a flag changes it (finish_of).
     -> (end kind or None, corner, hook)."""
+    if getattr(a, "cmd", None) == "export":
+        fin = finish_of(a, plan)[0]
+        return (fin["end"] or {}).get("kind"), fin["corner"], bool(fin["hook"])
     if getattr(a, "card", None):
         kind = "card"
     elif getattr(a, "sting", False):
         kind = "sting"
-    elif getattr(a, "cmd", None) == "export":
-        kind = None
     else:
         kind = (plan.get("end_card") or {}).get("kind")
-    last = getattr(a, "cmd", None) != "export"  # a standalone validate also trusts the last export's record
-    corner = bool(getattr(a, "corner", False)) or (last and bool(plan.get("corner")))
-    hook = bool(getattr(a, "hook", None)) or (last and bool(plan.get("hook")))
+    # a standalone validate also trusts the last export's record
+    corner = bool(getattr(a, "corner", False)) or bool(plan.get("corner"))
+    hook = bool(getattr(a, "hook", None)) or bool(plan.get("hook"))
     return kind, corner, hook
 
 
@@ -1725,6 +1835,7 @@ def follow_rough_cut(e, plan, cap, s, prov, doc, quiet=False):
 
 def cmd_validate(a, quiet=False):
     e = edit_dir(a.edit)
+    ensure_plan(e)  # md and export validate first, so all three work on a plain edit without `init`
     # settings are the current ones from reel.json (reelcfg.py save), not the plan's snapshot; the snapshot is refreshed
     with locked(plan_path(e)):
         plan = load_plan(e)
@@ -1761,10 +1872,14 @@ def cmd_validate(a, quiet=False):
     timeline = [x for x in scenes if x.get("type") != "cover"]  # the cover is a still only
     # scenes that cover the speaker's frame count toward coverage together with B-roll (not in "scenes only")
     covering = [] if only else [x for x in timeline if x.get("mode") in COVER_MODES]
+    # since 1.13 a brand tone no longer turns B-roll or memes on: a plan made before keeps its inserts once they are
+    # chosen for the video (the hint), instead of a bare error on a re-render
     if brolls and not s.get("use_broll"):
-        errs.append(f"the plan has {len(brolls)} B-roll, but use_broll=false")
+        errs.append(f"the plan has {len(brolls)} B-roll, but use_broll=false (a brand tone no longer turns it on: "
+                    f"reelcfg.py save edit/{e.name} --set use_broll=true, or remove the B-roll)")
     if memes and not s.get("use_memes"):
-        errs.append(f"the plan has {len(memes)} meme(s), but use_memes=false")
+        errs.append(f"the plan has {len(memes)} meme(s), but use_memes=false (a brand tone no longer turns them on: "
+                    f"reelcfg.py save edit/{e.name} --set use_memes=true, or remove the memes)")
     if len(brolls) > bud["broll_max"]:
         errs.append(f"B-roll {len(brolls)} > the budget of {bud['broll_max']} for intensity {s['intensity']}")
     if len(memes) > bud.get("memes_max", 0):
@@ -1878,8 +1993,8 @@ def cmd_validate(a, quiet=False):
                 errs.append(f"{tag}: online footage is off (use_online_footage=false)")
             elif src == "online" and not eff.get("online_footage") and i["status"] != "ready":
                 warns.append(f"{tag}: online footage is unavailable ({why.get('online_footage')}) -> the next source or skipped")
-            if src == "generated" and not s.get("use_generated_footage"):
-                errs.append(f"{tag}: code scenes are off (use_generated_footage=false)")
+            if src == "generated" and not s.get("use_code_scenes"):
+                errs.append(f"{tag}: code scenes are off (use_code_scenes=false)")
             if i.get("mode") == "window":  # without a box the template uses WINDOW_DEFAULT, so that is what gets checked
                 for m in window_issues(e, plan, i, i.get("box") or WINDOW_DEFAULT, fdata):
                     errs.append(f"{tag}: {m}" + ("" if i.get("box") else " (the default box: set add ... --box)"))
@@ -2069,7 +2184,7 @@ def cmd_md(a):
                        for i in over if i["kind"] == "broll") or "-"
         mm = "; ".join(f"**{i['id']}** {i['what']} ({i['dur']} s, {i['mode']}, {i['status']})"
                        for i in over if i["kind"] == "meme") or "-"
-        sn = "; ".join(f"**{i['id']}** {i.get('type')} {i['mode']}: {scene_text(i)} ({i['dur']} s, {i['status']})"
+        sn = "; ".join(f"**{i['id']}** {i.get('type')} {i['mode']}{experimental(i)}: {scene_text(i)} ({i['dur']} s, {i['status']})"
                        for i in over if i["kind"] == "scene") or "-"
         tr = "; ".join(f"{i['id']}: {i['transition_in']}/{i['transition_out']}" for i in over) or "cut"
         main = g["main"] + (f", {g['camera']}" if g.get("camera") else "") + (f"; graphics: {g['graphics']}" if g.get("graphics") else "")
@@ -2082,7 +2197,7 @@ def cmd_md(a):
         for i in ins:
             if i["kind"] == "scene":
                 src = i.get("source") or {}
-                L.append(f"- **{i['id']}** scene {i.get('type')} {fmt_t(i['start'])} +{i['dur']} s, {i['mode']}, tone "
+                L.append(f"- **{i['id']}** scene {i.get('type')} {fmt_t(i['start'])} +{i['dur']} s, {i['mode']}{experimental(i)}, tone "
                          f"{scene_tone(i, s)}: {scene_text(i)}. What: {i['what']}. Why: {i['why']}. "
                          + (f"Source: {src.get('kind')}{' (' + src['ref'] + ')' if src.get('ref') else ''}. " if src else "")
                          + f"Transition {i.get('transition_in')}/{i.get('transition_out')}"
@@ -2102,6 +2217,9 @@ def cmd_md(a):
                 for i in dl)]
         if any(i.get("source") == "generated" for i in ins):
             L += ["", "Code-scene briefs: `generated/briefs.md` (`codescene.py manifest`)."]
+        if any(experimental(i) for i in ins if i["kind"] == "scene"):
+            L += ["", "**Experimental** scenes or modes: the kit draws them, but none is checked in a finished video yet; "
+                      "look at their storyboard frames (`board.py`) before the full render."]
     keep = plan.get("keep_clear") or []
     if keep:  # cards, the hook, the CTA drawn per video: their texts are shown before the render too (SKILL.md step 8)
         L += ["", "## Graphics zones (keep_clear)", ""]
@@ -2181,7 +2299,7 @@ def cmd_keep(a):
         plan = load_json(plan_path(e))
         if plan is None:  # inserts are off and no plan was built: a plan without inserts is created (a graphics registry)
             s, prov, doc, bdir, brand = current_settings(e)
-            plan = build_plan(e, load_json(e / "captions.json"), s, prov, doc)
+            plan = auto_plan(e, load_json(e / "captions.json"), s, prov, doc)
             print(f"there was no plan: created {plan_path(e)} without inserts (spans and keep_clear only)")
         plan.setdefault("keep_clear", []).append(entry)
         save_json(plan_path(e), plan)
@@ -2207,6 +2325,7 @@ def cmd_hide(a):
     accent title in a per-video composition): export puts them into props.hideSubtitles, faces.py audit reads them.
     --remove N takes windows out (numbered as in visual_plan.md, from 1)."""
     e = edit_dir(a.edit)
+    ensure_plan(e)  # a plain edit has no init (SKILL.md step 7a)
     with editing_plan(e) as plan:
         hs = plan.setdefault("hide_subtitles", [])
         if a.remove:
@@ -2487,7 +2606,7 @@ def subtitle_top(e, s, cam, quiet=False):
                  for t, b in boxes]
         if chins:
             low, lt, lb = max(chins, key=lambda c: c[0])
-            need = round(low + fc.MARGIN // 2)
+            need = round(low + fc.SUB_FACE_GAP)
             top = max(band[0], min(SUB_MAX_TOP, need))
             if not quiet:
                 print(f"subtitles: top at y {top} (chin down to {round(low)} per faces.json: box "
@@ -2668,6 +2787,13 @@ def cmd_export(a):
             print("error: " + m)
         sys.exit("the plan has errors: fix them (or use --force)")
     plan = load_plan(e)  # after validate the settings snapshot is current
+    fin, notes, kept = finish_of(a, plan)  # hook, corner logo, end: this run's flags, else the last export's choice
+    if notes:  # reviews 2026-10-18: a warning and a dropped card made the video 2.6 s shorter, and the next export was silent
+        sys.exit("nothing exported, the plan is unchanged: " + "; ".join(notes))
+    end = fin["end"] or {}
+    if kept:
+        print(f"kept from {'the last export' if plan.get('export') else 'the series preset'}: {', '.join(kept)} "
+              f"(--no-hook, --no-corner, --no-end take them off)")
     rem = Path(a.remotion).resolve()
     if not (rem / "package.json").is_file() or not (rem / "src").is_dir():
         sys.exit(f"not a Remotion project (no package.json or src/): {rem}; nothing exported")
@@ -2761,10 +2887,11 @@ def cmd_export(a):
                  "brand": brand, "inserts": out,
                  "subtitles": a.subtitles or plan["settings"].get("subtitles") or brand.get("subtitles_default") or "accent",
                  "style": plan["settings"].get("style") or brand.get("style_default"),  # the current style from reel.json
-                 "hideSubtitles": hide, "drift": True, "hook": {"text": a.hook, "until": 2.4} if a.hook else None,
-                 "corner": bool(a.corner), "endCard": {"line1": a.card[0], "line2": a.card[1] if len(a.card) > 1 else None,
-                                                       "seconds": END_CARD_S} if a.card else
-                 {"line2": brand.get("tagline"), "seconds": END_CARD_S} if a.sting else None}
+                 "hideSubtitles": hide, "drift": True,
+                 "hook": {"text": fin["hook"], "until": 2.4} if fin["hook"] else None, "corner": fin["corner"],
+                 "endCard": {"line1": end["lines"][0], "line2": end["lines"][1] if len(end["lines"]) > 1 else None,
+                             "seconds": END_CARD_S} if end.get("kind") == "card" else
+                 {"line2": brand.get("tagline"), "seconds": END_CARD_S} if end.get("kind") == "sting" else None}
         cam = [] if only else camera_shots(e, plan, cap)
         if cam:
             props["camera"], props["drift"] = cam, False
@@ -2801,7 +2928,7 @@ def cmd_export(a):
                 top = max(a0, min(top, a1 - h))
                 props["subtitlesTop"] = top
             z = (s.get("profile_rules") or {}).get("safe_zone")
-            if z and a.corner and not fr:  # the corner logo inside the ad's zone (the kit's default top is 236)
+            if z and fin["corner"] and not fr:  # the corner logo inside the ad's zone (the kit's default top is 236)
                 props["cornerTop"] = max(CORNER_BOX[1], z[1])
             if z and top + h > z[3]:  # a paid ad: the platform's caption and button cover y > the safe zone's bottom
                 lifted = max(z[1], z[3] - h)
@@ -2829,14 +2956,17 @@ def cmd_export(a):
     # what follows the cut, recorded once the export is through (during it end_tail() reads --sting/--card): validate
     # counts "the last 2 s" from the whole video's end. Codex review: written before the Remotion project check, a
     # failed export left an end card that the next validate counted
+    # The full choice goes into "export" (the next export keeps it, finish_of); the markers are what validate and the
+    # profile's items read (end_tail, end_now, profile_issues)
     with editing_plan(e) as p2:
-        for k, on in (("corner", a.corner), ("hook", bool(a.hook))):  # the profile's items read them (profile_issues)
+        p2["export"] = fin
+        for k, on in (("corner", fin["corner"]), ("hook", bool(fin["hook"]))):
             if on:
                 p2[k] = True
             else:
                 p2.pop(k, None)
-        if a.sting or a.card:
-            p2["end_card"] = {"kind": "sting" if a.sting else "card", "seconds": END_CARD_S}
+        if end:
+            p2["end_card"] = {"kind": end["kind"], "seconds": END_CARD_S}
         else:
             p2.pop("end_card", None)
 
@@ -2915,11 +3045,19 @@ def main():
     p.set_defaults(fn=cmd_shade)
     p = sub.add_parser("export"); p.add_argument("edit"); p.add_argument("--remotion", required=True); p.add_argument("--name")
     p.add_argument("--force", action="store_true"); p.add_argument("--props", help="the props file for the template composition")
-    p.add_argument("--subtitles", choices=["accent", "plate", "typewriter", "none"]); p.add_argument("--hook")
+    p.add_argument("--subtitles", choices=["accent", "plate", "typewriter", "none"])
+    # hook, corner logo and end are kept from the last export unless a flag changes them (finish_of)
+    g = p.add_mutually_exclusive_group()
+    g.add_argument("--hook", help="the hook headline over the first 2.4 s (kept by later exports)")
+    g.add_argument("--no-hook", action="store_true", help="take the hook headline off")
     g = p.add_mutually_exclusive_group()
     g.add_argument("--card", nargs="+", metavar="LINE", help="the end card: 1-2 CTA lines")
     g.add_argument("--sting", action="store_true", help="a logo sting at the end: the logo with the brand line, 2.6 s, no CTA")
-    p.add_argument("--corner", action="store_true", help="the brand mark in the corner"); p.add_argument("--copy-video", action="store_true")
+    g.add_argument("--no-end", action="store_true", help="take the end card or sting off")
+    g = p.add_mutually_exclusive_group()
+    g.add_argument("--corner", action="store_true", help="the brand mark in the corner")
+    g.add_argument("--no-corner", action="store_true", help="take the corner mark off")
+    p.add_argument("--copy-video", action="store_true")
     p.set_defaults(fn=cmd_export)
     a = ap.parse_args()
     a.fn(a)

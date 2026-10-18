@@ -28,3 +28,19 @@ def test_fix_hints_name_the_real_script_paths(project):
     assert any(Path(p).name == "kit.py" for p in paths), fixes  # no Remotion project: "kit.py new" is offered
     assert paths and all(Path(p).is_absolute() and Path(p).is_file() for p in paths), paths
     assert "python scripts/" not in fixes
+
+
+def test_a_passing_check_is_remembered_for_this_version(project):
+    # wave 2: doctor ran in every session; a pass is kept in it-reelsmaker.json -> doctor_ok, so the skill runs it again
+    # only after an update or a tool error
+    write_json(project / "it-reelsmaker.json", {"remotion_dir": "reels"})
+    r = run_script("doctor.py", "--json", cwd=project, check=False)
+    cfg = json.loads((project / "it-reelsmaker.json").read_text(encoding="utf-8"))
+    rows = json.loads(r.stdout)["checks"]
+    # review 2026-10-18 (Codex): recorded only when the render environment (recommended rows) is ready too
+    if all(c["ok"] for c in rows if c["level"] in ("required", "recommended")):
+        from conftest import CORE
+        version = json.loads((CORE.parents[2] / ".claude-plugin" / "plugin.json").read_text(encoding="utf-8"))["version"]
+        assert cfg["doctor_ok"]["version"] == version and cfg["remotion_dir"] == "reels"
+    else:
+        assert "doctor_ok" not in cfg

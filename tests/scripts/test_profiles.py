@@ -30,7 +30,8 @@ def test_a_content_format_brings_its_profile_under_the_brand_tone(project):
     pr = s["profile_rules"]
     assert pr["id"] == "entertaining" and pr["format"] == "skit" and pr["length"] == [45, 70]
     assert s["intensity"] == "moderate" and prov["intensity"] == "profile:entertaining"
-    assert s["scene_tone"] == "deadpan" and s["use_memes"] is True
+    # since 1.13 no layer but the person's choice turns memes on (review 2026-10-17)
+    assert s["scene_tone"] == "deadpan" and s["use_memes"] is False
     assert any("holds moderate" in n for n in pr["notes"])
     out = run_script("reelcfg.py", "show", "edit/4821", cwd=project).stdout
     assert "profile: entertaining" in out and "holds moderate" in out
@@ -166,7 +167,14 @@ def test_the_cta_check_takes_this_runs_ending():
     plan = {"end_card": {"kind": "card", "seconds": 2.6}, "corner": True}
     plan["hook"] = True
     ex = dict(cmd="export", sting=False)
-    assert vp.end_now(argparse.Namespace(**ex, card=None, corner=False, hook=None), plan) == (None, False, False)
+    # since 1.13 an export keeps the last export's choice (review 2026-10-17); a plan exported before kept no texts:
+    # its card and hook still count (the export itself stops until they are given again, reviews 2026-10-18)
+    assert vp.end_now(argparse.Namespace(**ex, card=None, corner=False, hook=None), plan) == ("card", True, True)
+    assert vp.end_now(argparse.Namespace(**ex, card=None, corner=False, no_corner=True, hook=None), plan) == ("card", False, True)
+    assert vp.end_now(argparse.Namespace(**ex, card=None, corner=False, hook=None, no_end=True, no_hook=True), plan) == (None, True, False)
+    stored = {**plan, "export": {"hook": "Hi", "corner": True, "end": {"kind": "card", "lines": ["Write to us"]}}}
+    assert vp.end_now(argparse.Namespace(**ex, card=None, corner=False, hook=None), stored) == ("card", True, True)
+    assert vp.end_now(argparse.Namespace(**ex, card=None, corner=False, hook=None, no_end=True), stored) == (None, True, True)
     assert vp.end_now(argparse.Namespace(**ex, card=["Write to us"], corner=True, hook="Hi"), {}) == ("card", True, True)
     assert vp.end_now(argparse.Namespace(cmd="validate", card=False, sting=False, corner=False, hook=False),
                       plan) == ("card", True, True)

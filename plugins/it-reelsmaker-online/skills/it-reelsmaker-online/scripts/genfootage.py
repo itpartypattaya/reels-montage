@@ -98,6 +98,12 @@ def cmd_manifest(a):
     prov_name, model, spec, unsupported = model_spec(s)
     spec = spec or {}
     mine = [i for i in gen_inserts(plan) if engine_of(i, eff) == "model"]
+    if mine and not eff.get("generated_prompts"):  # review 2026-10-18: a plan marked by add-on <= 1.4.4 kept writing
+        # prompts and pending inserts after the default became ["code"]
+        print(f"{len(mine)} insert(s) marked engine \"model\" ({', '.join(i['id'] for i in mine)}), but the video model "
+              f"is off ({why.get('generated_prompts') or 'generation_engines has no model'}): no prompts written; "
+              f"turn it on with generation_engines [\"code\", \"model\"], or set their gen.engine to \"code\"")
+        mine = []
     for i in mine:
         g = i.setdefault("gen", {})
         g["engine"] = "model"

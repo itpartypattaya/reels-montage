@@ -6,15 +6,9 @@ Inserts are an optional layer on top of the regular edit. If everything is off, 
 
 ## Settings
 
-Stored in the video's `edit/<id>/reel.json`. Layers apply in order, and each one overrides the previous:
-1. skill defaults (below; with the online add-on, its defaults too);
-2. the brand tone preset (`use_broll` is on in every preset, `use_memes` in `friendly` and `bold`);
-3. your project's `reel-defaults.json` (`references/brands.md`, “Your settings in the project”), then the file named in `REELS_DEFAULTS_OVERLAY`;
-4. `brand.json → inserts` of the selected brand;
-5. the video's `reel.json`;
-6. words from the prompt.
+Stored in the video's `edit/<id>/reel.json`, over the skill defaults below; which layer wins (project defaults, the video's profile, the brand's `inserts`, …) is listed once, in `references/brands.md` (“Layers”), and `reelcfg.py show` prints where each value comes from.
 
-So an insert the person did not choose in step 0 is saved in `reel.json` as `false`: otherwise the tone's default turns it on.
+Inserts are off in the skill defaults (`use_broll`, `use_memes`, `use_scenes` are `false`), but the project defaults or the brand profile can turn some on, so step 0 saves the person's answer whole: the chosen ones `true`, the others `false`. A plan made before 1.13, when tones turned B-roll on, fails `validate` with the `reelcfg.py save … use_broll=true` line to keep its inserts.
 
 ```json
 {
@@ -23,7 +17,7 @@ So an insert the person did not choose in step 0 is saved in `reel.json` as `fal
  "use_broll": true,
  "use_project_footage": true,
  "use_local_footage": true,
- "use_generated_footage": true,
+ "use_code_scenes": true,
  "use_scenes": false,
  "use_memes": false,
  "use_local_memes": true,
@@ -44,7 +38,7 @@ What each setting does:
 |---|---|
 | `use_broll` | B-roll at all |
 | `use_project_footage` / `use_local_footage` | B-roll sources: project, library |
-| `use_generated_footage` | code scenes in Remotion (B-roll inserts, so `use_broll` stays on); with the online-sources add-on installed it also turns on the add-on's own steps for generated footage, and its skill says how to keep code scenes only |
+| `use_code_scenes` (before 1.15 `use_generated_footage`, still read) | code scenes in Remotion (B-roll inserts, so `use_broll` stays on); with the online-sources add-on installed it also turns on the add-on's own steps for generated footage, and its skill says how to keep code scenes only |
 | `use_scenes` | designed scenes (`references/scenes.md`); on when chosen in step 0 or asked for in the prompt |
 | `use_memes`, `use_local_memes` | memes, and your own meme library |
 | `meme_size` | pop-up meme size: `s` / `m` / `l` |
@@ -52,7 +46,7 @@ What each setting does:
 
 **Turn everything off** (as without inserts): `use_broll=false`, `use_scenes=false`, `use_memes=false`.
 
-**Code scenes only, no footage**: `use_broll=true`, `use_project_footage=false`, `use_local_footage=false`, `use_generated_footage=true`. Designed scenes are a separate key, `use_scenes`.
+**Code scenes only, no footage**: `use_broll=true`, `use_project_footage=false`, `use_local_footage=false`, `use_code_scenes=true`. Designed scenes are a separate key, `use_scenes`.
 
 **What actually turns on.** Before the plan, the agent checks what is really available: an enabled source that isn't there (empty folders, no library catalog, the Remotion project doesn't build) turns itself off, and the reason goes into the report. This is not an error: the edit proceeds with what is available.
 

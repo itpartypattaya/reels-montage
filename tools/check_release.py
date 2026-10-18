@@ -37,7 +37,7 @@ CORE_FORBIDDEN = re.compile(
     r"|videvo|giphy|openverse|tenor|api[_ -]?key|FAL_KEY|_API_KEY|keys\.env"
     # policy 4.B: no generative image, video, voice or music models in the core (designed scenes are drawn in code)
     r"|kokoro|elevenlabs|text[-_ ]to[-_ ]speech|\btts\b|\bsuno\b|\budio\b|midjourney|\bdall[-·. ]?e\b|stable diffusion"
-    r"|\bflux\b|\bimagen\b|hyperframes tts|\bai[-‐‑–— ]generated",
+    r"|\bflux\b|\bimagen\b|hyperframes tts|\bai[-‐‑–— ]generat(?:ed|ion|ing|es?)\b",
     re.I,
 )
 CYRILLIC = re.compile(r"[Ѐ-ӿ]")

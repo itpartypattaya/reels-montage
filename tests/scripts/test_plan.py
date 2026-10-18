@@ -69,6 +69,24 @@ def test_scene_quote_must_be_verbatim(project):
     assert bad.returncode == 1 and "not verbatim" in bad.stdout
 
 
+def test_experimental_scenes_and_modes_are_marked_and_a_slogan_is_full(project):
+    # wave 3: word/chat/ui and split/panel/window are out of the menus; where one is used, the plan says so
+    e = plan_project(project, {"use_scenes": True})
+    run_script("visual_plan.py", "init", "edit/4821", cwd=project)
+    r = run_script("visual_plan.py", "add", "edit/4821", "--kind", "scene", "--type", "quote", "--mode", "split",
+                   "--at", "word:test#1", "--dur", "4.2", "--lines", "Test how they think,", "not what they remember",
+                   "--source", "speech", "--what", "the quote", "--why", "the main idea", cwd=project)
+    assert "experimental" in r.stdout
+    r = run_script("visual_plan.py", "add", "edit/4821", "--kind", "scene", "--type", "slogan", "--at", "word:speed#1",
+                   "--dur", "2.0", "--lines", "speed wins", "--source", "speech", "--what", "the main thought",
+                   "--why", "a punch", cwd=project)
+    slogan = [i for i in load_plan(e)["inserts"] if i.get("type") == "slogan"][0]
+    assert slogan["mode"] == "full" and "experimental" not in r.stdout  # the first mode of its row, not split
+    run_script("visual_plan.py", "md", "edit/4821", cwd=project)
+    md = (e / "visual_plan.md").read_text(encoding="utf-8")
+    assert "split (experimental)" in md and "full (experimental)" not in md and "**Experimental**" in md
+
+
 def test_online_source_is_refused_without_the_add_on(project):
     plan_project(project, {"use_broll": True})
     run_script("visual_plan.py", "init", "edit/4821", cwd=project)
@@ -684,7 +702,9 @@ def test_the_last_two_seconds_count_from_the_end_card(project):
     run_script("visual_plan.py", "export", "edit/4821", "--remotion", rem, "--sting", cwd=project)
     assert load_plan(e)["end_card"] == {"kind": "sting", "seconds": 2.6}
     assert rule not in run_script("visual_plan.py", "validate", "edit/4821", cwd=project, check=False).stdout
-    run_script("visual_plan.py", "export", "edit/4821", "--remotion", rem, "--force", cwd=project)  # no sting now
+    run_script("visual_plan.py", "export", "edit/4821", "--remotion", rem, "--force", cwd=project)  # the sting stays
+    assert load_plan(e)["end_card"] == {"kind": "sting", "seconds": 2.6}
+    run_script("visual_plan.py", "export", "edit/4821", "--remotion", rem, "--no-end", "--force", cwd=project)
     assert "end_card" not in load_plan(e)
     assert rule in run_script("visual_plan.py", "validate", "edit/4821", cwd=project, check=False).stdout
 
@@ -828,3 +848,205 @@ def test_a_failed_export_records_no_end_card(project):
                    cwd=project, check=False)
     assert r.returncode != 0 and "not a Remotion project" in (r.stdout + r.stderr)
     assert "end_card" not in load_plan(e)
+
+
+def test_a_plain_edit_needs_no_init(project):
+    # Review 2026-10-17 (Fable P1): with every insert off, export stopped on "no plan, run init first"
+    e = plan_project(project, {"use_broll": False, "use_scenes": False, "use_memes": False})
+    r = run_script("visual_plan.py", "validate", "edit/4821", cwd=project)
+    assert "created" in r.stdout and (e / "visual_plan.json").is_file()
+    assert load_plan(e)["inserts"] == []
+    (e / "visual_plan.json").unlink()
+    rem = project / "reels"
+    (rem / "src").mkdir(parents=True)
+    write_json(rem / "package.json", {"name": "reels"})
+    run_script("brand.py", "export", "acme", "--remotion", rem, cwd=project)
+    (e / "final.mp4").write_bytes(b"a rough cut")
+    run_script("visual_plan.py", "export", "edit/4821", "--remotion", rem, "--props", rem / "props.json", cwd=project)
+    assert (rem / "props.json").is_file()
+
+
+def test_inserts_on_still_need_init(project):
+    plan_project(project, {"use_scenes": True})
+    r = run_script("visual_plan.py", "validate", "edit/4821", cwd=project, check=False)
+    assert r.returncode != 0 and "run visual_plan.py init first" in (r.stdout + r.stderr)
+
+
+def _export_project(project, e):
+    rem = project / "reels"
+    (rem / "src").mkdir(parents=True, exist_ok=True)
+    write_json(rem / "package.json", {"name": "reels"})
+    run_script("brand.py", "export", "acme", "--remotion", rem, cwd=project)
+    (e / "final.mp4").write_bytes(b"a rough cut")
+    return rem
+
+
+def test_a_re_export_keeps_the_hook_corner_and_end_card(project):
+    # Review 2026-10-17 (Codex P1): a re-export for a late fix, without the flags, dropped the approved hook, corner
+    # logo and end card from the props and their markers from the plan
+    e = plan_project(project, {"use_broll": False, "use_scenes": False, "use_memes": False})
+    rem = _export_project(project, e)
+    props = rem / "props.json"
+    run_script("visual_plan.py", "export", "edit/4821", "--remotion", rem, "--props", props, "--hook", "Hire in 12 days",
+               "--card", "Message us", "a free shortlist", "--corner", cwd=project)
+    first = json.loads(props.read_text(encoding="utf-8"))
+    assert first["hook"]["text"] == "Hire in 12 days" and first["corner"] is True
+    assert first["endCard"]["line1"] == "Message us" and first["endCard"]["line2"] == "a free shortlist"
+    r = run_script("visual_plan.py", "export", "edit/4821", "--remotion", rem, "--props", props, cwd=project)
+    assert "kept from the last export: hook, corner logo, end (card)" in r.stdout
+    again = json.loads(props.read_text(encoding="utf-8"))
+    assert (again["hook"], again["corner"], again["endCard"]) == (first["hook"], first["corner"], first["endCard"])
+    assert load_plan(e)["end_card"] == {"kind": "card", "seconds": 2.6}
+    run_script("visual_plan.py", "export", "edit/4821", "--remotion", rem, "--props", props, "--no-hook", cwd=project)
+    off = json.loads(props.read_text(encoding="utf-8"))
+    assert off["hook"] is None and off["endCard"] == first["endCard"] and "hook" not in load_plan(e)
+
+
+def test_a_plan_exported_before_1_13_asks_for_the_texts_again(project):
+    # reviews 2026-10-18 (Codex P1, Fable): a warning and a dropped card made the video 2.6 s shorter and the next
+    # export was silent; now the export stops, the plan unchanged, until the texts come back or are taken off
+    e = plan_project(project, {"use_broll": False, "use_scenes": False, "use_memes": False})
+    run_script("visual_plan.py", "validate", "edit/4821", cwd=project)
+    plan = load_plan(e)
+    plan.update({"hook": True, "corner": True, "end_card": {"kind": "card", "seconds": 2.6}})
+    write_json(e / "visual_plan.json", plan)
+    rem = _export_project(project, e)
+    r = run_script("visual_plan.py", "export", "edit/4821", "--remotion", rem, "--props", rem / "props.json", cwd=project,
+                   check=False)
+    out = r.stdout + r.stderr
+    assert r.returncode != 0 and "pass --hook again" in out and "pass --card again" in out
+    assert not (rem / "props.json").exists()
+    kept = load_plan(e)
+    assert kept["end_card"] == {"kind": "card", "seconds": 2.6} and kept["hook"] is True and "export" not in kept
+    assert "the video is 32.60 s" in run_script("visual_plan.py", "validate", "edit/4821", cwd=project, check=False).stdout
+    run_script("visual_plan.py", "export", "edit/4821", "--remotion", rem, "--props", rem / "props.json",
+               "--card", "Message us", "--no-hook", cwd=project)
+    props = json.loads((rem / "props.json").read_text(encoding="utf-8"))
+    assert props["corner"] is True and props["hook"] is None and props["endCard"]["line1"] == "Message us"
+
+
+def test_init_keeps_the_last_exports_choices(project):
+    # review 2026-10-18 (Fable P2): init after an export lost the hook and the end card
+    e = plan_project(project, {"use_broll": False, "use_scenes": False, "use_memes": False})
+    rem = _export_project(project, e)
+    run_script("visual_plan.py", "export", "edit/4821", "--remotion", rem, "--card", "Message us", "--corner", cwd=project)
+    run_script("reelcfg.py", "save", "edit/4821", "--set", "use_scenes=true", cwd=project)
+    r = run_script("visual_plan.py", "validate", "edit/4821", cwd=project, check=False)
+    assert r.returncode != 0 and "run visual_plan.py init" in (r.stdout + r.stderr)  # the auto plan asks for init
+    run_script("visual_plan.py", "init", "edit/4821", cwd=project)
+    plan = load_plan(e)
+    assert plan["export"]["end"] == {"kind": "card", "lines": ["Message us"]} and plan["corner"] is True
+    assert "auto" not in plan
+    r = run_script("visual_plan.py", "export", "edit/4821", "--remotion", rem, "--props", rem / "p.json", cwd=project)
+    assert "kept from the last export" in r.stdout
+
+
+def test_a_plain_plan_needs_the_rough_cut(project):
+    # review 2026-10-18 (Codex on GitHub): a plan without captions.json exported "captions": null to the kit
+    e = plan_project(project, {"use_broll": False, "use_scenes": False, "use_memes": False})
+    (e / "captions.json").unlink()
+    r = run_script("visual_plan.py", "validate", "edit/4821", cwd=project, check=False)
+    assert r.returncode != 0 and "build it first (cut.py)" in (r.stdout + r.stderr)
+    assert not (e / "visual_plan.json").exists()
+
+
+def test_tone_summary_says_memes_are_on_request():
+    import reels_common as rc
+    line = rc.tone_summary({"preset": "old", "memes": {"allowed": True, "default": True, "max": 2, "size_max": "m"}})
+    assert "only on request" in line and "on by default" not in line
+
+
+def test_workflow_values_and_a_series_preset(project):
+    # wave 2: workflow quick/standard/full; a series preset carries the settings and the finish to the next video
+    e = plan_project(project, {"use_broll": False, "use_scenes": False, "use_memes": False, "style": "brand"})
+    r = run_script("reelcfg.py", "save", "edit/4821", "--set", "workflow=fast", cwd=project, check=False)
+    assert r.returncode != 0 and "unknown workflow" in (r.stdout + r.stderr)
+    run_script("reelcfg.py", "save", "edit/4821", "--set", "workflow=quick", "subtitles_shade=0.4", cwd=project)
+    assert "workflow: quick" in run_script("reelcfg.py", "show", "edit/4821", cwd=project).stdout
+    rem = _export_project(project, e)
+    run_script("visual_plan.py", "export", "edit/4821", "--remotion", rem, "--card", "Message us", "a free shortlist",
+               "--corner", cwd=project)
+    run_script("reelcfg.py", "preset", "save", "weekly", "--from", "edit/4821", cwd=project)
+    doc = json.loads((project / "presets" / "weekly.json").read_text(encoding="utf-8"))
+    assert doc["settings"]["workflow"] == "quick" and "subtitles_shade" not in doc["settings"]
+    assert doc["finish"] == {"corner": True, "end": {"kind": "card", "lines": ["Message us", "a free shortlist"]}}
+    assert "weekly" in run_script("reelcfg.py", "preset", "list", cwd=project).stdout
+    e2 = project / "edit" / "4822"
+    e2.mkdir()
+    write_json(e2 / "captions.json", captions())
+    run_script("reelcfg.py", "preset", "use", "weekly", "edit/4822", cwd=project)
+    reel = json.loads((e2 / "reel.json").read_text(encoding="utf-8"))
+    assert reel["style"] == "brand" and reel["finish"]["corner"] is True
+    (e2 / "final.mp4").write_bytes(b"a rough cut")
+    r = run_script("visual_plan.py", "export", "edit/4822", "--remotion", rem, "--props", rem / "p2.json", cwd=project)
+    assert "kept from the series preset" in r.stdout
+    props = json.loads((rem / "p2.json").read_text(encoding="utf-8"))
+    assert props["corner"] is True and props["endCard"]["line1"] == "Message us" and props["hook"] is None
+
+
+def test_check_runs_every_step_and_fails_when_one_fails(project):
+    # wave 2: one command for the checks around the render; a failing step does not hide the next ones
+    plan_project(project, {"use_broll": False, "use_scenes": False, "use_memes": False})
+    r = run_script("check.py", "edit/4821", cwd=project, check=False)
+    out = r.stdout + r.stderr
+    assert r.returncode == 1
+    assert "=== plan check" in out and "=== storyboard sheet" in out and "=== text check" in out
+    assert "ok   plan check" in out and "FAIL storyboard sheet" in out  # no props, no Remotion project here
+
+
+@needs_ffmpeg
+def test_check_after_the_render_makes_the_contact_sheet(project):
+    e = plan_project(project, {"use_broll": False, "use_scenes": False, "use_memes": False})
+    make_video(project / "render.mp4", 360, 640, 3.0)
+    r = run_script("check.py", "edit/4821", "--render", "render.mp4", cwd=project, check=False)
+    out = r.stdout + r.stderr
+    assert "=== faces audit" in out and (e / "verify" / "sheet.png").is_file()
+    assert "ok   contact sheet" in out
+    if "face audit skipped" in out:  # no face model here: shown as not checked, not as passed
+        assert "skip faces audit" in out and "not checked: faces audit" in out
+    r = run_script("check.py", "edit/4821", "--render", "render.mp4", "--comp", "Reel4821", cwd=project, check=False)
+    assert r.returncode != 0 and "belong to the checks before the render" in (r.stdout + r.stderr)
+
+
+def test_a_series_preset_keeps_only_the_series_answers(project):
+    # review 2026-10-18 (Fable): a one-off tone_override became the series' rule; a preset over a video's own choices
+    # changed them silently; a plan exported before 1.13 gave no ending to the preset
+    e = plan_project(project, {"use_broll": False, "use_scenes": False, "use_memes": False, "tone_override": True,
+                               "subtitles_shade": 0.4})
+    run_script("visual_plan.py", "validate", "edit/4821", cwd=project)
+    plan = load_plan(e)
+    plan.update({"corner": True, "end_card": {"kind": "card", "seconds": 2.6}})
+    write_json(e / "visual_plan.json", plan)
+    r = run_script("reelcfg.py", "preset", "save", "legacy", "--from", "edit/4821", cwd=project)
+    assert "not carried: tone_override" in r.stdout and "lines were not stored" in r.stdout
+    doc = json.loads((project / "presets" / "legacy.json").read_text(encoding="utf-8"))
+    assert "tone_override" not in doc["settings"] and "subtitles_shade" not in doc["settings"]
+    assert doc["finish"] == {"corner": True, "end": None}
+    e2 = project / "edit" / "4822"
+    write_json(e2 / "reel.json", {"brand": "acme", "use_broll": True})
+    r = run_script("reelcfg.py", "preset", "use", "legacy", "edit/4822", cwd=project)
+    assert "changed this video's own choices: use_broll True → False" in r.stdout
+    r = run_script("reelcfg.py", "save", "edit/4822", "--set", "finish=card", cwd=project, check=False)
+    assert r.returncode != 0 and "series preset's ending" in (r.stdout + r.stderr)
+
+
+def test_a_preset_does_not_hide_an_old_plans_texts(project):
+    # review 2026-10-18 (Codex P1): a preset applied to a plan exported before 1.13 dropped its hook and card silently
+    e = plan_project(project, {"use_broll": False, "use_scenes": False, "use_memes": False,
+                               "finish": {"corner": False, "end": {"kind": "sting"}}})
+    run_script("visual_plan.py", "validate", "edit/4821", cwd=project)
+    plan = load_plan(e)
+    plan.update({"hook": True, "end_card": {"kind": "card", "seconds": 2.6}})
+    write_json(e / "visual_plan.json", plan)
+    rem = _export_project(project, e)
+    r = run_script("visual_plan.py", "export", "edit/4821", "--remotion", rem, "--props", rem / "p.json", cwd=project,
+                   check=False)
+    assert r.returncode != 0 and "pass --card again" in (r.stdout + r.stderr)
+
+
+def test_doctor_forgets_a_pass_after_a_failure(project):
+    import doctor
+    write_json(project / "it-reelsmaker.json", {"doctor_ok": {"version": "1.0.0"}, "remotion_dir": "reels"})
+    doctor.remember(project, ok=False)
+    cfg = json.loads((project / "it-reelsmaker.json").read_text(encoding="utf-8"))
+    assert "doctor_ok" not in cfg and cfg["remotion_dir"] == "reels"
