@@ -27,7 +27,7 @@ Two messages as the person should see them: the cut plan of step 5 and the repor
 > **Transcript fixes:** “Akme” → “Acme”, “short list” → “shortlist”.
 >
 > **Supports** (`references/playbook.md`):
-> - Profile: educational · format insight (`references/profiles.md`; from the brief: “a tip for hiring managers”); length 30–60 s, one CTA;
+> - Profile: none · format insight (`references/profiles.md`: no profile was asked for, the format guides the length, 30–60 s); one CTA;
 > - the slow start cut, the video opens on the claim → `structure.md` › Start: Cut the slow start (external);
 > - pauses up to 50 ms, ×1.15 → SKILL.md step 5, an insight monologue (external) + brand `rules.md` 2026-09-12 “tight pace” (owner);
 > - a shot change every 1.5–3.5 s, punch-in on the key word → playbook PACE-1 (verified);
@@ -44,7 +44,7 @@ Two messages as the person should see them: the cut plan of step 5 and the repor
 >
 > **Sound:** −14.1 LUFS, true peak −1.3 dBFS, the audio is as long as the video; the mastering check passed.
 >
-> **On screen:** subtitles in the accent style; a hook headline (0:00–2.6); a `quote` scene in `split` mode (0:15.2–18.8), verbatim from the speech at 0:28.3 of the source; one B-roll shot from the project (the office, 0:31.0–33.2); an end card with the call to action. The face audit shows 0 overlaps.
+> **On screen:** subtitles in the accent style; a hook headline (0:00–2.6); a `quote` scene in `overlay` mode (0:15.2–18.8), verbatim from the speech at 0:28.3 of the source; one B-roll shot from the project (the office, 0:31.0–33.2); an end card with the call to action. The face audit shows 0 overlaps.
 >
 > **Did not land:** a B-roll shot of a team meeting at 0:12: nothing suitable in the project or the library, so the main footage stays.
 >
@@ -54,4 +54,4 @@ Two messages as the person should see them: the cut plan of step 5 and the repor
 >
 > **Noticed on the way:** the source has a 2-frame black flash at 0:47.2 from the camera; it falls inside the aside that was cut, so it is not in the video.
 >
-> **Supports:** the `quote` scene in `split` → `scenes.md` › Quote (external) + brand `rules.md` 2026-09-20 “quotes only verbatim” (owner); subtitles in the accent style → chosen in step 0; no meme → the brand tone `expert`, confirmed by the brand owner (owner; a tone the plugin set by default, still marked `unconfirmed`, is only external). Departed from PACE-1 at 0:15–18.8: the quote holds 3.6 s for its reading time (`scenes.md`, reading-time floor). Profile checklist (educational): ALL-1, ALL-2, ALL-3 ok in `validate`; EDU-1…EDU-7 confirmed on the draft; skipped: EDU-3 (no list in this video). Checklist skipped: music (no licensed track chosen).
+> **Supports:** the `quote` scene in `overlay` → `scenes.md` › Quote (external) + brand `rules.md` 2026-09-20 “quotes only verbatim” (owner); subtitles in the accent style → chosen in step 0; no meme → the brand tone `expert`, confirmed by the brand owner (owner; a tone the plugin set by default, still marked `unconfirmed`, is only external). Departed from PACE-1 at 0:15–18.8: the quote holds 3.6 s for its reading time (`scenes.md`, reading-time floor). Profile: none, so no profile checklist (with one, its items: passed in `validate`, confirmed on the draft, skipped by id). Checklist skipped: music (no licensed track chosen).

@@ -12,7 +12,7 @@
   "use_broll": false,
   "use_project_footage": true,
   "use_local_footage": true,
-  "use_generated_footage": true,
+  "use_code_scenes": true,
   "use_memes": false,
   "use_local_memes": true,
   "broll_priority": [

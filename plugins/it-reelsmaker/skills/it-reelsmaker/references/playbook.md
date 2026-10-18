@@ -71,6 +71,8 @@ Checklist: skipped “music” (no licensed track chosen).
 - Cite the file and section (or the card ID) and the trust. A decision with no rule says `no rule: judgment` and why:
   if the person agrees, it may become a card.
 - Keep it to the decisions that shape the video, 4–10 lines, not every setting.
+- By workflow (SKILL.md section 6): the whole list in `full`; in `quick` and `standard` only the departures from a
+  rule, one line each (and the profile, if the video has one).
 - When the person dislikes something, the support line shows which rule to change: change the rule (with its date and
   reason), then the video.
 

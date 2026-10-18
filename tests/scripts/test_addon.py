@@ -64,6 +64,19 @@ def test_the_add_on_does_not_turn_model_prompts_on_by_itself(project, tmp_path):
                                                        "generation_engines": ["code", "model"]})
     j = json.loads(run_script("reelcfg.py", "show", "edit/4821", "--json", cwd=project, env=env(tmp_path)).stdout)
     assert j["effective"]["generated_prompts"]
+    write_json(project / "edit" / "4821" / "reel.json", {"use_broll": True, "use_code_scenes": True,  # the 1.15 name
+                                                       "generation_engines": ["code", "model"]})
+    j = json.loads(run_script("reelcfg.py", "show", "edit/4821", "--json", cwd=project, env=env(tmp_path)).stdout)
+    assert j["effective"]["generated_prompts"]
+
+
+def test_the_add_on_reads_the_old_name_from_an_older_core(monkeypatch, tmp_path):
+    # a core before 1.15 passes use_generated_footage only; the add-on 1.4.6 reads use_code_scenes first
+    ro = _keys_module(monkeypatch, tmp_path)
+    for s in ({"use_broll": True, "use_generated_footage": True}, {"use_broll": True, "use_code_scenes": True}):
+        eff = {}
+        ro.effective_online({**s, "generation_engines": ["code", "model"]}, lambda n, ok, why="": eff.__setitem__(n, ok), eff)
+        assert eff["generated_prompts"], s
 
 
 @needs_ffmpeg

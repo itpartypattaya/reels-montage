@@ -17,7 +17,7 @@ Inserts are off in the skill defaults (`use_broll`, `use_memes`, `use_scenes` ar
  "use_broll": true,
  "use_project_footage": true,
  "use_local_footage": true,
- "use_generated_footage": true,
+ "use_code_scenes": true,
  "use_scenes": false,
  "use_memes": false,
  "use_local_memes": true,
@@ -38,7 +38,7 @@ What each setting does:
 |---|---|
 | `use_broll` | B-roll at all |
 | `use_project_footage` / `use_local_footage` | B-roll sources: project, library |
-| `use_generated_footage` | code scenes in Remotion (B-roll inserts, so `use_broll` stays on); with the online-sources add-on installed it also turns on the add-on's own steps for generated footage, and its skill says how to keep code scenes only |
+| `use_code_scenes` (before 1.15 `use_generated_footage`, still read) | code scenes in Remotion (B-roll inserts, so `use_broll` stays on); with the online-sources add-on installed it also turns on the add-on's own steps for generated footage, and its skill says how to keep code scenes only |
 | `use_scenes` | designed scenes (`references/scenes.md`); on when chosen in step 0 or asked for in the prompt |
 | `use_memes`, `use_local_memes` | memes, and your own meme library |
 | `meme_size` | pop-up meme size: `s` / `m` / `l` |
@@ -46,7 +46,7 @@ What each setting does:
 
 **Turn everything off** (as without inserts): `use_broll=false`, `use_scenes=false`, `use_memes=false`.
 
-**Code scenes only, no footage**: `use_broll=true`, `use_project_footage=false`, `use_local_footage=false`, `use_generated_footage=true`. Designed scenes are a separate key, `use_scenes`.
+**Code scenes only, no footage**: `use_broll=true`, `use_project_footage=false`, `use_local_footage=false`, `use_code_scenes=true`. Designed scenes are a separate key, `use_scenes`.
 
 **What actually turns on.** Before the plan, the agent checks what is really available: an enabled source that isn't there (empty folders, no library catalog, the Remotion project doesn't build) turns itself off, and the reason goes into the report. This is not an error: the edit proceeds with what is available.
 
