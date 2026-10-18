@@ -20,9 +20,10 @@ A video without a profile is edited as before: no profile checklist, the brand t
 - Clear from the prompt or the footage (“a skit for reach”, “a job opening”, “an ad for the launch”, a horizontal
   podcast recording) → name the profile and the format in one line of the plan and save them:
   `reelcfg.py save edit/<id> --set profile=<id> content_format=<id>` (a format alone brings its profile).
-- Not clear → ask **one separate question** before the brief: the 3 most likely profiles, the recommendation first,
+- Not clear → in the `full` workflow ask **one separate question** in step 0 (in `quick` and `standard` take the profile
+  of the format that fits best and name it in the plan): the 3 most likely profiles, the recommendation first,
   each with one line of what it changes; the rest via “Other”.
-- Saved in `reel.json`, not inherited by the next video; `reelcfg.py show` prints the profile, its length range, CTA
+- Saved in `reel.json`, not inherited by the next video (a series preset carries it); `reelcfg.py show` prints the profile, its length range, CTA
   limit and checklist.
 
 ## The brand tone stays the ceiling

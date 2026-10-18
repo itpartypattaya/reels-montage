@@ -778,9 +778,10 @@ def profile_settings(prof, rules, doc, tone_override=False):
 
 
 def load_config(edit=None, overrides=None, project=None):
-    """Layers: skill defaults <- brand tone preset defaults (brand.json -> tone) <- the project's reel-defaults.json <-
-    the video's profile (profile_rules, capped by the brand tone) <- brand profile (inserts) <- edit/<id>/reel.json <-
-    overrides (words from the prompt). settings["profile_rules"] is the resolved profile or None. settings["brand_tone"] is the resolved brand tone (the
+    """Layers, in the order of references/brands.md ("Layers"): skill defaults (+ reel-defaults.local.json, the add-on's)
+    <- brand tone preset defaults (brand.json -> tone; never inserts) <- the project's reel-defaults.json <-
+    REELS_DEFAULTS_OVERLAY <- the video's profile (profile_rules, capped by the brand tone) <- brand profile (inserts) <-
+    edit/<id>/reel.json <- overrides (words from the prompt). settings["profile_rules"] is the resolved profile or None. settings["brand_tone"] is the resolved brand tone (the
     ceilings for visual_plan.py validate); it comes only from the profile, reel.json can't change it (going louder
     takes tone_override). Returns (settings, provenance, defaults_doc, brand_dir, brand)."""
     project = project or project_root()

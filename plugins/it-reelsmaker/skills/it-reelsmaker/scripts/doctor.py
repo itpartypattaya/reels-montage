@@ -15,7 +15,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from kit import KIT, kit_version, script_cmd
-from reels_common import online, project_root, project_settings, utf8_stdio
+from reels_common import SETTINGS_FILE, editing_json, is_project, load_json, online, project_root, project_settings, utf8_stdio
 
 OS = {"Windows": "windows", "Darwin": "macos"}.get(platform.system(), "linux")
 PY = Path(sys.executable).name if OS != "windows" else "python"
@@ -167,7 +167,28 @@ def main():
             if r["fix"]:
                 print(f"       -> {r['fix']}")
         print("required: all present" if not missing else f"required missing: {', '.join(r['name'] for r in missing)}")
+    # the start-up check is skipped later on this record, so it needs the render environment too (review 2026-10-18:
+    # Node.js, the Remotion project, node_modules and the kit are "recommended" and a pass without them hid them)
+    remember(project, ok=not [r for r in rows if r["level"] in ("required", "recommended") and not r["ok"]])
     sys.exit(1 if missing else 0)
+
+
+def remember(project, ok):
+    """Everything required and recommended present: it-reelsmaker.json -> doctor_ok {version}, so the skill runs doctor
+    again only after
+    a plugin update or when a tool fails (review 2026-10-17: doctor, kit check and the other start-up steps ran in every
+    session); a failed run removes it (review 2026-10-18), so the next session checks again. Only in an editing project,
+    never in a random folder."""
+    if not is_project(project):
+        return
+    meta = load_json(Path(__file__).resolve().parents[3] / ".claude-plugin" / "plugin.json", {}) or {}
+    if ok and not meta.get("version"):
+        return
+    with editing_json(project / SETTINGS_FILE, {}) as cfg:
+        if ok:
+            cfg["doctor_ok"] = {"version": meta["version"]}
+        else:
+            cfg.pop("doctor_ok", None)
 
 
 if __name__ == "__main__":

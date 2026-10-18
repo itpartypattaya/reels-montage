@@ -1130,7 +1130,11 @@ def finish_of(a, plan):
         notes for the person, names of what was kept from the last export)."""
     last = dict(plan.get("export") or {})
     notes = []
-    if not last:  # a plan exported before 1.13 kept only markers: the corner and a sting come back, texts cannot
+    preset = (plan.get("settings") or {}).get("finish")  # a series preset's finish (reelcfg.py preset use)
+    legacy = plan.get("corner") or plan.get("end_card") or plan.get("hook")  # markers of an export before 1.13
+    if not last and not legacy and isinstance(preset, dict) and preset:  # only a video with no ending of its own
+        last = {"hook": None, "corner": bool(preset.get("corner")), "end": preset.get("end")}
+    elif not last:  # a plan exported before 1.13 kept only markers: the corner and a sting come back, texts cannot
         if plan.get("corner"):
             last["corner"] = True
         kind = (plan.get("end_card") or {}).get("kind")
@@ -2769,7 +2773,8 @@ def cmd_export(a):
         sys.exit("nothing exported, the plan is unchanged: " + "; ".join(notes))
     end = fin["end"] or {}
     if kept:
-        print(f"kept from the last export: {', '.join(kept)} (--no-hook, --no-corner, --no-end take them off)")
+        print(f"kept from {'the last export' if plan.get('export') else 'the series preset'}: {', '.join(kept)} "
+              f"(--no-hook, --no-corner, --no-end take them off)")
     rem = Path(a.remotion).resolve()
     if not (rem / "package.json").is_file() or not (rem / "src").is_dir():
         sys.exit(f"not a Remotion project (no package.json or src/): {rem}; nothing exported")

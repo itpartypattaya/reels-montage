@@ -112,6 +112,21 @@ def split_filters(chain):
     return [f for f in out if f]
 
 
+def look_key(look):
+    """What a measurement depends on: the LUT, its strength, the grade and the rest of look.correct (the balance gain
+    left out). balance.py --write records it in cut.json -> balance.look; cut.py measures again when it changes."""
+    look = look if isinstance(look, dict) else {}
+    rest = ",".join(f for f in split_filters(look.get("correct") or "") if not is_gain_mixer(f))
+    return json.dumps([look.get("lut"), look.get("lut_mix"), look.get("grade"), rest], ensure_ascii=False)
+
+
+def frames_key(cut):
+    """Which frames a measurement saw: the sources (files) and the kept ranges of cut.json. -> (sources, ranges) keys."""
+    src = cut.get("sources") or cut.get("source")
+    rng = [[r.get("source"), r.get("start"), r.get("end")] for r in (cut.get("ranges") or []) if isinstance(r, dict)]
+    return json.dumps(src, sort_keys=True, ensure_ascii=False), json.dumps(rng, ensure_ascii=False)
+
+
 def is_gain_mixer(f):
     """colorchannelmixer with only rr/gg/bb set: a balance fix (this script's own, or one made by hand)."""
     name, _, args = f.partition("=")
@@ -686,6 +701,13 @@ def main():
                 cut["look"] = lk
             out["written"] = True
             say(f"written: cut.json -> look.correct; rebuild the rough cut: cut.py {a.edit}")
+    if a.write:  # what this look was measured for, whatever the outcome: cut.py measures again only when the look changes
+        result = "written" if out["written"] else "refused" if refused else "unchanged"
+        with editing_json(e / "cut.json", {}) as cut:
+            if cut.get("balance") is not False:
+                srcs, rngs = frames_key(cut)
+                cut["balance"] = {"look": look_key(cut.get("look")), "sources": srcs, "ranges": rngs,
+                                  "mode": "ref" if refs else "auto", "result": result}
     if a.json:
         print(json.dumps(out, ensure_ascii=False, indent=1))
 
