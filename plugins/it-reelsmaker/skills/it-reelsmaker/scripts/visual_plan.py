@@ -76,7 +76,7 @@ from reels_common import (CORNER_BOX, FRAMED_HOOK_MIN, FRAMED_LABEL_UP, FRAMED_R
                           media_kind, online, parse_sets, probe, project_root, safe_slug, save_json, tokens, utf8_stdio,
                           warn)
 
-SCENE_MODES = ["overlay", "split", "panel", "window", "full"]  # order = default preference (the face stays)
+SCENE_MODES = ["overlay", "split", "panel", "window", "full"]  # a scene's default mode: the first of its own list
 KINDS = {"broll": {"modes": ["replace", "window"], "prefix": "b"}, "meme": {"modes": ["popup", "cutaway"], "prefix": "m"},
          "scene": {"modes": SCENE_MODES, "prefix": "c"}}
 # B-roll "window" (the Inserts component of the Remotion template): the box inserts[].box in 1080x1920 screen
@@ -146,6 +146,10 @@ SCENE_TYPES = {
     "cta": {"modes": ["overlay", "full"], "need": ["lines"], "variants": ["tap", "comment", "bio"]},
     "cover": {"modes": ["full"], "need": ["lines"]},
 }
+# Out of the menu (review 2026-10-17, wave 3): the kit draws them, but none is in a finished video yet. The agent offers
+# one only where the content asks for it, and the plan and the scene command say "experimental" (references/scenes.md).
+EXPERIMENTAL_SCENES = ("word", "chat", "ui")
+EXPERIMENTAL_MODES = ("split", "panel", "window")
 SCENE_SOURCES = ["speech", "brief", "brand", "client", "agent"]
 SCENE_SOUNDS = ["card", "type", "tap", "hit", "paper", "bell", "none"]  # bell: payoff, a number lands, the logo (scenes.md)
 CHAT_FROM = ["me", "them", "system"]
@@ -412,6 +416,12 @@ def enumeration(text):
     return best >= 3
 
 
+def experimental(i):
+    """' (experimental)' for a designed scene of an experimental type or in an experimental mode, else ''."""
+    exp = i.get("kind", "scene") == "scene" and (i.get("type") in EXPERIMENTAL_SCENES or i.get("mode") in EXPERIMENTAL_MODES)
+    return " (experimental)" if exp else ""
+
+
 def scene_hints(n, total, text, start, end, cuts, long_cuts):
     """Hints for "a scene the video lacks" (references/scenes.md). A hint is not a decision: a scene has its own what
     and why."""
@@ -427,11 +437,12 @@ def scene_hints(n, total, text, start, end, cuts, long_cuts):
     if SLOGAN_RE.search(text):
         out.append("scene:slogan - the main thought -> a slogan scene (one per video)")
     if UI_RE.search(text):
-        out.append("scene:ui - a website, service or bot is mentioned -> a ui scene (your own screenshots, fictional data)")
+        out.append("scene:ui - a website, service or bot is mentioned -> a ui scene (your own screenshots, fictional data; "
+                   "experimental: offer it only when the product is shown)")
     if n == total - 1 and CTA_RE.search(text):
         out.append("scene:cta - a call to action with no action on screen -> a cta scene")
     if any(c in long_cuts for c in cuts) and ABSTRACT_RE.search(text):
-        out.append("scene:word - a long segment with an abstraction -> a word scene (a weak hint)")
+        out.append("scene:word - a long segment with an abstraction -> a word scene (a weak hint; experimental)")
     return out
 
 
@@ -1047,7 +1058,9 @@ def add_scene(a):
             sys.exit("'scenes only' format: there is no speech, so --at is in seconds only (3.0)")
         s, prov, doc, bdir, brand = current_settings(e, plan)
         start = round(resolve_at(a.at, plan, cap) + a.offset, 3)
-        mode = a.mode or ("full" if only else next(m for m in SCENE_MODES if m in spec["modes"]))
+        # the first mode of the type's own list: a slogan is full, not the experimental split (wave 3); the others
+        # were already the first of their list
+        mode = a.mode or ("full" if only else spec["modes"][0])
         if mode not in SCENE_MODES:
             sys.exit(f"scene mode {mode}: allowed {', '.join(SCENE_MODES)}")
         if only and mode != "full":  # T6: accepted here, refused only by validate
@@ -1097,6 +1110,9 @@ def add_scene(a):
                 warn(f"{sc['id']}: {m}: validate will not pass it; set --box or move the scene")
         plan["inserts"].append(sc)
         plan["inserts"].sort(key=lambda i: i["start"])
+    if experimental(sc):
+        print(f"{sc['id']}: {a.type} {mode} is experimental (the kit draws it, not yet checked in a finished video): say so "
+              f"in the plan and look at its storyboard frame")
     print(f"{sc['id']}: scene {a.type} {mode} {fmt_t(start)} +{a.dur} s ({sc['segment'] or '-'}), tone {tone}, "
           f"transition {sc['transition_in']}/{sc['transition_out']}: {a.what}"
           + (f"; box {sc['box']}" if sc.get("box") else "") + ". Status planned -> ready after validate.")
@@ -1977,8 +1993,8 @@ def cmd_validate(a, quiet=False):
                 errs.append(f"{tag}: online footage is off (use_online_footage=false)")
             elif src == "online" and not eff.get("online_footage") and i["status"] != "ready":
                 warns.append(f"{tag}: online footage is unavailable ({why.get('online_footage')}) -> the next source or skipped")
-            if src == "generated" and not s.get("use_generated_footage"):
-                errs.append(f"{tag}: code scenes are off (use_generated_footage=false)")
+            if src == "generated" and not s.get("use_code_scenes"):
+                errs.append(f"{tag}: code scenes are off (use_code_scenes=false)")
             if i.get("mode") == "window":  # without a box the template uses WINDOW_DEFAULT, so that is what gets checked
                 for m in window_issues(e, plan, i, i.get("box") or WINDOW_DEFAULT, fdata):
                     errs.append(f"{tag}: {m}" + ("" if i.get("box") else " (the default box: set add ... --box)"))
@@ -2168,7 +2184,7 @@ def cmd_md(a):
                        for i in over if i["kind"] == "broll") or "-"
         mm = "; ".join(f"**{i['id']}** {i['what']} ({i['dur']} s, {i['mode']}, {i['status']})"
                        for i in over if i["kind"] == "meme") or "-"
-        sn = "; ".join(f"**{i['id']}** {i.get('type')} {i['mode']}: {scene_text(i)} ({i['dur']} s, {i['status']})"
+        sn = "; ".join(f"**{i['id']}** {i.get('type')} {i['mode']}{experimental(i)}: {scene_text(i)} ({i['dur']} s, {i['status']})"
                        for i in over if i["kind"] == "scene") or "-"
         tr = "; ".join(f"{i['id']}: {i['transition_in']}/{i['transition_out']}" for i in over) or "cut"
         main = g["main"] + (f", {g['camera']}" if g.get("camera") else "") + (f"; graphics: {g['graphics']}" if g.get("graphics") else "")
@@ -2181,7 +2197,7 @@ def cmd_md(a):
         for i in ins:
             if i["kind"] == "scene":
                 src = i.get("source") or {}
-                L.append(f"- **{i['id']}** scene {i.get('type')} {fmt_t(i['start'])} +{i['dur']} s, {i['mode']}, tone "
+                L.append(f"- **{i['id']}** scene {i.get('type')} {fmt_t(i['start'])} +{i['dur']} s, {i['mode']}{experimental(i)}, tone "
                          f"{scene_tone(i, s)}: {scene_text(i)}. What: {i['what']}. Why: {i['why']}. "
                          + (f"Source: {src.get('kind')}{' (' + src['ref'] + ')' if src.get('ref') else ''}. " if src else "")
                          + f"Transition {i.get('transition_in')}/{i.get('transition_out')}"
@@ -2201,6 +2217,9 @@ def cmd_md(a):
                 for i in dl)]
         if any(i.get("source") == "generated" for i in ins):
             L += ["", "Code-scene briefs: `generated/briefs.md` (`codescene.py manifest`)."]
+        if any(experimental(i) for i in ins if i["kind"] == "scene"):
+            L += ["", "**Experimental** scenes or modes: the kit draws them, but none is checked in a finished video yet; "
+                      "look at their storyboard frames (`board.py`) before the full render."]
     keep = plan.get("keep_clear") or []
     if keep:  # cards, the hook, the CTA drawn per video: their texts are shown before the render too (SKILL.md step 8)
         L += ["", "## Graphics zones (keep_clear)", ""]

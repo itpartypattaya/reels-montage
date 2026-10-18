@@ -25,7 +25,8 @@ from here.
 profile=<id> (educational, entertaining, expert-clip, promo, ad) and content_format=<id> (insight, list, case, story,
 skit, testimonial, intro, offer, review, event, interview, scenes-only): the video's goal and its form; the profile's
 defaults sit after the project's and under the brand tone's ceiling, and visual_plan.py validate checks its checklist
-(references/profiles.md). content_format alone brings its default profile.
+(references/profiles.md). content_format alone brings its default profile. A profile is opt-in: the skill saves one
+only when the person asks for it, or profile=ad for a paid ad.
 format=framed: a horizontal source in a rounded window on the style's field, with an optional caps label above it
 (references/techniques.md); window (x, y, w, h on the 1080x1920 screen) and label are its options. The kit draws it
 from the props that visual_plan.py export writes; faces.py and visual_plan.py read the same window.
@@ -44,7 +45,8 @@ import argparse, json, re, sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from reels_common import (PROJECT_DEFAULTS, SETTING_KEYS_BOOL, edit_dir, editing_json, effective, framed_issues,
+from reels_common import (PROJECT_DEFAULTS, RENAMED, SETTING_KEYS_BOOL, to_new_names, edit_dir, editing_json,
+                          effective, framed_issues, renamed,
                           framed_of, is_project, load_config, load_defaults, load_json, online, parse_sets, profiles_of,
                           project_root, save_json, tone_summary, utf8_stdio, warn)
 from reels_common import find_brand
@@ -193,7 +195,7 @@ def cmd_preset(a):
         if not a.source:
             sys.exit("preset save needs --from edit/<id>: the video whose answers the series keeps")
         e = edit_dir(a.source)
-        own = load_json(e / "reel.json", {}) or {}
+        own = renamed(load_json(e / "reel.json", {}) or {})
         settings = {k: v for k, v in own.items() if k not in PER_VIDEO}
         if not settings:
             sys.exit(f"{e / 'reel.json'}: no settings to keep (step 0 saves them with reelcfg.py save)")
@@ -212,11 +214,13 @@ def cmd_preset(a):
     if not a.edit:
         sys.exit("preset use needs the video: reelcfg.py preset use <name> edit/<id>")
     e = edit_dir(a.edit, create=True)
-    settings = {k: v for k, v in (doc.get("settings") or {}).items() if k not in PER_VIDEO}  # a preset edited by hand
+    settings = {k: v for k, v in renamed(doc.get("settings") or {}).items() if k not in PER_VIDEO}  # edited by hand
     over = {**settings, **({"finish": doc["finish"]} if isinstance(doc.get("finish"), dict) else {})}
     with editing_json(e / "reel.json", {}) as reel:
-        changed = [f"{k} {reel[k]} → {v}" for k, v in settings.items() if k in reel and reel[k] != v]
+        was = renamed(reel)
+        changed = [f"{k} {was[k]} → {v}" for k, v in settings.items() if k in was and was[k] != v]
         reel.update(over)
+        to_new_names(reel)
     print(f"{e / 'reel.json'}: preset {a.name}: " + ", ".join(f"{k}={v}" for k, v in settings.items())
           + f"; {finish_line(doc.get('finish'))}")
     if changed:
@@ -255,6 +259,7 @@ def cmd_save(a):
             warn("window and label are options of format framed: without format=framed the kit ignores them")
     with editing_json(e / "reel.json", {}) as reel:
         reel.update(over)
+        to_new_names(reel)
     print(f"{e / 'reel.json'}: " + ", ".join(f"{k}={v}" for k, v in over.items()))
     if "style" in over:  # the brand's allowed styles are its rule (references/brands.md): saved, but said aloud
         _, _, _, _, brand = load_config(e)
@@ -285,13 +290,18 @@ def cmd_defaults(a):
     over = parse_sets(a.set or [])
     bad_workflow(over)
     known = KNOWN | set(addon_keys("SETTING_KEYS_BOOL")) | set(addon_keys("SETTING_KEYS"))
-    for k in list(over) + list(a.unset or []):
+    unset = [RENAMED.get(k, k) for k in (a.unset or [])]
+    for k in list(over) + unset:
         if k not in known:
             warn(f"unknown key {k}, saving it as is")
     with editing_json(f, {}) as doc:
         s = doc.setdefault("settings", {})
         s.update(over)
-        gone = [k for k in (a.unset or []) if s.pop(k, None) is not None]
+        to_new_names(s)
+        gone = []
+        for k in unset:  # an old name goes with its new one
+            if any([s.pop(x, None) is not None for x in [k] + [o for o, n in RENAMED.items() if n == k]]):
+                gone.append(k)
     if over:
         print(f"{f}: " + ", ".join(f"{k}={v}" for k, v in over.items()))
     if gone:

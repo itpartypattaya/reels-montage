@@ -69,6 +69,24 @@ def test_scene_quote_must_be_verbatim(project):
     assert bad.returncode == 1 and "not verbatim" in bad.stdout
 
 
+def test_experimental_scenes_and_modes_are_marked_and_a_slogan_is_full(project):
+    # wave 3: word/chat/ui and split/panel/window are out of the menus; where one is used, the plan says so
+    e = plan_project(project, {"use_scenes": True})
+    run_script("visual_plan.py", "init", "edit/4821", cwd=project)
+    r = run_script("visual_plan.py", "add", "edit/4821", "--kind", "scene", "--type", "quote", "--mode", "split",
+                   "--at", "word:test#1", "--dur", "4.2", "--lines", "Test how they think,", "not what they remember",
+                   "--source", "speech", "--what", "the quote", "--why", "the main idea", cwd=project)
+    assert "experimental" in r.stdout
+    r = run_script("visual_plan.py", "add", "edit/4821", "--kind", "scene", "--type", "slogan", "--at", "word:speed#1",
+                   "--dur", "2.0", "--lines", "speed wins", "--source", "speech", "--what", "the main thought",
+                   "--why", "a punch", cwd=project)
+    slogan = [i for i in load_plan(e)["inserts"] if i.get("type") == "slogan"][0]
+    assert slogan["mode"] == "full" and "experimental" not in r.stdout  # the first mode of its row, not split
+    run_script("visual_plan.py", "md", "edit/4821", cwd=project)
+    md = (e / "visual_plan.md").read_text(encoding="utf-8")
+    assert "split (experimental)" in md and "full (experimental)" not in md and "**Experimental**" in md
+
+
 def test_online_source_is_refused_without_the_add_on(project):
     plan_project(project, {"use_broll": True})
     run_script("visual_plan.py", "init", "edit/4821", cwd=project)

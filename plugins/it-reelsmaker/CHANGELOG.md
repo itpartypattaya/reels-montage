@@ -2,6 +2,18 @@
 
 What changed in IT Reelsmaker, written for the people who use it. The newest version is on top. The skill shows a short “What's new” note from this file once, on the first edit after an update.
 
+## 1.15.0
+
+- **Rare techniques leave the menus.** The message-thread, interface and icon scenes, the split, slide-panel and
+  window layouts, the cut-out figure (text behind the person, a presenter over a scene) and the phone mockup are
+  marked experimental: none is checked in a finished video yet. The skill offers one only where the footage clearly
+  asks for it, and the visual plan says “experimental” next to it; ask for any of them by name and it is done as before.
+  A slogan scene added without `--mode` is now full-screen (it was the split layout).
+- **Video profiles are opt-in.** No profile and no profile checklist unless you ask for one; a paid ad always gets
+  `ad`, since its rules are the platforms' own. The format still guides the length and the graphics in the plan.
+- **`use_code_scenes`** is the new name of `use_generated_footage`: it turns on code scenes drawn in Remotion. The old
+  name keeps working in your files, and `reelcfg.py` writes the new one.
+
 ## 1.14.0
 
 - **Fewer stops before the first video.** A `workflow` setting: `quick` asks nothing up front when the brand is known

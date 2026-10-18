@@ -374,7 +374,7 @@ def extract_project(project):
                                 "ranges": [{"start": 0.2, "end": 1.5}],
                                 "extract": {"pool_view": {"start": 1.6, "end": 2.9}}})
     write_json(e / "reel.json", {"use_broll": True, "use_project_footage": True, "use_local_footage": False,
-                                 "use_generated_footage": False})
+                                 "use_code_scenes": False})
     run_script("cut.py", "edit/5100", cwd=project)
     return e
 

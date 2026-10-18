@@ -4,7 +4,7 @@ The speaker is cut out of their frame (a mask on every frame) and used in two wa
 - **text behind the person** — a big word behind the head but in front of the background, on the hook;
 - **presenter over a scene** — the speaker stands in front of a different picture: a screen recording, a video under review, a website, B-roll, a code scene. As in reviews, breakdowns and streams.
 
-Both techniques are used when the brief calls for them, not by default.
+Both techniques are used when the brief calls for them, not by default. Both are **experimental** (SKILL.md section 10): not in the menus, offered only where the content clearly asks for it.
 
 ## 1. Cutting out the figure
 

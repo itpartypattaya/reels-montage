@@ -2,6 +2,11 @@
 
 What changed in IT Reelsmaker Online. The newest version is on top.
 
+## 1.4.6
+
+- **Reads the core's new setting name.** Code scenes are `use_code_scenes` from core 1.15; the add-on reads it first
+  and the old `use_generated_footage` from an older core, so model prompts follow the same switch either way.
+
 ## 1.4.5
 
 - **Installing the add-on no longer switches on the video model.** Code scenes stay code scenes; model prompts and

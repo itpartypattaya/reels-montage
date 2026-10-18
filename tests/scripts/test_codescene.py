@@ -11,7 +11,7 @@ BRIEF = {"subject": "a funnel of six cards narrowing to one", "action": "cards s
 
 
 def generated_plan(project):
-    plan_project(project, {"use_broll": True, "use_generated_footage": True})
+    plan_project(project, {"use_broll": True, "use_code_scenes": True})
     run_script("visual_plan.py", "init", "edit/4821", cwd=project)
     for at, what in (("s02", "a funnel of cards"), ("s04", "a crowd of candidates")):
         run_script("visual_plan.py", "add", "edit/4821", "--kind", "broll", "--at", at, "--dur", "1.6", "--what", what,
