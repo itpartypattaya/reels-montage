@@ -76,6 +76,17 @@ Ranking is in words, not numbers: `wave` 1 (publish first), 2, 3, and `status: r
 
 **Warnings** (with the words and seconds as evidence; the person decides on the list): starts or ends mid-sentence (only when the transcript has punctuation: plain auto-captions have none, and the check says so); the first words point back; the clip's speech is outside `length`; a piece shorter than 1.5 s; shares more than 3 s with another card; says much the same as another card (half of its longer words); the speaker changes inside a piece; seconds snapped more than 1 s.
 
+## The camera of a framed clip
+
+`longform.py camera edit/<series>-<id>` proposes `camera.json` once `cut.py` and `faces.py scan` have run (it reads `captions.json` and `faces.json`, and refuses a `faces.json` older than `final.mp4`). It is the hand-made camera of a measured 12-clip series turned into rules:
+- **people**: the faces of each piece grouped left to right by their position; **who sits where** is not measured (there is no active-speaker detection), so the first clip asks once: `--side guest=left,host=right` (labels as in the subtitles' speakers, or the card's `speaker`); `--write` keeps it in `longform.json` for every later clip. One person in the frame needs no answer;
+- **when the shot changes**: on a join of the pieces (always, a change of piece too), on a speaker change when the new voice talks 1.5 s or more (a host's short "wow" is heard over the current shot), otherwise on the best pause of 0.1 s or more 1.5–3.5 s into the shot, a sentence end over a comma and a long pause over a short one; a stretch with no such pause is held longer and reported (natural pacing for it, or a shot by hand);
+- **shot sizes**: wide → medium → close → medium (SKILL.md section 9); the close-up centers the speaker's face slightly above the frame's center, the wide shot holds both faces when the window already shows both (it does not pan to a host sitting past its edge), else it leans from the speaker toward the middle of the picture; push-ins within the window's zoom margin (1080 rows: close ×1.13, medium ×1.08; 720 rows and below: ×1.06), a slow push-in on the first and last shots and on the wide ones, never past the margin;
+- **every shot names its piece** (`"source"`) when the clip has several: their seconds overlap, and the export cannot tell them apart otherwise; `"seg"` when a second of one piece plays twice;
+- it **prints** the shots (time, piece second, size, zoom, frame point, who, why); `--write` writes them with a stamp, and a later `--write` replaces only a file nobody touched: a `camera.json` written or edited by hand stays. Then `visual_plan.py export` and `check.py` (`board.py --shots`: a frame per shot) as usual.
+
+Against the hand-made camera of the measured series (12 clips, 15–44 s, the side taken from the hand-made close-ups): the frame points per shot size a median 22 px apart across and 2 px up and down, at most ~100 px (a medium the hand-made camera kept centered); 127 shots against 100, since the hand-made one mostly alternated wide and close on the joins. Without a pause of 0.1 s in reach a shot holds up to 5–7 s (tight pacing; the hand-made camera held such stretches 6–10 s): the output names them.
+
 ## Cost of one recording
 
 Measured on a 36-minute two-person interview:
@@ -89,7 +100,7 @@ With a fresh context per clip and the series preset, the aim is ≤ 15–18 min 
 
 ## Machine limits and pitfalls
 
-- **Never run per-clip tools on the whole recording.** `speech_mask.py` and `structure.py` read the whole WAV, `faces.py` writes every frame as an image before measuring (gigabytes for 90 minutes): that is why each clip gets its pieces as files.
+- **Never run per-clip tools on the whole recording.** `faces.py` writes every frame as an image before measuring (gigabytes for 90 minutes): that is why each clip gets its pieces as files. `speech_mask.py` and `structure.py suggest` read a long WAV whole unless they get `--from`/`--to`: with them they read only that stretch (plus 1 s and 5 s of room), so a look at one moment of the recording's own WAV costs seconds, not minutes.
 - **Renders one at a time**, `--concurrency 1–2` on 8 GB (`kit.py render`). Remotion copies its project's `public/` on every run; `kit.py render`, `board.py`, `textcheck.py` and `patch_render.py` give each run a `public/` of only that clip's files and remove the run's temp folder afterwards; `kit.py clean-temp` lists what other runs left.
 - **Music under the speech** (a podcast intro, a background track): the speech detector and the denoiser mistake it for speech or noise; fewer cuts, `speech_mask.py --density natural`, `master_audio.py --no-denoise`, and the track's rights are one more blocker.
 - **The host over the guest**: a line said over the other voice cannot be cut cleanly; keep it or end the piece earlier.

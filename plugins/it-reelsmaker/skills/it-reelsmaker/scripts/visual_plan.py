@@ -2907,8 +2907,12 @@ def cmd_export(a):
                 sys.exit("format framed: the rough cut's size is unknown (no faces.json in source geometry, final.mp4 "
                          "unreadable): run faces.py scan, or rebuild final.mp4")
             look = ((brand.get("looks") or {}).get(str(props["style"] or "").lower()) or {})
+            # a window over the whole screen is the 9:16 crop of the horizontal source: no rounded corners (the field
+            # would show in the screen's corners)
+            full = [int(v) for v in fr["window"]] == [0, 0, 1080, 1920]
             props["framed"] = {"window": fr["window"], "label": fr["label"], "source": list(src),
-                               "radius": FRAMED_RADIUS, "field": look.get("field") or (brand.get("colors") or {}).get("primary")}
+                               "radius": 0 if full else FRAMED_RADIUS,
+                               "field": look.get("field") or (brand.get("colors") or {}).get("primary")}
             print(f"framed: window {fr['window']}, source {src[0]}x{src[1]}"
                   + (f", label “{fr['label']}”" if fr["label"] else ", no label") + f", field {props['framed']['field']}")
         props["subtitlesTop"] = top

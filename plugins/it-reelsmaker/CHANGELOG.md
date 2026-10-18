@@ -2,6 +2,19 @@
 
 What changed in IT Reelsmaker, written for the people who use it. The newest version is on top. The skill shows a short “What's new” note from this file once, on the first edit after an update.
 
+## 1.17.0
+
+- **The camera of a framed clip is proposed for you.** `longform.py camera edit/<id>` reads the faces and the words of a
+  clip in the framed format and proposes its `camera.json`: the people in the frame told apart left and right, each shot
+  on whoever speaks, a shot change on a pause between phrases or where two pieces meet, wide → medium → close → medium,
+  push-ins only as deep as the window's picture allows (×1.13 for a 1080p recording). Who sits where is asked once per
+  series. It shows the shots first, writes them with `--write`, and never touches a `camera.json` you wrote or edited.
+- **One moment of a long recording without reading all of it.** `speech_mask.py --from/--to` and `structure.py suggest
+  --from/--to` read only that stretch of the audio (a 90-minute file used to take minutes to read whole).
+- **The 9:16 crop of a horizontal video** (`window=[0,0,1080,1920]` in the framed format, no label) no longer shows the
+  field color in the screen's corners: a window over the whole screen gets square corners. Checked on a real 1080p
+  interview clip; the guide now says where this crop falls short (a soft picture, the head where the hook goes).
+
 ## 1.16.0
 
 - **A long recording → a series of clips.** A podcast, webinar or interview of 10–90 minutes: `longform.py` takes the

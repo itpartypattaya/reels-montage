@@ -11,6 +11,7 @@
     python scripts/longform.py mark edit/talk 01 03 05 --as approved        # what the person said yes to
     python scripts/longform.py extract edit/talk 03 [--pad 3]               # edit/talk-03/: a normal video folder
     python scripts/longform.py status edit/talk                             # every card: where it stands, disk
+    python scripts/longform.py camera edit/talk-03 [--side guest=left] [--write]   # camera.json for the framed clip
 
 Why this way (references/longform.md has the whole process):
   - choosing is cheap, finishing is not: on a real 36-minute interview the list of 15 clips took ~5 M cached tokens,
@@ -23,8 +24,13 @@ Why this way (references/longform.md has the whole process):
     first and last words (the transcript resolves the seconds), can join 2-4 pieces of the recording, and an
     excluded stretch (a topic the brand does not touch) is an error, not a warning;
   - each clip becomes an ordinary video folder edit/<series>-<id>/ with the pieces as their own files (a 90-minute
-    file through speech_mask.py or faces.py costs minutes and gigabytes per clip), their WAVs and their transcripts
-    cut out of the whole one, so the clip needs no new Whisper run, and the rest of the plugin works on it unchanged.
+    file through faces.py costs minutes and gigabytes per clip), their WAVs and their transcripts cut out of the whole
+    one, so the clip needs no new Whisper run, and the rest of the plugin works on it unchanged;
+  - camera proposes the framed clip's camera.json from its faces.json and captions.json (after cut.py and faces.py
+    scan): the people in the frame grouped left to right, each shot on its speaker, a change on a pause between phrases
+    or a join of the pieces, the cycle wide -> medium -> close -> medium, push-ins within the window's zoom margin.
+    Who sits where is said once per series (--side guest=left; longform.json keeps it). It prints the shots; --write
+    writes them, never over a camera.json written or edited by hand.
 
 Files: edit/<series>/longform.json (the recording, the preset, the extracted clips), cues.json (imported subtitles),
 transcripts/<stem>.json (transcribe.py), outline/part-NN.md, clips.json (the cards), series.md (the list).
@@ -1051,6 +1057,395 @@ def write_cut(ce, project, card, pieces, recut=False):
     return "new" if cur is None else "rewritten"
 
 
+# --- camera: a camera.json proposal for a framed clip ---------------------------------------------------------------
+# The rules are the ones a 12-clip series was framed by by hand (a 36-minute 1080p two-person interview): three shot
+# sizes, wide 1.0 / medium / close within the window's zoom margin, the frame shifted toward who speaks, a shot change
+# on a pause between phrases or on a join of the pieces, a shot held 1.5-3.5 s (playbook PACE-1), the cycle
+# wide -> medium -> close -> medium of SKILL.md section 9. Who sits where is not measured (no active-speaker detection):
+# one person answers it once per series (--side), the series keeps it.
+
+CAM_MIN, CAM_MAX, CAM_AIM = 1.5, 3.5, 2.6  # s a shot holds; the hold a change is sought near
+CAM_GAP = 0.1         # s: the shortest pause between words a shot may change on (references/camera.md); a join always
+CAM_CEIL = 1.3        # the picture's ceiling: the window's enlargement of the source times the push-in (techniques.md)
+CAM_LOW = 1.06        # the push-in left when the enlargement alone passes the ceiling (720p and below)
+CAM_MEDIUM = 0.6      # a medium shot's push-in: this share of the close-up's
+CAM_LEAN = 0.15       # a wide shot leans this share from the speaker toward the middle (of the pair, or of the picture)
+CAM_TOWARD = 0.35     # a medium shot sits this share of the way from the close-up's frame to the wide one's
+CAM_CHIN = 0.2        # the frame's center this share of the face's height below the face's center (below the eyes)
+CAM_PAIR = 60         # px kept around both faces for a wide two-shot
+CYCLE = ("wide", "medium", "close", "medium")
+SIDE_NAMES = {1: ["center"], 2: ["left", "right"], 3: ["left", "center", "right"]}
+
+
+def median(xs):
+    xs = sorted(xs)
+    n = len(xs)
+    return None if not n else xs[n // 2] if n % 2 else (xs[n // 2 - 1] + xs[n // 2]) / 2
+
+
+def clip_card(ce, project):
+    """The series and card an extracted clip folder comes from -> (series folder, manifest, card); Nones: a clip
+    folder of its own."""
+    for lf in sorted((project / "edit").glob("*/longform.json")):
+        m = load_json(lf, {}) or {}
+        for cid, rec in (m.get("clips") or {}).items():
+            if Path(str(rec.get("folder", ""))).name == ce.name:
+                doc = load_json(lf.parent / "clips.json", {}) or {}
+                card = next((c for c in doc.get("clips") or [] if str(c.get("id")) == str(cid)), None)
+                return lf.parent, m, card
+    return None, None, None
+
+
+def face_groups(samples, spans):
+    """The faces of the samples inside spans [(t0, t1)] -> the people, left to right: [{x, y, w, h, n}] (median center
+    and size, screen coordinates). 1D on x: a gap between face centers wider than 1.5 face widths (at least 80 px)
+    parts two people; a group with under 5 % of the faces is noise (a false face the filter kept, a passer-by)."""
+    pts = sorted(((f[0] + f[2] / 2, f) for s in samples if any(a - 1e-6 <= s["t"] < b for a, b in spans)
+                  for f in s["faces"]), key=lambda p: p[0])
+    if not pts:
+        return []
+    gap = max(80.0, 1.5 * median([f[2] for _, f in pts]))
+    groups, cur = [], [pts[0]]
+    for p in pts[1:]:
+        if p[0] - cur[-1][0] > gap:
+            groups.append(cur)
+            cur = []
+        cur.append(p)
+    groups.append(cur)
+    return [{"x": median([x for x, _ in g]), "y": median([f[1] + f[3] / 2 for _, f in g]),
+             "w": median([f[2] for _, f in g]), "h": median([f[3] for _, f in g]), "n": len(g)}
+            for g in groups if len(g) >= 0.05 * len(pts)]
+
+
+def side_names(n):
+    return SIDE_NAMES.get(n) or [str(k + 1) for k in range(n)]
+
+
+def parse_sides(text):
+    """--side "guest=left,host=right" -> {"guest": "left", "host": "right"}."""
+    out = {}
+    for item in str(text or "").split(","):
+        if item.strip():
+            who, _, where = item.rpartition("=")
+            if not who.strip() or not where.strip():
+                sys.exit(f"--side {text!r}: speaker=side pairs, e.g. guest=left,host=right")
+            out[who.strip()] = where.strip().lower()
+    return out
+
+
+def group_of(who, groups, sides):
+    """The index of the speaker's group, or None when it cannot be told (two people and no side for this speaker)."""
+    if len(groups) == 1:
+        return 0
+    where = next((v for k, v in sides.items() if k.lower() == str(who).lower()), None)
+    names = side_names(len(groups))
+    if where in names:
+        return names.index(where)
+    if where and where.isdigit() and 1 <= int(where) <= len(groups):
+        return int(where) - 1
+    if where in ("left", "right") and len(groups) > 1:  # a side given for a two-shot, three groups on screen
+        return 0 if where == "left" else len(groups) - 1
+    return None
+
+
+def zoom_ceiling(view, src_h):
+    """(the close-up's push-in, the window's enlargement of the source): the push-in counts on top of the enlargement
+    toward the CAM_CEIL ceiling (1080 rows: 1240 / 1080 = x1.15, leaving x1.13; 720 rows and below: x1.06)."""
+    base = view[1][3] / float(src_h)
+    return max(CAM_LOW, min(CAM_CEIL, math.floor(CAM_CEIL / base * 100 + 1e-6) / 100)), base
+
+
+def seg_at(segs, t):
+    """The rough cut's segment playing at second t of the video (a join belongs to the segment it starts)."""
+    hit = [g for g in segs if g["out_start"] - 1e-6 <= t < g["out_start"] + g["out_dur"] - 1e-6]
+    return hit[-1] if hit else segs[-1]
+
+
+def to_src(g, t):
+    span = g["src_end"] - g["src_start"]
+    return g["src_start"] + (t - g["out_start"]) * (span / g["out_dur"] if g["out_dur"] else 1.0)
+
+
+def cut_points(words, segs, who_of):
+    """Where a shot may change -> [{t, kind, score, change, seg, gap, after}]: every join of two segments, and every
+    pause of CAM_GAP or more between two words of one segment; a speaker change is marked, a pause after the end of
+    a sentence scores higher than one after a comma, a longer pause higher than a short one."""
+    out = []
+    for p, g in zip(segs, segs[1:]):
+        t = g["out_start"]
+        before = [w for w in words if w["end"] <= t + 1e-6]
+        after = [w for w in words if w["start"] >= t - 1e-6]
+        a, b = (before[-1] if before else None), (after[0] if after else None)
+        out.append({"t": t, "kind": "join", "score": 3.0, "seg": g, "gap": None, "after": a["text"] if a else "",
+                    "change": bool(a and b and who_of(a) != who_of(b)),
+                    "source": str(p.get("source")) != str(g.get("source"))})
+    for a, b in zip(words, words[1:]):
+        if a.get("seg") != b.get("seg"):
+            continue
+        gap = b["start"] - a["end"]
+        if gap < CAM_GAP - 1e-6:
+            continue
+        txt = str(a["text"]).strip()
+        punct = 1.5 if SENTENCE_END.search(txt) else 0.5 if re.search(r"[,;:—–-]['\")»”]*$", txt) else 0.0
+        t = round((a["end"] + b["start"]) / 2, 3)
+        out.append({"t": t, "kind": "pause", "score": min(gap, 0.8) * 2 + punct, "seg": seg_at(segs, t), "gap": gap,
+                    "after": txt, "change": who_of(a) != who_of(b), "source": False})
+    return sorted(out, key=lambda c: c["t"])
+
+
+def turn_len(words, who_of, t):
+    """How long the speaker who starts at t speaks before the next change (s)."""
+    nxt = [w for w in words if w["start"] >= t - 1e-6]
+    if not nxt:
+        return 0.0
+    who, end = who_of(nxt[0]), nxt[0]["end"]
+    for w in nxt:
+        if who_of(w) != who:
+            break
+        end = w["end"]
+    return end - t
+
+
+def plan_cuts(cands, words, who_of, end):
+    """The shot changes: a change of piece always; a speaker change when the new speaker talks CAM_MIN or more (a
+    short "wow" from the host is heard over the current shot); otherwise the best pause CAM_MIN-CAM_MAX into the shot
+    (the score, then the closest to CAM_AIM), never leaving a last shot under CAM_MIN. No pause in reach: the first one
+    after it, and the long hold is reported."""
+    forced = [c for c in cands if c["source"] or (c["change"] and turn_len(words, who_of, c["t"]) >= CAM_MIN)]
+    cuts, t0 = [], 0.0
+    while True:
+        f = next((c for c in forced if c["t"] > t0 + 1e-6), None)
+        hi = t0 + CAM_MAX
+        if f and f["t"] <= hi + 1e-6:
+            cuts.append(f)
+            t0 = f["t"]
+            continue
+        pool = [c for c in cands if t0 + CAM_MIN <= c["t"] <= hi and end - c["t"] >= CAM_MIN]
+        if not pool:
+            pool = [c for c in cands if c["t"] > hi and end - c["t"] >= CAM_MIN and (not f or c["t"] < f["t"] - CAM_MIN)][:1]
+        if pool:
+            best = max(pool, key=lambda c: (c["score"] - 0.5 * abs(c["t"] - t0 - CAM_AIM), -c["t"]))
+            cuts.append(best)
+            t0 = best["t"]
+            continue
+        if f:
+            cuts.append(f)
+            t0 = f["t"]
+            continue
+        return cuts
+
+
+def shot_face(samples, t0, t1, groups, k):
+    """The speaker's face over [t0, t1): the median of the boxes nearest to its group in the shot's own samples, else
+    the group's median over the piece -> (center x, center y, w, h)."""
+    g = groups[k]
+    mine = []
+    for s in samples:
+        if t0 - 1e-6 <= s["t"] < t1:
+            for f in s["faces"]:
+                cx = f[0] + f[2] / 2
+                if min(range(len(groups)), key=lambda j: abs(groups[j]["x"] - cx)) == k:
+                    mine.append(f)
+    if not mine:
+        return g["x"], g["y"], g["w"], g["h"]
+    return (median([f[0] + f[2] / 2 for f in mine]), median([f[1] + f[3] / 2 for f in mine]),
+            median([f[2] for f in mine]), median([f[3] for f in mine]))
+
+
+def frame_shot(size, face, others, view, zc, zm):
+    """One shot's (z, cx, cy): the close-up centers the speaker's face (its center a little below the frame's), the
+    wide shot holds both faces when the window shows both at its plain framing and they fit with CAM_PAIR around them
+    (leaning CAM_LEAN toward the speaker), else leans from the speaker toward the middle of the picture; the medium sits
+    between them. The camera is
+    clamped to the video inside the window, as the kit draws it (reels_common.cam_fit)."""
+    from reels_common import cam_fit
+    (wx, wy, ww, wh), (vx, vy, vw, vh) = view
+    fx, fy, fw, fh = face
+    ty = fy + CAM_CHIN * fh
+    # only a face the window already shows at its plain framing joins the two-shot: the camera does not pan to a host
+    # sitting past the window's edge (the hand-made series kept such a host out of frame)
+    others = [o for o in others if wx <= o["x"] - o["w"] / 2 and o["x"] + o["w"] / 2 <= wx + ww]
+    boxes = [(fx - fw / 2, fx + fw / 2)] + [(o["x"] - o["w"] / 2, o["x"] + o["w"] / 2) for o in others]
+    x0, x1 = min(b[0] for b in boxes) - CAM_PAIR, max(b[1] for b in boxes) + CAM_PAIR
+    if others and x1 - x0 <= ww:
+        mid = (x0 + x1) / 2
+        wide = mid + (fx - mid) * CAM_LEAN
+    else:
+        wide = fx + (vx + vw / 2 - fx) * CAM_LEAN
+    z, tx = {"close": (zc, fx), "medium": (zm, fx + (wide - fx) * CAM_TOWARD), "wide": (1.0, wide)}[size]
+    z, cx, cy = cam_fit(z, tx, ty, view)
+    return round(z, 2), int(round(cx)), int(round(cy))
+
+
+def camera_plan(ce, data, cap, sides, default_who, zmax=None):
+    """The proposal -> (shots for camera.json, rows for the person, notes, unresolved {speaker: (source, groups)})."""
+    import faces as fc
+    segs = sorted(cap.get("segments") or [], key=lambda g: g["out_start"])
+    if not segs:
+        sys.exit(f"{ce}/captions.json has no segments: cut.py {ce.name} first")
+    end = float(cap.get("duration") or segs[-1]["out_start"] + segs[-1]["out_dur"])
+    words = [w for w in cap.get("words") or [] if str(w.get("text", "")).strip()]
+    who_of = lambda w: w.get("speaker") or default_who  # noqa: E731
+    view = fc.view(data)
+    src_h = (data.get("source") or {}).get("h")
+    zc, base = zoom_ceiling(view, src_h)
+    over = bool(zmax and zmax > zc + 1e-6)
+    zc = float(zmax) if zmax else zc
+    zm = round(1 + (zc - 1) * CAM_MEDIUM, 2)
+    keys = sorted({str(g.get("source")) for g in segs})
+    many = len(keys) > 1
+    groups = {}
+    for k in keys:
+        spans = [(g["out_start"], g["out_start"] + g["out_dur"]) for g in segs if str(g.get("source")) == k]
+        groups[k] = face_groups(data["samples"], spans)
+    cuts = plan_cuts(cut_points(words, segs, who_of), words, who_of, end)
+    starts = [(0.0, {"kind": "start", "seg": segs[0], "gap": None, "after": "", "change": False, "source": False})]
+    starts += [(c["t"], c) for c in cuts]
+    shots, rows, notes, unknown = [], [], [], {}
+    for n, (t0, c) in enumerate(starts):
+        t1 = starts[n + 1][0] if n + 1 < len(starts) else end
+        g = c["seg"] if c["kind"] in ("start", "join") else seg_at(segs, t0)
+        key = str(g.get("source"))
+        talk = {}
+        for w in words:
+            d = min(w["end"], t1) - max(w["start"], t0)
+            if d > 0:
+                talk[who_of(w)] = talk.get(who_of(w), 0.0) + d
+        who = max(talk, key=talk.get) if talk else (rows[-1]["who"] if rows else default_who)
+        size = CYCLE[n % len(CYCLE)]
+        gr = groups.get(key) or []
+        k = group_of(who, gr, sides) if gr else None
+        if gr and k is None:
+            unknown.setdefault(who, (key, gr))
+            k = 0
+        if gr:
+            face = shot_face(data["samples"], t0, t1, gr, k)
+            others = [o for j, o in enumerate(gr) if j != k]
+            z, cx, cy = frame_shot(size, face, others, view, zc, zm)
+            (wx, _, ww, _) = view[0]
+            sx = (face[0] - cx) * z + wx + ww / 2
+            if not (wx + face[2] * z / 2 <= sx <= wx + ww - face[2] * z / 2):
+                notes.append(f"shot {n + 1}: the speaker's face is cut by the window's side (x {sx:.0f} on screen)")
+        else:
+            z, cx, cy = 1.0, int(view[0][0] + view[0][2] / 2), int(view[0][1] + view[0][3] / 2)
+            notes.append(f"shot {n + 1}: no face measured in piece {key}: the frame as is")
+        src = g["src_start"] if c["kind"] in ("start", "join") else to_src(g, t0)
+        shot = {"src": round(src, 3)}
+        if many:
+            shot["source"] = key
+        same = [x for x in segs if str(x.get("source")) == key and x["src_start"] - 0.001 <= src <= x["src_end"] + 0.001]
+        if len(same) > 1:
+            shot["seg"] = g["i"]
+        drift = 0.03 if n == 0 else 0.04 if n == len(starts) - 1 else 0.02 if size == "wide" else 0.0
+        drift = max(0.0, min(drift, round(zc / z - 1, 2)))
+        shot.update({"z": z, "cx": cx, "cy": cy})
+        if drift:
+            shot["drift"] = drift
+        shot.update({"size": size, "who": who})
+        shots.append(shot)
+        why = {"start": "the start" + (", a slow push-in" if drift else ""),
+               "join": "a join of the pieces" if c.get("source") else "a join (a cut in the rough cut)",
+               "pause": f"a pause of {c['gap']:.2f} s after “{c['after'][-24:]}”" if c.get("gap") else ""}[c["kind"]]
+        if c.get("change"):
+            why += f"; {who} speaks"
+        rows.append({"n": n + 1, "t": t0, "key": key, "src": shot["src"], "size": size, "z": z, "cx": cx, "cy": cy,
+                     "drift": drift, "who": who, "why": why, "hold": t1 - t0})
+        if t1 - t0 > CAM_MAX + 0.4:
+            notes.append(f"shot {n + 1} holds {t1 - t0:.1f} s: no pause of {CAM_GAP:g} s between words in reach (tight "
+                         f"pacing): natural pacing for this stretch (speech_mask.py --density natural), or a shot by hand")
+    if over:
+        notes.append(f"--zmax {zc:g} is past the window's zoom margin (x{zoom_ceiling(view, src_h)[0]:.2f}): the "
+                     f"close-ups will look soft")
+    info = {"zc": zc, "zm": zm, "base": base, "groups": groups, "end": end, "src_h": src_h, "many": many}
+    return shots, rows, notes, unknown, info
+
+
+def shots_rev(shots):
+    return fingerprint([{k: v for k, v in s.items()} for s in shots or []])
+
+
+def cmd_camera(a):
+    import faces as fc
+    from reels_common import framed_at
+    project = project_root()
+    ce = edit_dir(a.edit)
+    fr = framed_at(ce)
+    if not fr:
+        sys.exit(f"{ce.name}: the camera proposal is for the framed format (reel.json -> format: framed); a vertical "
+                 f"source keeps its shots by hand (references/camera.md)")
+    cap = load_json(ce / "captions.json")
+    if not cap:
+        sys.exit(f"{ce}/captions.json is not there: cut.py {ce.name} first")
+    data = fc.load(ce)
+    if not data or not data.get("samples"):
+        sys.exit(f"{ce}/faces.json is not there: faces.py scan {ce.name} first (on final.mp4)")
+    if not data.get("source"):
+        sys.exit(f"{ce}/faces.json was measured as a vertical cover: faces.py scan {ce.name} again (a framed clip is "
+                 f"measured in its source geometry)")
+    final = ce / "final.mp4"
+    if final.is_file() and (ce / "faces.json").stat().st_mtime < final.stat().st_mtime - 1:
+        sys.exit(f"{ce}/faces.json is older than final.mp4: faces.py scan {ce.name} again")
+    se, m, card = clip_card(ce, project)
+    sides = dict((m or {}).get("sides") or {})
+    given = parse_sides(a.side)
+    sides.update(given)
+    default_who = str((card or {}).get("speaker") or "speaker")
+    shots, rows, notes, unknown, info = camera_plan(ce, data, cap, sides, default_who, a.zmax)
+    (wx, wy, ww, wh) = fc.view(data)[0]
+    print(f"camera for {rel(ce, project)}: framed, window {[wx, wy, ww, wh]}; the source has {info['src_h']} rows, "
+          f"the window enlarges it x{info['base']:.2f}, so push-ins up to x{info['zc']:.2f} (close) and "
+          f"x{info['zm']:.2f} (medium)")
+    for key, gr in info["groups"].items():
+        names = side_names(len(gr))
+        print(f"  people in piece {key}: " + (", ".join(f"{names[j]} (x {g['x']:.0f}, {g['n']} faces)"
+                                                       for j, g in enumerate(gr)) or "no face measured"))
+    if sides:
+        print("  sides: " + ", ".join(f"{k} = {v}" for k, v in sides.items())
+              + (" (--side)" if given else " (the series, longform.json)"))
+    if unknown:
+        print("\nwho sits where is not known for: " + ", ".join(unknown) + ". Look at a frame and say it once for the "
+              "series, e.g. --side " + ",".join(f"{w}=left" for w in unknown))
+        for who, (key, gr) in unknown.items():
+            t = next((r["t"] for r in rows if r["who"] == who), 0.0)
+            print(f"  a frame of {who} speaking: ffmpeg -ss {t + 0.5:.2f} -i {rel(final, project)} -frames:v 1 "
+                  f"{rel(ce / 'verify' / 'side.jpg', project)}")
+        print("nothing written")
+        return 1
+    print(f"\n  {'#':>2}  {'at s':>6}  {'source s':<12} {'size':<7} {'z':>4} {'cx':>5} {'cy':>5}  {'who':<10} why")
+    for r in rows:
+        src = (f"{r['key']} " if info["many"] else "") + f"{r['src']:.3f}"
+        print(f"  {r['n']:>2}  {r['t']:6.2f}  {src:<12} {r['size']:<7} {r['z']:4.2f} {r['cx']:5d} {r['cy']:5d}  "
+              f"{str(r['who'])[:10]:<10} {r['why']}" + (f" (drift {r['drift']:g})" if r["drift"] and r["n"] > 1 else ""))
+    count = {s: sum(1 for r in rows if r["size"] == s) for s in ("wide", "medium", "close")}
+    longest = max(rows, key=lambda r: r["hold"])
+    print(f"\n{len(rows)} shots over {info['end']:.1f} s (one every {info['end'] / len(rows):.1f} s); "
+          + ", ".join(f"{k} {v}" for k, v in count.items() if v) + f"; the longest holds {longest['hold']:.1f} s "
+          f"(shot {longest['n']})")
+    for x in notes:
+        print("  note: " + x)
+    f = ce / "camera.json"
+    cur = load_json(f, None) if f.is_file() else None
+    hand = cur is not None and ((cur.get("proposed") or {}).get("rev") != shots_rev(cur.get("shots")))
+    if not a.write:
+        print(f"\nnot written: {'camera.json is yours (written or edited by hand), it stays' if hand else 'run again with --write'}"
+              + ("" if hand or cur is None else " (it replaces the earlier proposal, not edited since)"))
+        return 0
+    if hand:
+        print(f"\n{rel(f, project)} was written or edited by hand: not replaced. To take this proposal, move it away "
+              f"first (or copy the shots you want into it)")
+        return 1
+    save_json(f, {"shots": shots, "proposed": {"by": "longform.py camera", "rev": shots_rev(shots),
+                                               "at": time.strftime("%Y-%m-%d %H:%M:%S")}})
+    if given and se is not None:
+        with editing_json(se / "longform.json", {}) as mm:
+            mm.setdefault("sides", {}).update(given)
+    print(f"\n{rel(f, project)}: {len(shots)} shots" + (f"; the sides kept for the series in {rel(se / 'longform.json', project)}"
+                                                       if given and se is not None else "")
+          + f". Next: visual_plan.py export {ce.name} (camera.json -> the kit's props), then check.py {ce.name} "
+          f"(the board: board.py --shots gives a frame per shot); edit any shot by hand, a later run keeps your file")
+    return 0
+
+
 # --- status -------------------------------------------------------------------------------------------------------
 
 def newer(a, b):
@@ -1175,9 +1570,14 @@ def main():
     p.add_argument("--language", help="the speech language for Whisper on the pieces")
     p.add_argument("--force", action="store_true", help="extract a card that is not approved or not checked")
     p = sub.add_parser("status"); p.add_argument("edit")
+    p = sub.add_parser("camera", help="a camera.json proposal for a framed clip: edit/<series>-<id>")
+    p.add_argument("edit")
+    p.add_argument("--side", help="who sits where, once per series: guest=left,host=right (kept in longform.json)")
+    p.add_argument("--zmax", type=float, help="the close-up's push-in (default: the window's zoom margin)")
+    p.add_argument("--write", action="store_true", help="write edit/<id>/camera.json (never over one edited by hand)")
     a = ap.parse_args()
     fn = {"init": cmd_init, "import": cmd_import, "outline": cmd_outline, "check": cmd_check, "sheet": cmd_sheet,
-          "mark": cmd_mark, "extract": cmd_extract, "status": cmd_status}[a.cmd]
+          "mark": cmd_mark, "extract": cmd_extract, "status": cmd_status, "camera": cmd_camera}[a.cmd]
     sys.exit(fn(a) or 0)
 
 
