@@ -1,6 +1,6 @@
 {
  "schema": 1,
- "_comment": "Default video settings. Layers, each overriding the previous: this file (+ the online add-on's defaults) <- brand tone preset (brand_tones, from brand.json -> tone: intensity, meme size, scene tone and the ceilings; a tone never turns inserts on) <- the project's reel-defaults.json <- the file named in REELS_DEFAULTS_OVERLAY <- brand profile (brands/<slug>/brand.json -> inserts) <- edit/<id>/reel.json <- words from the prompt (--set). Inserts are off unless chosen (use_broll, use_memes, use_scenes true in reel.json, the project's defaults or the brand profile): a plain edit by default. Online sources and generation are added by the it-reelsmaker-online add-on, not here.",
+ "_comment": "Default video settings. Layers and which one wins: references/brands.md, \"Layers\" (reelcfg.py show prints the source of each value). Inserts are off unless chosen (use_broll, use_memes, use_scenes true in reel.json, the project's defaults or the brand profile): a plain edit by default. Online sources and generation are added by the it-reelsmaker-online add-on, not here. workflow: quick / standard / full, the questions and stops before the master (SKILL.md, section 6).",
  "settings": {
   "brand": null,
   "style": null,
@@ -12,7 +12,7 @@
   "use_broll": false,
   "use_project_footage": true,
   "use_local_footage": true,
-  "use_generated_footage": true,
+  "use_code_scenes": true,
   "use_memes": false,
   "use_local_memes": true,
   "broll_priority": [
@@ -36,7 +36,8 @@
   "library_dirs": [],
   "meme_size": "m",
   "scene_tone": null,
-  "use_scenes": false
+  "use_scenes": false,
+  "workflow": "standard"
  },
  "intensity": {
   "minimal": {

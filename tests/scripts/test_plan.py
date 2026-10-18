@@ -69,6 +69,24 @@ def test_scene_quote_must_be_verbatim(project):
     assert bad.returncode == 1 and "not verbatim" in bad.stdout
 
 
+def test_experimental_scenes_and_modes_are_marked_and_a_slogan_is_full(project):
+    # wave 3: word/chat/ui and split/panel/window are out of the menus; where one is used, the plan says so
+    e = plan_project(project, {"use_scenes": True})
+    run_script("visual_plan.py", "init", "edit/4821", cwd=project)
+    r = run_script("visual_plan.py", "add", "edit/4821", "--kind", "scene", "--type", "quote", "--mode", "split",
+                   "--at", "word:test#1", "--dur", "4.2", "--lines", "Test how they think,", "not what they remember",
+                   "--source", "speech", "--what", "the quote", "--why", "the main idea", cwd=project)
+    assert "experimental" in r.stdout
+    r = run_script("visual_plan.py", "add", "edit/4821", "--kind", "scene", "--type", "slogan", "--at", "word:speed#1",
+                   "--dur", "2.0", "--lines", "speed wins", "--source", "speech", "--what", "the main thought",
+                   "--why", "a punch", cwd=project)
+    slogan = [i for i in load_plan(e)["inserts"] if i.get("type") == "slogan"][0]
+    assert slogan["mode"] == "full" and "experimental" not in r.stdout  # the first mode of its row, not split
+    run_script("visual_plan.py", "md", "edit/4821", cwd=project)
+    md = (e / "visual_plan.md").read_text(encoding="utf-8")
+    assert "split (experimental)" in md and "full (experimental)" not in md and "**Experimental**" in md
+
+
 def test_online_source_is_refused_without_the_add_on(project):
     plan_project(project, {"use_broll": True})
     run_script("visual_plan.py", "init", "edit/4821", cwd=project)
@@ -936,3 +954,99 @@ def test_tone_summary_says_memes_are_on_request():
     import reels_common as rc
     line = rc.tone_summary({"preset": "old", "memes": {"allowed": True, "default": True, "max": 2, "size_max": "m"}})
     assert "only on request" in line and "on by default" not in line
+
+
+def test_workflow_values_and_a_series_preset(project):
+    # wave 2: workflow quick/standard/full; a series preset carries the settings and the finish to the next video
+    e = plan_project(project, {"use_broll": False, "use_scenes": False, "use_memes": False, "style": "brand"})
+    r = run_script("reelcfg.py", "save", "edit/4821", "--set", "workflow=fast", cwd=project, check=False)
+    assert r.returncode != 0 and "unknown workflow" in (r.stdout + r.stderr)
+    run_script("reelcfg.py", "save", "edit/4821", "--set", "workflow=quick", "subtitles_shade=0.4", cwd=project)
+    assert "workflow: quick" in run_script("reelcfg.py", "show", "edit/4821", cwd=project).stdout
+    rem = _export_project(project, e)
+    run_script("visual_plan.py", "export", "edit/4821", "--remotion", rem, "--card", "Message us", "a free shortlist",
+               "--corner", cwd=project)
+    run_script("reelcfg.py", "preset", "save", "weekly", "--from", "edit/4821", cwd=project)
+    doc = json.loads((project / "presets" / "weekly.json").read_text(encoding="utf-8"))
+    assert doc["settings"]["workflow"] == "quick" and "subtitles_shade" not in doc["settings"]
+    assert doc["finish"] == {"corner": True, "end": {"kind": "card", "lines": ["Message us", "a free shortlist"]}}
+    assert "weekly" in run_script("reelcfg.py", "preset", "list", cwd=project).stdout
+    e2 = project / "edit" / "4822"
+    e2.mkdir()
+    write_json(e2 / "captions.json", captions())
+    run_script("reelcfg.py", "preset", "use", "weekly", "edit/4822", cwd=project)
+    reel = json.loads((e2 / "reel.json").read_text(encoding="utf-8"))
+    assert reel["style"] == "brand" and reel["finish"]["corner"] is True
+    (e2 / "final.mp4").write_bytes(b"a rough cut")
+    r = run_script("visual_plan.py", "export", "edit/4822", "--remotion", rem, "--props", rem / "p2.json", cwd=project)
+    assert "kept from the series preset" in r.stdout
+    props = json.loads((rem / "p2.json").read_text(encoding="utf-8"))
+    assert props["corner"] is True and props["endCard"]["line1"] == "Message us" and props["hook"] is None
+
+
+def test_check_runs_every_step_and_fails_when_one_fails(project):
+    # wave 2: one command for the checks around the render; a failing step does not hide the next ones
+    plan_project(project, {"use_broll": False, "use_scenes": False, "use_memes": False})
+    r = run_script("check.py", "edit/4821", cwd=project, check=False)
+    out = r.stdout + r.stderr
+    assert r.returncode == 1
+    assert "=== plan check" in out and "=== storyboard sheet" in out and "=== text check" in out
+    assert "ok   plan check" in out and "FAIL storyboard sheet" in out  # no props, no Remotion project here
+
+
+@needs_ffmpeg
+def test_check_after_the_render_makes_the_contact_sheet(project):
+    e = plan_project(project, {"use_broll": False, "use_scenes": False, "use_memes": False})
+    make_video(project / "render.mp4", 360, 640, 3.0)
+    r = run_script("check.py", "edit/4821", "--render", "render.mp4", cwd=project, check=False)
+    out = r.stdout + r.stderr
+    assert "=== faces audit" in out and (e / "verify" / "sheet.png").is_file()
+    assert "ok   contact sheet" in out
+    if "face audit skipped" in out:  # no face model here: shown as not checked, not as passed
+        assert "skip faces audit" in out and "not checked: faces audit" in out
+    r = run_script("check.py", "edit/4821", "--render", "render.mp4", "--comp", "Reel4821", cwd=project, check=False)
+    assert r.returncode != 0 and "belong to the checks before the render" in (r.stdout + r.stderr)
+
+
+def test_a_series_preset_keeps_only_the_series_answers(project):
+    # review 2026-10-18 (Fable): a one-off tone_override became the series' rule; a preset over a video's own choices
+    # changed them silently; a plan exported before 1.13 gave no ending to the preset
+    e = plan_project(project, {"use_broll": False, "use_scenes": False, "use_memes": False, "tone_override": True,
+                               "subtitles_shade": 0.4})
+    run_script("visual_plan.py", "validate", "edit/4821", cwd=project)
+    plan = load_plan(e)
+    plan.update({"corner": True, "end_card": {"kind": "card", "seconds": 2.6}})
+    write_json(e / "visual_plan.json", plan)
+    r = run_script("reelcfg.py", "preset", "save", "legacy", "--from", "edit/4821", cwd=project)
+    assert "not carried: tone_override" in r.stdout and "lines were not stored" in r.stdout
+    doc = json.loads((project / "presets" / "legacy.json").read_text(encoding="utf-8"))
+    assert "tone_override" not in doc["settings"] and "subtitles_shade" not in doc["settings"]
+    assert doc["finish"] == {"corner": True, "end": None}
+    e2 = project / "edit" / "4822"
+    write_json(e2 / "reel.json", {"brand": "acme", "use_broll": True})
+    r = run_script("reelcfg.py", "preset", "use", "legacy", "edit/4822", cwd=project)
+    assert "changed this video's own choices: use_broll True → False" in r.stdout
+    r = run_script("reelcfg.py", "save", "edit/4822", "--set", "finish=card", cwd=project, check=False)
+    assert r.returncode != 0 and "series preset's ending" in (r.stdout + r.stderr)
+
+
+def test_a_preset_does_not_hide_an_old_plans_texts(project):
+    # review 2026-10-18 (Codex P1): a preset applied to a plan exported before 1.13 dropped its hook and card silently
+    e = plan_project(project, {"use_broll": False, "use_scenes": False, "use_memes": False,
+                               "finish": {"corner": False, "end": {"kind": "sting"}}})
+    run_script("visual_plan.py", "validate", "edit/4821", cwd=project)
+    plan = load_plan(e)
+    plan.update({"hook": True, "end_card": {"kind": "card", "seconds": 2.6}})
+    write_json(e / "visual_plan.json", plan)
+    rem = _export_project(project, e)
+    r = run_script("visual_plan.py", "export", "edit/4821", "--remotion", rem, "--props", rem / "p.json", cwd=project,
+                   check=False)
+    assert r.returncode != 0 and "pass --card again" in (r.stdout + r.stderr)
+
+
+def test_doctor_forgets_a_pass_after_a_failure(project):
+    import doctor
+    write_json(project / "it-reelsmaker.json", {"doctor_ok": {"version": "1.0.0"}, "remotion_dir": "reels"})
+    doctor.remember(project, ok=False)
+    cfg = json.loads((project / "it-reelsmaker.json").read_text(encoding="utf-8"))
+    assert "doctor_ok" not in cfg and cfg["remotion_dir"] == "reels"

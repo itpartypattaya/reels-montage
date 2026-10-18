@@ -39,6 +39,9 @@ look        color in two steps. "correct": an ffmpeg filter chain that fixes thi
             brand.json -> lut.hald) or a HALD image file; "lut_mix" its strength 0..1 (start at 0.5-0.7 and compare
             face stills before and after); "grade": a filter chain applied AFTER the LUT (contrast, sharpness).
             Without "look" the color stays as shot.
+balance     written by balance.py --write: the look, sources, scale and ranges the white balance was measured on; cut.py
+            runs balance.py itself before the build when they changed (a --ref measurement is only flagged; false:
+            never; --no-balance: not this time).
 scale       "auto": a vertical source that is not 1080x1920 is scaled (and cropped if its aspect is not 9:16) to
             1080x1920 with lanczos; a horizontal source keeps its size (the framed format places it in Remotion);
             "none": never scale.
@@ -629,6 +632,42 @@ def extract(c, e):
         print(f"extract: {out.name} ({t - s:.2f} s from {src})")
 
 
+def auto_balance(e):
+    """The white balance is measured before the build (balance.py --write), so one cut.py run gives the graded rough cut
+    (review 2026-10-17: cut.py, balance.py --write, cut.py built it twice). balance.py records in cut.json -> balance
+    which look (LUT, its strength, grade, the rest of the correction) it measured, whatever the outcome; cut.py
+    measures again only when that look changed (a LUT added after the first draft), so a neutral or refused result is
+    not measured on every build (review 2026-10-18). A --ref measurement is never redone by itself: a changed look only
+    says so. A balance gain with no record (by hand, or before 1.14) is kept. "balance": false turns it off."""
+    import subprocess
+    from balance import frames_key, is_gain_mixer, look_key, split_filters
+    raw = load_json(e / "cut.json", {}) or {}
+    mark = raw.get("balance")
+    look = raw.get("look") if isinstance(raw.get("look"), dict) else {}
+    if mark is False:
+        return
+    if isinstance(mark, dict):
+        srcs, rngs = frames_key(raw)
+        same = mark.get("look") == look_key(look) and mark.get("sources") == srcs
+        if mark.get("mode") == "ref":  # a reference object at a source second: the kept ranges do not matter
+            if not same:
+                warn("the look, the sources or the scale changed since the --ref white balance: measure it again, "
+                     "balance.py edit/<id> --ref ... --write")
+            return
+        if same and mark.get("ranges") == rngs:  # review 2026-10-18: a new source or other ranges are other frames
+            return
+    elif any(is_gain_mixer(f) for f in split_filters(look.get("correct") or "")):
+        return
+    r = subprocess.run([sys.executable, str(Path(__file__).with_name("balance.py")), str(e), "--write"],
+                       stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding="utf-8", errors="replace")
+    lines = [x for x in r.stdout.splitlines() if x.strip()]
+    print("white balance (balance.py, before the build; \"balance\": false in cut.json turns it off):")
+    for x in lines[-8:]:
+        print("  " + x)
+    if r.returncode:
+        warn("balance.py failed: the rough cut is built without a balance fix; run balance.py by hand to see why")
+
+
 def main():
     utf8_stdio()
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -636,9 +675,13 @@ def main():
     ap.add_argument("--speed", type=float, help="speed-up for every source (overrides cut.json)")
     ap.add_argument("--dry-run", action="store_true", help="only print the segments, lengths and words; encode nothing")
     ap.add_argument("--no-level", action="store_true", help="no speech leveling (same as cut.json \"level\": false)")
+    ap.add_argument("--no-balance", action="store_true",
+                    help="no automatic white balance before the build (same as cut.json \"balance\": false)")
     a = ap.parse_args()
     project = project_root()
     e = edit_dir(a.edit, project)
+    if not a.dry_run and not a.no_balance:
+        auto_balance(e)
     c = load_cut(e, project, a.speed)
     words = load_words(c)
     segments, captions, total = timeline(c, words)

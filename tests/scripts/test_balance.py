@@ -268,3 +268,74 @@ def test_one_step_on_neutral_grays_is_no_fix(monkeypatch):
     assert any(g != (1.0, 1.0, 1.0) and balance.score(g, m, 129.0, (balance.SIZE, balance.FIXED, balance.SIZE), 0.19)
                < balance.score((1.0, 1.0, 1.0), seen[(1.0, 1.0, 1.0)], 129.0,
                                (balance.SIZE, balance.FIXED, balance.SIZE), 0.19) for g, m in seen.items())  # the pull
+
+
+def with_sound(project):
+    from conftest import ffmpeg as ff
+    ff("-i", project / "IMG_5000.MOV", "-f", "lavfi", "-i", "sine=f=220:d=2", "-shortest", "-c:v", "copy", "-c:a", "aac",
+       project / "IMG_5000b.MOV")
+    (project / "IMG_5000b.MOV").replace(project / "IMG_5000.MOV")
+
+
+@needs_ffmpeg
+def test_cut_measures_the_balance_before_its_first_build(project):
+    # wave 2: cut.py, balance.py --write, cut.py built the rough cut twice; cut.py now measures first, and again only
+    # when the look it was measured for changes (review 2026-10-18: a LUT added after the first draft)
+    e = setup(project, tint="colorchannelmixer=rr=1.07:bb=0.93")
+    with_sound(project)
+    r = run_script("cut.py", "edit/5000", "--no-level", cwd=project, check=False)
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert "white balance (balance.py, before the build" in r.stdout
+    cut = json.loads((e / "cut.json").read_text(encoding="utf-8"))
+    assert "colorchannelmixer" in (cut.get("look") or {}).get("correct", ""), r.stdout
+    assert cut["balance"]["mode"] == "auto" and cut["balance"]["result"] == "written"
+    r = run_script("cut.py", "edit/5000", "--no-level", cwd=project)
+    assert "white balance" not in r.stdout  # measured for this look: not again
+    cut = json.loads((e / "cut.json").read_text(encoding="utf-8"))
+    cut["ranges"] = cut["ranges"][:1]
+    write_json(e / "cut.json", cut)
+    r = run_script("cut.py", "edit/5000", "--no-level", cwd=project)
+    assert "white balance (balance.py" in r.stdout  # other frames: measured again (review 2026-10-18)
+    cut = json.loads((e / "cut.json").read_text(encoding="utf-8"))
+    cut["look"]["grade"] = "eq=contrast=1.05"
+    write_json(e / "cut.json", cut)
+    r = run_script("cut.py", "edit/5000", "--no-level", cwd=project)
+    assert "white balance (balance.py" in r.stdout  # the look changed: measured again
+    cut = json.loads((e / "cut.json").read_text(encoding="utf-8"))
+    write_json(e / "cut.json", {**cut, "scale": "none"})
+    r = run_script("cut.py", "edit/5000", "--no-level", cwd=project)
+    assert "white balance (balance.py" in r.stdout  # the scale changed: other frames, measured again
+    cut = json.loads((e / "cut.json").read_text(encoding="utf-8"))
+    write_json(e / "cut.json", {**cut, "scale": "auto"})
+    r = run_script("cut.py", "edit/5000", "--no-level", cwd=project)
+    assert "white balance (balance.py" in r.stdout  # and back
+    cut = json.loads((e / "cut.json").read_text(encoding="utf-8"))
+    cut["balance"]["mode"] = "ref"
+    cut["ranges"] = cut["ranges"] + [{"start": 1.0, "end": 1.6, "beat": "three"}]
+    write_json(e / "cut.json", cut)
+    r = run_script("cut.py", "edit/5000", "--no-level", cwd=project)  # a --ref measurement does not care about ranges
+    assert "white balance" not in r.stdout and "--ref white balance" not in (r.stdout + r.stderr)
+    cut = json.loads((e / "cut.json").read_text(encoding="utf-8"))
+    write_json(e / "cut.json", {**cut, "scale": "none"})
+    r = run_script("cut.py", "edit/5000", "--no-level", cwd=project)  # other pixels, another box space (review 2026-10-18)
+    assert "white balance (balance.py" not in r.stdout and "--ref white balance" in (r.stdout + r.stderr)
+    write_json(e / "cut.json", cut)
+    cut = json.loads((e / "cut.json").read_text(encoding="utf-8"))
+    cut["look"]["grade"] = "eq=contrast=1.08"
+    write_json(e / "cut.json", cut)
+    r = run_script("cut.py", "edit/5000", "--no-level", cwd=project)
+    assert "white balance (balance.py" not in r.stdout and "--ref white balance" in (r.stdout + r.stderr)
+    write_json(e / "cut.json", {**cut, "look": {}, "balance": False})
+    r = run_script("cut.py", "edit/5000", "--no-level", cwd=project)
+    assert "white balance" not in r.stdout
+
+
+@needs_ffmpeg
+def test_a_neutral_source_is_not_measured_on_every_build(project):
+    e = setup(project)
+    with_sound(project)
+    r = run_script("cut.py", "edit/5000", "--no-level", cwd=project)
+    assert "white balance (balance.py" in r.stdout
+    assert json.loads((e / "cut.json").read_text(encoding="utf-8"))["balance"]["result"] == "unchanged"
+    r = run_script("cut.py", "edit/5000", "--no-level", cwd=project)
+    assert "white balance" not in r.stdout

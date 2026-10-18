@@ -13,16 +13,21 @@ A profile does three things: it sets the video's **defaults** (intensity, scene 
 `visual_plan.py validate` checks the items it can measure, the agent confirms the rest before showing the draft, and the
 report's Supports name every item skipped (`references/playbook.md`, “Supports”).
 
-A video without a profile is edited as before: no profile checklist, the brand tone and the project defaults decide.
+**A profile is opt-in** (since 1.15): a video without one is edited as before, with no profile checklist, and the
+brand tone and the project defaults decide. A paid ad is the exception: it always gets `ad`, since its rules are the
+platforms' own (the ad safe zone, claims with a source).
 
 ## Choosing it
 
-- Clear from the prompt or the footage (“a skit for reach”, “a job opening”, “an ad for the launch”, a horizontal
-  podcast recording) → name the profile and the format in one line of the plan and save them:
+- A paid ad (“an ad for the launch”, a promoted post with a budget) → `profile=ad`, in every workflow, with no
+  question: `reelcfg.py save edit/<id> --set profile=ad` (and the format, if it is clear).
+- The person asks for a profile or its rules (“as a promo”, “with the educational checklist”) → save it:
   `reelcfg.py save edit/<id> --set profile=<id> content_format=<id>` (a format alone brings its profile).
-- Not clear → ask **one separate question** before the brief: the 3 most likely profiles, the recommendation first,
-  each with one line of what it changes; the rest via “Other”.
-- Saved in `reel.json`, not inherited by the next video; `reelcfg.py show` prints the profile, its length range, CTA
+- Otherwise there is no profile, in `quick` and `standard` too: name the format in one line of the plan as a guide for
+  the length and the graphics, and don't save it (a saved format would bring its profile).
+- In the `full` workflow ask **one separate question** in step 0: “no profile” first, then the 2–3 most likely
+  profiles, each with one line of what it changes; the rest via “Other”.
+- Saved in `reel.json`, not inherited by the next video (a series preset carries it); `reelcfg.py show` prints the profile, its length range, CTA
   limit and checklist.
 
 ## The brand tone stays the ceiling

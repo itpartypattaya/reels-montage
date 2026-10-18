@@ -39,7 +39,7 @@ original order: a mechanic goes in only when the person picks it.
 4. Build 2–3 variants; each is “start → middle → end”, the final length, why it works for this video, and the risk.
    For a skit or a dialogue, and for any video of the `entertaining` profile, a teaser variant is always among them;
    for the `ad` profile, the variants double as the 3–5 hook variants for testing (`references/profiles.md`, AD-7). The first option is the recommendation.
-5. One `AskUserQuestion` with the variants; put the order of lines with timecodes in each option's `preview`, so the
+5. The variants are the first question of the cut plan's `AskUserQuestion` (SKILL.md step 5); put the order of lines with timecodes in each option's `preview`, so the
    person sees the shape, not only a name. The answer goes into the cut plan (step 5) as “Start and ending”.
 
 ## Start

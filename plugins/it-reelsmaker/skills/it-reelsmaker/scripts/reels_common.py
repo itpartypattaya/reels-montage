@@ -373,8 +373,29 @@ def brand_file(value, brand_dir, project=None):
 
 # --- Video settings ---------------------------------------------------------------------------------------
 
-SETTING_KEYS_BOOL = ["use_broll", "use_project_footage", "use_local_footage", "use_generated_footage",
+SETTING_KEYS_BOOL = ["use_broll", "use_project_footage", "use_local_footage", "use_code_scenes",
                      "use_scenes", "use_memes", "use_local_memes"]
+# Renamed setting keys, old -> new (references/migrations.md): the old name is still read in every layer, and the new
+# one wins when a layer has both. 1.15: the setting turns on code scenes drawn in Remotion, which the old name
+# use_generated_footage did not say (review 2026-10-17).
+RENAMED = {"use_generated_footage": "use_code_scenes"}
+
+
+def renamed(d):
+    """d with the old names of RENAMED under their new ones (the new one wins when both are there)."""
+    if not isinstance(d, dict) or not any(k in d for k in RENAMED):
+        return d
+    return {RENAMED.get(k, k): v for k, v in d.items() if not (k in RENAMED and RENAMED[k] in d)}
+
+
+def to_new_names(d):
+    """Puts the old names of RENAMED in d under their new ones, in place (the new one wins when both are there), so a
+    file written by reelcfg keeps the new name whatever key the call set (review 2026-10-18)."""
+    for old, new in RENAMED.items():
+        if old in d:
+            v = d.pop(old)
+            d.setdefault(new, v)
+    return d
 
 
 def parse_value(v):
@@ -397,7 +418,11 @@ def parse_sets(items):
         if "=" not in it:
             sys.exit(f"--set expects key=value, got: {it}")
         k, v = it.split("=", 1)
-        out[k.strip()] = parse_value(v)
+        k = k.strip()
+        if k in RENAMED:
+            warn(f"{k} is now {RENAMED[k]} (1.15): set as {RENAMED[k]}")
+            k = RENAMED[k]
+        out[k] = parse_value(v)
     return out
 
 
@@ -778,20 +803,23 @@ def profile_settings(prof, rules, doc, tone_override=False):
 
 
 def load_config(edit=None, overrides=None, project=None):
-    """Layers: skill defaults <- brand tone preset defaults (brand.json -> tone) <- the project's reel-defaults.json <-
-    the video's profile (profile_rules, capped by the brand tone) <- brand profile (inserts) <- edit/<id>/reel.json <-
-    overrides (words from the prompt). settings["profile_rules"] is the resolved profile or None. settings["brand_tone"] is the resolved brand tone (the
+    """Layers, in the order of references/brands.md ("Layers"): skill defaults (+ reel-defaults.local.json, the add-on's)
+    <- brand tone preset defaults (brand.json -> tone; never inserts) <- the project's reel-defaults.json <-
+    REELS_DEFAULTS_OVERLAY <- the video's profile (profile_rules, capped by the brand tone) <- brand profile (inserts) <-
+    edit/<id>/reel.json <- overrides (words from the prompt). settings["profile_rules"] is the resolved profile or None. settings["brand_tone"] is the resolved brand tone (the
     ceilings for visual_plan.py validate); it comes only from the profile, reel.json can't change it (going louder
     takes tone_override). Returns (settings, provenance, defaults_doc, brand_dir, brand)."""
     project = project or project_root()
     doc, prov = {}, {}
     for label, layer in defaults_layers(project):
+        if isinstance(layer.get("settings"), dict):  # an old key name in a project's or the add-on's defaults
+            layer = {**layer, "settings": renamed(layer["settings"])}
         doc = _merge(doc, layer)
         for k in (layer.get("settings") or {}):
             prov[k] = label
     settings = dict(doc.get("settings", {}))
-    reel = load_json(Path(edit) / "reel.json", {}) if edit else {}
-    overrides = overrides or {}
+    reel = renamed(load_json(Path(edit) / "reel.json", {}) if edit else {})
+    overrides = renamed(overrides or {})
     slug = overrides.get("brand") or reel.get("brand") or settings.get("brand")
     bdir, brand = find_brand(slug, project) if slug else (None, None)
     if slug and brand is None:
@@ -810,10 +838,10 @@ def load_config(edit=None, overrides=None, project=None):
     # the profile's defaults: after the project's defaults, under the brand tone's ceiling
     if prof:
         vals, notes = profile_settings(prof, rules, doc, bool(asked.get("tone_override")))
-        for k, v in vals.items():
+        for k, v in renamed(vals).items():  # review 2026-10-18: a profile with the old name was not renamed
             settings[k], prov[k] = v, f"profile:{prof['id']}"
         prof["notes"] = notes
-    for k, v in ((brand or {}).get("inserts") or {}).items():
+    for k, v in renamed((brand or {}).get("inserts") or {}).items():
         settings[k], prov[k] = v, f"brand:{slug}"
     for k, v in reel.items():
         if k in ("brand_snapshot", "notes"):
@@ -822,6 +850,7 @@ def load_config(edit=None, overrides=None, project=None):
     for k, v in overrides.items():
         settings[k], prov[k] = v, "override"
     settings["brand"] = slug
+    settings["use_generated_footage"] = settings.get("use_code_scenes")  # the old name, read by the add-on <= 1.4.5
     settings["brand_tone"] = rules
     settings["profile_rules"] = prof
     prov["brand_tone"] = f"brand:{slug}" if brand and brand.get("tone") else f"tone:{rules['preset']} (not set)"
@@ -846,7 +875,7 @@ def effective(settings):
     put("broll", broll, "use_broll=false")
     put("project_footage", broll and s.get("use_project_footage"), "off")
     put("local_footage", broll and s.get("use_local_footage"), "off")
-    gen = broll and s.get("use_generated_footage")
+    gen = broll and s.get("use_code_scenes")
     engines = s.get("generation_engines") or ["code"]
     put("generated_code", gen and "code" in engines, "off" if not gen else "the code engine is not allowed")
     memes = s.get("use_memes", False)

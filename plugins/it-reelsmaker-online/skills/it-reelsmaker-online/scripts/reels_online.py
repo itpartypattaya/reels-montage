@@ -211,7 +211,7 @@ def effective_online(s, put, eff):
     else:
         put("online_footage", online, "off")
     eff["online_footage_providers"] = keyed if eff["online_footage"] else []
-    gen = broll and s.get("use_generated_footage")
+    gen = broll and s.get("use_code_scenes", s.get("use_generated_footage"))  # the core < 1.15 has the old name only
     engines = s.get("generation_engines") or ["code"]
     put("generated_prompts", gen and "model" in engines, "off" if not gen else "the model engine is not allowed")
     prov = s.get("generation_provider")

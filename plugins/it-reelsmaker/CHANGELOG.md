@@ -2,6 +2,34 @@
 
 What changed in IT Reelsmaker, written for the people who use it. The newest version is on top. The skill shows a short “What's new” note from this file once, on the first edit after an update.
 
+## 1.15.0
+
+- **Rare techniques leave the menus.** The message-thread, interface and icon scenes, the split, slide-panel and
+  window layouts, the cut-out figure (text behind the person, a presenter over a scene) and the phone mockup are
+  marked experimental: none is checked in a finished video yet. The skill offers one only where the footage clearly
+  asks for it, and the visual plan says “experimental” next to it; ask for any of them by name and it is done as before.
+  A slogan scene added without `--mode` is now full-screen (it was the split layout).
+- **Video profiles are opt-in.** No profile and no profile checklist unless you ask for one; a paid ad always gets
+  `ad`, since its rules are the platforms' own. The format still guides the length and the graphics in the plan.
+- **`use_code_scenes`** is the new name of `use_generated_footage`: it turns on code scenes drawn in Remotion. The old
+  name keeps working in your files, and `reelcfg.py` writes the new one.
+
+## 1.14.0
+
+- **Fewer stops before the first video.** A `workflow` setting: `quick` asks nothing up front when the brand is known
+  and stops at the cut plan and the preview; `standard` (the default) asks the structure, the ending, the logo, the
+  techniques and the sound together with the cut plan instead of three separate times; `full` keeps the profile, its
+  checklist and the reasons behind each decision.
+- **Series presets.** `reelcfg.py preset save <name> --from edit/<id>` keeps a finished video's answers and its ending;
+  `preset use <name> edit/<next>` starts the next video of the series from them.
+- **One build of the rough cut.** `cut.py` measures the white balance itself before it encodes (it used to be cut,
+  measure, cut again); a correction you set by hand or with `--ref` is kept.
+- **One command for the checks.** `check.py edit/<id>` runs the plan check, the storyboard and the text check before
+  the render; `check.py edit/<id> --render out/…` runs the faces audit and a contact sheet after it.
+- **The menu shows what the kit draws.** Custom styles and techniques (a per-video composition, more time) are marked
+  and offered when the content asks for them. Picture defects are checked on request, not on every video. The
+  environment check runs once per plugin version.
+
 ## 1.13.0
 
 - **A plain edit by default, for real.** B-roll, memes and designed scenes are off until you choose them in the first

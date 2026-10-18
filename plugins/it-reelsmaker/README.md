@@ -14,10 +14,12 @@ The plugin is a skill built on real client videos: the thresholds and numbers in
 2. **Word-level transcript**, then a search for retakes and slips.
 3. **Cut plan → your “yes”.** The plan lists what stays, what goes and why, and offers 2–3 ways to start and end the video: in order, without the slow start, or a teaser (a strong line from later plays first). Nothing is cut before you approve.
 4. **Rough cut** with ffmpeg: segment edges found by a speech mask (on a tested video they matched a manual cut within ±40 ms), color (white balance measured to neutral on the graded frames, before your LUT, not judged by eye), speed-up, one speech level across every piece and take (measured on the speech, so pauses and room noise are not raised), subtitles on the new timeline. Then faces are measured across the whole cut.
-5. **Graphics brief** in one question: logo, call to action, techniques, sound.
+5. **Graphics brief** asked together with the cut plan: logo, call to action, techniques, sound.
 6. **Visual plan** for inserts (B-roll from your project or library, code scenes, designed scenes, memes), shown before any render.
 7. **Remotion**: virtual camera, graphics on their spoken words, subtitles, render, and an audit of faces against text in the final file.
 8. **Mastering** with an acceptance check, then a report in numbers: duration, remaining silence, loudness and peak, cuts and retakes removed.
+
+**Three workflows.** `quick` asks nothing up front when the brand is known and stops twice, at the cut plan and at the preview; `standard` (the default) adds the first question and the storyboard; `full` adds a question about the video's profile (none by default, always `ad` for a paid ad), its checklist when one is chosen, and the reasons behind each decision. A **series preset** keeps one video's answers, its ending included, for the next ones (`reelcfg.py preset save weekly --from edit/<id>`, then `preset use weekly edit/<next>`).
 
 Each video can have a **profile**: educational, entertaining, expert clip, promo or paid ad. It sets the video's defaults under your brand tone and brings a checklist the draft is checked against before you see it (a paid ad keeps all text inside the ad safe zone). The plan and the report list their **supports**: each decision next to the rule behind it and how far it is trusted (your decision, checked on your videos, or outside advice). Your own craft rules can live in a `playbook.md` in your project; a guide or a video you want to learn from is reconciled with them rule by rule, conflicts shown to you.
 
@@ -27,7 +29,16 @@ Each video can have a **profile**: educational, entertaining, expert clip, promo
 
 ## Designed scenes
 
-A hook set large, a quote taken verbatim from the speech, the main thought as a punch, a number with a counter and its source, a list item by item, “before → after”, a message thread, an interface with a cursor, the call to action as an action, a cover in frame 0. Claude draws them in code in your brand's colors and fonts and places each one on its spoken word. By default the speaker's face stays in the frame: the scene sits in a free zone, above the speaker or beside them. The plan check counts reading time (0.8 s for a short line, 0.3 s per word in a phrase), compares quotes with the transcript and asks for a source for every number. A promo without footage uses the same scenes on their own, 15–25 s. The scene planning method is adapted from [brag](https://github.com/latent-spaces/brag) (MIT).
+A hook set large, a quote taken verbatim from the speech, the main thought as a punch, a number with a counter and its source, a list item by item, “before → after”, the call to action as an action, a cover in frame 0. Claude draws them in code in your brand's colors and fonts and places each one on its spoken word. By default the speaker's face stays in the frame: the scene sits in a free zone of the shot. The plan check counts reading time (0.8 s for a short line, 0.3 s per word in a phrase), compares quotes with the transcript and asks for a source for every number. A promo without footage uses the same scenes on their own, 15–25 s. The scene planning method is adapted from [brag](https://github.com/latent-spaces/brag) (MIT).
+
+## Experimental
+
+A few more things are in the kit and the references but not yet checked in a finished video, so the skill keeps them out of its menus. It offers one only where your footage clearly asks for it, marked “experimental” in the plan with a time estimate, and does any of them when you ask by name:
+
+- a message thread, an interface with a cursor, an icon or mini-diagram scene;
+- layouts where the speaker moves aside for a scene: split, slide panel, a window in the corner;
+- the cut-out figure: text behind the person, a presenter over a scene (needs `rembg`, below);
+- a phone mockup on the call to action.
 
 ## Requirements
 

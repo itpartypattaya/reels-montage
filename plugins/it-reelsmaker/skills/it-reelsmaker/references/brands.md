@@ -58,7 +58,7 @@ The plugin folder is replaced on every update, so nothing personal is written th
 - `--set` and `--unset` touch only the `settings` keys; labels and other sections are edited in the file by hand;
 - `reelcfg.py show edit/<id>` marks the keys that come from this file as `project`.
 
-**Layers** (the right one overrides the left): plugin defaults ← online add-on defaults (if installed) ← the brand tone preset's defaults (`intensity`, `use_broll`, `use_memes`, `scene_tone`) ← the project's `reel-defaults.json` ← the file named in `REELS_DEFAULTS_OVERLAY` ← brand profile `inserts` ← `edit/<id>/reel.json` ← words in the prompt. Your project defaults beat the preset's guesses, but not its ceilings: `meme_size` stays capped by the tone, and `visual_plan.py validate` still enforces the tone's limits (number of memes, transitions, full-frame scenes).
+**Layers** (the one list; the right one overrides the left): plugin defaults (with `assets/reel-defaults.local.json` of a personal copy, if any) ← online add-on defaults (if installed) ← the brand tone preset's defaults (`intensity`, meme size, `scene_tone`; never inserts) ← the project's `reel-defaults.json` ← the file named in `REELS_DEFAULTS_OVERLAY` ← the video's profile (`references/profiles.md`; under the brand tone's ceiling) ← brand profile `inserts` ← `edit/<id>/reel.json` (a series preset writes here) ← words in the prompt. Your project defaults beat the preset's guesses, but not its ceilings: `meme_size` stays capped by the tone, and `visual_plan.py validate` still enforces the tone's limits (number of memes, transitions, full-frame scenes).
 
 ## Step 0: choose the brand
 
