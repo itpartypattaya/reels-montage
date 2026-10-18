@@ -302,11 +302,24 @@ def test_cut_measures_the_balance_before_its_first_build(project):
     r = run_script("cut.py", "edit/5000", "--no-level", cwd=project)
     assert "white balance (balance.py" in r.stdout  # the look changed: measured again
     cut = json.loads((e / "cut.json").read_text(encoding="utf-8"))
+    write_json(e / "cut.json", {**cut, "scale": "none"})
+    r = run_script("cut.py", "edit/5000", "--no-level", cwd=project)
+    assert "white balance (balance.py" in r.stdout  # the scale changed: other frames, measured again
+    cut = json.loads((e / "cut.json").read_text(encoding="utf-8"))
+    write_json(e / "cut.json", {**cut, "scale": "auto"})
+    r = run_script("cut.py", "edit/5000", "--no-level", cwd=project)
+    assert "white balance (balance.py" in r.stdout  # and back
+    cut = json.loads((e / "cut.json").read_text(encoding="utf-8"))
     cut["balance"]["mode"] = "ref"
     cut["ranges"] = cut["ranges"] + [{"start": 1.0, "end": 1.6, "beat": "three"}]
     write_json(e / "cut.json", cut)
     r = run_script("cut.py", "edit/5000", "--no-level", cwd=project)  # a --ref measurement does not care about ranges
     assert "white balance" not in r.stdout and "--ref white balance" not in (r.stdout + r.stderr)
+    cut = json.loads((e / "cut.json").read_text(encoding="utf-8"))
+    write_json(e / "cut.json", {**cut, "scale": "none"})
+    r = run_script("cut.py", "edit/5000", "--no-level", cwd=project)  # other pixels, another box space (review 2026-10-18)
+    assert "white balance (balance.py" not in r.stdout and "--ref white balance" in (r.stdout + r.stderr)
+    write_json(e / "cut.json", cut)
     cut = json.loads((e / "cut.json").read_text(encoding="utf-8"))
     cut["look"]["grade"] = "eq=contrast=1.08"
     write_json(e / "cut.json", cut)

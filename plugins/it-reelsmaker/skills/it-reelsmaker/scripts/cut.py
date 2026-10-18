@@ -39,7 +39,7 @@ look        color in two steps. "correct": an ffmpeg filter chain that fixes thi
             brand.json -> lut.hald) or a HALD image file; "lut_mix" its strength 0..1 (start at 0.5-0.7 and compare
             face stills before and after); "grade": a filter chain applied AFTER the LUT (contrast, sharpness).
             Without "look" the color stays as shot.
-balance     written by balance.py --write: the look, sources and ranges the white balance was measured on; cut.py
+balance     written by balance.py --write: the look, sources, scale and ranges the white balance was measured on; cut.py
             runs balance.py itself before the build when they changed (a --ref measurement is only flagged; false:
             never; --no-balance: not this time).
 scale       "auto": a vertical source that is not 1080x1920 is scaled (and cropped if its aspect is not 9:16) to
@@ -651,7 +651,7 @@ def auto_balance(e):
         same = mark.get("look") == look_key(look) and mark.get("sources") == srcs
         if mark.get("mode") == "ref":  # a reference object at a source second: the kept ranges do not matter
             if not same:
-                warn("the look or the sources changed since the --ref white balance: measure it again, "
+                warn("the look, the sources or the scale changed since the --ref white balance: measure it again, "
                      "balance.py edit/<id> --ref ... --write")
             return
         if same and mark.get("ranges") == rngs:  # review 2026-10-18: a new source or other ranges are other frames

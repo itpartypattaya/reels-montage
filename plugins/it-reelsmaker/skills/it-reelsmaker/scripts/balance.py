@@ -121,10 +121,13 @@ def look_key(look):
 
 
 def frames_key(cut):
-    """Which frames a measurement saw: the sources (files) and the kept ranges of cut.json. -> (sources, ranges) keys."""
+    """Which frames a measurement saw: the sources (files) with the scale mode of cut.json, and the kept ranges.
+    -> (sources, ranges) keys. The scale is in the sources key (review 2026-10-18, Codex on GitHub): "auto" crops a
+    non-9:16 source to 1080x1920 and "none" keeps it whole, so the pixels and a --ref box's coordinates change."""
     src = cut.get("sources") or cut.get("source")
     rng = [[r.get("source"), r.get("start"), r.get("end")] for r in (cut.get("ranges") or []) if isinstance(r, dict)]
-    return json.dumps(src, sort_keys=True, ensure_ascii=False), json.dumps(rng, ensure_ascii=False)
+    return (json.dumps({"sources": src, "scale": cut.get("scale", "auto")}, sort_keys=True, ensure_ascii=False),
+            json.dumps(rng, ensure_ascii=False))
 
 
 def is_gain_mixer(f):
