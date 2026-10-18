@@ -917,6 +917,7 @@ def cmd_extract(a):
     inputs = fingerprint([m["source"]["identity"], [[p["start"], p["end"]] for p in parts], pad, s["rev"]])
     rec = (m.get("clips") or {}).get(str(card["id"])) or {}
     pieces = []
+    recut = len(rec.get("pieces") or []) != len(parts)  # a piece added or dropped: the old cut.json no longer fits
     from transcribe import check_doc, source_wav
     for k, p in enumerate(parts):
         key = chr(97 + k)
@@ -928,6 +929,7 @@ def cmd_extract(a):
         if not fresh:
             print(f"piece {key}: {tc(t0)}–{tc(t1)} of {src.name} -> {rel(frag, project)} ...", flush=True)
             cut_piece(src, t0, t1 - t0, frag)
+            recut = True
         pr = probe(frag)
         with locked(ce / f"audio16k-{frag.stem}.wav", stale=86400):
             wav, fid, off = source_wav(ce, frag)
@@ -955,7 +957,7 @@ def cmd_extract(a):
         pieces.append({"key": key, "file": rel(frag, project), "transcript": rel(out, project), "offset": round(t0, 3),
                        "end": round(t1, 3), "start_in": local[0], "end_in": local[1], "identity": ident(frag),
                        "words": how, "wav": rel(wav, project)})
-    wrote = write_cut(ce, project, card, pieces)
+    wrote = write_cut(ce, project, card, pieces, recut=bool(rec) and bool(recut))
     new_reel = not (ce / "reel.json").is_file()
     if new_reel:
         applied = []
@@ -994,8 +996,12 @@ def cmd_extract(a):
         mm.setdefault("clips", {})[str(card["id"])] = {"folder": rel(ce, project), "inputs": inputs, "pad": pad,
                                                        "pieces": pieces, "at": time.strftime("%Y-%m-%d %H:%M:%S")}
     print(f"{rel(ce, project)}: {len(pieces)} piece(s), words by {'slice of the whole transcript' if parent is not None else 'Whisper on each piece'}"
-          + ("; cut.json written (rough edges from the words)" if wrote == "new" else
-             "; cut.json kept as it was" + ("" if wrote == "same" else " — its sources differ from the new pieces, check them"))
+          + {"new": "; cut.json written (rough edges from the words)",
+             "rewritten": "; the pieces were cut again: cut.json written anew from their words, the old one kept as "
+                          "cut.prev-<time>.json (its ranges, fix_at and retime were seconds of the old pieces; speed, "
+                          "look and fix carried over); final.mp4 and everything after it are stale until cut.py runs",
+             "same": "; cut.json kept as it was",
+             "differs": "; cut.json kept as it was — its sources differ from the new pieces, check them"}[wrote]
           + ("; reel.json from the series" if new_reel else ""))
     print(f"next: speech_mask.py on each piece for the real edges -> cut.json ranges, then the usual steps from 5 "
           f"(cut plan, cut.py, faces, export, check.py, kit.py render) in {rel(ce, project)}")
@@ -1018,19 +1024,31 @@ def local_edges(doc, part, res, t0):
     return (round(st, 3), round(en, 3)) if en > st else guess
 
 
-def write_cut(ce, project, card, pieces):
+CUT_KEEP = ("fps", "speed", "look", "scale", "level", "fix")  # what is not seconds of a piece: survives a re-extract
+
+
+def write_cut(ce, project, card, pieces, recut=False):
     """cut.json for the clip: a source per piece and a range per piece from its words (rough: speech_mask.py sets the
-    real edges). An existing cut.json is never overwritten. -> "new" | "same" | "differs"."""
+    real edges). An existing cut.json is kept while its pieces are the same files with the same content. When extract
+    cut the pieces again (another card, transcript or pad: review of PR #27), its ranges, speakers, fix_at and retime
+    are seconds of the old files: it goes to cut.prev-<time>.json and a new one is written from the new words, keeping
+    what is not seconds (CUT_KEEP). -> "new" | "same" | "differs" | "rewritten"."""
     f = ce / "cut.json"
     sources = {x["key"]: {"file": x["file"], "transcript": x["transcript"]} for x in pieces}
-    if f.is_file():
-        cur = load_json(f, {}) or {}
-        same = {k: v.get("file") for k, v in (cur.get("sources") or {}).items()} == {k: v["file"] for k, v in sources.items()}
-        return "same" if same else "differs"
     ranges = [{"source": x["key"], "start": max(0.0, round(x["start_in"] - 0.05, 3)), "end": round(x["end_in"] + 0.08, 3),
                "beat": f"piece {x['key']}"} for x in pieces]
-    save_json(f, {"fps": 30, "sources": sources, "ranges": ranges})
-    return "new"
+    with locked(f):
+        cur = load_json(f, None) if f.is_file() else None
+        if cur is not None and not recut:
+            same = {k: v.get("file") for k, v in (cur.get("sources") or {}).items()} == {k: v["file"] for k, v in sources.items()}
+            return "same" if same else "differs"
+        doc = {"fps": 30}
+        if cur is not None:
+            save_json(ce / f"cut.prev-{time.strftime('%Y%m%d-%H%M%S')}.json", cur)
+            doc.update({k: cur[k] for k in CUT_KEEP if k in cur})
+        doc.update({"sources": sources, "ranges": ranges})
+        save_json(f, doc)
+    return "new" if cur is None else "rewritten"
 
 
 # --- status -------------------------------------------------------------------------------------------------------
@@ -1042,17 +1060,34 @@ def newer(a, b):
         return False
 
 
-def stage(ce):
-    """The stages of a clip folder by its files: (label, state) with state ok / stale / —."""
-    out = []
+def stage(ce, project):
+    """The stages of a clip folder by its files: (label, state) with state ok / stale / FAILED / —. A stage is ok when
+    its file is newer than everything it was made from (the rough cut: cut.json AND each piece and transcript cut.json
+    names, which a re-extract replaces) and every stage before it is ok; once one is stale, so is everything after it
+    (review of PR #27: a re-extracted clip still showed its old rough cut, export and render as current)."""
     cut, final = ce / "cut.json", ce / "final.mp4"
     props, board, render, cover = ce / "reelkit-props.json", ce / "board" / "board.md", ce / "render.json", ce / "cover.jpg"
-    out.append(("cut", "—" if not final.is_file() else "ok" if newer(final, cut) else "stale"))
-    out.append(("export", "—" if not props.is_file() else "ok" if newer(props, final) else "stale"))
-    out.append(("board", "—" if not board.is_file() else "ok" if newer(board, props) else "stale"))
+    made_from = [cut]
+    for sv in ((load_json(cut, {}) or {}).get("sources") or {}).values():
+        for key in ("file", "transcript"):
+            if sv.get(key):
+                q = Path(sv[key])
+                made_from.append(q if q.is_absolute() else project / q)
     rj = load_json(render, {}) or {}
-    out.append(("render", "—" if not rj else "FAILED" if not rj.get("ok") else "ok" if newer(render, props) else "stale"))
-    out.append(("cover", "ok" if cover.is_file() else "—"))
+    out, broken = [], False
+    for label, f, inputs in (("cut", final, made_from), ("export", props, [final]), ("board", board, [props]),
+                             ("render", render, [props]), ("cover", cover, [render])):
+        if not f.is_file():
+            out.append((label, "—"))
+            continue
+        if label == "render" and not rj.get("ok"):
+            state = "FAILED"
+        elif broken or not all(q.is_file() and newer(f, q) for q in inputs):
+            state = "stale"
+        else:
+            state = "ok"
+        broken = broken or state != "ok"
+        out.append((label, state))
     return out
 
 
@@ -1086,7 +1121,7 @@ def cmd_status(a):
             cur = (fingerprint([m["source"]["identity"], [[p["start"], p["end"]] for p in parts], rec_pad(m, rec), s["rev"]])
                    if s and parts and all(parts) else None)
             ex = "ok" if cur == rec.get("inputs") else "STALE (card or transcript changed: extract again)"
-            line += f"; extracted {ex}; " + ", ".join(f"{k} {v}" for k, v in stage(ce))
+            line += f"; extracted {ex}; " + ", ".join(f"{k} {v}" for k, v in stage(ce, project))
             for p in rec.get("pieces") or []:
                 used.append((p["offset"], p["end"]))
             if ce.is_dir():

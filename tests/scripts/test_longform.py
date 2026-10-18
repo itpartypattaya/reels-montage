@@ -276,6 +276,47 @@ def test_extract_two_pieces_slice_and_rerun(series):
 
 
 @needs_ffmpeg
+def test_reextract_rewrites_the_cut_and_makes_later_stages_stale(series):
+    # review of PR #27: new pieces at the same paths kept the old cut.json (seconds of the old files), and status
+    # still called the old rough cut, export and render current
+    project, _, _ = series
+    two = [{"from_words": "A weak candidate blames", "to_words": "and the boss.", "near": 30},
+           {"from_words": "That is the whole method", "to_words": "works every time.", "near": 47}]
+    cards(project, [{"id": "01", "parts": two}])
+    check(project)
+    run_script("longform.py", "mark", "edit/talk", "01", "--as", "approved", cwd=project)
+    run_script("longform.py", "extract", "edit/talk", "01", "--pad", "1", cwd=project)
+    ce = project / "edit" / "talk-01"
+    cut = json.loads((ce / "cut.json").read_text(encoding="utf-8"))
+    write_json(ce / "cut.json", {**cut, "speed": 1.1, "fix_at": [{"text": "A", "at": 1.0, "to": "a"}]})
+    for f in ("final.mp4", "reelkit-props.json"):
+        (ce / f).write_bytes(b"x")
+    t = time.time()
+    for p in list((ce / "src").glob("*.mp4")) + list((ce / "transcripts").glob("*.json")):
+        os.utime(p, (t - 300, t - 300))
+    for f, age in (("cut.json", 200), ("final.mp4", 100), ("reelkit-props.json", 50)):
+        os.utime(ce / f, (t - age, t - age))
+    s = run_script("longform.py", "status", "edit/talk", cwd=project)
+    assert "cut ok, export ok" in s.stdout
+    doc = json.loads((project / "edit" / "talk" / "clips.json").read_text(encoding="utf-8"))
+    doc["clips"][0]["parts"][1]["to_words"] = "the whole method"  # a shorter second piece
+    write_json(project / "edit" / "talk" / "clips.json", doc)
+    check(project)
+    run_script("longform.py", "mark", "edit/talk", "01", "--as", "approved", cwd=project)
+    r = run_script("longform.py", "extract", "edit/talk", "01", "--pad", "1", cwd=project)
+    assert "cut.json written anew" in r.stdout
+    prev = list(ce.glob("cut.prev-*.json"))
+    assert len(prev) == 1 and json.loads(prev[0].read_text(encoding="utf-8"))["speed"] == 1.1
+    new = json.loads((ce / "cut.json").read_text(encoding="utf-8"))
+    assert new["speed"] == 1.1 and "fix_at" not in new  # not seconds: kept; seconds of the old pieces: dropped
+    assert new["ranges"][1]["end"] < cut["ranges"][1]["end"] - 1
+    s = run_script("longform.py", "status", "edit/talk", cwd=project)
+    assert "cut stale, export stale" in s.stdout
+    r = run_script("longform.py", "extract", "edit/talk", "01", "--pad", "1", cwd=project)  # nothing changed now
+    assert "cut.json kept as it was" in r.stdout and len(list(ce.glob("cut.prev-*.json"))) == 1
+
+
+@needs_ffmpeg
 def test_extract_refuses_unapproved_cards(series):
     project, _, _ = series
     cards(project, [{"id": "01", "parts": [{"from_words": "A weak candidate blames", "to_words": "and the boss.",
