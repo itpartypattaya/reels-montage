@@ -23,9 +23,10 @@ def test_cut_marks_the_keep_words_and_dry_run_lists_them(project):
     # the caption words: Hello, recruiter (fix of "recruter" 1.0), everything (fix_at of "all" 2.0), tail, end
     e = keep_cut(project, [{"text": "recruter", "at": 1.01, "words": 3}])
     c = cut.load_cut(e, project)
-    words = cut.load_words(c)
-    _, caps, _ = cut.timeline(c, words)
-    groups, problems = cut.mark_keep(c, words, caps)
+    said = []
+    _, caps, _ = cut.timeline(c, cut.load_words(c), said)
+    assert said == ["Hello", "recruter", "all", "tail", "end"]  # the transcript's own words, before fix / fix_at
+    groups, problems = cut.mark_keep(c, said, caps)
     assert [w.get("keep") for w in caps] == [None, "k1", "k1", "k1", None] and not problems
     assert groups[0][:2] == ("k1", "recruiter everything tail") and groups[0][3] == 3
     r = run_script("cut.py", "edit/4821", "--dry-run", cwd=project)
@@ -39,15 +40,30 @@ def test_cut_names_a_keep_mark_that_matches_nothing_and_honours_its_source(proje
                            {"text": "tail", "at": 4.5, "words": 3},        # only 2 words left after it
                            {"text": "Hello", "at": 0.45, "words": 2, "source": "side"}])  # another source's word
     c = cut.load_cut(e, project)
-    words = cut.load_words(c)
-    _, caps, _ = cut.timeline(c, words)
-    groups, problems = cut.mark_keep(c, words, caps)
+    said = []
+    _, caps, _ = cut.timeline(c, cut.load_words(c), said)
+    groups, problems = cut.mark_keep(c, said, caps)
     assert [g[0] for g in groups] == ["k2"] and [w.get("keep") for w in caps][-2:] == ["k2", "k2"]
     assert any("keep[0]" in x and "no such word" in x for x in problems)
     assert any("keep[1]" in x and "only 2 of 3" in x for x in problems)
     assert any("keep[2]" in x and "no such word" in x for x in problems)
     r = run_script("cut.py", "edit/4821", "--dry-run", cwd=project)
     assert "keep[0] «recruiter» at 1.0: no such word" in r.stderr
+
+
+def test_keep_matches_the_word_itself_when_two_share_a_start():
+    # Codex review: two transcript words with one start time (a zero-length word) overwrote each other in a lookup by
+    # time, so "Hello" was "no such word" and a mark on "there" could start at "Hello"
+    import cut
+    c = {"ranges": [{"source": "main"}], "keep": [{"text": "there", "at": 1.0, "words": 2}]}
+    caps = [{"text": t, "src": s, "start": s, "seg": 0} for t, s in (("Hello", 1.0), ("there", 1.0), ("friend", 1.4))]
+    groups, problems = cut.mark_keep(c, ["Hello", "there", "friend"], caps)
+    assert [w.get("keep") for w in caps] == [None, "k1", "k1"] and not problems
+    c["keep"] = [{"text": "Hello", "at": 1.0, "words": 2}]
+    for w in caps:
+        w.pop("keep", None)
+    groups, problems = cut.mark_keep(c, ["Hello", "there", "friend"], caps)
+    assert [w.get("keep") for w in caps] == ["k1", "k1", None] and not problems
 
 
 @needs_ffmpeg
@@ -136,5 +152,8 @@ def test_the_kit_keeps_a_group_on_one_block():
     assert "does not fit two lines: split as usual" in subs
     # two lines of a group are shown together, lifted above the bottom, not one at a time
     assert "!kept && top + height(g, size, lines.length) > bottom" in subs
+    # a hide window inside a group drops no word of it (Codex review); a group mostly under windows is hidden whole
+    assert "[w.phrase, w.keep && `keep:${w.keep}`]" in subs and "!(w.keep && covered.has(`keep:${w.keep}`))" in subs
+    assert "(!!w.keep || !hide.some(" in subs
     ver = (KIT / "kit" / "version.ts").read_text(encoding="utf-8")
     assert 'KIT_VERSION = "1.12.0"' in ver

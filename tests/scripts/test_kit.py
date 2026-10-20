@@ -410,6 +410,13 @@ def test_render_retries_only_once_and_never_other_failures(project, monkeypatch)
         kit.main(["render", "edit/t", "--remotion", "reels"])
     r = json.loads((project / "edit" / "t" / "render.json").read_text(encoding="utf-8"))
     assert len(calls) == 2 and not r["ok"] and [x["code"] for x in r["attempts"]] == [1, 1]
+    # a frame error, then another failure: the mark line before attempt 2 names no error of its own (Codex review: it
+    # was read as attempt 2's error)
+    kit, calls = _render_setup_again(project, monkeypatch, [(1, [nf]), (1, ["Error: out of memory"])])
+    with pytest.raises(SystemExit):
+        kit.main(["render", "edit/t", "--remotion", "reels"])
+    r = json.loads((project / "edit" / "t" / "render.json").read_text(encoding="utf-8"))
+    assert len(calls) == 2 and "position 7" in r["attempts"][0]["error"] and "error" not in r["attempts"][1]
     kit, calls = _render_setup_again(project, monkeypatch, [(1, ["Error: out of memory"])])
     with pytest.raises(SystemExit):
         kit.main(["render", "edit/t", "--remotion", "reels"])

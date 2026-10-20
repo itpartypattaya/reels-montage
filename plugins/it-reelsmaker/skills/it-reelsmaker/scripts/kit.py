@@ -281,6 +281,7 @@ def log_tail(log, n=15):
 
 RETRY_ON = "No frame found at position"
 RETRIES = 1  # extra attempts after a RETRY_ON failure
+ATTEMPT_MARK = "===== kit.py: attempt"  # the line render.log gets before each further attempt
 
 
 def retry_reason(log):
@@ -291,8 +292,10 @@ def retry_reason(log):
         txt = Path(log).read_text(encoding="utf-8", errors="replace")
     except OSError:
         return None
-    last = txt.split("===== kit.py: attempt")[-1]
-    line = next((ANSI_RE.sub("", l).strip() for l in last.splitlines() if RETRY_ON in l), None)
+    parts = txt.split(ATTEMPT_MARK)
+    # after a mark, its own line's rest is not the attempt's output (Codex review: it named the error and was taken for it)
+    last = parts[-1].splitlines()[1:] if len(parts) > 1 else parts[-1].splitlines()
+    line = next((ANSI_RE.sub("", l).strip() for l in last if RETRY_ON in l), None)
     return line[:200] if line else None
 
 
@@ -334,7 +337,7 @@ def cmd_render(a, still=False):
         print(f"  the render failed with Remotion's \"{RETRY_ON}\" ({why}): a rerun of the same command passed before, "
               f"so it runs once more by itself (both attempts stay in {log.name})", flush=True)
         with open(log, "a", encoding="utf-8") as f:
-            f.write(f"\n===== kit.py: attempt {len(attempts) + 1} (the first failed with \"{RETRY_ON}\") =====\n")
+            f.write(f"\n{ATTEMPT_MARK} {len(attempts) + 1} (the one before failed with Remotion's frame error) =====\n")
     fresh = out.is_file() and out.stat().st_mtime >= t0 - 1 and out.stat().st_size > 0
     took = time.time() - t0
     if still:

@@ -266,12 +266,14 @@ export const KitSubtitles: React.FC<{
   const blocks = React.useMemo(() => {
     // a translated phrase (subs.py: its words spread over the phrase by length, not on their spoken words) that the
     // windows cover for more than half is hidden whole: a random tail of it after a scene does not read (T3: "company
-    // really needs." after a full-screen phrase)
+    // really needs." after a full-screen phrase); a keep group the same way, as one
     const spans = new Map<string, [number, number]>();
     captions.words.forEach((w) => {
-      if (!w.phrase) return;
-      const s = spans.get(w.phrase);
-      spans.set(w.phrase, s ? [Math.min(s[0], w.start), Math.max(s[1], w.end)] : [w.start, w.end]);
+      [w.phrase, w.keep && `keep:${w.keep}`].forEach((id) => {
+        if (!id) return;
+        const s = spans.get(id);
+        spans.set(id, s ? [Math.min(s[0], w.start), Math.max(s[1], w.end)] : [w.start, w.end]);
+      });
     });
     const covered = new Set<string>();
     spans.forEach(([a0, a1], id) => {
@@ -280,8 +282,11 @@ export const KitSubtitles: React.FC<{
     });
     // a word said inside a window is carried by the scene there; a word still being said when the window ends stays, so the
     // rest of its group shows right after the window (dropping every word that began inside lost 0.4-0.6 s of subtitles
-    // after a scene); the component draws nothing inside a window anyway (below)
-    const words = captions.words.filter((w) => !(w.phrase && covered.has(w.phrase)) && !hide.some(([a, b]) => w.start >= a && w.end <= b));
+    // after a scene); the component draws nothing inside a window anyway (below). A keep group the windows cover for at
+    // most half keeps every word, so its block shows whole before and after the window (Codex review: a word dropped
+    // inside a short window left "It was admin admin")
+    const words = captions.words.filter((w) => !(w.phrase && covered.has(w.phrase)) && !(w.keep && covered.has(`keep:${w.keep}`))
+      && (!!w.keep || !hide.some(([a, b]) => w.start >= a && w.end <= b)));
     // "Typewriter" splits by phrases and pauses (up to ~52 characters as a whole), not by a short character limit
     const [maxWords, maxChars] = plate ? [4, 26] : tw ? [10, 52] : [3, 20];
     // a chunk that measures more than two lines is split again where it reads as two (bestSplit), each part on its own;

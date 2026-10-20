@@ -428,9 +428,10 @@ def punct_only(text):
     return bool(t) and all(unicodedata.category(ch).startswith("P") for ch in t)
 
 
-def timeline(c, words):
+def timeline(c, words, said=None):
     """Words on the new timeline: each word once per pass through its source (a replay shows it again), punctuation
-    tokens joined to their word."""
+    tokens joined to their word. said: a list that gets each caption word's transcript text, in caption order
+    (mark_keep matches on it: two transcript words may share a start time)."""
     fps, segments, captions, offset = c["fps"], [], [], 0.0
     frames = 0
     for i, r in enumerate(c["ranges"]):
@@ -444,7 +445,7 @@ def timeline(c, words):
                          "out_start": round(offset, 3), "out_dur": round(d, 3), "speed": speed, "beat": r["beat"],
                          "_s": s, "_e": e, "_n": n, "_fps": fps})
         group = [(i, r)] + [(k, x) for k, x in enumerate(c["ranges"]) if k != i and same_pass(r, x)]
-        mine, prefix = [], ""
+        mine, prefix, texts = [], "", []
         for w in words[r["source"]]:
             if owner(w, group) != i:
                 continue
@@ -463,27 +464,31 @@ def timeline(c, words):
             who = speaker_in(w, r)
             mine.append({"text": prefix + text, "src": round(w["start"], 3), "start": round((ws - s) / speed + offset, 3),
                          "end": round((we - s) / speed + offset, 3), "seg": i, **({"speaker": who} if who else {})})
+            texts.append(w["text"])
             prefix = ""
         captions += mine
+        if said is not None:
+            said += texts
         frames += n
         offset = frames / fps
     return segments, captions, offset
 
 
-def mark_keep(c, words, captions):
+def mark_keep(c, said, captions):
     """cut.json "keep": the caption words of each marked phrase get one group id ("keep": "k1"), so the kit never splits
     the phrase between two subtitle blocks (finding 8 of an English test: "it was just admin admin" on two plates read
     as a joke in two beats). The first word is matched as fix_at matches it: its transcript text, its start (after
     retime) within 0.02 s, the entry's source if it names one; the group is that word and the next words-1 caption
     words (the words as the subtitles show them: a punctuation token is part of its word, a word removed with fix_at
     -> "" is not counted). A phrase the cut shows twice (a teaser) is marked at each place: "k1", "k1-2". -> ([(id,
-    text, out start, words)], [problem]): a mark that matches no word, runs past the last word or overlaps another."""
-    said = {(src, round(w["start"], 3)): w["text"] for src, ws in words.items() for w in ws}
+    text, out start, words)], [problem]): a mark that matches no word, runs past the last word or overlaps another.
+    said: the transcript text of each caption word (timeline(..., said)), so a word is matched as itself, not by its
+    time alone (Codex review: two transcript words with one start time overwrote each other)."""
     groups, problems = [], []
     for n, r in enumerate(c["keep"]):
         hits = [i for i, w in enumerate(captions)
                 if for_source(r, c["ranges"][w["seg"]]["source"]) and abs(w["src"] - r["at"]) < 0.02
-                and said.get((c["ranges"][w["seg"]]["source"], w["src"])) == r["text"]]
+                and said[i] == r["text"]]
         label = f"keep[{n}] «{r['text']}» at {r['at']}"
         if not hits:
             problems.append(f"{label}: no such word in the subtitles of the cut (the word as the transcript has it, its "
@@ -746,8 +751,9 @@ def main():
         auto_balance(e)
     c = load_cut(e, project, a.speed)
     words = load_words(c)
-    segments, captions, total = timeline(c, words)
-    keeps, keep_problems = mark_keep(c, words, captions)
+    said = []
+    segments, captions, total = timeline(c, words, said)
+    keeps, keep_problems = mark_keep(c, said, captions)
     for g in segments:
         nw = sum(1 for w in captions if w["seg"] == g["i"])
         print(f"  {g['i']:>2} {g['source']:<8} {g['src_start']:>8.3f}-{g['src_end']:<8.3f} x{g['speed']:<5} "
