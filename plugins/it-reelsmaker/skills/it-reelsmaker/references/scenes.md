@@ -148,6 +148,8 @@ Scene texts, like card texts, are **shown to the person before rendering** in th
 
 **Data on screen.** Other people's names, emails, phone numbers and amounts in interface screenshots are replaced with fictional ones, and the plan says so.
 
+**A motion reference** (someone else's video the person likes): take its mechanics, never its content. Before changing anything, look at a local copy of it as timestamped frames from ffmpeg (denser around transitions; no local file → ask for one, never describe motion you have not seen), and write a table by timecode: the reference's fps, what moves (a card, the camera, a mask, the whole layout), from where to where, roughly how long, the easing as seen, how the scene joins the next; mark estimates as estimates. Then map each row to this video's scenes at this video's fps, with this video's material, texts and brand: the reference's screenshots, wording, colors and logo stay out. A row with nothing to map is dropped, not imitated with filler. Motion across the whole canvas (cards travel along paths and assemble into the interface, the camera moves between parts of it) is one option where the reference, the content and the brief call for it; simple local motion is just as valid, and the reading-time, face, intensity and brand-tone limits still come first. Record in `project.md` which rows were used, and the reference's source in `refs/` (`references/playbook.md`).
+
 ## Scene sound
 
 Sounds come from your own library `{{ASSETS_DIR}}`; CC0 packs are the easiest (no attribution, commercial use allowed); keep the license next to the files.

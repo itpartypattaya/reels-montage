@@ -2,6 +2,16 @@
 
 What changed in IT Reelsmaker, written for the people who use it. The newest version is on top. The skill shows a short “What's new” note from this file once, on the first edit after an update.
 
+## 1.17.1
+
+- **Learn motion from a reference, not copy it.** Give a video you like as a file: the agent looks at its frames, writes
+  its moves as a table by timecode (what moves, where, roughly how long, how it joins the next) and carries only those
+  mechanics into your scenes, with your material, texts and brand.
+- **Revisions as a defect table.** Notes on a finished video become rows (timecode, object, now, should be) before
+  anything changes; only what you asked for changes, and the whole video is checked again afterwards.
+- **Traceable brand choices.** Every color, font and logo rule of a new brand says where it came from: your material,
+  a rule it was inferred by, or a named default. Missing information is flagged and asked about, not invented.
+
 ## 1.17.0
 
 - **The camera of a framed clip is proposed for you.** `longform.py camera edit/<id>` reads the faces and the words of a
