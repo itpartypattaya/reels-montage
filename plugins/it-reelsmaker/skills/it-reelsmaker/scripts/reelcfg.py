@@ -54,7 +54,7 @@ from reels_common import find_brand
 KNOWN = set(SETTING_KEYS_BOOL) | {"brand", "style", "subtitles", "intensity", "broll_priority", "meme_priority",
                                   "footage_dirs", "memes_dirs", "generation_engines", "library_dirs", "meme_size",
                                   "scene_tone", "tone_override", "subtitles_lang", "subtitles_shade",
-                                  "format", "window", "label",  # format: "framed" (window, label) or "full"
+                                  "format", "window", "label", "subtitles_at",  # format: "framed" (window, label, subtitles_at) or "full"
                                   "profile", "content_format",  # the video's goal and its form (references/profiles.md)
                                   "workflow"}  # stops and questions (SKILL.md, section 6)
 WORKFLOWS = ("quick", "standard", "full")
@@ -102,6 +102,7 @@ def cmd_show(a):
           f"   subtitles: {s.get('subtitles') or (brand or {}).get('subtitles_default') or '—'}")
     fr = framed_of(s)
     print("format: " + (f"framed, window {fr['window']}" + (f", label “{fr['label']}”" if fr["label"] else ", no label")
+                        + (", subtitles below the window" if fr["subtitles_at"] == "below" else "")
                         + " (the kit draws the window)" if fr else "full frame (vertical)")
           + "".join("\n  ⚠ " + m for m in framed_issues(s)))
     print(profile_line(s, prov))
@@ -250,13 +251,13 @@ def cmd_save(a):
             sys.exit(f"not saved: unknown {k} {over[k]!r} (known: {', '.join(known_ids)}; references/profiles.md)")
     bad_workflow(over)
     e = edit_dir(a.edit, create=True)  # step 0 of a new video: the edit/<id> folder doesn't exist yet
-    if {"format", "window", "label"} & set(over):  # the framed format's keys are checked together, before saving
+    if {"format", "window", "label", "subtitles_at"} & set(over):  # the framed format's keys are checked together, before saving
         bad = framed_issues({**(load_json(e / "reel.json", {}) or {}), **over})
         if bad:
             sys.exit("not saved: " + "; ".join(bad))
         new = {**(load_json(e / "reel.json", {}) or {}), **over}
-        if new.get("format") != "framed" and (new.get("window") is not None or new.get("label")):
-            warn("window and label are options of format framed: without format=framed the kit ignores them")
+        if new.get("format") != "framed" and (new.get("window") is not None or new.get("label") or new.get("subtitles_at")):
+            warn("window, label and subtitles_at are options of format framed: without format=framed the kit ignores them")
     with editing_json(e / "reel.json", {}) as reel:
         reel.update(over)
         to_new_names(reel)

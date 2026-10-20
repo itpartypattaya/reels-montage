@@ -41,7 +41,8 @@ Hence the default: the local word times with `gpt-transcribe`'s text laid onto t
 fallback (`transcription_fallback=groq`) when OpenAI is out of credits or unreachable: the text only, on the same local
 times; Groq's word times are never used. Groq's endpoint is OpenAI-compatible:
 `https://api.groq.com/openai/v1/audio/transcriptions`, the same multipart request, 25 MB on the free tier. Upload limit 25 MB per file
-(`mp3, mp4, mpeg, mpga, m4a, wav, webm`). Endpoint `https://api.openai.com/v1/audio/transcriptions`, multipart,
+(`mp3, mp4, mpeg, mpga, m4a, wav, webm`): a 16 kHz WAV over it (~13 min) is sent as mono mp3 at 32, 24 or 16 kbit/s,
+whichever fits (`transcribe_online.py`, 34.6 min → 8.3 MB at 32). Endpoint `https://api.openai.com/v1/audio/transcriptions`, multipart,
 `Authorization: Bearer`. OpenAI's API data policy: https://openai.com/policies/
 
 ## Subtitle translation (language models)

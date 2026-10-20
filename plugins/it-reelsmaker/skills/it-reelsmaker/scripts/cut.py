@@ -294,11 +294,15 @@ def scale_filter(info, mode, name):
 
 
 def video_graph(c, src, speed, out_label="v"):
-    """filter_complex for the video: speed, fps, scale, source correction, LUT (input 1), grade, yuv420p."""
+    """filter_complex for the video: speed, fps, scale, source correction, LUT (input 1), grade, yuv420p.
+    The fps grid starts at 0 (start_time=0): a range snapped to the output grid may start between two source frames
+    (a 25 fps source cut at 30 fps), its first source frame then came 0.02 s after 0, landed on slot 1, and the
+    segment began at 1/30 s and ended a frame short under -t (a 25 fps talk: 729 frames of 738). Timestamps stay
+    those of the source after the input seek (PTS, not PTS-STARTPTS), so the picture keeps time with the sound."""
     chain = []
     if speed != 1.0:
-        chain.append(f"setpts=(PTS-STARTPTS)/{speed}")
-    chain.append(f"fps={c['fps']}")
+        chain.append(f"setpts=PTS/{speed}")
+    chain.append(f"fps={c['fps']}:start_time=0")
     if src["scale"]:
         chain.append(src["scale"])
     return look_chain(c, "[0:v]" + ",".join(chain), out_label)

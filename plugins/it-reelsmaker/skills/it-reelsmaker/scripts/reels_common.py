@@ -447,7 +447,8 @@ SUB_BLOCK_H = {"typewriter": 137, "plate": 170, "accent": 168}
 
 # The "framed" format (references/techniques.md): a horizontal source in a rounded window on the style's field, an
 # optional caps label above it. edit/<id>/reel.json -> "format": "framed", "window": [x, y, w, h] (optional, FRAMED_WINDOW
-# by default), "label": "..." (optional). One window for every script and the kit: faces.py maps its measurement into
+# by default), "label": "..." (optional), "subtitles_at": "below" (optional: the subtitle band on the field under the
+# window, not inside it). One window for every script and the kit: faces.py maps its measurement into
 # it, visual_plan.py clamps the camera to it and keeps text inside it, export hands it to ReelKit (props.framed), which
 # draws the window, the label and the video inside it (no per-video composition).
 FORMATS = ("full", "framed")
@@ -457,11 +458,13 @@ FRAMED_PAD = 35        # px: text inside the window keeps this far from its side
 CORNER_BOX = (828, 236, 112, 112)  # the kit's corner mark over the video (ReelKit.tsx Corner: right 140, top 236, 112 px)
 FRAMED_LABEL_UP = 48   # px: the caps label's top above the window (28 px letters end ~20 px above its edge)
 FRAMED_HOOK_MIN = 76   # px: the smallest hook line inside the window (the 92-120 px rule needs ~230 px of headroom)
+FRAMED_SUB_GAP = 30    # px: "subtitles_at": "below" puts the subtitle block this far under the window's bottom edge
+FRAMED_SUB_AT = ("window", "below")
 
 
 def framed_of(s):
-    """The "framed" layout from a video's settings (reel.json): {"window": [x, y, w, h], "label": str|None}; None: the
-    full vertical frame."""
+    """The "framed" layout from a video's settings (reel.json): {"window": [x, y, w, h], "label": str|None,
+    "subtitles_at": "window"|"below"}; None: the full vertical frame."""
     s = s or {}
     if s.get("format") != "framed":
         return None
@@ -470,7 +473,8 @@ def framed_of(s):
         win = [int(round(float(v))) for v in win][:4]
     except (TypeError, ValueError):
         win = list(FRAMED_WINDOW)
-    return {"window": win if len(win) == 4 else list(FRAMED_WINDOW), "label": str(s.get("label") or "").strip() or None}
+    return {"window": win if len(win) == 4 else list(FRAMED_WINDOW), "label": str(s.get("label") or "").strip() or None,
+            "subtitles_at": "below" if s.get("subtitles_at") == "below" else "window"}
 
 
 def framed_at(e):
@@ -495,6 +499,19 @@ def framed_issues(s):
             elif s.get("label") and y - FRAMED_LABEL_UP < 220:
                 out.append(f"window {list(win)}: the label sits {FRAMED_LABEL_UP} px above the window, under the app's "
                            f"top bar (y < 220): lower the window to y >= {220 + FRAMED_LABEL_UP} or drop the label")
+    at = s.get("subtitles_at")
+    if at is not None and at not in FRAMED_SUB_AT:
+        out.append(f"subtitles_at {at!r}: one of {', '.join(FRAMED_SUB_AT)} (below: the subtitles on the field under the "
+                   f"framed window)")
+    elif at == "below" and not out:
+        x, y, w, h = framed_of({**s, "format": "framed"})["window"]
+        room = 1500 - (y + h + FRAMED_SUB_GAP)
+        need = max(SUB_BLOCK_H.values())
+        if room < need:
+            out.append(f"subtitles_at below: the window ends at y {y + h}, which leaves {max(0, room)} px for the "
+                       f"subtitles above y 1500 ({need} needed for two lines): end the window at y <= "
+                       f"{1500 - need - FRAMED_SUB_GAP} (a 16:9 picture 1030 px wide is 579 px tall: window "
+                       f"[25, 641, 1030, 579])")
     return out
 
 
@@ -505,6 +522,17 @@ def framed_area(fr):
     x, y, w, h = fr["window"]
     return [max(60, x + FRAMED_PAD), max(220, y + 20) if fr.get("label") else 220,
             min(960, x + w - FRAMED_PAD), min(1500, y + h - 20)]
+
+
+def framed_sub_area(fr):
+    """The subtitle band's area in the "framed" format -> [x0, y0, x1, y1]: the window's text area (framed_area), or
+    with "subtitles_at": "below" the field under the window, FRAMED_SUB_GAP below its bottom edge down to y 1500, with
+    the text area's sides (English test talk: the subtitles had to stay off the picture, and the only way was to pad
+    the picture with the field's color through look.grade and make the window taller)."""
+    if fr.get("subtitles_at") != "below":
+        return framed_area(fr)
+    x, y, w, h = fr["window"]
+    return [max(60, x + FRAMED_PAD), min(1500, y + h + FRAMED_SUB_GAP), min(960, x + w - FRAMED_PAD), 1500]
 
 
 def framed_view(window, src):

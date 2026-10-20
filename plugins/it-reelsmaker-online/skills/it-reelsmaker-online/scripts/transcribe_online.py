@@ -29,7 +29,9 @@ per minute, only with --words cloud); groq — text only, whisper-large-v3-turbo
 fallback when OpenAI is out of credits or unreachable. Groq's own word times are not used: on the same 97 s video they
 were off from the audio-checked local times by more than 0.15 s for 45 % of the words (large-v3: 36 %, whisper-1: 21 %),
 and they lost half of the pauses between phrases; its text was as good as gpt-transcribe's (one wrong word in 187).
-Files up to 25 MB (about 13 minutes of this WAV).
+Files up to 25 MB, about 13 minutes of this WAV: a longer one is sent as mono mp3 instead, at the highest of 32, 24
+or 16 kbit/s that fits (32: ~100 minutes, 16: ~3.4 hours; a 34-minute talk was 8.3 MB at 32), encoded by ffmpeg in a
+temporary folder and removed after the call; longer still: transcribe it locally.
 Fallback: `transcription_fallback=groq` in the settings (reelcfg.py defaults --set ...) — when the main provider fails
 (no key, no credits, no network) and a GROQ_API_KEY is set, the text comes from Groq instead, on the same local times.
 
@@ -38,7 +40,7 @@ video's reel.json (their standing choice). Otherwise it prints the price and exi
 a warning, exit code 2, and the local command to use instead (the edit continues with the core's transcriber).
 REELS_OFFLINE=1: no network at all.
 """
-import argparse, difflib, json, re, shutil, sys, unicodedata, urllib.error, urllib.request, uuid
+import argparse, difflib, json, re, shutil, subprocess, sys, tempfile, unicodedata, urllib.error, urllib.request, uuid
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -88,6 +90,29 @@ def multipart(fields, files):
     return b"".join(out), f"multipart/form-data; boundary={b}"
 
 
+def audio_type(f):
+    """The upload's content type: the WAV, or the mp3 a long one is packed into (pack)."""
+    return "audio/mpeg" if Path(f).suffix.lower() == ".mp3" else "audio/wav"
+
+
+PACK_KBPS = (32, 24, 16)  # mono mp3 rates for 16 kHz speech (MPEG-2 layer III rates), the best that fits is used
+PACK_MARGIN = 0.97        # the container and the bit reservoir: aim a little under the limit
+
+
+def pack_rate(secs, max_bytes):
+    """The mp3 rate (kbit/s) that brings secs of audio under max_bytes, or None when even the lowest does not."""
+    return next((k for k in PACK_KBPS if secs * k * 1000 / 8 <= max_bytes * PACK_MARGIN), None)
+
+
+def pack(wav, kbps, folder):
+    """The WAV as mono mp3 at kbps in folder (English test talk: 34.6 min of the 16 kHz WAV is 66 MB, over the 25 MB
+    upload limit; as mp3 at 32 kbit/s, 8.3 MB). The timeline is kept: ffmpeg's encoder delay is in the file's header."""
+    out = Path(folder) / (Path(wav).stem + ".mp3")
+    subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", str(wav), "-ac", "1", "-c:a", "libmp3lame", "-b:a", f"{kbps}k",
+                    str(out)], check=True, capture_output=True)
+    return out
+
+
 def openai_host_ok(url):
     return str(url).startswith("https://api.openai.com/")
 
@@ -102,7 +127,7 @@ def provider_call(name, wav, key, model, language=None, prompt=None, words=False
         fields.append(("language", language))
     if prompt:
         fields.append(("prompt", prompt))
-    body, ctype = multipart(fields, [("file", Path(wav).name, Path(wav).read_bytes(), "audio/wav")])
+    body, ctype = multipart(fields, [("file", Path(wav).name, Path(wav).read_bytes(), audio_type(wav))])
     return post(p["url"], body, {"Authorization": f"Bearer {key}", "Content-Type": ctype}, 600,
                 lambda url: str(url).startswith(p["host"]))
 
@@ -136,7 +161,7 @@ def openai_call(wav, key, model, language=None, prompt=None, words=False):
         fields.append(("language", language))
     if prompt:
         fields.append(("prompt", prompt))
-    body, ctype = multipart(fields, [("file", Path(wav).name, Path(wav).read_bytes(), "audio/wav")])
+    body, ctype = multipart(fields, [("file", Path(wav).name, Path(wav).read_bytes(), audio_type(wav))])
     return post(OPENAI_URL, body, {"Authorization": f"Bearer {key}", "Content-Type": ctype}, 600, openai_host_ok)
 
 
@@ -386,10 +411,15 @@ def cmd_run(a):
         return 0
     size = wav.stat().st_size
     print(f"{src.name}: {secs:.0f} s of audio, {size / 1e6:.1f} MB → {a.provider} {model}, ≈ ${price:.3f}")
-    if size > p["max_bytes"]:
-        warn(f"{a.provider} takes files up to {p['max_bytes'] / 1e6:.0f} MB: this audio is {size / 1e6:.1f} MB. "
-             f"Transcribe it locally: {LOCAL}")
-        return 2
+    kbps = None
+    if size > p["max_bytes"]:  # a long recording: sent as mono mp3 (the WAV of 13 minutes is already 25 MB)
+        kbps = pack_rate(secs, p["max_bytes"])
+        if kbps is None:
+            warn(f"{a.provider} takes files up to {p['max_bytes'] / 1e6:.0f} MB: {secs / 60:.0f} min of audio do not fit "
+                 f"even as mp3 at {PACK_KBPS[-1]} kbit/s. Transcribe it locally: {LOCAL}")
+            return 2
+        print(f"  over {p['max_bytes'] / 1e6:.0f} MB as WAV: sent as mono mp3 at {kbps} kbit/s "
+              f"(≈ {secs * kbps * 1000 / 8 / 1e6:.1f} MB)")
     if a.price:
         return 0
     if not (a.yes or approved(e, a.provider)):
@@ -416,11 +446,25 @@ def cmd_run(a):
               f"≈ ${secs / 60 * p['words_usd_min']:.3f} instead of ≈ ${price:.3f}: nothing was sent. After the "
               f"person agrees: --words cloud --yes; or install the local transcriber (doctor.py)")
         return 2
+    tmp, upload = None, wav
+    if kbps:  # packed only now, after the price was agreed; removed once the call is over (finally below)
+        tmp = tempfile.TemporaryDirectory(prefix="reels-upload-")
+        try:
+            upload = pack(wav, kbps, tmp.name)
+        except (OSError, subprocess.CalledProcessError) as ex:
+            tmp.cleanup()
+            warn(f"could not pack the audio into mp3 ({err_text(ex)}); nothing was sent. Local: {LOCAL}")
+            return 2
+        if upload.stat().st_size > p["max_bytes"]:
+            tmp.cleanup()
+            warn(f"the mp3 came out at {upload.stat().st_size / 1e6:.1f} MB, over {p['max_bytes'] / 1e6:.0f} MB; "
+                 f"nothing was sent. Local: {LOCAL}")
+            return 2
     used = a.provider
     try:
         if not key:
             raise NoService(f"no {p['key']} key")
-        raw = provider_call(a.provider, wav, key, model, a.language, a.prompt, words=cloud_words)
+        raw = provider_call(a.provider, upload, key, model, a.language, a.prompt, words=cloud_words)
     except NoService as ex:
         if not fb:
             warn(f"{a.provider} {model}: {ex}. The edit goes on with the local transcriber: {LOCAL}")
@@ -434,12 +478,15 @@ def cmd_run(a):
         used, model, price = fb, q["text_model"], secs / 60 * q["text_usd_min"]
         label = f"{fb} {model} text + faster-whisper timing"
         try:
-            raw = provider_call(fb, wav, api_key(q["key"]), model, a.language, a.prompt)
+            raw = provider_call(fb, upload, api_key(q["key"]), model, a.language, a.prompt)
         except NoService as ex2:
             warn(f"{fb} {model}: {ex2}. The edit goes on with the local transcriber: {LOCAL}")
             if base is not None and not out.exists():
                 save_json(out, base)
             return 2
+    finally:
+        if tmp:
+            tmp.cleanup()
     save_json(e / "transcripts" / f"{src.stem}.{used}.raw.json", raw)
     text = str(raw.get("text") or "").strip()
     if cloud_words:

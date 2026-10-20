@@ -82,6 +82,26 @@ def test_cut_builds_a_clean_rough_cut(project):
 
 
 @needs_ffmpeg
+def test_cut_keeps_every_frame_of_a_25_fps_source(project):
+    # English test talk: a 25 fps source cut at 30 fps gave 729 frames of 738. A range snapped to the 30 fps grid that
+    # starts between two source frames (0.5 s: frames at 0.48 and 0.52) began at 1/30 s and lost its last frame
+    make_video(project / "talk.mp4", 320, 180, 6.0, rate=25)
+    make_video(project / "fast.mp4", 320, 180, 6.0, rate=25, color="blue")
+    e = project / "edit" / "t25"
+    write_json(e / "cut.json", {"fps": 30, "sources": {"a": {"file": "talk.mp4"}, "b": {"file": "fast.mp4", "speed": 1.2}},
+                                "ranges": [{"source": "a", "start": 0.5, "end": 1.5}, {"source": "a", "start": 2.3, "end": 3.0},
+                                           {"source": "b", "start": 3.7, "end": 4.9}], "level": False, "balance": False})
+    r = run_script("cut.py", "edit/t25", cwd=project, check=False)
+    assert r.returncode == 0, r.stdout + r.stderr  # check_final counts the frames against the plan
+    for k, n in enumerate((30, 21, 30)):
+        seg = e / "clips" / f"seg_{k:02d}.mp4"
+        p = subprocess.run(["ffprobe", "-v", "error", "-count_frames", "-select_streams", "v:0", "-show_entries",
+                            "stream=nb_read_frames,start_time", "-of", "json", str(seg)], capture_output=True, text=True)
+        s = json.loads(p.stdout)["streams"][0]
+        assert (int(s["nb_read_frames"]), float(s["start_time"])) == (n, 0.0), seg.name
+
+
+@needs_ffmpeg
 def test_cut_rejects_a_range_from_an_unknown_source(project):
     e = cut_project(project)
     cut = json.loads((e / "cut.json").read_text(encoding="utf-8"))
@@ -203,6 +223,22 @@ def test_poster_cover_frame_is_taken_in_a_pause(project):
     t, why = poster.in_pause(project / "r.mp4", 0.5, 2.8, "test")
     assert 1.65 <= t <= 1.85 and "pause" in why
     assert len(poster.candidates(project / "r.mp4", 0.5, 2.8)) >= 3
+
+
+@needs_ffmpeg
+def test_poster_pick_takes_the_last_render_without_render(project):
+    # English test talk: "poster.py pick --sheet" as SKILL.md writes it stopped with "--render is required"
+    from conftest import ffmpeg
+    e = project / "edit" / "p1"
+    e.mkdir()
+    ffmpeg("-f", "lavfi", "-i", "testsrc2=size=360x640:rate=30:duration=3", "-f", "lavfi",
+           "-i", "sine=f=300:d=3,volume='if(between(t,1.6,1.9),0,1)':eval=frame", "-map", "0:v", "-map", "1:a",
+           "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", project / "r.mp4")
+    r = run_script("poster.py", "pick", "edit/p1", "-o", e / "cover.jpg", cwd=project, check=False)
+    assert r.returncode != 0 and "pass --render" in r.stderr
+    write_json(e / "render.json", {"out": str(project / "r.mp4"), "ok": True})
+    r = run_script("poster.py", "pick", "edit/p1", "-o", e / "cover.jpg", cwd=project)
+    assert "the last kit.py render" in r.stdout and (e / "cover.jpg").is_file()
 
 
 @needs_ffmpeg

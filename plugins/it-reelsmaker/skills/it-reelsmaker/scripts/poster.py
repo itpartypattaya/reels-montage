@@ -3,8 +3,9 @@
 uses its own cover, and a file manager (Windows Explorer, macOS Finder) shows the embedded cover art, if the file has
 one, otherwise a frame of its own choosing (a B-roll frame from the middle, say).
 
-    python scripts/poster.py pick  edit/<id> --render out/x.mp4 [--t 3.2] -o edit/<id>/cover.jpg
-    python scripts/poster.py pick  edit/<id> --render out/x.mp4 --sheet edit/<id>/cover-candidates.jpg   # look, then --t
+    python scripts/poster.py pick  edit/<id> [--render out/x.mp4] [--t 3.2] -o edit/<id>/cover.jpg
+    python scripts/poster.py pick  edit/<id> [--render out/x.mp4] --sheet edit/<id>/cover-candidates.jpg   # look, then --t
+    (without --render: the last successful kit.py render of the video, edit/<id>/render.json -> out)
     python scripts/poster.py bake  out/x.mp4 --cover edit/<id>/cover.jpg -o out/x-cover.mp4
     python scripts/poster.py guide edit/<id>/cover.jpg -o edit/<id>/cover-guide.png
     python scripts/poster.py attach out/x-master.mp4 --cover edit/<id>/cover.jpg -o out/y.mp4
@@ -292,9 +293,21 @@ def rest_time(e, render=None):
     return in_pause(render, a, b, why) if render else (round((a + b) / 2, 3), why)
 
 
+def last_render(e):
+    """The file of the video's last successful kit.py render (edit/<id>/render.json -> out, "ok": true), or None.
+    English test talk: the documented "poster.py pick --sheet" stopped with "--render is required"."""
+    r = load_json(Path(e) / "render.json") or {}
+    return Path(r["out"]) if r.get("ok") and r.get("out") else None
+
+
 def cmd_pick(a):
     e = edit_dir(a.edit)
-    render = Path(a.render)
+    render = Path(a.render) if a.render else last_render(e)
+    if render is None:
+        sys.exit(f"no --render and no successful kit.py render recorded in {e / 'render.json'}: "
+                 f"pass --render out/<file>.mp4")
+    if not a.render:
+        print(f"render: {render} (the last kit.py render, render.json)")
     if not render.is_file():
         sys.exit(f"render not found: {render}")
     if a.sheet:
@@ -500,7 +513,8 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest="cmd", required=True)
     p = sub.add_parser("pick", help="a \"settled\" frame from the render → jpg")
-    p.add_argument("edit"); p.add_argument("--render", required=True); p.add_argument("--t", type=float)
+    p.add_argument("edit"); p.add_argument("--t", type=float)
+    p.add_argument("--render", help="the rendered video (default: the last successful kit.py render, render.json)")
     p.add_argument("-o", "--output"); p.add_argument("--sheet", help="save up to 6 candidate frames side by side")
     p.add_argument("--window", metavar="A-B", help="look for the frame in these seconds (e.g. 0.5-6) instead of the "
                                                    "hook scene or the default 0.5-3.0 s")

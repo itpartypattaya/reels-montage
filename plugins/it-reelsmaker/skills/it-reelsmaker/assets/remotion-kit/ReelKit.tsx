@@ -10,7 +10,7 @@
 // background, length — captions.duration. The cover is the ReelCover composition (still) at the bottom of the file.
 // “Framed” format (props.framed ← reel.json format: framed, references/techniques.md): a horizontal rough cut in a rounded
 // window on the style's field, an optional caps label above it, the camera clamped to the window, scenes, B-roll and
-// subtitles inside it — drawn here, no per-video composition. A per-video composition reuses the pieces exported below
+// subtitles inside it (or the subtitles on the field under it: subtitles "below") — drawn here, no per-video composition. A per-video composition reuses the pieces exported below
 // (FramedFootage, FramedLabel, EndCard with its logo sting, Corner, cameraAt/fitCamera, framedGeometry).
 import React from "react";
 import { AbsoluteFill, CalculateMetadataFunction, Easing, Img, OffthreadVideo, interpolate, staticFile, useCurrentFrame } from "remotion";
@@ -60,16 +60,20 @@ export type ReelKitProps = {
 // The “framed” format: window — x, y, w, h on the 1080×1920 screen (reel.json → window, default 25, 340, 1030, 1240);
 // label — the caps label above the window (reel.json → label); source — w, h of the rough cut (the video is a cover in the
 // window, centered, as faces.py maps faces); radius — the window's corners; field — the color around the window (export:
-// brand.looks[style].field, else primary)
-export type Framed = { window: number[]; label?: string | null; source?: number[] | null; radius?: number | null; field?: string | null };
+// brand.looks[style].field, else primary); subtitles — "below": the subtitle band on the field under the window
+// (reel.json → subtitles_at), else inside the window's text area
+export type Framed = { window: number[]; label?: string | null; source?: number[] | null; radius?: number | null; field?: string | null;
+  subtitles?: "window" | "below" | null };
 type Box = { x: number; y: number; w: number; h: number };
-export type FramedGeo = { win: Box; r: number; video: Box; cx: number; cy: number; area: Box; label: string | null };
+export type FramedGeo = { win: Box; r: number; video: Box; cx: number; cy: number; area: Box; sub: Box; below: boolean; label: string | null };
 export const FRAMED_WINDOW = [25, 340, 1030, 1240];
 const FRAMED_PAD = 35; // text keeps this far from the window's sides (reels_common.FRAMED_PAD)
 const FRAMED_LABEL_UP = 48; // the label's top above the window (reels_common.FRAMED_LABEL_UP)
+const FRAMED_SUB_GAP = 30; // subtitles below the window: the block's top under its bottom edge (reels_common.FRAMED_SUB_GAP)
 const CORNER_TOP = 236; // the corner mark's top over the video (reels_common.CORNER_BOX)
-/** The framed layout's geometry, the same rules as reels_common.py (framed_view, framed_area): the video's cover in the
- *  window; the text area inside the window (x 60–960, y ≤ 1500), with no label the field above the window joins it. */
+/** The framed layout's geometry, the same rules as reels_common.py (framed_view, framed_area, framed_sub_area): the video's
+ *  cover in the window; the text area inside the window (x 60–960, y ≤ 1500), with no label the field above the window
+ *  joins it; the subtitle area — the text area, or with subtitles "below" the field under the window down to y 1500. */
 export const framedGeometry = (f: Framed): FramedGeo => {
   const [x, y, w, h] = f.window?.length === 4 ? f.window : FRAMED_WINDOW;
   const [sw, sh] = f.source?.length === 2 && f.source[0] > 0 && f.source[1] > 0 ? f.source : [w, h];
@@ -77,10 +81,14 @@ export const framedGeometry = (f: Framed): FramedGeo => {
   const label = f.label?.trim() || null;
   const ax = Math.max(60, x + FRAMED_PAD);
   const ay = label ? Math.max(220, y + 20) : 220;
+  const ax1 = Math.min(960, x + w - FRAMED_PAD);
+  const area = { x: ax, y: ay, w: ax1 - ax, h: Math.min(1500, y + h - 20) - ay };
+  const below = f.subtitles === "below";
+  const sy = Math.min(1500, y + h + FRAMED_SUB_GAP);
   return {
     win: { x, y, w, h }, r: f.radius ?? 50, video: { x: x + (w - sw * k) / 2, y: y + (h - sh * k) / 2, w: sw * k, h: sh * k },
-    cx: x + w / 2, cy: y + h / 2, label,
-    area: { x: ax, y: ay, w: Math.min(960, x + w - FRAMED_PAD) - ax, h: Math.min(1500, y + h - 20) - ay },
+    cx: x + w / 2, cy: y + h / 2, label, area, below,
+    sub: below ? { x: ax, y: sy, w: ax1 - ax, h: 1500 - sy } : area,
   };
 };
 const sceneBox = (g: FramedGeo): SceneFrameBox => ({ area: g.area, win: g.win, r: g.r });
@@ -338,9 +346,11 @@ const ReelKitFrame: React.FC<ReelKitProps> = (p) => {
   // the last phrase and the darkening stay under the end card while its field fades in, then the card covers them
   // (T4: they vanished when the speech ended, on the second frame of the logo sting's 8-frame fade: a visible step)
   const tail = p.endCard ? STING_IN / KIT_FPS : 0;
-  // “framed”: the window, the label above it, everything else inside the window's text area
+  // “framed”: the window, the label above it, everything else inside the window's text area; the subtitles there too,
+  // or on the field under the window (subtitles "below": no darkening, the field is a flat color)
   const g = p.framed && p.video ? framedGeometry(p.framed) : null;
-  const subArea = g ? { area: g.area, clip: { ...g.win, r: g.r } } : {};
+  const subArea = g ? (g.below ? { area: g.sub } : { area: g.area, clip: { ...g.win, r: g.r } }) : {};
+  const shade = g?.below ? 0 : p.subtitlesShade ?? 0.35;
   // behind the speaker shrunk by a split/panel/window scene (and around the framed window): the style's field
   // (brand.looks[style].field), the same surface the scene's text is colored for; without it, primary
   return (
@@ -349,14 +359,14 @@ const ReelKitFrame: React.FC<ReelKitProps> = (p) => {
       {g ? <FramedLabel p={p} font={fonts.body} /> : null}
       <BrollLayer inserts={p.inserts} brand={p.brand} framed={g ? sceneBox(g) : null} />
       <KitSubtitles captions={p.subtitleCaptions ?? p.captions} brand={p.brand} font={fonts.body} mode={p.subtitles} hide={hide}
-        top={p.subtitlesTop ?? 1290} look={look} shade={p.subtitlesShade ?? 0.35} part="shade" tail={tail} {...subArea} />
+        top={p.subtitlesTop ?? 1290} look={look} shade={shade} part="shade" tail={tail} {...subArea} />
       <Hook p={p} look={look} font={fonts.heading} />
       <Corner p={p} />
       <SceneLayer scenes={p.scenes} brand={p.brand} look={look} words={p.captions.words} scenesOnly={!p.video} sceneTone={p.sceneTone}
         framed={g ? sceneBox(g) : null} />
       <MemeLayer inserts={p.inserts} brand={p.brand} />
       <KitSubtitles captions={p.subtitleCaptions ?? p.captions} brand={p.brand} font={fonts.body} mode={p.subtitles} hide={hide}
-        top={p.subtitlesTop ?? 1290} look={look} shade={p.subtitlesShade ?? 0.35} part="text" tail={tail} {...subArea} />
+        top={p.subtitlesTop ?? 1290} look={look} shade={shade} part="text" tail={tail} {...subArea} />
       <EndCard p={p} look={look} fonts={fonts} />
     </AbsoluteFill>
   );

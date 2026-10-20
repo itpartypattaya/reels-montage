@@ -245,6 +245,9 @@ def board_md(e, pans, pages, fps):
     (e / "board" / "board.md").write_text(head + "\n".join(rows) + "\n", encoding="utf-8")
 
 
+NOTHING = "nothing to put on the sheet"  # check.py reads this line: the step passes, there is nothing to show
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("edit")
@@ -277,9 +280,10 @@ def main():
         _e, _w, state = vp.defect_issues(e, plan, _s, doc, load_json(e / "captions.json", {}) or {})
         found = [(d, state.get(d["id"], "open")) for d in d_all]
     pans = panels(props, plan, doc, fps, a.shots, a.transitions, found)
-    if not pans:
-        sys.exit("nothing to put on the sheet: no hook, scenes, inserts, cards or end card in the props "
-                 "(--shots adds the camera shots)")
+    if not pans:  # a clip with no graphics passes (English test talk: check.py failed its board step on one)
+        print(f"{NOTHING}: no hook, scenes, inserts, cards or end card in the props, so no sheet "
+              "(--shots adds the camera shots)")
+        return
     rem = remotion_dir(a.remotion)
     bdir = e / "board"
     bdir.mkdir(exist_ok=True)

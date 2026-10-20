@@ -259,10 +259,25 @@ def make_patches(c, refs, tmp):
     return still, offsets, x0
 
 
+# filters that change the frame's geometry or draw pixels of their own: a band a grade pads under the picture (the
+# framed format's field color), a crop, a scale, a drawn box. They are left out of the measurement (geometry_free).
+GEOMETRY = {"pad", "crop", "scale", "zscale", "rotate", "transpose", "drawbox", "drawgrid", "drawtext", "fillborders",
+            "tpad", "zoompan", "setsar", "setdar"}
+
+
+def geometry_free(chain):
+    """A filter chain without the filters that change the frame's geometry or draw on it (GEOMETRY). The balance is
+    measured on the source's own pixels: English test talk, look.grade "pad=iw:ih*1638/1080:0:0:color=0x121316" put a
+    band of the field's color under the picture; a cream band of another brand read as a warm cast and gave a false
+    gain (the workaround was "balance": false). Color filters keep their place in the chain."""
+    return ",".join(f for f in split_filters(chain) if f.partition("=")[0].strip().lower() not in GEOMETRY)
+
+
 def graded(c, still, correct, png=None, half=True):
     """The still through cut.py's video chain with this correction: raw RGB (at half size unless half=False), or a
-    PNG at full size."""
-    cc = dict(c, correct=correct)
+    PNG at full size. The grade's and the correction's geometry filters are left out (geometry_free): the pixels a pad
+    adds are not the video's."""
+    cc = dict(c, correct=geometry_free(correct), grade=geometry_free(c.get("grade")))
     graph = video_graph(cc, {"scale": ""}, 1.0)
     args = ["-i", still, *lut_inputs(cc), "-filter_complex"]
     if png:

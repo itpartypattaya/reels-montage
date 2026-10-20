@@ -1,7 +1,7 @@
 """visual_plan.py and reelcfg.py on an invented rough cut: spans, hints, scenes, rules, settings layers."""
 import json
 
-from conftest import CORE, make_video, needs_ffmpeg, run_script, write_json
+from conftest import CORE, make_video, needs_ffmpeg, needs_pillow, run_script, write_json
 
 LINES = [  # (words, start of the first word) - an invented talk about hiring, 30 s
     ("So today we talk about hiring", 0.2),
@@ -992,6 +992,21 @@ def test_check_runs_every_step_and_fails_when_one_fails(project):
     assert r.returncode == 1
     assert "=== plan check" in out and "=== storyboard sheet" in out and "=== text check" in out
     assert "ok   plan check" in out and "FAIL storyboard sheet" in out  # no props, no Remotion project here
+
+
+@needs_pillow
+def test_check_passes_the_storyboard_of_a_clip_with_no_graphics(project):
+    # English test talk: a clip with subtitles only (no hook, scenes, inserts or end card) failed check.py's storyboard
+    # step with "nothing to put on the sheet"; the workaround was --shots
+    e = plan_project(project, {"use_broll": False, "use_scenes": False, "use_memes": False})
+    write_json(e / "reelkit-props.json", {"video": "4821/video.mp4", "captions": {"duration": 5.0, "segments": [],
+               "words": []}, "inserts": [], "scenes": [], "hook": None, "endCard": None, "camera": None})
+    r = run_script("board.py", "edit/4821", cwd=project)
+    assert "nothing to put on the sheet" in r.stdout
+    r = run_script("check.py", "edit/4821", cwd=project, check=False)
+    out = r.stdout + r.stderr
+    assert "ok   storyboard sheet (no graphics in the props: nothing to show)" in out, out
+    assert "FAIL storyboard sheet" not in out
 
 
 @needs_ffmpeg
