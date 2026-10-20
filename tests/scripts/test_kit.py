@@ -362,3 +362,62 @@ def test_new_project_fixes_the_video_cache_and_check_names_one_without(project):
     cfg.write_text('import { Config } from "@remotion/cli/config";\n', encoding="utf-8")
     r = run_script("kit.py", "check", "--remotion", "reels", cwd=project, check=False)
     assert "sets no video cache size" in r.stdout and "setOffthreadVideoCacheSizeInBytes" in r.stdout
+
+
+def _render_setup(project, monkeypatch, outcomes):
+    """kit.py render with Remotion replaced: each call writes its lines to the log and returns its code; a call with
+    code 0 writes the output file. -> (kit module, the calls)."""
+    import kit
+    rem = project / "reels"
+    (rem / "src").mkdir(parents=True)
+    (rem / "package.json").write_text("{}", encoding="utf-8")
+    write_json(project / "edit" / "t" / "reelkit-props.json", {"video": "", "captions": {"duration": 1, "segments": [], "words": []}})
+    calls = []
+
+    def fake(cmd, rem_, env, log, mode="w"):
+        code, lines = outcomes[len(calls)]
+        calls.append((cmd, mode))
+        with open(log, mode, encoding="utf-8") as f:
+            f.write("".join(x + "\n" for x in lines))
+        if code == 0:
+            out = next(x for x in cmd if x.endswith(".mp4"))
+            open(out, "wb").write(b"mp4")
+        return code
+    monkeypatch.setattr(kit, "run_logged", fake)
+    monkeypatch.setattr(kit, "probe", lambda p: {"dur": 1.0})
+    return kit, calls
+
+
+def test_render_retries_once_after_no_frame_found(project, monkeypatch, capsys):
+    # finding 7 (2026-10-20, an 8 GB laptop): a render failed with "No frame found at position", the same command run
+    # again by hand passed; kit.py now reruns it once by itself and keeps both attempts
+    kit, calls = _render_setup(project, monkeypatch, [
+        (1, ["Rendered 10/100", "Error: No frame found at position 12345"]), (0, ["Rendered 100/100"])])
+    assert kit.main(["render", "edit/t", "--remotion", "reels"]) == 0
+    assert [m for _, m in calls] == ["w", "a"]
+    assert "runs once more by itself" in capsys.readouterr().out
+    log = (project / "edit" / "t" / "render.log").read_text(encoding="utf-8")
+    assert "No frame found at position 12345" in log and "attempt 2" in log and "Rendered 100/100" in log
+    r = json.loads((project / "edit" / "t" / "render.json").read_text(encoding="utf-8"))
+    assert r["ok"] and [x["code"] for x in r["attempts"]] == [1, 0]
+    assert "No frame found at position 12345" in r["attempts"][0]["error"] and "error" not in r["attempts"][1]
+
+
+def test_render_retries_only_once_and_never_other_failures(project, monkeypatch):
+    nf = "Error: No frame found at position 7"
+    kit, calls = _render_setup(project, monkeypatch, [(1, [nf]), (1, [nf])])
+    with pytest.raises(SystemExit):
+        kit.main(["render", "edit/t", "--remotion", "reels"])
+    r = json.loads((project / "edit" / "t" / "render.json").read_text(encoding="utf-8"))
+    assert len(calls) == 2 and not r["ok"] and [x["code"] for x in r["attempts"]] == [1, 1]
+    kit, calls = _render_setup_again(project, monkeypatch, [(1, ["Error: out of memory"])])
+    with pytest.raises(SystemExit):
+        kit.main(["render", "edit/t", "--remotion", "reels"])
+    r = json.loads((project / "edit" / "t" / "render.json").read_text(encoding="utf-8"))
+    assert len(calls) == 1 and r["attempts"] == [{"code": 1, "seconds": r["attempts"][0]["seconds"]}]
+
+
+def _render_setup_again(project, monkeypatch, outcomes):
+    import shutil
+    shutil.rmtree(project / "reels")
+    return _render_setup(project, monkeypatch, outcomes)

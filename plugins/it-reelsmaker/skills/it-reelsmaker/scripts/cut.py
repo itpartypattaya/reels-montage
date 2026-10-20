@@ -19,6 +19,7 @@ cut.json (paths are relative to the project root, or to edit/<id>, or absolute):
      "fix": {"recruter": "recruiter"},
      "fix_at": [{"text": "all", "at": 16.16, "to": "everything"}],
      "retime": [{"text": "Hi", "at": 0.0, "start": 0.68, "end": 0.84}],
+     "keep": [{"text": "it", "at": 41.2, "words": 5}],
      "extract": {"broll_pool": {"source": "main", "start": 25.75, "end": 27.05}},
      "level": true
     }
@@ -53,6 +54,12 @@ fix, fix_at transcription fixes: every occurrence of a word, or one occurrence n
 retime      exact timings of key words measured on the waveform: (word, transcript start) -> (start, end).
             fix_at and retime entries may name a "source": then only that source's words (the pieces of one long
             recording, longform.py extract, each start at 0 s, so "at" alone can match a word of another piece).
+keep        phrases the subtitles never split: {"text": first word as the transcript has it, "at": its start (after
+            retime, ±0.02 s), "words": N (2+) subtitle words from it, "source" optional, as in fix_at}. Their caption
+            words get one group id ("keep": "k1"; a phrase the cut shows twice: "k1", "k1-2"), and the kit puts the group
+            on one subtitle block, two lines if needed, past the mode's word and character limits (a 5-word punchline
+            split over two plates read in two beats). A group too wide even for two lines falls back to the normal
+            split with a warning in the render log. --dry-run lists the groups; a mark that matches nothing is named.
 
 A transcript word that the cut leaves out of every range although it sits in a short gap (up to 1 s) removed between
 two ranges of one source is named in a warning, in --dry-run too: a quiet syllable below the speech threshold is cut
@@ -95,6 +102,7 @@ MIN_WORD = 0.08  # s: the shortest word on the subtitle timeline
 LUT_MIX = 0.6
 REPLAY = 0.2     # s: two pieces of one source overlapping by more than this replay the same speech (a teaser, a restart)
 GAP_MAX = 1.0    # s: a gap this short between two pieces of one pass is a removed pause, not a dropped line
+KEEP_CHARS = 48  # characters: a keep phrase longer than this may not fit two subtitle lines (Plate, Accent): named
 JOIN_REPEAT = 3  # words: an identical run this long in two adjacent pieces is a take said twice (repeats_at_joins)
 
 
@@ -194,6 +202,7 @@ def load_cut(e, project, speed_arg=None):
             "lut": str(lut) if lut else None, "lut_mix": float(look.get("lut_mix", LUT_MIX)),
             "fix": fix_map(cut.get("fix")), "fix_at": word_fixes(cut.get("fix_at"), "fix_at", ("to",), sources),
             "retime": word_fixes(cut.get("retime"), "retime", ("start", "end"), sources), "extract": extras,
+            "keep": word_fixes(cut.get("keep"), "keep", ("words",), sources),
             "level": cut.get("level", True) is not False}
 
 
@@ -212,14 +221,15 @@ def fix_map(v):
 
 
 def word_fixes(v, name, fields, sources=None):
-    """cut.json "fix_at" / "retime": a list of {"text", "at", ...} entries, checked (a dict or an entry without "at"
+    """cut.json "fix_at" / "retime" / "keep": a list of {"text", "at", ...} entries, checked (a dict or an entry without "at"
     crashed the cut with an AttributeError or a KeyError). An optional "source" (a key of "sources") limits the entry to
     that source: the pieces of a long recording each start at 0 s, so the same word at the same second of two pieces
     would otherwise both get the fix."""
     if not v:
         return []
-    shape = ('[{"text": "word", "at": 16.16, "to": "replacement"}]' if name == "fix_at" else
-             '[{"text": "word", "at": 0.0, "start": 0.68, "end": 0.84}]')
+    shape = {"fix_at": '[{"text": "word", "at": 16.16, "to": "replacement"}]',
+             "retime": '[{"text": "word", "at": 0.0, "start": 0.68, "end": 0.84}]',
+             "keep": '[{"text": "first word", "at": 41.2, "words": 5}] (words: 2 or more)'}[name]
     if not isinstance(v, list):
         sys.exit(f"cut.json: {name} is a list: {shape}")
     out = []
@@ -229,10 +239,12 @@ def word_fixes(v, name, fields, sources=None):
                 raise TypeError
             r = {**x, "at": float(x["at"])}
             for f in fields:
-                r[f] = x[f] if f == "to" else float(x[f])
+                r[f] = x[f] if f in ("to", "words") else float(x[f])
+            if name == "keep" and (isinstance(r["words"], bool) or not isinstance(r["words"], int) or r["words"] < 2):
+                raise ValueError
             if name == "fix_at" and not isinstance(r["to"], str):
                 raise TypeError
-            if not all(math.isfinite(r[f]) for f in ("at", *fields) if f != "to"):
+            if not all(math.isfinite(r[f]) for f in ("at", *fields) if f not in ("to", "words")):
                 raise ValueError
             if name == "retime" and r["end"] <= r["start"]:
                 raise ValueError
@@ -246,7 +258,7 @@ def word_fixes(v, name, fields, sources=None):
 
 
 def for_source(r, src):
-    """A fix_at / retime entry applies to this source: it names no source, or this one."""
+    """A fix_at / retime / keep entry applies to this source: it names no source, or this one."""
     return r.get("source") is None or r["source"] == src
 
 
@@ -456,6 +468,41 @@ def timeline(c, words):
         frames += n
         offset = frames / fps
     return segments, captions, offset
+
+
+def mark_keep(c, words, captions):
+    """cut.json "keep": the caption words of each marked phrase get one group id ("keep": "k1"), so the kit never splits
+    the phrase between two subtitle blocks (finding 8 of an English test: "it was just admin admin" on two plates read
+    as a joke in two beats). The first word is matched as fix_at matches it: its transcript text, its start (after
+    retime) within 0.02 s, the entry's source if it names one; the group is that word and the next words-1 caption
+    words (the words as the subtitles show them: a punctuation token is part of its word, a word removed with fix_at
+    -> "" is not counted). A phrase the cut shows twice (a teaser) is marked at each place: "k1", "k1-2". -> ([(id,
+    text, out start, words)], [problem]): a mark that matches no word, runs past the last word or overlaps another."""
+    said = {(src, round(w["start"], 3)): w["text"] for src, ws in words.items() for w in ws}
+    groups, problems = [], []
+    for n, r in enumerate(c["keep"]):
+        hits = [i for i, w in enumerate(captions)
+                if for_source(r, c["ranges"][w["seg"]]["source"]) and abs(w["src"] - r["at"]) < 0.02
+                and said.get((c["ranges"][w["seg"]]["source"], w["src"])) == r["text"]]
+        label = f"keep[{n}] «{r['text']}» at {r['at']}"
+        if not hits:
+            problems.append(f"{label}: no such word in the subtitles of the cut (the word as the transcript has it, its "
+                            f"start after retime; a word outside every range or removed with fix_at is not there)")
+        for m, i in enumerate(hits):
+            ws = captions[i:i + r["words"]]
+            gid = f"k{n + 1}" + (f"-{m + 1}" if m else "")
+            if len(ws) < r["words"]:
+                problems.append(f"{label}: only {len(ws)} of {r['words']} words left after it in the cut: {gid} keeps those")
+            other = next((w["keep"] for w in ws if w.get("keep")), None)
+            if other:
+                problems.append(f"{label}: overlaps the phrase {other}: not marked")
+                continue
+            if len(ws) < 2:
+                continue
+            for w in ws:
+                w["keep"] = gid
+            groups.append((gid, " ".join(str(w["text"]) for w in ws), ws[0]["start"], len(ws)))
+    return groups, problems
 
 
 def speakers_of(captions):
@@ -700,6 +747,7 @@ def main():
     c = load_cut(e, project, a.speed)
     words = load_words(c)
     segments, captions, total = timeline(c, words)
+    keeps, keep_problems = mark_keep(c, words, captions)
     for g in segments:
         nw = sum(1 for w in captions if w["seg"] == g["i"])
         print(f"  {g['i']:>2} {g['source']:<8} {g['src_start']:>8.3f}-{g['src_end']:<8.3f} x{g['speed']:<5} "
@@ -721,6 +769,13 @@ def main():
         warn(f"the word «{text}» ({src} {ws:.2f}) was heard only by the cloud transcript and its time is "
              f"estimated: listen; remove it with fix_at -> \"\" if it is not said "
              f"({json.dumps({'text': text, 'at': round(ws, 2), 'to': ''}, ensure_ascii=False)})")
+    for gid, text, at, n in keeps:
+        print(f"  keep {gid}: «{text}» ({n} words at {at:.2f} s): one subtitle block, never split")
+        if len(text) > KEEP_CHARS:
+            warn(f"keep {gid} is {len(text)} characters: two subtitle lines may not hold it (Plate and Accent fit about "
+                 f"{KEEP_CHARS // 2} per line); then the kit splits it as usual. Mark a shorter phrase")
+    for x in keep_problems:
+        warn(f"cut.json {x}")
     for k, text, ta, tb in repeats_at_joins(c, captions):
         warn(f"ranges {k} and {k + 1} both say «{text}» ({c['ranges'][k]['source']} {ta:.2f} and "
              f"{c['ranges'][k + 1]['source']} {tb:.2f}): an identical run of {JOIN_REPEAT}+ words at adjacent pieces, a "

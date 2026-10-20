@@ -8,7 +8,9 @@
 phrases — the speech of the finished rough cut (captions.json) split into phrases: at the end of a sentence, at a cut
           between segments, at a pause over 0.5 s, and at the latest after 16 words; a phrase too short to read on its
           own (under 3 words or 1 s) joins its neighbor in the same segment when no pause over 0.5 s separates them (a
-          sentence's tail cut off by the word limit joins its sentence). Each phrase gets an id, its times and its
+          sentence's tail cut off by the word limit joins its sentence). A phrase marked "keep" in cut.json (a
+          punchline the subtitles never split) is never split between two phrases either. Each phrase gets an id, its
+          times and its
           words ("src"); "text" is the translation, empty for a new phrase. Run again after a re-cut: a phrase whose
           words did not change keeps its translation (phrases that became one get their translations joined), a
           changed one is emptied and listed.
@@ -28,6 +30,10 @@ apply   — checks the translation (every phrase translated, the source still ma
           over the time the phrase is on screen: a warning when the translation is over 17 characters per second and
           harder to read than the original subtitle; an error over 25 and 15 % over the original (fast speech is fast
           in any language, so only a translation slower to read than the original counts).
+          "keep": the translation has no word-to-word map to the speech, so a keep mark carries over only where it
+          covers a whole phrase: then every translated word of that phrase gets it, and the kit shows the translated
+          phrase on one block. A keep group inside a longer phrase is named and not carried (its words cannot be found in
+          the translation); the phrase is still translated as one.
           Then: reel.json "subtitles_lang": "<lang>" → visual_plan.py export uses captions-<lang>.json for the subtitles.
 srt     — SubRip subtitles for upload to the platform (YouTube, a player; on Instagram the captions are auto-made):
           the phrases with their times, up to 2 lines of 42 characters; a phrase longer than that becomes several
@@ -88,19 +94,26 @@ def merge_short(groups):
     return groups
 
 
+def in_keep(a, b):
+    """Two neighboring caption words of one cut.json "keep" group: no phrase ends between them."""
+    return bool(a and b and a.get("keep") and a.get("keep") == b.get("keep"))
+
+
 def phrases_of(cap, keep_words=False):
-    """[{id, start, end, src, seg, speaker}] from captions.json words, in order; a speaker change ends a phrase (the
-    kit colors subtitles per speaker); keep_words: also the words ("_words")."""
+    """[{id, start, end, src, seg, speaker, keep}] from captions.json words, in order; a speaker change ends a phrase
+    (the kit colors subtitles per speaker), nothing ends one inside a keep group; "keep": the group id when one group
+    is the whole phrase; keep_words: also the words ("_words")."""
     words = [w for w in cap.get("words", []) if str(w.get("text", "")).strip()]
     groups, cur = [], []
     for k, w in enumerate(words):
         prev = words[k - 1] if k else None
-        if cur and prev is not None and (w.get("seg") != prev.get("seg") or w.get("speaker") != prev.get("speaker")
-                                         or w["start"] - prev["end"] > PAUSE):
+        if cur and prev is not None and not in_keep(prev, w) and (
+                w.get("seg") != prev.get("seg") or w.get("speaker") != prev.get("speaker") or w["start"] - prev["end"] > PAUSE):
             groups.append(cur)
             cur = []
         cur.append(w)
-        if SENTENCE_END.search(str(w["text"]).strip()) or len(cur) >= MAX_WORDS:
+        nxt = words[k + 1] if k + 1 < len(words) else None
+        if (SENTENCE_END.search(str(w["text"]).strip()) or len(cur) >= MAX_WORDS) and not in_keep(w, nxt):
             groups.append(cur)
             cur = []
     if cur:
@@ -110,6 +123,7 @@ def phrases_of(cap, keep_words=False):
         out.append({"start": round(g[0]["start"], 3), "end": round(g[-1]["end"], 3),
                     "src": " ".join(str(w["text"]).strip() for w in g), "seg": g[0].get("seg"), "id": f"p{k:03d}",
                     **({"speaker": g[0]["speaker"]} if g[0].get("speaker") else {}),
+                    **({"keep": g[0]["keep"]} if g[0].get("keep") and all(w.get("keep") == g[0]["keep"] for w in g) else {}),
                     **({"_words": g} if keep_words else {})})
     return out
 
@@ -243,7 +257,8 @@ def timed_words(p):
         d = (p["end"] - p["start"]) * (len(w) + 1) / tot
         out.append({"text": w, "start": round(t, 3), "end": round(t + d, 3), "type": "word", "phrase": p["id"],
                     **({"glue": True} if glue else {}), **({"seg": p["seg"]} if p.get("seg") is not None else {}),
-                    **({"speaker": p["speaker"]} if p.get("speaker") else {})})
+                    **({"speaker": p["speaker"]} if p.get("speaker") else {}),
+                    **({"keep": p["keep"]} if p.get("keep") else {})})
         t += d
     return out
 
@@ -258,6 +273,13 @@ def cmd_apply(a):
         print("\n".join(f"  error: {x}" for x in errs))
         sys.exit(f"{len(errs)} problem(s): captions-{a.lang}.json is not written")
     words = [w for p in ps for w in timed_words(p)]
+    whole = {p["keep"] for p in ps if p.get("keep")}
+    for gid in dict.fromkeys(w["keep"] for w in cap["words"] if w.get("keep") and w["keep"] not in whole):
+        ws = [w for w in cap["words"] if w.get("keep") == gid]
+        p = next((p for p in ps if p["start"] <= ws[0]["start"] <= p["end"]), None)
+        warn(f"keep {gid} «{' '.join(str(w['text']) for w in ws)}» is part of the phrase {p['id'] if p else '?'}, not the "
+             f"whole of it: the translation has no word-to-word map, so the mark is not carried and the kit may split "
+             f"the translated phrase as usual")
     out = e / f"captions-{a.lang}.json"
     save_json(out, {"duration": cap.get("duration"), "segments": cap.get("segments", []), "words": words,
                     **({"speakers": cap["speakers"]} if cap.get("speakers") else {}),
@@ -301,7 +323,8 @@ def joined(units_):
 def pieces(units_, width=WIDTH):
     """A phrase's words ([{text, start, end, glue}]) -> runs that each fit two lines: split at the strongest boundary
     (a sentence end, then a colon, a semicolon or a dash, then a comma) where both halves fit and neither is a scrap
-    of a few characters; the most even such split; never inside what glue() keeps together."""
+    of a few characters; the most even such split; never inside what glue() keeps together, nor inside a cut.json
+    "keep" group unless the group alone does not fit."""
     t = joined(units_)
     if len(units_) < 2 or fits(t, width) or " " not in t:
         return [units_]
@@ -310,7 +333,8 @@ def pieces(units_, width=WIDTH):
         a, b = joined(units_[:k]), joined(units_[k:])
         end = units_[k - 1]["text"].rstrip()[-1:]
         strength = 3 if end in ".!?…" else 2 if end in ";:—–" else 1 if end == "," else 0
-        score = (no_break(units_[k - 1]["text"], units_[k]["text"]), not (fits(a, width) and fits(b, width)),
+        score = (in_keep(units_[k - 1], units_[k]), no_break(units_[k - 1]["text"], units_[k]["text"]),
+                 not (fits(a, width) and fits(b, width)),
                  min(len(a), len(b)) < 16, -strength, abs(len(a) - len(b)))
         if best is None or score < best[0]:
             best = (score, k)
@@ -326,11 +350,11 @@ def cmd_srt(a):
         if errs:
             print("\n".join(f"  error: {x}" for x in errs))
             sys.exit(f"{len(errs)} problem(s): fix the translation first (subs.py apply shows the same)")
-        runs = [[{"text": w["text"], "start": w["start"], "end": w["end"], "glue": bool(w.get("glue"))}
+        runs = [[{"text": w["text"], "start": w["start"], "end": w["end"], "glue": bool(w.get("glue")), "keep": w.get("keep")}
                  for w in timed_words(p)] for p in ps]  # a translation: its words timed by length
     else:
         ps = phrases_of(cap, keep_words=True)
-        runs = [[{"text": str(w["text"]).strip(), "start": w["start"], "end": w["end"], "glue": False}
+        runs = [[{"text": str(w["text"]).strip(), "start": w["start"], "end": w["end"], "glue": False, "keep": w.get("keep")}
                  for w in p["_words"]] for p in ps]
     out = Path(a.output) if a.output else e / f"subtitles{'.' + a.lang if a.lang else ''}.srt"
     out.parent.mkdir(parents=True, exist_ok=True)

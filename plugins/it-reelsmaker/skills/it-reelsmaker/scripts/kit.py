@@ -13,7 +13,9 @@ Remotion leaves its bundle (a full copy of public/), asset cache and Chrome prof
 Windows (a real laptop: 571 folders, 33.5 GB in a month). A ReelKit / ReelCover run also reads a public/ of hard links
 to only this video's files (--public-dir), not a copy of every video in public/. render writes the whole Remotion
 output to edit/<id>/render.log, shows the progress, and fails (exit 1, edit/<id>/render.json "ok": false) unless the
-exit code is 0 and the file is new and plays. "temp_cleanup": false in it-reelsmaker.json keeps Remotion's own ways.
+exit code is 0 and the file is new and plays. A render that fails with Remotion's "No frame found at position" runs
+once more by itself (says so; both attempts stay in render.log and in render.json "attempts"); any other failure is
+not retried. "temp_cleanup": false in it-reelsmaker.json keeps Remotion's own ways.
 
 What the kit is: src/ReelKit.tsx (the ReelKit and ReelCover compositions: the rough cut, subtitles, brand, inserts,
 designed scenes, all from props written by `visual_plan.py export --props`) and src/kit/ (its components). The
@@ -246,11 +248,11 @@ def npx():
     return shutil.which("npx") or shutil.which("npx.cmd") or "npx"
 
 
-def run_logged(cmd, rem, env, log):
+def run_logged(cmd, rem, env, log, mode="w"):
     """Run a Remotion command: every line into the log, on the screen only errors, warnings and the progress in steps
-    of 20 %. -> the exit code."""
+    of 20 %. mode "a" adds to the log (a second attempt). -> the exit code."""
     shown = {}
-    with open(log, "w", encoding="utf-8", errors="replace") as f:
+    with open(log, mode, encoding="utf-8", errors="replace") as f:
         p = subprocess.Popen(cmd, cwd=rem, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
                              encoding="utf-8", errors="replace")
         for line in p.stdout:  # universal newlines: a "\r" progress update counts as a line too
@@ -277,6 +279,23 @@ def log_tail(log, n=15):
     return "\n".join(keep[-n:])
 
 
+RETRY_ON = "No frame found at position"
+RETRIES = 1  # extra attempts after a RETRY_ON failure
+
+
+def retry_reason(log):
+    """The line of the last attempt in the log that names RETRY_ON, or None: a render that failed with it is run once
+    more by itself. Seen once on an 8 GB laptop (2026-10-20, a 34-min talk's clip): the same command passed when run
+    again by hand; the cause is not known. Any other failure is not retried."""
+    try:
+        txt = Path(log).read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return None
+    last = txt.split("===== kit.py: attempt")[-1]
+    line = next((ANSI_RE.sub("", l).strip() for l in last.splitlines() if RETRY_ON in l), None)
+    return line[:200] if line else None
+
+
 def cmd_render(a, still=False):
     """The full render (or one still) of a video with its props, through remotion_tmp(): the run's temp files are
     removed when it ends, and a ReelKit / ReelCover run reads a public/ of only this video's files. The render counts
@@ -300,11 +319,22 @@ def cmd_render(a, still=False):
     out.parent.mkdir(parents=True, exist_ok=True)
     log = e / ("still.log" if still else "render.log")
     t0 = time.time()
-    try:
-        with remotion_tmp(rem, props, a.comp) as (env, extra):
-            code = run_logged(cmd + extra, rem, env, log)
-    except OSError as x:
-        sys.exit(f"cannot run npx ({x}): Node.js with Remotion is needed (doctor.py)")
+    attempts = []
+    while True:
+        t1 = time.time()
+        try:
+            with remotion_tmp(rem, props, a.comp) as (env, extra):
+                code = run_logged(cmd + extra, rem, env, log, "a" if attempts else "w")
+        except OSError as x:
+            sys.exit(f"cannot run npx ({x}): Node.js with Remotion is needed (doctor.py)")
+        why = retry_reason(log) if code != 0 and not still else None
+        attempts.append({"code": code, "seconds": round(time.time() - t1, 1), **({"error": why} if why else {})})
+        if not why or len(attempts) > RETRIES:
+            break
+        print(f"  the render failed with Remotion's \"{RETRY_ON}\" ({why}): a rerun of the same command passed before, "
+              f"so it runs once more by itself (both attempts stay in {log.name})", flush=True)
+        with open(log, "a", encoding="utf-8") as f:
+            f.write(f"\n===== kit.py: attempt {len(attempts) + 1} (the first failed with \"{RETRY_ON}\") =====\n")
     fresh = out.is_file() and out.stat().st_mtime >= t0 - 1 and out.stat().st_size > 0
     took = time.time() - t0
     if still:
@@ -314,7 +344,7 @@ def cmd_render(a, still=False):
         return 0
     dur = probe(out).get("dur") if fresh else None
     save_json(e / "render.json", {"out": str(out), "comp": a.comp, "props": str(props), "ok": bool(code == 0 and dur),
-                                  "code": code, "seconds": round(took, 1), "duration": dur,
+                                  "code": code, "seconds": round(took, 1), "duration": dur, "attempts": attempts,
                                   "at": time.strftime("%Y-%m-%d %H:%M:%S")})
     if code != 0 or not fresh or not dur:
         why = f"code {code}" + ("" if fresh else (", the file is from an earlier render" if out.exists() else ", no file"))
