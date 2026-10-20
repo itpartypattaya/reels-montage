@@ -2,6 +2,23 @@
 
 What changed in IT Reelsmaker, written for the people who use it. The newest version is on top. The skill shows a short “What's new” note from this file once, on the first edit after an update.
 
+## 1.18.0
+
+- **Subtitles under the picture in the framed format.** `reelcfg.py save edit/<id> --set subtitles_at=below
+  window=[25,641,1030,579]` puts the subtitles on the field under the window, so they never cover a slide or a screen;
+  scenes and the hook stay inside the window. A window too low to leave room for two lines is refused, and a
+  typewriter text that would not read on the field is named at export. Kit 1.11.0 (`kit.py update`).
+- **No lost frames on a 25 fps recording.** A conference talk at 25 fps cut at 30 fps came out 9 frames short (729 of
+  738): a piece that began between two source frames started a frame late and lost its last one. Every piece now has
+  exactly its planned frames, whatever the source's frame rate; a sped-up piece keeps time with its sound too.
+- **The white balance ignores a band the grade adds.** A `look.grade` that pads the picture with a color band was
+  measured as part of the video and gave a false correction; the balance is now measured on the video's own pixels.
+- **A clip with no graphics passes `check.py`.** Its storyboard step said "nothing to put on the sheet" and failed;
+  it now passes with that note.
+- `poster.py pick` takes the last render of the video by itself (`--render` is optional), as the guide writes it.
+- The long-recording guide warns that word times from a cloud transcript drift around laughter and pauses, and says
+  how to fix them on each clip.
+
 ## 1.17.1
 
 - **Learn motion from a reference, not copy it.** Give a video you like as a file: the agent looks at its frames, writes

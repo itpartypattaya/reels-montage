@@ -62,10 +62,11 @@ def ffmpeg(*args):
     subprocess.run(["ffmpeg", "-v", "error", "-y", *map(str, args)], check=True)
 
 
-def make_video(path, w=720, h=1280, dur=6.0, audio=True, color=None):
+def make_video(path, w=720, h=1280, dur=6.0, audio=True, color=None, rate=30):
     """A test-pattern video (or a flat color), optionally with a 440 Hz tone."""
     Path(path).parent.mkdir(parents=True, exist_ok=True)
-    src = f"color=c={color}:size={w}x{h}:rate=30:duration={dur}" if color else f"testsrc2=size={w}x{h}:rate=30:duration={dur}"
+    src = (f"color=c={color}:size={w}x{h}:rate={rate}:duration={dur}" if color
+           else f"testsrc2=size={w}x{h}:rate={rate}:duration={dur}")
     args = ["-f", "lavfi", "-i", src]
     if audio:
         args += ["-f", "lavfi", "-i", f"sine=frequency=440:duration={dur}", "-c:a", "aac", "-shortest"]

@@ -288,3 +288,36 @@ def test_groq_without_local_word_times_says_so(online, project, monkeypatch, cap
     with pytest.raises(SystemExit) as ex:
         online.main(["edit/4821", "IMG_4821.MOV", "--provider", "groq", "--yes"])
     assert ex.value.code == 2 and "gives the text only" in capsys.readouterr().err
+
+
+@needs_ffmpeg
+def test_a_long_recording_is_sent_as_mp3(online, project, monkeypatch, capsys):
+    # English test talk: 34.6 min of the 16 kHz WAV is 66 MB, over the 25 MB upload limit; the add-on refused it and a
+    # one-off script packed it into mp3 (8.3 MB at 32 kbit/s). Here the limit is shrunk to make a 3 s WAV "long"
+    late_audio_video(project / "IMG_4821.MOV")
+    local_transcript(project)
+    monkeypatch.setenv("OPENAI_API_KEY", KEY)
+    monkeypatch.setitem(online.PROVIDERS["openai"], "max_bytes", 20_000)  # the WAV is ~96 KB
+    sent = []
+
+    def fake(wav, key, model, language=None, prompt=None, words=False):
+        sent.append((wav.name, wav.stat().st_size, online.audio_type(wav)))
+        return {"text": TEXT}
+    monkeypatch.setattr(online, "openai_call", fake)
+    assert run(online, "--yes") == 0
+    assert "sent as mono mp3 at 32 kbit/s" in capsys.readouterr().out
+    name, size, ctype = sent[0]
+    assert name == "audio16k-IMG_4821.mp3" and size <= 20_000 and ctype == "audio/mpeg"
+    assert not list(project.rglob("*.mp3"))  # the temporary mp3 is not left in the project
+    assert online.pack_rate(34.6 * 60, 25 * 1000 * 1000) == 32 and online.pack_rate(150 * 60, 25 * 1000 * 1000) == 16
+    # Codex review: an mp3 that still comes out over the limit was read after its folder was removed (a traceback)
+    rate = online.pack_rate
+    monkeypatch.setattr(online, "pack_rate", lambda secs, max_bytes: 32)
+    monkeypatch.setitem(online.PROVIDERS["openai"], "max_bytes", 5_000)
+    assert run(online, "--yes", "--force") == 2 and len(sent) == 1
+    assert "over 0 MB; nothing was sent" in capsys.readouterr().err
+    monkeypatch.setattr(online, "pack_rate", rate)
+    # too long even at 16 kbit/s: nothing is sent, the local transcriber is named
+    monkeypatch.setitem(online.PROVIDERS["openai"], "max_bytes", 2_000)
+    assert run(online, "--yes", "--force") == 2 and len(sent) == 1
+    assert "Transcribe it locally" in capsys.readouterr().err

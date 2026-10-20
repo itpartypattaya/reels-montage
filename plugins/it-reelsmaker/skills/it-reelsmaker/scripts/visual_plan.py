@@ -59,8 +59,9 @@ overlay/split/window scenes to keep_clear (faces.py audit sees them), and record
 The "framed" format (reel.json -> format: framed, optional window and label; references/techniques.md): a horizontal
 rough cut in a rounded window on the style's field. The camera is clamped to the window (as the kit draws it), boxes
 and the subtitle band stay inside the window's text area (reels_common.framed_area: with no label the field above the
-window joins it), scenes are overlay or full (full covers the window), and export writes props.framed (the window, the
-label, the rough cut's size, the field color) so ReelKit draws the layout itself. validate checks that faces.json was
+window joins it; reel.json -> subtitles_at: below puts the subtitle band on the field under the window instead,
+reels_common.framed_sub_area), scenes are overlay or full (full covers the window), and export writes props.framed (the
+window, the label, the rough cut's size, the field color, where the subtitles go) so ReelKit draws the layout itself. validate checks that faces.json was
 measured in the source geometry and that the rough cut is horizontal.
 The "scenes only" format (init --scenes-only --duration N): no speech spans, --at in seconds only, every scene is full,
 scene coverage >= 95 %; transitions are cuts (the texts hand over at the join, as the kit draws it) and more than 4 frames
@@ -70,8 +71,8 @@ import argparse, contextlib, datetime, filecmp, hashlib, json, math, re, shutil,
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from reels_common import (CORNER_BOX, FRAMED_HOOK_MIN, FRAMED_LABEL_UP, FRAMED_RADIUS, MEME_SIZES, NUMBER_RE, SUB_BAND, SUB_BLOCK_H, SUB_MAX_TOP,
-                          SUB_TOP_KIT, budget, cam_fit, edit_dir, editing_json, effective, forbidden_hits, framed_area,
+from reels_common import (CORNER_BOX, FRAMED_HOOK_MIN, FRAMED_LABEL_UP, FRAMED_RADIUS, FRAMED_SUB_GAP, MEME_SIZES, NUMBER_RE, SUB_BAND, SUB_BLOCK_H, SUB_MAX_TOP,
+                          SUB_TOP_KIT, budget, cam_fit, edit_dir, editing_json, effective, forbidden_hits, framed_area, framed_sub_area,
                           framed_at, framed_issues, framed_source, framed_view, inside, load_config, load_json, locked,
                           media_kind, online, parse_sets, probe, project_root, safe_slug, save_json, tokens, utf8_stdio,
                           warn)
@@ -2170,7 +2171,9 @@ def cmd_md(a):
     elif framed_at(e):
         fr = framed_at(e)
         L += [f"Format: **framed** (a horizontal source in a window drawn by the kit): window {fr['window']}"
-              + (f", label “{fr['label']}”" if fr["label"] else ", no label") + f"; text area {framed_area(fr)}.", ""]
+              + (f", label “{fr['label']}”" if fr["label"] else ", no label") + f"; text area {framed_area(fr)}"
+              + (f"; subtitles below the window, band {framed_sub_area(fr)}" if fr["subtitles_at"] == "below" else "")
+              + ".", ""]
     bt = s.get("brand_tone") or {}
     if bt:
         L += [f"Brand tone **{bt.get('preset')}** ({bt.get('label', '')}), scene tone {s.get('scene_tone') or bt.get('scene_tone')}"
@@ -2678,11 +2681,16 @@ def cmd_shade(a):
             sys.exit(f"--zone {a.zone}: x,y,w,h in 1080x1920")
         span, what = (a.start if a.start is not None else 0.0, a.end if a.end is not None else end), "the zone"
     target = a.target or (3.0 if zone else SHADE_TARGET)
-    top = a.top or (plan.get("subtitles_band") or [None])[0] or subtitle_top(e, s, shots, quiet=True)[0]
     fr = framed_at(e)
+    if fr and fr["subtitles_at"] == "below" and not zone:
+        print("subtitles_at below: the subtitles sit on the field under the framed window, not over the video; no "
+              "darkening is needed (the kit draws none there). Check the subtitle color against the field instead: "
+              "export warns when they do not read")
+        return
+    top = a.top or (plan.get("subtitles_band") or [None])[0] or subtitle_top(e, s, shots, quiet=True)[0]
     if fr and not a.top:  # "framed": the block inside the window's text area, as export puts it (Codex review: before
         # the first export a short window [25,340,1030,800] was measured at y 1290, below the window, "no frame")
-        a0, a1 = framed_area(fr)[1], framed_area(fr)[3]
+        a0, a1 = framed_sub_area(fr)[1], framed_sub_area(fr)[3]
         top = max(a0, min(top, a1 - SUB_BLOCK_H["typewriter"]))
     bottom = min(1500, top + SHADE_LINES)
     hidden = ([(i["start"], i["start"] + i["dur"]) for i in plan.get("inserts", []) if i.get("kind") == "scene"
@@ -2912,9 +2920,11 @@ def cmd_export(a):
             full = [int(v) for v in fr["window"]] == [0, 0, 1080, 1920]
             props["framed"] = {"window": fr["window"], "label": fr["label"], "source": list(src),
                                "radius": 0 if full else FRAMED_RADIUS,
-                               "field": look.get("field") or (brand.get("colors") or {}).get("primary")}
+                               "field": look.get("field") or (brand.get("colors") or {}).get("primary"),
+                               **({"subtitles": "below"} if fr["subtitles_at"] == "below" else {})}
             print(f"framed: window {fr['window']}, source {src[0]}x{src[1]}"
-                  + (f", label “{fr['label']}”" if fr["label"] else ", no label") + f", field {props['framed']['field']}")
+                  + (f", label “{fr['label']}”" if fr["label"] else ", no label") + f", field {props['framed']['field']}"
+                  + (", subtitles below the window" if fr["subtitles_at"] == "below" else ""))
         props["subtitlesTop"] = top
         if props["subtitles"] not in ("accent", "plate", "typewriter", "none"):
             mode = {"v2": "plate", "bar": "plate", "typewriter": "typewriter", "print": "typewriter"}.get(str(props["subtitles"]).lower())
@@ -2926,15 +2936,33 @@ def cmd_export(a):
             # the UI (T4: the band said 1250-1430 while a three-line phrase reached 1455)
             h = SUB_BLOCK_H.get(props["subtitles"], band[1] - band[0])
             low = fc.H - fc.UI_BOTTOM
-            if fr:  # the subtitle block stays inside the window's text area (the kit lifts it the same way)
-                a0, a1 = framed_area(fr)[1], framed_area(fr)[3]
+            if fr:  # the subtitle block stays inside the window's text area (the kit lifts it the same way), or with
+                # subtitles_at below right under the window, on the field (the chin is above it, inside the window)
+                a0, a1 = framed_sub_area(fr)[1], framed_sub_area(fr)[3]
                 low = min(low, a1)
-                top = max(a0, min(top, a1 - h))
+                top = a0 if fr["subtitles_at"] == "below" else max(a0, min(top, a1 - h))
                 props["subtitlesTop"] = top
+                if fr["subtitles_at"] == "below" and props["subtitles"] == "typewriter":
+                    from brand import contrast
+                    ink = ((brand.get("colors") or {}).get("speakers") or [None])[0] or (brand.get("colors") or {}).get("text_on_primary") or "#FFFFFF"
+                    field = props["framed"]["field"]
+                    try:
+                        ratio = contrast(ink, field) if field else None
+                    except (ValueError, TypeError):
+                        ratio = None
+                    if ratio is not None and ratio < 4.5:
+                        warn(f"subtitles below the window: the typewriter text {ink} on the field {field} is {ratio:.1f}:1 "
+                             f"(4.5 needed): pick a darker field (brand.looks.<style>.field) or the plate mode")
             z = (s.get("profile_rules") or {}).get("safe_zone")
             if z and fin["corner"] and not fr:  # the corner logo inside the ad's zone (the kit's default top is 236)
                 props["cornerTop"] = max(CORNER_BOX[1], z[1])
-            if z and top + h > z[3]:  # a paid ad: the platform's caption and button cover y > the safe zone's bottom
+            below = bool(fr) and fr["subtitles_at"] == "below"
+            if z and top + h > z[3] and below:  # never lifted into the window (Codex review): the window moves up
+                warn(f"subtitles below the window: the block ends at y {top + h}, past the ad safe zone of profile "
+                     f"{s['profile_rules']['id']} (y {z[3]}), and lifting it would put it over the picture: end the "
+                     f"window at y <= {z[3] - h - FRAMED_SUB_GAP} (reelcfg.py save edit/<id> --set window=[...]), or "
+                     f"keep the subtitles inside the window")
+            elif z and top + h > z[3]:  # a paid ad: the platform's caption and button cover y > the safe zone's bottom
                 lifted = max(z[1], z[3] - h)
                 print(f"subtitles: lifted from y {top} to {lifted} for profile {s['profile_rules']['id']} (the ad safe "
                       f"zone ends at y {z[3]}); check the chin on the render: faces.py audit")

@@ -22,18 +22,22 @@ from reels_common import edit_dir, project_root, utf8_stdio
 HERE = Path(__file__).resolve().parent
 SHEET_FRAMES = 12  # 6 x 2, as the contact sheet of SKILL.md step 9
 AUDIT_SKIPPED = "face audit skipped"  # faces.py audit without OpenCV or the face model: it exits 0, nothing checked
+NO_GRAPHICS = "nothing to put on the sheet"  # board.py on a clip with no graphics: it passes, nothing to show (board.NOTHING)
 
 
-def step(name, cmd, skipped=None):
-    """Run one check as its own script, its output passed through; -> (name, "ok" | "FAIL" | "skip"). skipped: the line
-    a script prints when it could not check (review 2026-10-18: the faces audit without OpenCV or the model exits 0)."""
+def step(name, cmd, skipped=None, empty=None):
+    """Run one check as its own script, its output passed through; -> (name, "ok" | "FAIL" | "skip" | "none"). skipped:
+    the line a script prints when it could not check (review 2026-10-18: the faces audit without OpenCV or the model
+    exits 0); empty: the line it prints when there is nothing to check (a clip with no graphics has no storyboard)."""
     print(f"\n=== {name}: {subprocess.list2cmdline([str(x) for x in cmd[1:]])}", flush=True)
     r = subprocess.run([str(x) for x in cmd], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
                        encoding="utf-8", errors="replace")
     print(r.stdout, end="", flush=True)
     if r.returncode:
         return name, "FAIL"
-    return name, "skip" if skipped and skipped in r.stdout else "ok"
+    if skipped and skipped in r.stdout:
+        return name, "skip"
+    return name, "none" if empty and empty in r.stdout else "ok"
 
 
 def duration(path):
@@ -86,11 +90,12 @@ def main():
         opts = sum(([f"--{k}", v] for k, v in (("props", a.props), ("remotion", a.remotion), ("comp", a.comp)) if v), [])
         results.append(step("plan check", [py, HERE / "visual_plan.py", "validate", e]))
         results.append(step("storyboard sheet", [py, HERE / "board.py", e, *opts]
-                            + (["--shots"] if a.shots else []) + (["--transitions"] if a.transitions else [])))
+                            + (["--shots"] if a.shots else []) + (["--transitions"] if a.transitions else []),
+                            empty=NO_GRAPHICS))
         results.append(step("text check", [py, HERE / "textcheck.py", e, *opts]))
     print("\nsummary:")
     for name, status in results:
-        print(f"  {status:<4} {name}")
+        print(f"  ok   {name} (no graphics in the props: nothing to show)" if status == "none" else f"  {status:<4} {name}")
     bad = [n for n, st in results if st == "FAIL"]
     skip = [n for n, st in results if st == "skip"]
     if skip:

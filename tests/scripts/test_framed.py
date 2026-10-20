@@ -202,3 +202,68 @@ def test_subtitle_top_drifts_around_the_window_center(project):
     s = load_config(e)[0]
     top, _ = vp.subtitle_top(e, s, None, quiet=True)
     assert abs(top - round((chin - 1100) * 1.05 + 1100 + faces.SUB_FACE_GAP)) <= 1, (top, chin)
+
+
+def test_subtitles_below_the_window_are_saved_and_checked(project):
+    # English test talk: the subtitles had to stay off the picture; the kit kept them inside the window, and the only
+    # way out was a pad in look.grade (the field's color under the picture) and a taller window
+    import reels_common as rc
+    e = plan_project(project)
+    run_script("reelcfg.py", "save", "edit/4821", "--set", "format=framed", "window=[25,641,1030,579]",
+               "subtitles_at=below", cwd=project)
+    reel = json.loads((e / "reel.json").read_text(encoding="utf-8"))
+    assert reel["subtitles_at"] == "below"
+    shown = run_script("reelcfg.py", "show", "edit/4821", cwd=project).stdout
+    assert "subtitles below the window" in shown, shown
+    fr = rc.framed_of(reel)
+    assert rc.framed_sub_area(fr) == [60, 1250, 960, 1500]
+    assert rc.framed_area(fr) == [60, 220, 960, 1200]  # scenes and boxes still go inside the window
+    assert rc.framed_sub_area(rc.framed_of({"format": "framed"})) == rc.framed_area(rc.framed_of({"format": "framed"}))
+    bad = run_script("reelcfg.py", "save", "edit/4821", "--set", "subtitles_at=above", cwd=project, check=False)
+    assert bad.returncode != 0 and "one of window, below" in bad.stderr
+    # the default window runs down to y 1580: no room under it
+    bad = run_script("reelcfg.py", "save", "edit/4821", "--set", "window=[25,340,1030,1240]", cwd=project, check=False)
+    assert bad.returncode != 0 and "end the window at y <= 1300" in bad.stderr, bad.stderr
+
+
+def test_export_puts_the_subtitles_under_the_window(project):
+    import reels_common as rc
+    win = [25, 641, 1030, 579]
+    e = framed_project(project, window=win, subtitles_at="below", style="v2")
+    bj = project / "brands" / "acme" / "brand.json"
+    write_json(bj, {**json.loads(bj.read_text(encoding="utf-8")), "looks": {"v2": {"field": "#F4EEE3"}}})
+    run_script("visual_plan.py", "init", "edit/4821", cwd=project)
+    framed_faces(e, [700, 150, 80, 110], w=1920, h=1080)
+    rem = project / "reels"
+    (rem / "src").mkdir(parents=True)
+    write_json(rem / "package.json", {"name": "reels"})
+    run_script("brand.py", "export", "acme", "--remotion", rem, cwd=project)
+    (e / "final.mp4").write_bytes(b"a rough cut")
+    r = run_script("visual_plan.py", "export", "edit/4821", "--remotion", rem, "--props", rem / "props.json",
+                   "--subtitles", "typewriter", cwd=project)
+    assert "subtitles below the window" in r.stdout, r.stdout
+    props = json.loads((rem / "props.json").read_text(encoding="utf-8"))
+    assert props["framed"]["subtitles"] == "below" and props["subtitlesTop"] == 641 + 579 + rc.FRAMED_SUB_GAP
+    top, bottom = load_plan(e)["subtitles_band"]
+    assert (top, bottom) == (1250, 1250 + rc.SUB_BLOCK_H["typewriter"])
+    # a light field under light typewriter text does not read: said at export
+    assert "on the field #F4EEE3" in r.stderr, r.stderr
+    # Codex review: an ad's safe zone (to y 1248) lifted the block into the window, over the picture; it stays below
+    # and the window is asked to move up
+    reel = json.loads((e / "reel.json").read_text(encoding="utf-8"))
+    write_json(e / "reel.json", {**reel, "profile": "ad"})
+    r = run_script("visual_plan.py", "export", "edit/4821", "--remotion", rem, "--props", rem / "props.json", "--force",
+                   "--subtitles", "typewriter", cwd=project)
+    assert json.loads((rem / "props.json").read_text(encoding="utf-8"))["subtitlesTop"] == 1250
+    assert "lifting it would put it over the picture" in r.stderr, r.stderr
+
+
+@needs_ffmpeg
+def test_shade_is_not_measured_for_subtitles_below_the_window(project):
+    from conftest import make_video
+    e = framed_project(project, window=[25, 641, 1030, 579], subtitles_at="below")
+    write_json(e / "captions.json", {"duration": 2.0, "segments": [], "words": [
+        {"text": "light", "start": 0.2, "end": 0.8, "seg": 0}]})
+    make_video(e / "final.mp4", w=1920, h=1080, dur=2.0, audio=False, color="0xB4B4B4")
+    r = run_script("visual_plan.py", "shade", "edit/4821", cwd=project)
+    assert "no darkening is needed" in r.stdout and "subtitles_shade: " not in r.stdout, r.stdout

@@ -2,6 +2,13 @@
 
 What changed in IT Reelsmaker Online. The newest version is on top.
 
+## 1.5.0
+
+- **A whole long recording goes to the cloud transcript.** The upload limit is 25 MB, about 13 minutes of the core's
+  WAV; a longer recording is now sent as mono mp3 (32 kbit/s up to ~100 minutes, down to 16 kbit/s for ~3.4 hours)
+  instead of being refused. The mp3 is made only after you agree to the price and removed after the call; the word
+  times are unchanged. A 34-minute talk: 8.3 MB.
+
 ## 1.4.6
 
 - **Reads the core's new setting name.** Code scenes are `use_code_scenes` from core 1.15; the add-on reads it first

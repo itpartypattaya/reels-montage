@@ -73,6 +73,17 @@ def test_a_neutral_source_gets_no_correction(project):
 
 
 @needs_ffmpeg
+def test_a_band_the_grade_pads_is_not_measured(project):
+    # English test talk: look.grade padded the picture with a band of the field's color (subtitles under the picture);
+    # a cream band read as warm grays and gave a false correction. The pad's pixels are not the video's
+    setup(project, look={"grade": "pad=iw:ih*2:0:0:color=0xE8DCC0,eq=contrast=1.02"})
+    doc = balance(project)
+    assert doc["gains"] == [1.0, 1.0, 1.0] and doc["suggested"] == "" and doc["neutral"], doc
+    import balance as b
+    assert b.geometry_free("pad=iw:ih*2:0:0:color=0xE8DCC0,eq=contrast=1.02,crop=100:100") == "eq=contrast=1.02"
+
+
+@needs_ffmpeg
 def test_write_replaces_only_the_gains_and_keeps_the_rest(project):
     # an old balance fix and an exposure fix: the old gains are replaced, the exposure stays after the new ones
     e = setup(project, tint="colorchannelmixer=rr=1.07:bb=0.93",
