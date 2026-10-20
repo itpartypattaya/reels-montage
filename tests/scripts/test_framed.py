@@ -248,6 +248,14 @@ def test_export_puts_the_subtitles_under_the_window(project):
     assert (top, bottom) == (1250, 1250 + rc.SUB_BLOCK_H["typewriter"])
     # a light field under light typewriter text does not read: said at export
     assert "on the field #F4EEE3" in r.stderr, r.stderr
+    # Codex review: an ad's safe zone (to y 1248) lifted the block into the window, over the picture; it stays below
+    # and the window is asked to move up
+    reel = json.loads((e / "reel.json").read_text(encoding="utf-8"))
+    write_json(e / "reel.json", {**reel, "profile": "ad"})
+    r = run_script("visual_plan.py", "export", "edit/4821", "--remotion", rem, "--props", rem / "props.json", "--force",
+                   "--subtitles", "typewriter", cwd=project)
+    assert json.loads((rem / "props.json").read_text(encoding="utf-8"))["subtitlesTop"] == 1250
+    assert "lifting it would put it over the picture" in r.stderr, r.stderr
 
 
 @needs_ffmpeg

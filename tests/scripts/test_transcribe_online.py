@@ -310,6 +310,13 @@ def test_a_long_recording_is_sent_as_mp3(online, project, monkeypatch, capsys):
     assert name == "audio16k-IMG_4821.mp3" and size <= 20_000 and ctype == "audio/mpeg"
     assert not list(project.rglob("*.mp3"))  # the temporary mp3 is not left in the project
     assert online.pack_rate(34.6 * 60, 25 * 1000 * 1000) == 32 and online.pack_rate(150 * 60, 25 * 1000 * 1000) == 16
+    # Codex review: an mp3 that still comes out over the limit was read after its folder was removed (a traceback)
+    rate = online.pack_rate
+    monkeypatch.setattr(online, "pack_rate", lambda secs, max_bytes: 32)
+    monkeypatch.setitem(online.PROVIDERS["openai"], "max_bytes", 5_000)
+    assert run(online, "--yes", "--force") == 2 and len(sent) == 1
+    assert "over 0 MB; nothing was sent" in capsys.readouterr().err
+    monkeypatch.setattr(online, "pack_rate", rate)
     # too long even at 16 kbit/s: nothing is sent, the local transcriber is named
     monkeypatch.setitem(online.PROVIDERS["openai"], "max_bytes", 2_000)
     assert run(online, "--yes", "--force") == 2 and len(sent) == 1

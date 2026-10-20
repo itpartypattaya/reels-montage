@@ -71,7 +71,7 @@ import argparse, contextlib, datetime, filecmp, hashlib, json, math, re, shutil,
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from reels_common import (CORNER_BOX, FRAMED_HOOK_MIN, FRAMED_LABEL_UP, FRAMED_RADIUS, MEME_SIZES, NUMBER_RE, SUB_BAND, SUB_BLOCK_H, SUB_MAX_TOP,
+from reels_common import (CORNER_BOX, FRAMED_HOOK_MIN, FRAMED_LABEL_UP, FRAMED_RADIUS, FRAMED_SUB_GAP, MEME_SIZES, NUMBER_RE, SUB_BAND, SUB_BLOCK_H, SUB_MAX_TOP,
                           SUB_TOP_KIT, budget, cam_fit, edit_dir, editing_json, effective, forbidden_hits, framed_area, framed_sub_area,
                           framed_at, framed_issues, framed_source, framed_view, inside, load_config, load_json, locked,
                           media_kind, online, parse_sets, probe, project_root, safe_slug, save_json, tokens, utf8_stdio,
@@ -2956,7 +2956,13 @@ def cmd_export(a):
             z = (s.get("profile_rules") or {}).get("safe_zone")
             if z and fin["corner"] and not fr:  # the corner logo inside the ad's zone (the kit's default top is 236)
                 props["cornerTop"] = max(CORNER_BOX[1], z[1])
-            if z and top + h > z[3]:  # a paid ad: the platform's caption and button cover y > the safe zone's bottom
+            below = bool(fr) and fr["subtitles_at"] == "below"
+            if z and top + h > z[3] and below:  # never lifted into the window (Codex review): the window moves up
+                warn(f"subtitles below the window: the block ends at y {top + h}, past the ad safe zone of profile "
+                     f"{s['profile_rules']['id']} (y {z[3]}), and lifting it would put it over the picture: end the "
+                     f"window at y <= {z[3] - h - FRAMED_SUB_GAP} (reelcfg.py save edit/<id> --set window=[...]), or "
+                     f"keep the subtitles inside the window")
+            elif z and top + h > z[3]:  # a paid ad: the platform's caption and button cover y > the safe zone's bottom
                 lifted = max(z[1], z[3] - h)
                 print(f"subtitles: lifted from y {top} to {lifted} for profile {s['profile_rules']['id']} (the ad safe "
                       f"zone ends at y {z[3]}); check the chin on the render: faces.py audit")

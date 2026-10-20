@@ -261,7 +261,9 @@ def make_patches(c, refs, tmp):
 
 # filters that change the frame's geometry or draw pixels of their own: a band a grade pads under the picture (the
 # framed format's field color), a crop, a scale, a drawn box. They are left out of the measurement (geometry_free).
-GEOMETRY = {"pad", "crop", "scale", "zscale", "rotate", "transpose", "drawbox", "drawgrid", "drawtext", "fillborders",
+# zscale stays: it also converts the transfer, the matrix and the range (Codex review: a tonemap between two zscale
+# steps would be measured without them).
+GEOMETRY = {"pad", "crop", "scale", "rotate", "transpose", "drawbox", "drawgrid", "drawtext", "fillborders",
             "tpad", "zoompan", "setsar", "setdar"}
 
 

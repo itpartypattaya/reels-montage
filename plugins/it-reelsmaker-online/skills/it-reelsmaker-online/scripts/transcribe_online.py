@@ -455,9 +455,10 @@ def cmd_run(a):
             tmp.cleanup()
             warn(f"could not pack the audio into mp3 ({err_text(ex)}); nothing was sent. Local: {LOCAL}")
             return 2
-        if upload.stat().st_size > p["max_bytes"]:
+        packed = upload.stat().st_size
+        if packed > p["max_bytes"]:
             tmp.cleanup()
-            warn(f"the mp3 came out at {upload.stat().st_size / 1e6:.1f} MB, over {p['max_bytes'] / 1e6:.0f} MB; "
+            warn(f"the mp3 came out at {packed / 1e6:.1f} MB, over {p['max_bytes'] / 1e6:.0f} MB; "
                  f"nothing was sent. Local: {LOCAL}")
             return 2
     used = a.provider
