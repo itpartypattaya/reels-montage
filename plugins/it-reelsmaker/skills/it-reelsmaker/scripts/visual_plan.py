@@ -1762,10 +1762,11 @@ def check_callouts(e, plan, s, doc, fdata, callouts, brolls, memes, scenes, corn
             for x_, b in boxes:
                 if x_["start"] <= t <= x_["start"] + x_["dur"] and covers(b):
                     found.setdefault(f"box-{x_['id']}", (t, f"the callout runs into {x_['id']} ({x_['kind']}) {b}"))
-            if corner and fc.inter(plate, list(CORNER_BOX)):
-                found.setdefault("corner", (t, f"the label covers the corner logo {list(CORNER_BOX)}"))
-            if hook and t < 2.4 and fc.inter(plate, hook_box):
-                found.setdefault("hook", (t, "the label covers the hook headline (first 2.4 s)"))
+            # the whole callout, as with the other graphics: it is drawn over the logo and the hook (PR 32 review)
+            if corner and covers(list(CORNER_BOX)):
+                found.setdefault("corner", (t, f"the callout covers the corner logo {list(CORNER_BOX)}"))
+            if hook and t < 2.4 and covers(hook_box):
+                found.setdefault("hook", (t, "the callout covers the hook headline (first 2.4 s)"))
         for key, (t, msg) in found.items():
             (W if key in ("ui-dot", "person") else E)(c, f"at {t:g} s {msg}")
     # one at a time, at most two at once, and apart
@@ -1895,10 +1896,16 @@ def profile_issues(e, plan, s, brand, cap, scenes, memes, tail, corner=False, en
                       if x.get("mode") in ("overlay", "split", "window") and (x.get("box") or default_box(x.get("mode")))]
             boxes += [(k.get("what") or "keep-clear", k["box"]) for k in plan.get("keep_clear", [])
                       if k.get("box") and not k.get("scene") and not k.get("matte") and not k.get("callout")]
-            for cid in dict.fromkeys(k["callout"] for k in plan.get("keep_clear", []) if k.get("callout")):
-                bs = [k["box"] for k in plan["keep_clear"] if k.get("callout") == cid]
+            # callouts from the plan itself, where the render puts their labels: their keep_clear entries come only
+            # with export, after this check (PR 32 review: a first export of an ad let a label out of the zone)
+            ctx = callout_context(e, plan)
+            for c in plan.get("inserts", []):
+                if c.get("kind") != "callout" or c.get("status") == "skipped" or not isinstance(c.get("anchor"), list):
+                    continue
+                bs = [callout_at(c, t, ctx)["plate"] for t in callout_times(c)]
                 x_, y_ = min(b[0] for b in bs), min(b[1] for b in bs)
-                boxes.append((f"callout {cid}", [x_, y_, max(b[0] + b[2] for b in bs) - x_, max(b[1] + b[3] for b in bs) - y_]))
+                boxes.append((f"callout {c['id']}", [round(x_), round(y_), round(max(b[0] + b[2] for b in bs) - x_),
+                                                     round(max(b[1] + b[3] for b in bs) - y_)]))
             for name, b in boxes:
                 if b[0] < x0 or b[1] < y0 or b[0] + b[2] > x1 or b[1] + b[3] > y1:
                     bad.append(f"{name} {list(b)}")
@@ -2978,8 +2985,8 @@ def _screen_box(b, t, shots, segs, drift, end):
 def callout_span(c, fps=30):
     """The seconds the kit draws a callout over: from frame round(start * fps), for round(dur * fps) frames (Codex
     review: the checks and the zones used the raw seconds)."""
-    f0 = round(c["start"] * fps)
-    return f0 / fps, (f0 + round(c["dur"] * fps)) / fps
+    f0 = jround(c["start"] * fps)  # Math.round, as the kit counts frames (PR 32 review: round() took halves to even)
+    return f0 / fps, (f0 + jround(c["dur"] * fps)) / fps
 
 
 def callout_times(c, step=0.25):

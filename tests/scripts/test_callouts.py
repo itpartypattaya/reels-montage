@@ -524,6 +524,36 @@ def test_a_horizontal_rough_cut_without_the_framed_format_is_refused(project):
     assert r.returncode == 1 and "l01" in r.stdout and "horizontal" in r.stdout, r.stdout
 
 
+def test_a_new_callout_is_checked_against_the_ad_safe_zone(project):
+    # Codex bot review (PR 32): the profile's zone read the callout's keep_clear entries, which only export writes, after
+    # the check: on the first export of a paid ad a label above the ad zone (y 269) passed
+    callout_project(project, {"profile": "ad"})
+    add(project, "--at", "word:resume#1", "--dur", "2.4", "--anchor", "200,380", *LAPTOP)  # label top ~255
+    r = validate(project)
+    assert "AD-1" in r.stdout and "callout l01" in r.stdout, r.stdout
+
+
+def test_a_line_across_the_corner_logo_is_refused(project):
+    # Codex bot review (PR 32): the corner logo and the hook were checked against the label only; the line crossing the
+    # logo passed, and the callout is drawn over it
+    callout_project(project)
+    add(project, "--at", "word:resume#1", "--dur", "2.4", "--anchor", "900,400", "--side", "left", *LAPTOP)
+    assert validate(project).returncode == 0
+    r = run_script("visual_plan.py", "validate", "edit/4821", "--corner", cwd=project, check=False)
+    assert r.returncode == 1 and "corner logo" in r.stdout, r.stdout
+
+
+def test_frames_are_rounded_as_the_kit_rounds_them(project):
+    # Codex bot review (PR 32): Python's round() takes a half to even (0.15 s -> frame 4), the kit's Math.round takes it
+    # up (frame 5); the last drawn frame escaped the checks
+    e = callout_project(project)
+    add(project, "--at", "0.15", "--dur", "2.15", "--anchor", "300,1150", *LAPTOP)
+    export(project, e)
+    keep = [k for k in load_plan(e)["keep_clear"] if k.get("callout") == "l01"]
+    # the zones keep times to the millisecond
+    assert keep[0]["start"] == pytest.approx(5 / 30, abs=1e-3) and keep[-1]["end"] == pytest.approx((5 + 65) / 30, abs=1e-3)
+
+
 def test_a_callout_with_errors_stays_out_of_the_render(project):
     e = callout_project(project)
     add(project, "--at", "word:resume#1", "--dur", "2.4", "--anchor", "300,820", *LAPTOP)  # on the face
