@@ -157,3 +157,36 @@ def test_the_kit_keeps_a_group_on_one_block():
     assert "(!!w.keep || !hide.some(" in subs
     ver = (KIT / "kit" / "version.ts").read_text(encoding="utf-8")
     assert 'KIT_VERSION = "1.12.0"' in ver
+
+
+def test_a_keep_mark_added_after_apply_makes_the_translation_stale(project):
+    # Codex review (PR 31): the fingerprint hashed only text, times and speakers, so a keep added after subs.py apply
+    # left captions-<lang>.json without the mark and the export still took it
+    import hashlib
+    import subs
+    cap = {"duration": 2.0, "segments": [], "words": [{"text": "hi", "start": 0.1, "end": 0.4}]}
+    old = hashlib.sha1(repr((2.0, [], [("hi", 0.1, 0.4)])).encode()).hexdigest()[:12]
+    assert subs.fingerprint(cap) == old  # no mark: the value earlier versions wrote
+    marked = dict(cap, words=[dict(cap["words"][0], keep="k1")])
+    assert subs.fingerprint(marked) != old
+    assert subs.translation_id({"phrases": [{"src": "a", "text": "b"}]}) != subs.translation_id(
+        {"phrases": [{"src": "a", "text": "b", "keep": "k1"}]})
+    e = plan_project(project, {"subtitles_lang": "de"})
+    cap = punch_captions()
+    for w in cap["words"]:
+        w.pop("keep", None)
+    write_json(e / "captions.json", cap)
+    run_script("subs.py", "phrases", "edit/4821", "--lang", "de", cwd=project)
+    f = e / "subs" / "de.json"
+    doc = json.loads(f.read_text(encoding="utf-8"))
+    for p in doc["phrases"]:
+        p["text"] = "Ein Satz."
+    write_json(f, doc)
+    run_script("subs.py", "apply", "edit/4821", "--lang", "de", cwd=project)
+    import visual_plan as vp
+    assert vp.subtitles_in(e, "de")
+    write_json(e / "captions.json", punch_captions())  # the punchline marked after the translation
+    import pytest
+    with pytest.raises(SystemExit) as x:
+        vp.subtitles_in(e, "de")
+    assert "the rough cut changed after the translation" in str(x.value)

@@ -156,18 +156,21 @@ def take_translations(ps, old):
 def fingerprint(cap):
     """The rough cut a translation belongs to: the words with their times and speakers, the length and the segments
     (the kit takes the render length from the duration). Codex review: speakers corrected in cut.json with the words
-    unchanged kept the old fingerprint, and the translated captions kept the old colors. Without speakers the value is
-    the one 1.5.0 wrote, so an earlier translation stays valid."""
+    unchanged kept the old fingerprint, and the translated captions kept the old colors. The same for a cut.json "keep"
+    mark (Codex review, PR 31: a keep added after apply left captions-<lang>.json without it, and the export took it).
+    Without speakers and keep marks the value is the one 1.5.0 wrote, so an earlier translation stays valid."""
     segs = [(s.get("out_start"), s.get("out_dur"), s.get("src_start"), s.get("src_end")) for s in cap.get("segments", [])]
     words = [(w.get("text"), w.get("start"), w.get("end")) + ((w["speaker"],) if w.get("speaker") else ())
-             for w in cap.get("words", [])]
+             + ((("keep", w["keep"]),) if w.get("keep") else ()) for w in cap.get("words", [])]
     key = (cap.get("duration"), segs, words) + ((list(cap["speakers"]),) if cap.get("speakers") else ())
     return hashlib.sha1(repr(key).encode()).hexdigest()[:12]
 
 
 def translation_id(doc):
-    """Which translation: the phrases' words and their translations (subs/<lang>.json)."""
-    return hashlib.sha1(repr([(p.get("src"), p.get("text")) for p in (doc or {}).get("phrases", [])]).encode()).hexdigest()[:12]
+    """Which translation: the phrases' words and their translations (subs/<lang>.json), and a phrase's keep mark (a
+    phrase list without marks keeps its earlier value)."""
+    return hashlib.sha1(repr([(p.get("src"), p.get("text")) + ((p["keep"],) if p.get("keep") else ())
+                              for p in (doc or {}).get("phrases", [])]).encode()).hexdigest()[:12]
 
 
 def subs_file(e, lang):
