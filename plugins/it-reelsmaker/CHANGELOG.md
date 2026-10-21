@@ -2,6 +2,21 @@
 
 What changed in IT Reelsmaker, written for the people who use it. The newest version is on top. The skill shows a short “What's new” note from this file once, on the first edit after an update.
 
+## 1.21.0
+
+- **Callouts follow the object.** On a pan or a walk-through filmed by hand the object no longer slides away from the
+  dot: `track.py edit/<id> l01` follows it frame by frame and gives the callout a path; it stops at a joint of the
+  rough cut and where the object leaves the frame, and the dot fades out there. For a slow pan, keys by hand:
+  `--keys 0:300,1150 2.4:540,1150`. `validate` measures the picture along the path, so a track or keys that slip off
+  the object are refused, and asks for a new track when the rough cut changes. Needs OpenCV and numpy in your Python.
+- **Four more callout variants** (experimental, `--variant`): `line` (the name over the line, no plate; refused where
+  the picture under it is too light to read it), `badge` (a price or a rating in a circle), `ring` (a ring around one
+  object among others, growing with the camera and the track) and `dimension` (a measuring line between two points
+  with the size at its middle). A number on any of them still needs its source.
+- **A callout on a person.** `--person left|right|center` puts the dot on the shoulder under that face of
+  `faces.json` and follows it as the person moves; the label goes to the open side of the frame.
+- Kit 1.14.0 (`kit.py update`): `CalloutLayer` draws the variants and the moving anchors.
+
 ## 1.20.0
 
 - **Callouts on objects (experimental).** A dot on an object in the frame, a leader line drawn from it and a label
