@@ -43,7 +43,7 @@ A few more things are in the kit and the references but not yet checked in a fin
 - layouts where the speaker moves aside for a scene: split, slide panel, a window in the corner;
 - the cut-out figure: text behind the person, a presenter over a scene (needs `rembg`, below);
 - a phone mockup on the call to action;
-- callouts on objects: a dot on a thing in the frame, a leader line drawn from it and a label wiping in, as in tour and review videos (“sofa”, “the view from the balcony”). Offered when the speaker names something you can see in a still shot. The plan check measures that the picture under the dot holds still (a walk-through filmed by hand is refused: the object would slide away from the dot), follows the virtual camera, and keeps the label off faces, the subtitles and the app's buttons.
+- callouts on objects: a dot on a thing in the frame, a leader line drawn from it and a label wiping in, as in tour and review videos (“sofa”, “the view from the balcony”); also a price in a circle, a ring around one object among others, a measuring line with its size, and the host's name on their shoulder. Offered when the speaker names something you can see. On a still shot the dot stays put; on a pan or a walk-through filmed by hand `track.py` follows the object, and keys set by hand work for a slow pan. The plan check measures that the dot stays on the object (a track that slips is refused), follows the virtual camera, and keeps the label off faces, the subtitles and the app's buttons; text with no plate must read over the picture.
 
 ## Requirements
 

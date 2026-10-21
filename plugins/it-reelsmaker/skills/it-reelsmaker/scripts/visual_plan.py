@@ -381,7 +381,7 @@ def build_plan(e, cap, s, prov, doc):
         if NUM_RE.search(text):
             hints.append("a number -> a card works better than B-roll")
         if POINT_RE.search(text):
-            hints.append("pointing at an object -> B-roll of the object, or a callout on it if the object is in the frame and the shot holds still (experimental, references/callouts.md)")
+            hints.append("pointing at an object -> B-roll of the object, or a callout on it if the object is in the frame and the dot can stay on it: a still shot, or followed by track.py (experimental, references/callouts.md)")
         if EMO_RE.search(text):
             hints.append("emotion or irony: room for a meme, if memes are on")
         if n == 0:
@@ -1623,8 +1623,8 @@ def check_callouts(e, plan, s, doc, fdata, callouts, brolls, memes, scenes, corn
 
     only = plan.get("format") == "scenes-only"
     fr = None if only else framed_at(e)
-    ctx = callout_context(e, plan)
-    segs, shots, drift, end = ctx
+    ctx = callout_context(e, plan, fdata)
+    segs, shots, drift, end = ctx[:4]
     fps = (doc.get("scenes") or {}).get("fps", 30)
     R = (doc.get("scenes") or {}).get("reading") or {}
     tones = {k: v for k, v in (doc.get("scene_tones") or {}).items() if not k.startswith("_")}
@@ -1660,8 +1660,32 @@ def check_callouts(e, plan, s, doc, fdata, callouts, brolls, memes, scenes, corn
             E(c, "text.lines: the subject, and an optional second line")
             continue
         a_ = c.get("anchor")
-        if not (isinstance(a_, list) and len(a_) == 2 and all(isinstance(v, (int, float)) for v in a_)):
+        if not _point(a_):
             E(c, "no anchor [x, y] on the rough cut")
+            continue
+        vr = c.get("variant")
+        why = path_issue(c.get("path"), c.get("dur"))
+        if why:
+            E(c, why)
+            continue
+        if c.get("person") and c["person"] not in CALLOUT_PEOPLE:
+            E(c, f"person {c['person']!r} (one of {', '.join(CALLOUT_PEOPLE)})")
+            continue
+        if c.get("person") and c.get("path"):
+            E(c, "both a person and a path: the dot follows one of them")
+            continue
+        if vr == "dimension":
+            if not _point(c.get("to")):
+                E(c, "a dimension needs its second point (--to X,Y)")
+                continue
+            if c.get("path") or c.get("person"):
+                E(c, "a dimension measures between two still points: no keys, track or person")
+                continue
+        elif c.get("to"):
+            W(c, f"'to' is only for a dimension: the {vr} ignores it")
+        if vr == "ring" and not (isinstance(c.get("radius"), (int, float))
+                                 and CALLOUT_RING[0] <= c["radius"] <= CALLOUT_RING[1]):
+            E(c, f"a ring needs its radius around the object (--radius {CALLOUT_RING[0]}-{CALLOUT_RING[1]} px of the rough cut)")
             continue
         if c.get("side") not in ("left", "right"):
             E(c, f"side {c.get('side')!r} (left or right)")
@@ -1685,9 +1709,36 @@ def check_callouts(e, plan, s, doc, fdata, callouts, brolls, memes, scenes, corn
             E(c, f"runs past the video ({fmt_t(t0)} + {c['dur']} s, video {fmt_t(plan.get('duration') or 0)})")
         if not (c.get("what") or "").strip() or len((c.get("why") or "").strip()) < 8:
             E(c, "no 'what' or 'why': a callout for the sake of a callout is not allowed")
-        w = c.get("w") or callout_width(lines)
-        if w > CALLOUT_MAX_W:
+        w = c.get("w") or callout_width(lines, vr)
+        if vr == "badge" and w > CALLOUT["badge_max"]:
+            E(c, f"the badge is ~{w} px across (> {CALLOUT['badge_max']}): a number and a word, not a phrase; a tag "
+                 f"holds a longer label")
+        elif w > CALLOUT_MAX_W:
             E(c, f"the label is ~{w} px wide (> {CALLOUT_MAX_W}): a name and a short detail, not a sentence")
+        if vr == "dimension" and math.hypot(c["to"][0] - a_[0], c["to"][1] - a_[1]) < 80:
+            E(c, "the dimension's two points are less than 80 px apart: nothing to measure on screen")
+        # a moving anchor: a person from faces.json, a track that still matches the rough cut, and seen most of the time
+        if c.get("person"):
+            pp = callout_path(c, ctx)
+            if pp is None:
+                E(c, "a callout on a person needs faces.json (faces.py scan): the dot follows the face")
+                continue
+            if not pp:
+                E(c, f"no face in faces.json over {fmt_t(t0)}-{fmt_t(t1)}: there is no person to point at")
+                continue
+        if c.get("path_by") == "track" and (Path(e) / "final.mp4").is_file() and c.get("track_key") != track_key(e, c):
+            E(c, "the rough cut, the anchor or the callout's time changed since track.py followed the object: run "
+                 f"track.py edit/{Path(e).name} {c['id']} again")
+        path = callout_path(c, ctx)
+        if path:
+            ts_ = callout_times(c)
+            seen = sum(1 for t in ts_ if path_at(path, a_, t - t0)[2] >= 0.5) / max(1, len(ts_))
+            if seen == 0:
+                E(c, "the anchor is hidden over the whole callout: nothing would be drawn")
+                continue
+            if seen < CALLOUT_SEEN:
+                W(c, f"the dot is hidden {round((1 - seen) * 100)} % of the callout (the object lost or out of the "
+                     f"shot): shorten it to the stretch where it is seen")
         src = c.get("source") or {}
         if re.search(r"\d", " ".join(lines)) or NUM_RE.search(" ".join(lines).lower()):
             if not src.get("kind"):
@@ -1711,9 +1762,19 @@ def check_callouts(e, plan, s, doc, fdata, callouts, brolls, memes, scenes, corn
         if cuts:
             E(c, f"the camera changes shot at {', '.join(f'{x:g}' for x in cuts)} s inside the callout: the dot would "
                  f"jump with the picture; end it before the shot or start it after")
-        moved, why = picture_motion(e, c, fresh=motions)
-        if moved is None or moved > CALLOUT_STILL:
-            (E if moved is not None and moved > CALLOUT_MOVES else W)(c, motion_note(moved, why))
+        moved, why = (picture_motion(e, c, fresh=motions, ctx=ctx) if not c.get("person") or vr == "line"
+                      else (None, "person"))
+        # a person's dot follows the face detector, not a point of the picture: its motion is not checked, but its
+        # text with no plate is (Codex review: the contrast sat inside the branch a person skips)
+        if not c.get("person") and (moved is None or moved > CALLOUT_STILL):
+            (E if moved is not None and moved > CALLOUT_MOVES else W)(c, motion_note(moved, why, callout_moves(c)))
+        if vr == "line":
+            ink = ((motions or {}).get(c["id"]) or c.get("motion") or {}).get("ink") if moved is not None else None
+            if ink is None:
+                W(c, "the text's contrast against the picture is not measured: check the stills")
+            elif ink < CALLOUT_INK:
+                E(c, f"the text with no plate reads poorly over the picture here (contrast {ink:g}:1, at least "
+                     f"{CALLOUT_INK:g}:1): take the tag variant, or another anchor or side")
         for x in cover:
             if overlap(x, c) > 1e-6:
                 E(c, f"on screen with {x['id']} ({x['kind']} {x.get('mode')}): the rough cut is covered or moved there, "
@@ -1721,15 +1782,23 @@ def check_callouts(e, plan, s, doc, fdata, callouts, brolls, memes, scenes, corn
         # on screen over its whole time: frame, safe zone, faces, the subtitles, the other graphics
         found = {}
         geo[c["id"]] = {}
-        for t in callout_times(c):
+        for t in callout_times(c, path=path):
             g = callout_at(c, t, ctx)
+            if g["v"] <= 0:  # hidden: the anchor is lost there, nothing is drawn
+                continue
             geo[c["id"]][t] = g
-            (px, py), elbow, hend, plate = g["dot"], g["elbow"], g["end"], g["plate"]
-            segs_ = [(g["dot"], elbow), (elbow, hend)]
-            if not (0 <= px <= 1080 and 0 <= py <= 1920):
-                found.setdefault("frame", (t, f"the dot ({px:.0f}, {py:.0f}) leaves the frame"))
-            elif py < fc.UI_TOP or py > fc.H - fc.UI_BOTTOM or px > fc.W - fc.UI_RIGHT:
-                found.setdefault("ui-dot", (t, f"the dot ({px:.0f}, {py:.0f}) is in the app's UI zone"))
+            (px, py), plate = g["dot"], g["plate"]
+            segs_ = [tuple(sg) for sg in g["segs"]]
+            rr = g["r"]
+            dotbox = [px - rr, py - rr, 2 * rr, 2 * rr]
+            # the dot's center (a dimension's two ends); a ring whole (Codex review: only its center was checked)
+            ends = ([(px - rr, py - rr), (px + rr, py + rr)] if vr == "ring" else
+                    [(px, py)] + ([tuple(g["end"])] if vr == "dimension" else []))
+            what = {"ring": "ring", "dimension": "dimension"}.get(vr, "dot")
+            if any(not (0 <= x_ <= 1080 and 0 <= y_ <= 1920) for x_, y_ in ends):
+                found.setdefault("frame", (t, f"the {what} ({px:.0f}, {py:.0f}) leaves the frame"))
+            elif any(y_ < fc.UI_TOP or y_ > fc.H - fc.UI_BOTTOM or x_ > fc.W - fc.UI_RIGHT for x_, y_ in ends):
+                found.setdefault("ui-dot", (t, f"the {what} ({px:.0f}, {py:.0f}) is in the app's UI zone"))
             x, y, pw, ph = plate
             if x < zx0 or y < zy0 or x + pw > zx1 or y + ph > zy1:
                 found.setdefault("zone", (t, f"the label {[round(v) for v in plate]} leaves the safe zone x {zx0}-{zx1}, "
@@ -1739,21 +1808,19 @@ def check_callouts(e, plan, s, doc, fdata, callouts, brolls, memes, scenes, corn
             for f in [_screen_box(f[:4], t, shots, segs, drift, end) for f in near]:
                 if fc.inter(plate, fc.grow(f, fc.MARGIN)):
                     found.setdefault("face", (t, f"the label covers the face {[round(v) for v in f]} (margin {fc.MARGIN} px)"))
-                own = f[0] <= px <= f[0] + f[2] and f[1] <= py <= f[1] + f[3]
+                own = (f[0] <= px <= f[0] + f[2] and f[1] <= py <= f[1] + f[3]) or (vr == "ring" and fc.inter(dotbox, f))
                 if own:
-                    found.setdefault("person", (t, "the dot is on a face: pointing at a person is not checked yet, look "
-                                                   "at the stills"))
+                    found.setdefault("person", (t, "the dot is on a face: to point at a person, use --person (the dot "
+                                                   "then goes to the shoulder); look at the stills"))
                 elif any(_seg_hits(p, q, f, CALLOUT_LINE_MARGIN) for p, q in segs_):
                     found.setdefault("line", (t, f"the leader line crosses the face {[round(v) for v in f]}: put the "
                                                  f"label on the other side or under the dot"))
             if band and not any(h0 - 1e-6 <= t <= h1 + 1e-6 for h0, h1 in hidden):
                 sub = [0, band[0], 1080, band[1] - band[0]]
-                if fc.inter(plate, sub) or any(_seg_hits(p, q, sub) for p, q in segs_):
+                if fc.inter(plate, sub) or fc.inter(dotbox, sub) or any(_seg_hits(p, q, sub) for p, q in segs_):
                     found.setdefault("subs", (t, f"on the subtitle band (y {band[0]}-{band[1]}): move the anchor's label up"))
             # the other graphics: the label, and the dot and the line too (a popup meme is drawn over a callout and
-            # would hide its dot; Antigravity review)
-            dotbox = [px - CALLOUT["dot"], py - CALLOUT["dot"], 2 * CALLOUT["dot"], 2 * CALLOUT["dot"]]
-
+            # would hide its dot; Antigravity review); a ring: its whole circle
             def covers(b):
                 return fc.inter(plate, b) or fc.inter(dotbox, b) or any(_seg_hits(p, q, b) for p, q in segs_)
             for k in keep:
@@ -1784,7 +1851,9 @@ def check_callouts(e, plan, s, doc, fdata, callouts, brolls, memes, scenes, corn
 
             def clash(t):
                 ga, gb = callout_at(a, t, ctx), callout_at(b, t, ctx)
-                la, lb = [(ga["dot"], ga["elbow"]), (ga["elbow"], ga["end"])], [(gb["dot"], gb["elbow"]), (gb["elbow"], gb["end"])]
+                if ga["v"] <= 0 or gb["v"] <= 0:  # one of them hidden there
+                    return False
+                la, lb = [tuple(sg) for sg in ga["segs"]], [tuple(sg) for sg in gb["segs"]]
                 return (fc.inter(ga["plate"], gb["plate"])
                         or any(_seg_hits(p, q, g2["plate"]) for ls, g2 in ((la, gb), (lb, ga)) for p, q in ls)
                         or any(_segs_cross(s1, s2) for s1 in la for s2 in lb))  # two lines crossing
@@ -1900,9 +1969,12 @@ def profile_issues(e, plan, s, brand, cap, scenes, memes, tail, corner=False, en
             # with export, after this check (PR 32 review: a first export of an ad let a label out of the zone)
             ctx = callout_context(e, plan)
             for c in plan.get("inserts", []):
-                if c.get("kind") != "callout" or c.get("status") == "skipped" or not isinstance(c.get("anchor"), list):
+                if (c.get("kind") != "callout" or c.get("status") == "skipped" or not _point(c.get("anchor"))
+                        or not all(isinstance(c.get(k), (int, float)) for k in ("start", "dur")) or c["dur"] <= 0):
+                    continue  # broken fields: check_callouts reports them (Antigravity review: a KeyError here)
+                bs = [g["plate"] for g in (callout_at(c, t, ctx) for t in callout_times(c)) if g["v"] > 0]
+                if not bs:
                     continue
-                bs = [callout_at(c, t, ctx)["plate"] for t in callout_times(c)]
                 x_, y_ = min(b[0] for b in bs), min(b[1] for b in bs)
                 boxes.append((f"callout {c['id']}", [round(x_), round(y_), round(max(b[0] + b[2] for b in bs) - x_),
                                                      round(max(b[1] + b[3] for b in bs) - y_)]))
@@ -1961,39 +2033,114 @@ def meme_rights(meme_id):
 
 
 def add_callout(a):
-    """A callout: a dot at --anchor (a point of the 1080x1920 rough cut), a leader line, a label with 1-2 lines.
-    The side with room is taken unless --side says; validate checks it on screen over its whole time."""
-    if a.variant and a.variant not in CALLOUT_VARIANTS:
+    """A callout: a dot at --anchor (a point of the 1080x1920 rough cut), a leader line, a label with 1-2 lines; the
+    dot may move along --keys, follow a --person's face (faces.json), or be tracked later (track.py); the variants
+    (references/callouts.md) add --radius (ring) and --to (dimension). The side with room is taken unless --side says;
+    validate checks it on screen over its whole time."""
+    variant = a.variant or "tag"
+    if variant not in CALLOUT_VARIANTS:
         sys.exit(f"callout --variant {a.variant}: allowed {', '.join(CALLOUT_VARIANTS)}")
     lines = [x.strip() for x in (a.lines or []) if x.strip()]
     if not 1 <= len(lines) <= 2:
         sys.exit("callout --lines: the subject, and an optional second line (a detail)")
-    try:
-        x, y = (int(round(float(v))) for v in (a.anchor or "").split(","))
-    except ValueError:
-        sys.exit("callout --anchor X,Y: the point of the object on the 1080x1920 rough cut")
+
+    def point(s, flag):
+        try:
+            x_, y_ = (int(round(float(v))) for v in str(s).split(","))
+        except ValueError:
+            sys.exit(f"callout {flag} X,Y: a point on the 1080x1920 rough cut")
+        return [x_, y_]
+    if sum(bool(v) for v in (a.keys, a.person)) > 1:
+        sys.exit("callout: --keys or --person, not both (the dot follows one path)")
+    path = parse_keys(a.keys, a.dur) if a.keys else None
+    if a.person and a.person not in CALLOUT_PEOPLE:
+        sys.exit(f"callout --person {a.person}: one of {', '.join(CALLOUT_PEOPLE)}")
+    if a.anchor:
+        x, y = point(a.anchor, "--anchor")
+    elif path:
+        x, y = next([round(r[1]), round(r[2])] for r in path if (r[3] if len(r) > 3 else 1) > 0)
+    elif not a.person:
+        sys.exit("callout --anchor X,Y: the point of the object on the 1080x1920 rough cut (or --keys, or --person)")
+    to = point(a.to, "--to") if a.to else None
+    if variant == "dimension" and (not to or path or a.person):
+        sys.exit("callout --variant dimension: --anchor and --to, the two still ends of what is measured")
+    if variant == "ring" and not (a.radius and CALLOUT_RING[0] <= a.radius <= CALLOUT_RING[1]):
+        sys.exit(f"callout --variant ring: --radius {CALLOUT_RING[0]}-{CALLOUT_RING[1]}, the ring around the object "
+                 f"in px of the rough cut")
     if a.source not in SCENE_SOURCES + ["auto"]:
         sys.exit(f"callout --source {a.source}: where the text comes from ({', '.join(SCENE_SOURCES)})")
     e = edit_dir(a.edit)
     cap = load_json(e / "captions.json", {})
-    w = callout_width(lines)
+    w = callout_width(lines, variant)
     with editing_plan(e) as plan:
         start = resolve_at(a.at, plan, cap)
         n = 1 + max([int(i["id"][1:]) for i in plan["inserts"] if i["id"].startswith("l") and i["id"][1:].isdigit()] or [0])
         seg = next((g for g in plan["segments"] if g["start"] <= start < g["end"]), None)
-        c = {"id": f"l{n:02d}", "kind": "callout", "variant": a.variant or "tag", "segment": seg["id"] if seg else None,
+        c = {"id": f"l{n:02d}", "kind": "callout", "variant": variant, "segment": seg["id"] if seg else None,
              "at": a.at, "offset": a.offset, "start": round(start + a.offset, 3), "dur": a.dur, "mode": "overlay",
-             "anchor": [x, y], "side": a.side or callout_side(x, w), "below": bool(a.below), "text": {"lines": lines},
+             "anchor": None, "side": a.side, "below": bool(a.below), "text": {"lines": lines},
              "w": w, "tone": a.tone, "what": a.what, "why": a.why, "status": "planned",
              "source": {"kind": a.source, "ref": a.source_ref} if a.source in SCENE_SOURCES else None}
-        moved, why = picture_motion(e, c, keep=True)  # kept in c["motion"] for validate
+        if path:
+            c.update(path=path, path_by="keys")
+        if to:
+            c["to"] = to
+        if variant == "ring":
+            c["radius"] = a.radius
+        if a.person:
+            import faces as fc
+            fdata = fc.load(e)
+            if not fdata:
+                sys.exit("callout --person: no faces.json; run faces.py scan edit/<id> first (the dot follows the face)")
+            c["person"] = a.person
+            pr, pl = person_path(dict(c, side="right"), fdata), person_path(dict(c, side="left"), fdata)
+            if not pr:
+                sys.exit(f"callout --person: no face in faces.json over {fmt_t(c['start'])}-{fmt_t(c['start'] + a.dur)}")
+            # the label away from the nearer edge of the frame: the shoulder on that side has room for it
+            fx = next((r[1] + q[1]) / 2 for r, q in zip(pr, pl) if r[3] > 0)  # the face's middle
+            c["side"] = c["side"] or ("right" if fx < 540 else "left")
+            rows = person_path(c, fdata)
+            x, y = next([round(r[1]), round(r[2])] for r in rows if r[3] > 0)
+        c["anchor"] = [x, y]
+        c["side"] = c["side"] or callout_side(x, w)
+        moved, why = (None, "person") if a.person else picture_motion(e, c, keep=True, ctx=callout_context(e, plan))
         plan["inserts"].append(c)
         plan["inserts"].sort(key=lambda i: i["start"])
     if not (0 <= x <= 1080 and 0 <= y <= 1920):
         warn(f"{c['id']}: the anchor ({x}, {y}) is off the 1080x1920 frame: validate will not pass it")
-    print(f"{c['id']}: callout {c['variant']} (experimental: check the storyboard frames) {fmt_t(c['start'])} +{a.dur} s: "
-          f"“{' / '.join(lines)}” at ({x}, {y}), label {c['side']}{' below' if c['below'] else ''}, ~{w} px wide; "
-          + motion_note(moved, why))
+    how = (f"following the {a.person} face's shoulder" if a.person else f"along {len(path)} keys" if path
+           else f"to {tuple(to)}" if to else "")
+    ink = (c.get("motion") or {}).get("ink")
+    print(f"{c['id']}: callout {variant} (experimental: check the storyboard frames) {fmt_t(c['start'])} +{a.dur} s: "
+          f"“{' / '.join(lines)}” at ({x}, {y}){' ' + how if how else ''}, label {c['side']}"
+          f"{' below' if c['below'] else ''}, ~{w} px {'across' if variant == 'badge' else 'wide'}; "
+          + ("the dot follows the face detector (faces.json)" if a.person else motion_note(moved, why, callout_moves(c)))
+          + (f"; the text's contrast over the picture {ink:g}:1 (at least {CALLOUT_INK:g}:1)" if ink is not None else "")
+          + ("; a moving object: track.py follows it (references/callouts.md)"
+             if moved is not None and moved > CALLOUT_MOVES and not callout_moves(c) else ""))
+
+
+def parse_keys(keys, dur):
+    """--keys T:X,Y ... (T: seconds from the callout's start; T:- hides the dot from there, until the next key) ->
+    path rows [t, x, y, v]: the dot slides straight between keys, fades out toward a hidden key and back in."""
+    rows = []
+    for k in keys:
+        t_, _, xy = str(k).partition(":")
+        try:
+            t = round(float(t_), 3)
+            if xy.strip() == "-":
+                if not rows:
+                    sys.exit(f"--keys {k}: the first key needs a point")
+                rows.append([t, rows[-1][1], rows[-1][2], 0])
+                continue
+            x_, y_ = (round(float(v)) for v in xy.split(","))
+        except ValueError:
+            sys.exit(f"--keys {k}: T:X,Y (seconds from the callout's start, a point of the rough cut) or T:- (hidden)")
+        rows.append([t, x_, y_, 1])
+    why = path_issue(rows, dur)
+    if why:
+        sys.exit(f"--keys: {why}")
+    return rows
 
 
 def cmd_add(a):
@@ -2471,7 +2618,12 @@ def cmd_md(a):
             if i["kind"] == "callout":
                 src = i.get("source") or {}
                 L.append(f"- **{i['id']}** callout {i.get('variant')} (experimental) {fmt_t(i['start'])} +{i['dur']} s: "
-                         f"“{' / '.join((i.get('text') or {}).get('lines') or [])}”, dot at {i.get('anchor')}, label "
+                         f"“{' / '.join((i.get('text') or {}).get('lines') or [])}”, "
+                         + (f"dot on the {i['person']} person's shoulder" if i.get("person") else
+                            f"dot from {i.get('anchor')} along {len(i['path'])} {'track points' if i.get('path_by') == 'track' else 'keys'}"
+                            if i.get("path") else f"from {i.get('anchor')} to {i.get('to')}" if i.get("to") else
+                            f"dot at {i.get('anchor')}")
+                         + (f", ring r {i.get('radius'):g}" if i.get("radius") else "") + ", label "
                          f"{i.get('side')}{' below' if i.get('below') else ''}, tone {scene_tone(i, s)}. What: {i['what']}. "
                          f"Why: {i['why']}. " + (f"Source: {src.get('kind')}{' (' + src['ref'] + ')' if src.get('ref') else ''}. "
                                                  if src else "") + f"Status: {i['status']}")
@@ -2866,9 +3018,13 @@ def chin_on_screen(y, t, shots, view=None):
 # ── Callouts (references/callouts.md, experimental): a dot on an object of the rough cut, a leader line, a label ──
 # kit/anchor.ts holds the same numbers and functions (tests/scripts/test_callouts.py runs it with node against these)
 CALLOUT = {"dot": 14, "core": 8, "stroke": 5, "reach": 90, "run": 48, "title_h": 70, "title_size": 52, "sub_h": 50,
-           "sub_size": 34, "pad_x": 18}
+           "sub_size": 34, "pad_x": 18, "tick": 16, "gap": 14, "badge_min": 150, "badge_max": 260, "badge_sub": 26}
 CALLOUT_TIMES = {"dot": (0, 6), "line": (3, 11), "title": (8, 18), "sub": (11, 21), "out": 6, "calm_in": 14}
-CALLOUT_VARIANTS = ["tag"]
+CALLOUT_VARIANTS = ["tag", "line", "badge", "ring", "dimension"]
+CALLOUT_PEOPLE = ["left", "right", "center"]  # --person: which face of the frame, per sample (faces.json has no identity)
+CALLOUT_RING = (24, 400)  # ring --radius, px of the rough cut
+CALLOUT_INK = 3.0        # line: the text's contrast against the lightest (or darkest) 5 % of the picture under it
+CALLOUT_SEEN = 0.8       # a moving anchor: the share of the callout's time its dot is visible, below it a warning
 CALLOUT_MAX_W = 640      # px: a wider label is a sentence, not a name
 CALLOUT_ZONE = (40, 220, 960, 1500)  # the label: the safe zone, 40 px off the left edge
 CALLOUT_GAP_S = 0.6      # a second callout enters no sooner than this after the first (one element at a time)
@@ -2901,15 +3057,77 @@ def anchor_on_screen(x, y, t, shots, segs, drift, end, fps=30):
     return 540 + (x - 540) * z, 960 + (y - 960) * z
 
 
-def callout_geometry(px, py, side, below, w, sub):
-    """The callout around its dot on screen (px, py) (kit/anchor.ts calloutGeometry): 45° to the elbow, level to the
-    label, which the line meets at the title's middle; the label `side` of the dot, up (or down, `below`)."""
-    sx, sy = (-1 if side == "left" else 1), (1 if below else -1)
-    ex, ey = px + sx * CALLOUT["reach"], py + sy * CALLOUT["reach"]
-    hx = ex + sx * CALLOUT["run"]
+def screen_to_frame(x, y, t, shots, segs, drift, end, fps=30):
+    """anchor_on_screen backwards: the point of the rough cut that is at (x, y) on screen at second t."""
+    if shots:
+        cam = camera_at(shots, t, end, fps)
+        if cam:
+            z, cx, cy = cam
+            return (x - 540) / z + cx, (y - 960) / z + cy
+        return float(x), float(y)
+    z = drift_zoom(segs, t) if drift else 1.0
+    return 540 + (x - 540) / z, 960 + (y - 960) / z
+
+
+def zoom_at(t, shots, segs, drift, end, fps=30):
+    """The rough cut's scale on screen at second t (kit/anchor.ts zoomAt): a ring's radius grows with it."""
+    if shots:
+        cam = camera_at(shots, t, end, fps)
+        return cam[0] if cam else 1.0
+    return drift_zoom(segs, t) if drift else 1.0
+
+
+def path_at(path, anchor, t):
+    """A moving anchor at t seconds from the callout's start (kit/anchor.ts pathAt): rows [t, x, y, v, s] - the point
+    on the rough cut, its visibility 0..1 and the object's scale - straight between rows, held past the ends.
+    -> (x, y, v, s); without a path the anchor itself."""
+    if not path:
+        return float(anchor[0]), float(anchor[1]), 1.0, 1.0
+
+    def row(r):
+        return float(r[1]), float(r[2]), float(r[3]) if len(r) > 3 else 1.0, float(r[4]) if len(r) > 4 else 1.0
+    if t <= path[0][0]:
+        return row(path[0])
+    for k in range(1, len(path)):
+        if t <= path[k][0]:
+            a, b = row(path[k - 1]), row(path[k])
+            p = (t - path[k - 1][0]) / max(1e-6, path[k][0] - path[k - 1][0])
+            return tuple(u + (w - u) * p for u, w in zip(a, b))
+    return row(path[-1])
+
+
+def callout_geometry(px, py, side, below, w, sub, variant="tag", r=0, to=None):
+    """The callout around its anchor on screen (px, py), by variant (kit/anchor.ts calloutGeometry): tag - 45° to the
+    elbow, level to the plate, which the line meets at the title's middle, the label `side` of the dot, up (or down,
+    `below`); line - the level line going on under the title, no plate; badge - a circle of diameter w at the line's
+    end; ring - a ring of radius r instead of the dot, the line leaving it at 45°; dimension - a line to `to` with end
+    ticks, the label at its middle. segs: the drawn segments; r: the dot's or the ring's radius."""
+    sy = 1 if below else -1
     h = CALLOUT["title_h"] + (CALLOUT["sub_h"] if sub else 0)
-    return {"dot": [px, py], "elbow": [ex, ey], "end": [hx, ey],
-            "plate": [hx if sx > 0 else hx - w, ey - CALLOUT["title_h"] / 2, w, h]}
+    if variant == "dimension" and to:
+        qx, qy = to
+        ln = max(1e-6, math.hypot(qx - px, qy - py))
+        nx, ny = -(qy - py) / ln * CALLOUT["tick"], (qx - px) / ln * CALLOUT["tick"]
+        mx, my = (px + qx) / 2, (py + qy) / 2
+        # above (or under) a lying measure, beside an upright one, on `side` (Antigravity review: on the line)
+        plate = ([mx + CALLOUT["gap"] if side != "left" else mx - CALLOUT["gap"] - w, my - h / 2, w, h]
+                 if abs(qy - py) > abs(qx - px) else
+                 [mx - w / 2, my + CALLOUT["gap"] if below else my - CALLOUT["gap"] - h, w, h])
+        return {"dot": [px, py], "elbow": [mx, my], "end": [qx, qy], "plate": plate,
+                "segs": [[[px, py], [qx, qy]], [[px - nx, py - ny], [px + nx, py + ny]],
+                         [[qx - nx, qy - ny], [qx + nx, qy + ny]]],
+                "r": 0}
+    sx = -1 if side == "left" else 1
+    ring = variant == "ring"
+    ox, oy = (px + sx * r * math.sqrt(0.5), py + sy * r * math.sqrt(0.5)) if ring else (px, py)
+    ex, ey = ox + sx * CALLOUT["reach"], oy + sy * CALLOUT["reach"]
+    hx = ex + sx * CALLOUT["run"]
+    x0 = hx if sx > 0 else hx - w
+    end = [hx + sx * w, ey] if variant == "line" else [hx, ey]
+    plate = ([x0, ey - CALLOUT["title_h"], w, h] if variant == "line" else [x0, ey - w / 2, w, w] if variant == "badge"
+             else [x0, ey - CALLOUT["title_h"] / 2, w, h])
+    return {"dot": [px, py], "elbow": [ex, ey], "end": end, "plate": plate,
+            "segs": [[[ox, oy], [ex, ey]], [[ex, ey], end]], "r": r if ring else CALLOUT["dot"]}
 
 
 def callout_entrance(tone_in, sub):
@@ -2937,8 +3155,14 @@ def _text_w(text, size, upper=False, track=0.0):
     return w
 
 
-def callout_width(lines):
-    """The label's width, px: the title at 52 px bold, a second line in 34 px caps (+0.12 em), and the plate's padding."""
+def callout_width(lines, variant="tag"):
+    """The label's width, px: the title at 52 px bold, a second line in 34 px caps (+0.12 em), and the plate's padding;
+    a badge: the circle's diameter, the number in 78 % of it and the caption (26 px caps, under the number, where the
+    circle is ~90 % of its diameter wide) in 80 %, at least badge_min."""
+    if variant == "badge":
+        t = _text_w(lines[0], CALLOUT["title_size"]) / 0.78 if lines else 0.0
+        s = _text_w(lines[1], CALLOUT["badge_sub"], upper=True, track=0.08) / 0.8 if len(lines) > 1 else 0.0
+        return int(math.ceil(max(CALLOUT["badge_min"], t, s)))
     t = _text_w(lines[0], CALLOUT["title_size"]) if lines else 0.0
     s = _text_w(lines[1], CALLOUT["sub_size"], upper=True, track=0.12) if len(lines) > 1 else 0.0
     return int(math.ceil(max(t, s) + 2 * CALLOUT["pad_x"]))
@@ -2989,11 +3213,14 @@ def callout_span(c, fps=30):
     return f0 / fps, (f0 + jround(c["dur"] * fps)) / fps
 
 
-def callout_times(c, step=0.25):
-    """The moments a callout is checked at: its start, every step on the grid, and just before its end."""
+def callout_times(c, step=0.25, path=None):
+    """The moments a callout is checked at: its start, every step on the grid, just before its end, and the times of
+    its path's rows (between rows it moves straight, so its extremes are there; Codex review: a key between two samples
+    carried the label onto a face and back unseen)."""
     t0, t1 = callout_span(c)
     ts = {round(t0, 3), round(t1 - 0.001, 3)} | {round(k * step, 3) for k in range(math.ceil(t0 / step), math.floor(t1 / step) + 1)
                                                 if t0 <= k * step < t1}
+    ts |= {round(t0 + r[0], 3) for r in (path or []) if t0 <= t0 + r[0] < t1}
     return sorted(ts)
 
 
@@ -3004,14 +3231,113 @@ CALLOUT_STILL = 10
 CALLOUT_MOVES = 25
 
 
-def picture_motion(e, c, keep=False, fresh=None):
+def _frames(f, start, dur, vf, size, fps=4, every=None):
+    """The rough cut's frames over [start, start + dur], fps a second, through the filter vf, as raw bytes of `size`
+    each -> (frames, why): why is None when at least 80 % of them decoded. every=N: every N-th frame of the 30 fps rough
+    cut itself, counted from the first one at start, with no resampling - the frames track.py follows (a rough cut whose
+    first frame sits at 0.021 s had the fps filter pick the frame before, 1/30 s off: 13 px on a fast pan)."""
+    import subprocess
+    if every:
+        fps = 30 / every
+    sel = (["-vf", "select=not(mod(n\\," + str(every) + "))," + vf, "-fps_mode", "passthrough"] if every
+           else ["-vf", f"fps={fps},{vf}"])
+    try:
+        out = subprocess.run(["ffmpeg", "-v", "error", "-ss", f"{start:.3f}", "-t", f"{dur:.3f}", "-i", str(f),
+                              *sel, "-f", "rawvideo", "-"], capture_output=True, timeout=180)
+    except (OSError, subprocess.SubprocessError) as err:
+        return [], f"ffmpeg failed ({type(err).__name__})"
+    frames = [out.stdout[k:k + size] for k in range(0, len(out.stdout) - size + 1, size)]
+    if out.returncode != 0 or len(frames) < max(2, int(dur * fps * 0.8)):
+        return frames, f"final.mp4 did not decode ({len(frames)} of ~{int(dur * fps)} frames)"
+    return frames, None
+
+
+def path_frames(f, c):
+    """The frames a moving anchor is checked on: every 6th of those track.py follows (5 a second), 360x640 gray."""
+    return _frames(f, callout_span(c)[0], c["dur"], "scale=360:640,format=gray", 360 * 640, every=6)
+
+
+def _patch(buf, x, y, W=360, n=40, scale=1.0):
+    """An n x n patch of a W-wide gray frame around (x, y) of the 1080x1920 frame (3 px of it per pixel), sampled
+    between pixels (bilinear): a path moves the patch by fractions of a pixel, and whole pixels alone made a path that
+    follows its object exactly look like a slipping one. scale: the object's size against the first frame (a track's),
+    the patch grows with it (Codex review: a box growing in place read as a slip at 25.7). Kept inside the frame."""
+    H = len(buf) // W
+    half = n / 2 * scale
+    cx = min(max(x / 3, half), W - 1 - half)
+    cy = min(max(y / 3, half), H - 1 - half)
+    out = []
+    for j in range(n):
+        v = min(max(cy + (j - n / 2) * scale, 0.0), H - 1.001)
+        iv, fv = int(v), v - int(v)
+        r0, r1 = iv * W, (iv + 1) * W
+        for i in range(n):
+            u = min(max(cx + (i - n / 2) * scale, 0.0), W - 1.001)
+            iu, fu = int(u), u - int(u)
+            p = buf[r0 + iu] + (buf[r0 + iu + 1] - buf[r0 + iu]) * fu
+            q = buf[r1 + iu] + (buf[r1 + iu + 1] - buf[r1 + iu]) * fu
+            out.append(p + (q - p) * fv)
+    return out
+
+
+def _stat(p):
+    return [p.stat().st_size, p.stat().st_mtime_ns] if p.is_file() else None
+
+
+def callout_moves(c):
+    """Whether the callout's anchor is more than one still point: a path (keys, a track) or a second point."""
+    return bool(c.get("path") or c.get("to"))
+
+
+def _point(p):
+    return isinstance(p, list) and len(p) == 2 and all(isinstance(v, (int, float)) and not isinstance(v, bool)
+                                                       and math.isfinite(v) for v in p)
+
+
+def path_issue(path, dur=None):
+    """What is wrong with a callout's path (rows [t, x, y, v, s] from its start, t rising, v 0..1, s > 0), or None."""
+    if path is None:
+        return None
+    if not isinstance(path, list) or not path:
+        return "path: a list of rows [t, x, y, visibility, scale]"
+    prev = None
+    for r in path:
+        if not (isinstance(r, list) and 3 <= len(r) <= 5
+                and all(isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v) for v in r)):
+            return f"path row {r!r}: [t, x, y] and optionally the visibility 0..1 and the scale"
+        if prev is not None and r[0] <= prev:
+            return f"path: the times must rise ({r[0]:g} after {prev:g})"
+        if len(r) > 3 and not 0 <= r[3] <= 1 or len(r) > 4 and r[4] <= 0:
+            return f"path row {r!r}: the visibility is 0..1, the scale above 0"
+        if r[0] < 0 or (isinstance(dur, (int, float)) and r[0] > dur + 0.05):
+            return f"path: t {r[0]:g} is outside the callout (0-{dur} s from its start)"
+        prev = r[0]
+    return None
+
+
+def track_key(e, c):
+    """What a track was made from (track.py): the anchor, the callout's time, final.mp4 and the joints of the rough cut
+    (captions.json spans: the track breaks there; Antigravity review: spans re-cut over the same file kept an old
+    track valid); another one -> track again."""
+    f = Path(e) / "final.mp4"
+    st = f.stat() if f.is_file() else None
+    joints = [g.get("out_start") for g in (load_json(Path(e) / "captions.json", {}) or {}).get("segments", [])]
+    return [c.get("anchor"), c.get("start"), c.get("dur"), st.st_size if st else None, st.st_mtime_ns if st else None,
+            hashlib.sha1(json.dumps(joints).encode()).hexdigest()[:12]]
+
+
+def picture_motion(e, c, keep=False, fresh=None, ctx=None, color=None):
     """How much the rough cut changes under the callout's dot over its time: the largest mean difference of a 120 px
     patch around the anchor, 4 times a second, from its first frame (levels of 255), on the frame stretched to
-    1080x1920 as the kit draws it. -> (value, None), or (None, why) when it cannot be measured. keep (add): the value
-    goes into the callout ("motion") and is reused while the anchor, the time and final.mp4 stay the same; fresh (validate):
-    a fresh measurement goes there by id instead, and validate keeps it in the plan under its own lock (Codex review: an
-    in-memory one blocked the status from being saved; Fable review: without it ffmpeg ran on every validate)."""
-    import subprocess
+    1080x1920 as the kit draws it. A moving anchor (keys, a track): the patch follows the path, from its first visible
+    frame, so a path that slips off its object shows the same way as a still dot on a moving picture; a dimension: both
+    ends. -> (value, None), or (None, why) when it cannot be measured. keep (add): the value goes into the callout
+    ("motion") and is reused while the anchor, the time and final.mp4 stay the same; fresh (validate): a fresh
+    measurement goes there by id instead, and validate keeps it in the plan under its own lock (Codex review: an
+    in-memory one blocked the status from being saved; Fable review: without it ffmpeg ran on every validate).
+    The `line` variant (text with no plate) also gets "ink": its text's contrast against the picture under it (ctx:
+    callout_context, for the camera; color: the text's, else the brand's text_on_primary)."""
+    import hashlib
     f = Path(e) / "final.mp4"
     if not f.is_file():
         return None, "no final.mp4"
@@ -3019,39 +3345,115 @@ def picture_motion(e, c, keep=False, fresh=None):
         return None, "no ffmpeg"
     st = f.stat()
     key = [c["anchor"], c["start"], c["dur"], st.st_size, st.st_mtime_ns]
+    line = c.get("variant") == "line"
+    if line and color is None:
+        color = (((load_config(e)[4] or {}).get("colors") or {}).get("text_on_primary") or "#FFFFFF")
+    extra = ([c.get("path"), c.get("to")] if callout_moves(c) else []) + ([
+        c.get("side"), bool(c.get("below")), c.get("w"), (c.get("text") or {}).get("lines"), color,
+        ctx[1] if ctx else None, ctx[2] if ctx else None, c.get("person"),
+        _stat(Path(e) / "faces.json") if c.get("person") else None] if line else [])
+    if extra:
+        key.append(hashlib.sha1(json.dumps(extra, sort_keys=True, default=str).encode()).hexdigest()[:16])
     if (c.get("motion") or {}).get("key") == key:
         return c["motion"]["v"], None
-    r, n, fps = 60, 40, 4
-    x0 = min(max(0, int(c["anchor"][0]) - r), 1080 - 2 * r)
-    y0 = min(max(0, int(c["anchor"][1]) - r), 1920 - 2 * r)
-    try:
-        out = subprocess.run(["ffmpeg", "-v", "error", "-ss", f"{c['start']:.3f}", "-t", f"{c['dur']:.3f}", "-i", str(f),
-                              "-vf", f"fps={fps},scale=1080:1920,crop={2 * r}:{2 * r}:{x0}:{y0},scale={n}:{n},format=gray",
-                              "-f", "rawvideo", "-"], capture_output=True, timeout=120)
-    except (OSError, subprocess.SubprocessError) as err:
-        return None, f"ffmpeg failed ({type(err).__name__})"
-    frames = [out.stdout[k:k + n * n] for k in range(0, len(out.stdout) - n * n + 1, n * n)]
-    want = max(2, int(c["dur"] * fps * 0.8))
-    if out.returncode != 0 or len(frames) < want:
-        return None, f"final.mp4 did not decode ({len(frames)} of ~{int(c['dur'] * fps)} frames)"
-    v = round(max(sum(abs(a - b) for a, b in zip(frames[0], fr)) / (n * n) for fr in frames[1:]), 1)
+    if not callout_moves(c):
+        r, n = 60, 40
+        x0 = min(max(0, int(c["anchor"][0]) - r), 1080 - 2 * r)
+        y0 = min(max(0, int(c["anchor"][1]) - r), 1920 - 2 * r)
+        frames, why = _frames(f, c["start"], c["dur"], f"scale=1080:1920,crop={2 * r}:{2 * r}:{x0}:{y0},scale={n}:{n},format=gray", n * n)
+        if why:
+            return None, why
+        v = round(max(sum(abs(a - b) for a, b in zip(frames[0], fr)) / (n * n) for fr in frames[1:]), 1)
+    else:
+        # every 6th frame of the 30 fps rough cut (5 a second), the frames track.py follows, so the moment sampled is
+        # the moment of the path (at 4 a second every other sample fell between frames: ~2 px on a pan, a "slip")
+        frames, why = path_frames(f, c)
+        if why:
+            return None, why
+        pts = [lambda t: path_at(c.get("path"), c["anchor"], t)]
+        if c.get("to"):
+            pts.append(lambda t: (c["to"][0], c["to"][1], 1.0, 1.0))
+        v = 0.0
+        for pt in pts:
+            ref = None
+            for k, buf in enumerate(frames):
+                x, y, vis, sc = pt(k / 5)
+                if vis < 0.5:  # hidden there: the object is lost or out of the shot
+                    continue
+                p = _patch(buf, x, y, scale=sc)
+                # each patch against its own mean: a phone brightens or darkens the whole picture as it pans, which
+                # is not the path slipping (Antigravity review: +0.12 brightness read as 28 of 255)
+                mp = sum(p) / len(p)
+                p = [q - mp for q in p]
+                if ref is None:
+                    ref = p
+                    continue
+                v = max(v, sum(abs(a - b) for a, b in zip(ref, p)) / len(p))
+        v = round(v, 1)
+    rec = {"v": v, "key": key}
+    if line:
+        rec["ink"] = label_contrast(f, c, ctx, color)
     if keep:
-        c["motion"] = {"v": v, "key": key}
+        c["motion"] = rec
     if fresh is not None:
-        fresh[c["id"]] = {"v": v, "key": key}
+        fresh[c["id"]] = rec
     return v, None
 
 
-def motion_note(v, why=None):
-    """The measurement in words, for add and validate."""
+def label_contrast(f, c, ctx, color):
+    """The `line` variant's text against the picture under its label, as the kit draws it (through the camera or the
+    drift, the label moving with its anchor): per frame 4 times a second, the contrast (WCAG) of the text color against
+    the lightest and the darkest 5 % of the label's box -> the lowest, or None when it cannot be measured."""
+    try:
+        tr, tg, tb = (int(str(color).lstrip("#")[k:k + 2], 16) / 255 for k in (0, 2, 4))
+    except ValueError:
+        return None
+    lt = srgb_lum(tr, tg, tb)
+    W, H = 270, 480
+    frames, why = _frames(f, callout_span(c)[0], c["dur"], f"scale={W}:{H}:flags=area,format=rgb24", W * H * 3)
+    if why or not ctx:
+        return None
+    segs, shots, drift, end = ctx[:4]
+    t0 = callout_span(c)[0]
+    worst = None
+    for k, buf in enumerate(frames):
+        t = t0 + k / 4
+        g = callout_at(c, t, ctx)
+        if g["v"] <= 0:
+            continue
+        x, y, w, h = g["plate"]
+        lums = []
+        for yy in range(int(y), int(y + h), 6):
+            for xx in range(int(x), int(x + w), 8):
+                fx, fy = screen_to_frame(xx, yy, t, shots, segs, drift, end)
+                if not (0 <= fx < 1080 and 0 <= fy < 1920):
+                    continue
+                o = (int(fy / 4) * W + int(fx / 4)) * 3
+                lums.append(srgb_lum(buf[o] / 255, buf[o + 1] / 255, buf[o + 2] / 255))
+        if not lums:
+            continue
+        lums.sort()
+        for lb in (lums[int(len(lums) * 0.05)], lums[min(len(lums) - 1, int(len(lums) * 0.95))]):
+            cr = (max(lt, lb) + 0.05) / (min(lt, lb) + 0.05)
+            worst = cr if worst is None else min(worst, cr)
+    return None if worst is None else round(worst, 2)
+
+
+def motion_note(v, why=None, moving=False):
+    """The measurement in words, for add and validate; moving: the dot follows a path (keys, a track)."""
     if v is None:
         return f"the picture under the dot is not measured ({why}): check it on the stills"
     if v <= CALLOUT_STILL:
-        return f"the picture under the dot holds still ({v:g} of 255)"
+        return f"the picture under the dot holds still ({v:g} of 255)" + (" along its path" if moving else "")
     if v <= CALLOUT_MOVES:
         return f"the picture under the dot changes a little ({v:g} of 255): someone passes or the light changes? check the stills"
+    if moving:
+        return (f"the picture under the dot changes along its path ({v:g} of 255, still is <= {CALLOUT_STILL}): the "
+                f"path slips off the object (keys too far apart, a track that lost it, the object turning): fix the "
+                f"keys, track it again, or shorten the callout")
     return (f"the picture moves under the dot ({v:g} of 255, still is <= {CALLOUT_STILL}): the object leaves the dot "
-            f"(a handheld shot, a moving hand): pick a still stretch, or B-roll or a card instead")
+            f"(a handheld shot, a moving hand): follow it with track.py or --keys (references/callouts.md), pick a still "
+            f"stretch, or B-roll or a card instead")
 
 
 def hook_lines(text, n=14):
@@ -3077,19 +3479,81 @@ def hook_lines(text, n=14):
     return max(1, lines)
 
 
-def callout_context(e, plan):
-    """What places a callout on screen: (captions' spans, camera.json shots, drift on, the video's length)."""
+def callout_context(e, plan, fdata=None):
+    """What places a callout on screen: (captions' spans, camera.json shots, drift on, the video's length, a cache of
+    the people's paths with faces.json, read when a callout points at a person)."""
     cap = load_json(Path(e) / "captions.json", {}) or {}
     shots = plan_camera(e, plan)
-    return cap.get("segments") or [], shots, not shots, plan.get("duration") or cap.get("duration") or 0.0
+    return (cap.get("segments") or [], shots, not shots, plan.get("duration") or cap.get("duration") or 0.0,
+            {"e": e, "faces": fdata, "paths": {}})
+
+
+# --person: the dot goes to the shoulder on the label's side, under the face: 0.85 of the face's width out from its
+# middle, 1.25 of its height down from its top (a label clear of the face, its line clear of it too)
+PERSON_SIDE, PERSON_DOWN = 0.85, 1.25
+
+
+def person_path(c, fdata):
+    """A callout pointing at a person: the shoulder on the label's side of the face picked in each sample of faces.json
+    (the left, the right or the central face of the frame: the measurement has no identity), averaged with the
+    neighbouring samples; where there is no face the dot is hidden and held. -> rows [t, x, y, v] from the callout's
+    start; [] when no sample has a face; None without faces.json."""
+    if not fdata:
+        return None
+    t0, t1 = callout_span(c)
+    st = fdata.get("step", 0.25)
+    sx = -1 if c.get("side") == "left" else 1
+    pick = {"left": lambda f: f[0] + f[2] / 2, "right": lambda f: -(f[0] + f[2] / 2),
+            "center": lambda f: abs(f[0] + f[2] / 2 - 540)}.get(c.get("person"), lambda f: -f[2] * f[3])
+    pts = []
+    for smp in fdata.get("samples", []):
+        if not t0 - st - 1e-6 <= smp["t"] <= t1 + st + 1e-6:
+            continue
+        f = min(smp["faces"], key=pick) if smp["faces"] else None
+        pts.append((smp["t"], (f[0] + f[2] / 2 + sx * PERSON_SIDE * f[2], f[1] + PERSON_DOWN * f[3]) if f else None))
+    seen = [k for k, (_, p) in enumerate(pts) if p]
+    if not seen:
+        return []
+    rows = []
+    for k, (t, p) in enumerate(pts):
+        if p:
+            near = [pts[j][1] for j in (k - 1, k, k + 1) if 0 <= j < len(pts) and pts[j][1]]
+            rows.append([round(t - t0, 3), round(sum(q[0] for q in near) / len(near), 1),
+                         round(sum(q[1] for q in near) / len(near), 1), 1])
+        else:  # held where the face was last (or first) seen
+            j = max([s for s in seen if s < k] or [min(seen)])
+            q = rows[j][1:3] if j < k else list(pts[j][1])
+            rows.append([round(t - t0, 3), round(q[0], 1), round(q[1], 1), 0])
+    return rows
+
+
+def callout_path(c, ctx):
+    """The anchor's path: keys or a track from the plan, or a person's from faces.json (cached in ctx)."""
+    if not c.get("person"):
+        return None if path_issue(c.get("path"), c.get("dur")) else c.get("path")  # a broken one: validate names it
+    cache = ctx[4]
+    k = (c["id"], c.get("person"), c.get("side"), c.get("start"), c.get("dur"))
+    if k not in cache["paths"]:
+        if cache["faces"] is None:
+            import faces as fc
+            cache["faces"] = fc.load(cache["e"]) or {}
+        cache["paths"][k] = person_path(c, cache["faces"])
+    return cache["paths"][k]
 
 
 def callout_at(c, t, ctx):
-    """The callout's geometry on screen at second t."""
-    segs, shots, drift, end = ctx
+    """The callout's geometry on screen at second t, with "v": how visible it is there (0: hidden, the anchor lost)."""
+    segs, shots, drift, end = ctx[:4]
     lines = (c.get("text") or {}).get("lines") or []
-    ax, ay = anchor_on_screen(c["anchor"][0], c["anchor"][1], t, shots, segs, drift, end)
-    return callout_geometry(ax, ay, c.get("side"), bool(c.get("below")), c.get("w") or callout_width(lines), len(lines) > 1)
+    x, y, v, sc = path_at(callout_path(c, ctx), c["anchor"], t - callout_span(c)[0])
+    ax, ay = anchor_on_screen(x, y, t, shots, segs, drift, end)
+    to = (anchor_on_screen(c["to"][0], c["to"][1], t, shots, segs, drift, end)
+          if c.get("variant") == "dimension" and _point(c.get("to")) else None)
+    r = (c.get("radius") or 0) * sc * zoom_at(t, shots, segs, drift, end)
+    g = callout_geometry(ax, ay, c.get("side"), bool(c.get("below")), c.get("w") or callout_width(lines, c.get("variant")),
+                         len(lines) > 1, c.get("variant") or "tag", r, to)
+    g["v"] = v
+    return g
 
 
 def callout_keep_entries(e, plan):
@@ -3100,10 +3564,13 @@ def callout_keep_entries(e, plan):
     for c in plan.get("inserts", []):
         if c.get("kind") != "callout" or c.get("status") != "ready":
             continue
-        ts = callout_times(c)
+        ts = callout_times(c, path=callout_path(c, ctx))
         for k, t0 in enumerate(ts[:-1]):
             t1 = ts[k + 1]
-            boxes = [callout_at(c, t, ctx)["plate"] for t in (t0, (t0 + t1) / 2, t1)]
+            gs = [callout_at(c, t, ctx) for t in (t0, (t0 + t1) / 2, t1)]
+            boxes = [g["plate"] for g in gs if g["v"] > 0]  # not where its anchor is lost and the callout hidden
+            if not boxes:
+                continue
             x0, y0 = min(b[0] for b in boxes), min(b[1] for b in boxes)
             x1, y1 = max(b[0] + b[2] for b in boxes), max(b[1] + b[3] for b in boxes)
             box = [math.floor(x0), math.floor(y0), math.ceil(x1) - math.floor(x0), math.ceil(y1) - math.floor(y0)]
@@ -3365,15 +3832,18 @@ def cmd_export(a):
         if sp.get("hide_subtitles"):
             hide.append([sp["start"], round(sp["start"] + sp["dur"], 3)])
     callouts = []  # drawn by the kit's CalloutLayer from their fields (references/callouts.md)
+    cctx = callout_context(e, plan)
     for i in plan["inserts"]:
         if i["kind"] != "callout":
             continue
         if i["status"] != "ready":
             sk.append(f"{i['id']} ({i['status']})")
             continue
+        lines = (i.get("text") or {}).get("lines") or []
         callouts.append({"id": i["id"], "variant": i["variant"], "start": i["start"], "dur": i["dur"], "anchor": i["anchor"],
-                         "side": i["side"], "below": bool(i.get("below")), "lines": (i.get("text") or {}).get("lines") or [],
-                         "w": i.get("w") or callout_width((i.get("text") or {}).get("lines") or []), "tone": i.get("tone")})
+                         "path": callout_path(i, cctx) or None, "to": i.get("to"), "radius": i.get("radius"),
+                         "side": i["side"], "below": bool(i.get("below")), "lines": lines,
+                         "w": i.get("w") or callout_width(lines, i["variant"]), "tone": i.get("tone")})
     hide = sorted(hide + hidden_windows(plan))  # hide-subs: per-video compositions (a presenter, an accent title)
     # presenter layers (keep-clear --matte): the WebM goes next to the rough cut, where Presenter's src points
     # (matte.py place: "<id>/<name>.webm"); before, it was copied by hand
@@ -3575,9 +4045,16 @@ def main():
                         "(default: the one with room)")
     g.add_argument("--frame-at", type=float, help="cover: the video second under the cover (otherwise 1.0 s or poster.py pick)")
     g.add_argument("--sound", choices=SCENE_SOUNDS); g.add_argument("--hide-subtitles", action="store_true")
-    g = p.add_argument_group("callout (--kind callout; also --variant tag, --lines, --side, --tone, --source)")
+    g = p.add_argument_group("callout (--kind callout; also --variant tag|line|badge|ring|dimension, --lines, --side, "
+                             "--tone, --source)")
     g.add_argument("--anchor", metavar="X,Y", help="the object's point on the 1080x1920 rough cut, where the dot goes")
     g.add_argument("--below", action="store_true", help="the label under the dot (default: above it)")
+    g.add_argument("--keys", nargs="+", metavar="T:X,Y", help="a moving dot: points of the rough cut at seconds from the "
+                   "callout's start, T:- hides it (a slow pan; a handheld shot: track.py)")
+    g.add_argument("--person", choices=CALLOUT_PEOPLE, help="point at a person: the dot follows the shoulder under the "
+                   "left, right or central face of faces.json")
+    g.add_argument("--radius", type=float, help="ring: the ring's radius around the object, px of the rough cut")
+    g.add_argument("--to", metavar="X,Y", help="dimension: the second end of what is measured")
     p.set_defaults(fn=cmd_add)
     p = sub.add_parser("keep-clear"); p.add_argument("edit"); p.add_argument("--from", dest="start", type=float)
     p.add_argument("--to", dest="end", type=float); p.add_argument("--box", help="x,y,w,h in 1080x1920")

@@ -70,6 +70,30 @@ export const anchorOnScreen = (x: number, y: number, t: number, camera: Shot[] |
   return { x: 540 + (x - 540) * z, y: 960 + (y - 960) * z };
 };
 
+/** The rough cut's scale on screen at second t: the camera's zoom, else the drift's, else 1 (a ring grows with it). */
+export const zoomAt = (t: number, camera: Shot[] | null | undefined, segments: DriftSegment[], drift: boolean | null | undefined,
+  end: number, fps = 30): number => (camera?.length ? cameraAt(camera, t, end, fps).z : drift ? driftZoom(segments, t) : 1);
+
+// a moving anchor: rows [t, x, y, v, s] — seconds from the callout's start, the point on the rough cut, its visibility
+// 0..1 (0 — hidden: the object is lost or out of the shot) and the object's scale from the first row (s, optional, 1);
+// straight between rows, held before the first and after the last (keys by hand, track.py, a person from faces.json)
+export type PathRow = number[];
+export type PathPoint = { x: number; y: number; v: number; s: number };
+const row = (r: PathRow): PathPoint => ({ x: r[1], y: r[2], v: r[3] ?? 1, s: r[4] ?? 1 });
+export const pathAt = (path: PathRow[] | null | undefined, anchor: number[], t: number): PathPoint => {
+  if (!path?.length) return { x: anchor[0], y: anchor[1], v: 1, s: 1 };
+  if (t <= path[0][0]) return row(path[0]);
+  for (let k = 1; k < path.length; k++) {
+    if (t <= path[k][0]) {
+      const a = row(path[k - 1]);
+      const b = row(path[k]);
+      const p = (t - path[k - 1][0]) / Math.max(1e-6, path[k][0] - path[k - 1][0]);
+      return { x: a.x + (b.x - a.x) * p, y: a.y + (b.y - a.y) * p, v: a.v + (b.v - a.v) * p, s: a.s + (b.s - a.s) * p };
+    }
+  }
+  return row(path[path.length - 1]);
+};
+
 // ── the callout's layout on screen (references/callouts.md), in px, the same at any camera ──
 export const CALLOUT = {
   dot: 14, // the dot's outer radius: a disc in the label's color, the line's color inside it (CORE)
@@ -82,6 +106,11 @@ export const CALLOUT = {
   subH: 50, // the second line's plate: 34 px caps, the body font, 600
   subSize: 34,
   padX: 18,
+  tick: 16, // dimension: half the length of an end tick
+  gap: 14, // dimension: from the line to its label
+  badgeMin: 150, // badge: the circle's diameter
+  badgeMax: 260,
+  badgeSub: 26, // badge: the caption inside the circle, caps
 };
 
 // the entrance in frames at the calm tone (14 frames in): the dot, the line drawing itself, the title's wipe, the second
@@ -92,18 +121,51 @@ export const CALLOUT_TIMES = { dot: [0, 6], line: [3, 11], title: [8, 18], sub: 
 export const calloutEntrance = (toneIn: number, sub: boolean): number =>
   Math.ceil((sub ? CALLOUT_TIMES.sub[1] : CALLOUT_TIMES.title[1]) * toneIn / CALLOUT_TIMES.calmIn);
 
-/** The callout's points and boxes for an anchor already on screen (px, py): the label goes to `side` of the dot, up
- *  from it (or down, `below`); the line runs 45° to the elbow, then level to the label, which it meets at the title's
- *  middle. w — the label's width (visual_plan.py measures it); sub — a second line under the title. */
-export const calloutGeometry = (px: number, py: number, side: string, below: boolean, w: number, sub: boolean) => {
-  const sx = side === "left" ? -1 : 1;
+/** The callout's points and boxes for an anchor already on screen (px, py), by variant (references/callouts.md):
+ *  - tag: the line runs 45° from the dot to the elbow, then level to the label, which it meets at the title's middle;
+ *    the label goes to `side` of the dot, up from it (or down, `below`); w — the label's width (visual_plan.py);
+ *  - line: the same run, the level line going on under the title (no plate), a second line under the line;
+ *  - badge: the line ends at a circle of diameter w holding the number (and a short caption inside);
+ *  - ring: a ring of radius r around the anchor instead of the dot, the line leaving it at 45°, a tag's label;
+ *  - dimension: a line from the anchor to `to` with end ticks, the label at its middle, above it (or under, `below`).
+ *  segs — the drawn line segments (the plan checks them against faces and other graphics); r — the dot's or the
+ *  ring's radius. sub — a second line under the title. */
+export const calloutGeometry = (px: number, py: number, side: string, below: boolean, w: number, sub: boolean,
+  variant = "tag", r = 0, to: number[] | null = null) => {
   const sy = below ? 1 : -1;
-  const ex = px + sx * CALLOUT.reach;
-  const ey = py + sy * CALLOUT.reach;
-  const hx = ex + sx * CALLOUT.run;
   const h = CALLOUT.titleH + (sub ? CALLOUT.subH : 0);
+  if (variant === "dimension" && to) {
+    const [qx, qy] = to;
+    const len = Math.max(1e-6, Math.hypot(qx - px, qy - py));
+    const nx = (-(qy - py) / len) * CALLOUT.tick;
+    const ny = ((qx - px) / len) * CALLOUT.tick;
+    const mx = (px + qx) / 2;
+    const my = (py + qy) / 2;
+    // above (or under) a lying measure, beside an upright one, on `side`
+    const plate = Math.abs(qy - py) > Math.abs(qx - px)
+      ? [side !== "left" ? mx + CALLOUT.gap : mx - CALLOUT.gap - w, my - h / 2, w, h]
+      : [mx - w / 2, below ? my + CALLOUT.gap : my - CALLOUT.gap - h, w, h];
+    return {
+      dot: [px, py], elbow: [mx, my], end: [qx, qy], plate,
+      segs: [[[px, py], [qx, qy]], [[px - nx, py - ny], [px + nx, py + ny]], [[qx - nx, qy - ny], [qx + nx, qy + ny]]],
+      r: 0,
+    };
+  }
+  const sx = side === "left" ? -1 : 1;
+  const ring = variant === "ring";
+  const ox = ring ? px + sx * r * Math.SQRT1_2 : px; // the line leaves the ring at 45°
+  const oy = ring ? py + sy * r * Math.SQRT1_2 : py;
+  const ex = ox + sx * CALLOUT.reach;
+  const ey = oy + sy * CALLOUT.reach;
+  const hx = ex + sx * CALLOUT.run;
+  const x0 = sx > 0 ? hx : hx - w;
+  const end = variant === "line" ? [hx + sx * w, ey] : [hx, ey];
+  const plate = variant === "line" ? [x0, ey - CALLOUT.titleH, w, h]
+    : variant === "badge" ? [x0, ey - w / 2, w, w]
+    : [x0, ey - CALLOUT.titleH / 2, w, h];
   return {
-    dot: [px, py], elbow: [ex, ey], end: [hx, ey],
-    plate: [sx > 0 ? hx : hx - w, ey - CALLOUT.titleH / 2, w, h],
+    dot: [px, py], elbow: [ex, ey], end, plate,
+    segs: [[[ox, oy], [ex, ey]], [[ex, ey], end]],
+    r: ring ? r : CALLOUT.dot,
   };
 };

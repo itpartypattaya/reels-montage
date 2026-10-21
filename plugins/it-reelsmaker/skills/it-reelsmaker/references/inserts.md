@@ -101,7 +101,7 @@ Spans shorter than 1.2 s merge with their neighbors.
 - segment join → B-roll will hide the cut;
 - segment longer than 6 s without a cut;
 - number → a card, not B-roll;
-- pointing at an object (“here”, “look”, or the same in the speaker's language) → B-roll of the object, or, when the object is in the frame and the shot holds still, a callout (`references/callouts.md`, “Offering it”);
+- pointing at an object (“here”, “look”, or the same in the speaker's language) → B-roll of the object, or, when the object is in the frame and the dot can stay on it (a still shot, keys, or `track.py` on a handheld one), a callout (`references/callouts.md`, “Offering it”);
 - emotion or irony (“!”, “imagine”, “nightmare”, or the same in the speaker's language);
 - hook;
 - ending or CTA.
