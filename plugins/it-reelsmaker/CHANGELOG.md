@@ -2,6 +2,17 @@
 
 What changed in IT Reelsmaker, written for the people who use it. The newest version is on top. The skill shows a short “What's new” note from this file once, on the first edit after an update.
 
+## 1.19.0
+
+- **A punchline stays on one subtitle.** The "Bar" subtitles hold at most 4 words per plate, so a 5-word joke ("it was
+  just admin admin") went over two plates and read in two beats. Mark such a phrase in `cut.json → keep` (its first
+  word, its second in the recording, how many words): it now stays on one block in every subtitle mode, on two lines
+  if needed. A phrase too long even for two lines is split as usual. `cut.py --dry-run` lists the marked phrases, and
+  the mark carries over to translated subtitles when it covers a whole phrase. Kit 1.12.0 (`kit.py update`).
+- **The render tries again once.** A render that stops with Remotion's "No frame found at position" (seen on an 8 GB
+  laptop; the same command passed when run again by hand) now reruns once by itself and says so. Both attempts stay
+  in `render.log` and in `render.json`; any other failure stops as before.
+
 ## 1.18.0
 
 - **Subtitles under the picture in the framed format.** `reelcfg.py save edit/<id> --set subtitles_at=below

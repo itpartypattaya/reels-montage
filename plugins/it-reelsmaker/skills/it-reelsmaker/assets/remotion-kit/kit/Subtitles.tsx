@@ -12,6 +12,10 @@
 // Two speakers: a word's "speaker" (cut.py: cut.json → ranges → "speaker"/"speakers") picks its color, in the order of
 // captions.speakers (sorted labels): brand.colors.speakers when the profile sets them, otherwise the first speaker in
 // the mode's own colors and the second in the accent — "Typewriter" and "Accent" color the words, "Bar" the plate.
+// A phrase marked "keep" (cut.py: cut.json → keep) is never split between blocks in any mode: it goes on one block past
+// the word and character limits, two lines if needed (shown together, lifted above y 1500); one too wide even for two
+// lines is split as usual, with a console warning (an English test: "it was just admin admin" on two plates read as a
+// joke in two beats).
 import React from "react";
 import { useCurrentFrame, useVideoConfig } from "remotion";
 import { measureText } from "@remotion/layout-utils";
@@ -20,9 +24,10 @@ import { fitSize, noBreak, useFontsReady } from "./Phrase";
 
 // glue: no space before the word (subs.py: a translation into a script written without spaces, word boundaries marked);
 // phrase: the id of a translated phrase (subs.py apply): its words are spread over the phrase by length;
-// speaker: who says it (cut.py), the subtitle color per speaker
+// speaker: who says it (cut.py), the subtitle color per speaker;
+// keep: a group id (cut.py: cut.json → keep): neighboring words with the same id are never split between blocks
 export type Word = { text: string; start: number; end: number; seg: number; src?: number; glue?: boolean; phrase?: string;
-  speaker?: string };
+  speaker?: string; keep?: string };
 export type Captions = {
   duration: number;
   segments: { i: number; src_start: number; src_end: number; out_start: number; out_dur: number }[];
@@ -41,10 +46,13 @@ const SENTENCE_END = /[.!?\u2026]["\u00bb\u201d)]*$/;
 // pause or after a comma nearest the middle — and each half again if needed. T3: a greedy 52-character cut gave
 // "...vacancies in different | fields:" and tails of one or two words.
 const wordsLen = (ws: Word[]) => ws.reduce((n, w) => n + w.text.length + 1, 0);
+// two neighboring words of one "keep" group: a block never ends between them
+export const inKeep = (a?: Word, b?: Word) => !!a?.keep && a.keep === b?.keep;
 
-// Where a run of words reads best as two: never inside what noBreak keeps together, rather not leaving a one-word
-// part, then at the longest pause or after a dash, colon or comma nearest the middle. Returns the index of the second
-// part's first word.
+// Where a run of words reads best as two: never inside a "keep" group, never inside what noBreak keeps together,
+// rather not leaving a one-word part, then at the longest pause or after a dash, colon or comma nearest the middle.
+// Returns the index of the second part's first word; it falls inside a keep group only when every split does (the run
+// is one group).
 export const bestSplit = (ws: Word[]): number => {
   let best = 1;
   let bestScore: number[] | null = null;
@@ -53,10 +61,10 @@ export const bestSplit = (ws: Word[]): number => {
     const b = ws.slice(k);
     const gap = Math.min(PAUSE, Math.max(0, ws[k].start - ws[k - 1].end));
     const strong = /[;:—–]$/.test(ws[k - 1].text) ? 0.6 : /,$/.test(ws[k - 1].text) ? 0.3 : 0;
-    const score = [noBreak(ws[k - 1].text, ws[k].text) ? 1 : 0, a.length === 1 || b.length === 1 ? 1 : 0,
-      Math.abs(wordsLen(a) - wordsLen(b)) / wordsLen(ws) - 2 * gap - strong];
-    if (!bestScore || score[0] < bestScore[0] || (score[0] === bestScore[0] && (score[1] < bestScore[1] ||
-      (score[1] === bestScore[1] && score[2] < bestScore[2])))) {
+    const score = [inKeep(ws[k - 1], ws[k]) ? 1 : 0, noBreak(ws[k - 1].text, ws[k].text) ? 1 : 0,
+      a.length === 1 || b.length === 1 ? 1 : 0, Math.abs(wordsLen(a) - wordsLen(b)) / wordsLen(ws) - 2 * gap - strong];
+    const j = bestScore ? score.findIndex((v, i) => v !== (bestScore as number[])[i]) : -1;
+    if (!bestScore || (j >= 0 && score[j] < bestScore[j])) {
       bestScore = score;
       best = k;
     }
@@ -72,13 +80,14 @@ export const buildChunks = (words: Word[], maxWords = 3, maxChars = 20): Chunk[]
   let cur: Word[] = [];
   words.forEach((w, k) => {
     const prev = words[k - 1];
-    // a change of speaker ends a phrase too: one block, one speaker's color
-    if (cur.length && prev && (w.seg !== prev.seg || w.start - prev.end >= PAUSE || (w.speaker ?? "") !== (prev.speaker ?? ""))) {
+    // a change of speaker ends a phrase too: one block, one speaker's color; nothing ends one inside a keep group
+    if (cur.length && prev && !inKeep(prev, w) &&
+      (w.seg !== prev.seg || w.start - prev.end >= PAUSE || (w.speaker ?? "") !== (prev.speaker ?? ""))) {
       phrases.push(cur);
       cur = [];
     }
     cur.push(w);
-    if (SENTENCE_END.test(w.text)) {
+    if (SENTENCE_END.test(w.text) && !inKeep(w, words[k + 1])) {
       phrases.push(cur);
       cur = [];
     }
@@ -87,6 +96,7 @@ export const buildChunks = (words: Word[], maxWords = 3, maxChars = 20): Chunk[]
   const split = (ws: Word[]): Word[][] => {
     if (ws.length < 2 || fits(ws)) return [ws];
     const best = bestSplit(ws);
+    if (inKeep(ws[best - 1], ws[best])) return [ws]; // one keep group: one chunk past the limits (fit() measures it)
     return [...split(ws.slice(0, best)), ...split(ws.slice(best))];
   };
   const out: Chunk[] = phrases.flatMap(split).map((ws) => ({ words: ws, start: ws[0].start, end: ws[ws.length - 1].end }));
@@ -256,12 +266,14 @@ export const KitSubtitles: React.FC<{
   const blocks = React.useMemo(() => {
     // a translated phrase (subs.py: its words spread over the phrase by length, not on their spoken words) that the
     // windows cover for more than half is hidden whole: a random tail of it after a scene does not read (T3: "company
-    // really needs." after a full-screen phrase)
+    // really needs." after a full-screen phrase); a keep group the same way, as one
     const spans = new Map<string, [number, number]>();
     captions.words.forEach((w) => {
-      if (!w.phrase) return;
-      const s = spans.get(w.phrase);
-      spans.set(w.phrase, s ? [Math.min(s[0], w.start), Math.max(s[1], w.end)] : [w.start, w.end]);
+      [w.phrase, w.keep && `keep:${w.keep}`].forEach((id) => {
+        if (!id) return;
+        const s = spans.get(id);
+        spans.set(id, s ? [Math.min(s[0], w.start), Math.max(s[1], w.end)] : [w.start, w.end]);
+      });
     });
     const covered = new Set<string>();
     spans.forEach(([a0, a1], id) => {
@@ -270,17 +282,27 @@ export const KitSubtitles: React.FC<{
     });
     // a word said inside a window is carried by the scene there; a word still being said when the window ends stays, so the
     // rest of its group shows right after the window (dropping every word that began inside lost 0.4-0.6 s of subtitles
-    // after a scene); the component draws nothing inside a window anyway (below)
-    const words = captions.words.filter((w) => !(w.phrase && covered.has(w.phrase)) && !hide.some(([a, b]) => w.start >= a && w.end <= b));
-    // a chunk that measures more than two lines is split again where it reads as two (bestSplit), each part on its own
+    // after a scene); the component draws nothing inside a window anyway (below). A keep group the windows cover for at
+    // most half keeps every word, so its block shows whole before and after the window (Codex review: a word dropped
+    // inside a short window left "It was admin admin")
+    const words = captions.words.filter((w) => !(w.phrase && covered.has(w.phrase)) && !(w.keep && covered.has(`keep:${w.keep}`))
+      && (!!w.keep || !hide.some(([a, b]) => w.start >= a && w.end <= b)));
+    // "Typewriter" splits by phrases and pauses (up to ~52 characters as a whole), not by a short character limit
+    const [maxWords, maxChars] = plate ? [4, 26] : tw ? [10, 52] : [3, 20];
+    // a chunk that measures more than two lines is split again where it reads as two (bestSplit), each part on its own;
+    // a keep group too wide for two lines is split as if it had no mark (the mode's limits), with a warning (seen in
+    // the Remotion log with --log=verbose; cut.py --dry-run names a long group before)
     const fit = (ws: Word[]): Word[][] => {
       if (ws.length < 2 || toLines(ws, g, font, ready, maxW).length <= MAX_LINES) return [ws];
       const k = bestSplit(ws);
+      if (inKeep(ws[k - 1], ws[k])) {
+        console.warn(`kit subtitles: the keep phrase ${ws[0].keep} "${text(ws)}" does not fit two lines: split as usual`);
+        return buildChunks(ws.map(({ keep: _k, ...w }) => w), maxWords, maxChars).flatMap((c) => fit(c.words));
+      }
       return [...fit(ws.slice(0, k)), ...fit(ws.slice(k))];
     };
     const out: Block[] = [];
-    // "Typewriter" splits by phrases and pauses (up to ~52 characters as a whole), not by a short character limit
-    buildChunks(words, plate ? 4 : tw ? 10 : 3, plate ? 26 : tw ? 52 : 20).forEach((c0) => {
+    buildChunks(words, maxWords, maxChars).forEach((c0) => {
       const pieces = fit(c0.words);
       pieces.forEach((ws, i) => {
         const c = { start: i ? ws[0].start : c0.start, end: i + 1 < pieces.length ? pieces[i + 1][0].start : c0.end };
@@ -288,7 +310,10 @@ export const KitSubtitles: React.FC<{
         // a single long word wider than the frame shrinks the font size (fitSize) instead of running past the edge
         const size = Math.min(g.size, ...lines.map((l) => fitSize({ text: text(l), size: g.size, font, weight: g.weight,
           maxWidth: maxW, padEm: g.padH / g.size, ready })));
-        const parts = lines.length > 1 && top + height(g, size, lines.length) > bottom ? lines.map((l) => [l]) : [lines];
+        // two lines that do not fit from top are shown one at a time, unless a keep group runs over the line break:
+        // then the block is lifted to end at the bottom
+        const kept = lines.length > 1 && inKeep(lines[0][lines[0].length - 1], lines[1][0]);
+        const parts = lines.length > 1 && !kept && top + height(g, size, lines.length) > bottom ? lines.map((l) => [l]) : [lines];
         parts.forEach((ls, k) => {
           const next = parts[k + 1];
           out.push({ words: ls.flat(), lines: ls, size, start: k ? ls[0][0].start : c.start, end: next ? next[0][0].start : c.end,
