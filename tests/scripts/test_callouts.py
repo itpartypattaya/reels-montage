@@ -824,8 +824,10 @@ def test_a_ring_needs_its_size_and_grows_with_the_camera(project):
     r = add(project, "--at", "word:resume#1", "--dur", "2.4", "--anchor", "300,1150", "--variant", "ring", *LAPTOP[2:],
             check=False)
     assert r.returncode != 0 and "--radius" in r.stderr
-    add(project, "--at", "word:resume#1", "--dur", "2.4", "--anchor", "300,1200", "--variant", "ring", "--radius", "60",
+    add(project, "--at", "word:resume#1", "--dur", "2.4", "--anchor", "300,1170", "--variant", "ring", "--radius", "60",
         *LAPTOP[2:])
+    # the ring reaches y 1230: clear of the subtitle band from y 1250 (Codex bot review, PR 33: at y 1200 it reached
+    # 1260, and validate rightly refused it once rings were checked against the subtitles)
     r = validate(project)
     assert r.returncode == 0, r.stdout
     v = vp()
@@ -1130,3 +1132,27 @@ def test_a_track_remembers_the_joints_it_broke_at(project):
     cap["segments"][2]["out_start"] += 0.3
     write_json(e / "captions.json", cap)
     assert vp().track_key(e, c) != k0
+
+
+# ── PR 33 review (Codex bot) ──
+
+def test_two_overlapping_rings_are_refused(project):
+    # Codex bot review (PR 33): the check between two callouts compared their labels and lines only, so a big ring
+    # around the other callout's label passed
+    callout_project(project)
+    add(project, "--at", "4.0", "--dur", "3.0", "--anchor", "200,1150", "--variant", "ring", "--radius", "100",
+        "--side", "right", *LAPTOP[2:])
+    add(project, "--at", "4.7", "--dur", "2.3", "--anchor", "520,1180", "--variant", "ring", "--radius", "150",
+        "--side", "right", "--below", "--lines", "TV", "--what", "the TV", "--why", "names the screen he points at")
+    r = validate(project)
+    assert r.returncode == 1 and "l02" in r.stdout and "runs into l01" in r.stdout, r.stdout
+
+
+def test_a_dimensions_ticks_stay_in_the_frame(project):
+    # Codex bot review (PR 33): only the two ends were checked; an upright measure near the left edge had its ticks cut
+    # off. At x 24 of the rough cut the template's drift (x1.03 at 4.6 s) puts the line at x 8.5, its ticks at -7.5
+    callout_project(project)
+    add(project, "--at", "word:resume#1", "--dur", "2.4", "--anchor", "24,800", "--to", "24,1200", "--side", "right",
+        "--variant", "dimension", "--lines", "1.2 M", "--source", "speech", "--what", "the door", "--why", "its height")
+    r = validate(project)
+    assert r.returncode == 1 and "dimension" in r.stdout and "leaves the frame" in r.stdout, r.stdout

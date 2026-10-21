@@ -1792,8 +1792,9 @@ def check_callouts(e, plan, s, doc, fdata, callouts, brolls, memes, scenes, corn
             rr = g["r"]
             dotbox = [px - rr, py - rr, 2 * rr, 2 * rr]
             # the dot's center (a dimension's two ends); a ring whole (Codex review: only its center was checked)
+            # a dimension: its ends and the ends of its ticks (Codex bot review, PR 33: the ticks went past the edge)
             ends = ([(px - rr, py - rr), (px + rr, py + rr)] if vr == "ring" else
-                    [(px, py)] + ([tuple(g["end"])] if vr == "dimension" else []))
+                    [tuple(q) for sg in g["segs"] for q in sg] if vr == "dimension" else [(px, py)])
             what = {"ring": "ring", "dimension": "dimension"}.get(vr, "dot")
             if any(not (0 <= x_ <= 1080 and 0 <= y_ <= 1920) for x_, y_ in ends):
                 found.setdefault("frame", (t, f"the {what} ({px:.0f}, {py:.0f}) leaves the frame"))
@@ -1854,6 +1855,11 @@ def check_callouts(e, plan, s, doc, fdata, callouts, brolls, memes, scenes, corn
                 if ga["v"] <= 0 or gb["v"] <= 0:  # one of them hidden there
                     return False
                 la, lb = [tuple(sg) for sg in ga["segs"]], [tuple(sg) for sg in gb["segs"]]
+                # the dots and rings too (Codex bot review, PR 33: a big ring around the other label passed)
+                ma, mb = [[g["dot"][0] - g["r"], g["dot"][1] - g["r"], 2 * g["r"], 2 * g["r"]] for g in (ga, gb)]
+                if (any(fc.inter(m, x) for m, x in ((ma, gb["plate"]), (mb, ga["plate"]), (ma, mb)))
+                        or any(_seg_hits(p, q, m) for ls, m in ((la, mb), (lb, ma)) for p, q in ls)):
+                    return True
                 return (fc.inter(ga["plate"], gb["plate"])
                         or any(_seg_hits(p, q, g2["plate"]) for ls, g2 in ((la, gb), (lb, ga)) for p, q in ls)
                         or any(_segs_cross(s1, s2) for s1 in la for s2 in lb))  # two lines crossing
