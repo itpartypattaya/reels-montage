@@ -2,6 +2,18 @@
 
 What changed in IT Reelsmaker, written for the people who use it. The newest version is on top. The skill shows a short “What's new” note from this file once, on the first edit after an update.
 
+## 1.20.0
+
+- **Callouts on objects (experimental).** A dot on an object in the frame, a leader line drawn from it and a label
+  wiping in: the object's name on the style's marker plate, a short detail in small caps under it, in the brand's
+  colors and fonts. `visual_plan.py add edit/<id> --kind callout --anchor X,Y --lines "SOFA" "LIVING ROOM" --at
+  word:sofa#1 --dur 2.6` (`references/callouts.md`). The dot follows the virtual camera and the drift exactly as the
+  video does, so `validate` checks the label where the render draws it: off every face, the subtitles, the app's UI and
+  the other graphics, readable in its time, one at a time, never across a camera cut. For a still shot: `add` warns
+  and `validate` refuses a callout on a handheld walk or a moving hand, by measuring the picture under the dot
+  (tracking a moving object is not built yet). The plan's “pointing at an object” hint and the techniques question now say when
+  to offer it (`references/callouts.md`, “Offering it”). Kit 1.13.0 (`kit.py update`).
+
 ## 1.19.0
 
 - **A punchline stays on one subtitle.** The "Bar" subtitles hold at most 4 words per plate, so a 5-word joke ("it was

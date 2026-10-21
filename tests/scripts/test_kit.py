@@ -263,14 +263,17 @@ def test_t7_framed_is_drawn_by_the_kit():
     code = lambda f: "\n".join(line.split("//")[0] for line in (KIT / f).read_text(encoding="utf-8").splitlines())
     reel = code("ReelKit.tsx")
     assert "framed?: Framed | null" in reel and "if (p.framed) return <FramedFootage p={p} z={z} />;" in reel
-    for name in ("FramedFootage", "FramedLabel", "EndCard", "Corner", "fitCamera", "framedGeometry", "STING_IN"):
+    for name in ("FramedFootage", "FramedLabel", "EndCard", "Corner", "framedGeometry", "STING_IN"):
         assert f"export const {name}" in reel, name
+    # the camera's math moved to kit/anchor.ts (1.20.0, shared with the callouts); ReelKit still exports it
+    anchor = code("kit/anchor.ts")
+    assert "export const fitCamera" in anchor and 'export { cameraAt, fitCamera } from "./kit/anchor";' in reel
     # the same geometry as reels_common (faces.py, visual_plan.py): window, text pad, label row
     win = re.search(r"FRAMED_WINDOW = \[([\d, ]+)\]", reel).group(1)
     assert [int(v) for v in win.split(",")] == list(rc.FRAMED_WINDOW)
     assert f"const FRAMED_PAD = {rc.FRAMED_PAD};" in reel and f"const FRAMED_LABEL_UP = {rc.FRAMED_LABEL_UP};" in reel
     # the camera clamped to the window, as reels_common.cam_fit
-    assert "cameraAt(p.camera, t, p.captions.duration, KIT_FPS, view)" in reel and "v.x + hx), v.x + v.w - hx)" in reel
+    assert "cameraAt(p.camera, t, p.captions.duration, KIT_FPS, view)" in reel and "v.x + hx), v.x + v.w - hx)" in anchor
     # Tailwind's preflight shrank a video wider than its parent (pitfalls.md): every footage video sets maxWidth none
     assert reel.count('maxWidth: "none", maxHeight: "none"') >= 2
     # the caps label: the body font, 600, 28 px, +0.2 em
