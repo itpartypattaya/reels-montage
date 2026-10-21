@@ -79,7 +79,8 @@ from reels_common import (CORNER_BOX, FRAMED_HOOK_MIN, FRAMED_LABEL_UP, FRAMED_R
 
 SCENE_MODES = ["overlay", "split", "panel", "window", "full"]  # a scene's default mode: the first of its own list
 KINDS = {"broll": {"modes": ["replace", "window"], "prefix": "b"}, "meme": {"modes": ["popup", "cutaway"], "prefix": "m"},
-         "scene": {"modes": SCENE_MODES, "prefix": "c"}}
+         "scene": {"modes": SCENE_MODES, "prefix": "c"},
+         "callout": {"modes": ["overlay"], "prefix": "l"}}  # a label pointing at an object (references/callouts.md)
 # B-roll "window" (the Inserts component of the Remotion template): the box inserts[].box in 1080x1920 screen
 # coordinates; without a box the template uses WINDOW_DEFAULT.
 # Safe zone: right of x 960 are the UI buttons, above y 220 and below 1500 are the UI and the subtitles
@@ -380,7 +381,7 @@ def build_plan(e, cap, s, prov, doc):
         if NUM_RE.search(text):
             hints.append("a number -> a card works better than B-roll")
         if POINT_RE.search(text):
-            hints.append("pointing at an object -> B-roll of the object")
+            hints.append("pointing at an object -> B-roll of the object, or a callout on it if the object is in the frame and the shot holds still (experimental, references/callouts.md)")
         if EMO_RE.search(text):
             hints.append("emotion or irony: room for a meme, if memes are on")
         if n == 0:
@@ -1602,6 +1603,198 @@ def tone_issues(s, doc, brolls, memes, scenes, only=False):
     return out
 
 
+def check_callouts(e, plan, s, doc, fdata, callouts, brolls, memes, scenes, corner=False, hook=False, motions=None):
+    """Callout checks (references/callouts.md), on screen at every 0.25 s of each one, through the camera or the drift
+    the video is drawn with; corner, hook: whether this run draws the corner logo and the hook headline (end_now; hook
+    may be its text, for its height); motions: fresh measurements of the picture under the dots, by id, for validate
+    to keep. -> (errors, warnings, ids of callouts with errors)."""
+    errs, warns, bad = [], [], set()
+    if not callouts:
+        return errs, warns, bad
+    import faces as fc
+    import meme_layout as ml
+
+    def E(c, msg):
+        errs.append(f"{c['id']}: {msg}")
+        bad.add(c["id"])
+
+    def W(c, msg):
+        warns.append(f"{c['id']}: {msg}")
+
+    only = plan.get("format") == "scenes-only"
+    fr = None if only else framed_at(e)
+    ctx = callout_context(e, plan)
+    segs, shots, drift, end = ctx
+    fps = (doc.get("scenes") or {}).get("fps", 30)
+    R = (doc.get("scenes") or {}).get("reading") or {}
+    tones = {k: v for k, v in (doc.get("scene_tones") or {}).items() if not k.startswith("_")}
+    lb = ml.layout(s, doc).get("subtitles_band", list(SUB_BAND))
+    pb = plan.get("subtitles_band") or lb  # the band export measured for the render, and the layout's
+    band = [min(lb[0], pb[0]), max(lb[1], pb[1])] if (s.get("subtitles") or "accent") != "none" else None
+    zx0, zy0, zx1, zy1 = CALLOUT_ZONE
+    step = (fdata or {}).get("step", 0.25)
+    keep = [k for k in plan.get("keep_clear", []) if not k.get("callout")]
+    # where the rough cut is not on screen as the anchor has it: a scene that moves or covers it, a replacing B-roll,
+    # a cutaway meme
+    cover = [x for x in scenes if x.get("mode") in COVER_MODES and x.get("type") != "cover"]
+    # B-roll and memes only when ready: export renders nothing else, the main footage stays (Fable review)
+    cover += [x for x in brolls + memes if x.get("mode") in ("replace", "cutaway") and x.get("status") == "ready"]
+    # where the subtitles are hidden their band is free: hide-subs windows and scenes that hide them
+    hidden = [tuple(h) for h in hidden_windows(plan)] + [(x["start"], x["start"] + x["dur"]) for x in scenes
+                                                         if x.get("type") != "cover" and hides_subtitles(x)]
+    # the hook headline at its own height: its lines of up to 14 characters, ~121 px each (ReelKit Hook, Mark)
+    hook_box = [HOOK_BOX[0], HOOK_BOX[1], HOOK_BOX[2], 121 * (hook_lines(hook) if isinstance(hook, str) else 2)]
+    # a horizontal rough cut without the framed format: the kit lays it as a band, the anchor is not where it points
+    src = None if (only or fr) else framed_source(e)
+    horizontal = bool(src and src[0] > src[1])
+    boxes = [(x, x.get("box") or default_box("overlay")) for x in scenes if x.get("mode") == "overlay" and x.get("type") != "cover"]
+    boxes += [(x, x["box"]) for x in brolls + memes if x.get("mode") in ("window", "popup") and x.get("box")]
+    geo = {}
+    for c in callouts:
+        lines = [str(x) for x in ((c.get("text") or {}).get("lines") or []) if str(x).strip()]
+        if c.get("status") not in STATUSES:
+            E(c, f"status {c.get('status')} (must be one of {STATUSES})")
+        if c.get("variant") not in CALLOUT_VARIANTS:
+            E(c, f"variant {c.get('variant')!r} (allowed: {', '.join(CALLOUT_VARIANTS)})")
+        if not 1 <= len(lines) <= 2:
+            E(c, "text.lines: the subject, and an optional second line")
+            continue
+        a_ = c.get("anchor")
+        if not (isinstance(a_, list) and len(a_) == 2 and all(isinstance(v, (int, float)) for v in a_)):
+            E(c, "no anchor [x, y] on the rough cut")
+            continue
+        if c.get("side") not in ("left", "right"):
+            E(c, f"side {c.get('side')!r} (left or right)")
+            continue
+        if not all(isinstance(c.get(k), (int, float)) for k in ("start", "dur")) or c["dur"] <= 0:
+            E(c, f"no start or duration (start {c.get('start')!r}, dur {c.get('dur')!r})")
+            continue
+        if only:
+            E(c, "'scenes only': there is no footage to point at")
+            continue
+        if fr:
+            E(c, "the framed format: callouts are drawn over the full frame only for now; take it off, or point at the "
+                 "object with a scene")
+            continue
+        if horizontal:
+            E(c, f"the rough cut is horizontal ({src[0]}x{src[1]}) without the framed format: the kit lays it as a band "
+                 f"across the middle and the dot would miss the object")
+            continue
+        t0, t1 = callout_span(c, fps)
+        if t0 < 0 or t1 > (plan.get("duration") or 0) + 0.05:
+            E(c, f"runs past the video ({fmt_t(t0)} + {c['dur']} s, video {fmt_t(plan.get('duration') or 0)})")
+        if not (c.get("what") or "").strip() or len((c.get("why") or "").strip()) < 8:
+            E(c, "no 'what' or 'why': a callout for the sake of a callout is not allowed")
+        w = c.get("w") or callout_width(lines)
+        if w > CALLOUT_MAX_W:
+            E(c, f"the label is ~{w} px wide (> {CALLOUT_MAX_W}): a name and a short detail, not a sentence")
+        src = c.get("source") or {}
+        if re.search(r"\d", " ".join(lines)) or NUM_RE.search(" ".join(lines).lower()):
+            if not src.get("kind"):
+                E(c, "a number on the label needs its source (--source speech|brief|brand|client|agent, --source-ref)")
+            elif src["kind"] == "agent":
+                W(c, "a number the agent wrote itself: to verify before the render")
+        tn = c.get("tone") or scene_tone({}, s)
+        if tones and tn not in tones:
+            E(c, f"tone {tn!r} (allowed: {', '.join(tones)})")
+        # the reading time: fully on screen after the entrance and before the fade
+        tin = (tones.get(tn) or {}).get("in", CALLOUT_TIMES["calm_in"])
+        busy = (callout_entrance(tin, len(lines) > 1) + (CALLOUT_TIMES["out"] if tin else 0)) / fps
+        n_words = len(" ".join(lines).split())
+        need = read_need(n_words, R)
+        if c["dur"] - busy < need - 1e-6:
+            E(c, f"too short to read: {max(0.0, c['dur'] - busy):.2f} s fully on screen after the entrance and before "
+                 f"the fade, {need} s needed for {n_words} word(s): dur >= {need + busy:.1f} s")
+        # a cut inside it, or a whip still moving the picture when it starts (7 frames from the shot)
+        cuts = [sh["t"] for k, sh in enumerate(shots) if t0 + 1e-6 < sh["t"] < t1 - 1e-6
+                or (k and sh.get("whip") and sh["t"] - 1e-6 <= t0 < sh["t"] + 7 / fps)]
+        if cuts:
+            E(c, f"the camera changes shot at {', '.join(f'{x:g}' for x in cuts)} s inside the callout: the dot would "
+                 f"jump with the picture; end it before the shot or start it after")
+        moved, why = picture_motion(e, c, fresh=motions)
+        if moved is None or moved > CALLOUT_STILL:
+            (E if moved is not None and moved > CALLOUT_MOVES else W)(c, motion_note(moved, why))
+        for x in cover:
+            if overlap(x, c) > 1e-6:
+                E(c, f"on screen with {x['id']} ({x['kind']} {x.get('mode')}): the rough cut is covered or moved there, "
+                     f"the dot would point at nothing")
+        # on screen over its whole time: frame, safe zone, faces, the subtitles, the other graphics
+        found = {}
+        geo[c["id"]] = {}
+        for t in callout_times(c):
+            g = callout_at(c, t, ctx)
+            geo[c["id"]][t] = g
+            (px, py), elbow, hend, plate = g["dot"], g["elbow"], g["end"], g["plate"]
+            segs_ = [(g["dot"], elbow), (elbow, hend)]
+            if not (0 <= px <= 1080 and 0 <= py <= 1920):
+                found.setdefault("frame", (t, f"the dot ({px:.0f}, {py:.0f}) leaves the frame"))
+            elif py < fc.UI_TOP or py > fc.H - fc.UI_BOTTOM or px > fc.W - fc.UI_RIGHT:
+                found.setdefault("ui-dot", (t, f"the dot ({px:.0f}, {py:.0f}) is in the app's UI zone"))
+            x, y, pw, ph = plate
+            if x < zx0 or y < zy0 or x + pw > zx1 or y + ph > zy1:
+                found.setdefault("zone", (t, f"the label {[round(v) for v in plate]} leaves the safe zone x {zx0}-{zx1}, "
+                                             f"y {zy0}-{zy1}: try the other --side, --below, or another anchor"))
+            near = [f for smp in (fdata or {}).get("samples", []) if abs(smp["t"] - t) <= step / 2 + 1e-6
+                    for f in smp["faces"]]
+            for f in [_screen_box(f[:4], t, shots, segs, drift, end) for f in near]:
+                if fc.inter(plate, fc.grow(f, fc.MARGIN)):
+                    found.setdefault("face", (t, f"the label covers the face {[round(v) for v in f]} (margin {fc.MARGIN} px)"))
+                own = f[0] <= px <= f[0] + f[2] and f[1] <= py <= f[1] + f[3]
+                if own:
+                    found.setdefault("person", (t, "the dot is on a face: pointing at a person is not checked yet, look "
+                                                   "at the stills"))
+                elif any(_seg_hits(p, q, f, CALLOUT_LINE_MARGIN) for p, q in segs_):
+                    found.setdefault("line", (t, f"the leader line crosses the face {[round(v) for v in f]}: put the "
+                                                 f"label on the other side or under the dot"))
+            if band and not any(h0 - 1e-6 <= t <= h1 + 1e-6 for h0, h1 in hidden):
+                sub = [0, band[0], 1080, band[1] - band[0]]
+                if fc.inter(plate, sub) or any(_seg_hits(p, q, sub) for p, q in segs_):
+                    found.setdefault("subs", (t, f"on the subtitle band (y {band[0]}-{band[1]}): move the anchor's label up"))
+            # the other graphics: the label, and the dot and the line too (a popup meme is drawn over a callout and
+            # would hide its dot; Antigravity review)
+            dotbox = [px - CALLOUT["dot"], py - CALLOUT["dot"], 2 * CALLOUT["dot"], 2 * CALLOUT["dot"]]
+
+            def covers(b):
+                return fc.inter(plate, b) or fc.inter(dotbox, b) or any(_seg_hits(p, q, b) for p, q in segs_)
+            for k in keep:
+                if k["start"] <= t <= k["end"] and covers(k["box"]):
+                    found.setdefault("keep", (t, f"the callout runs into '{k.get('what', 'graphics')}' {k['box']}"))
+            for x_, b in boxes:
+                if x_["start"] <= t <= x_["start"] + x_["dur"] and covers(b):
+                    found.setdefault(f"box-{x_['id']}", (t, f"the callout runs into {x_['id']} ({x_['kind']}) {b}"))
+            if corner and fc.inter(plate, list(CORNER_BOX)):
+                found.setdefault("corner", (t, f"the label covers the corner logo {list(CORNER_BOX)}"))
+            if hook and t < 2.4 and fc.inter(plate, hook_box):
+                found.setdefault("hook", (t, "the label covers the hook headline (first 2.4 s)"))
+        for key, (t, msg) in found.items():
+            (W if key in ("ui-dot", "person") else E)(c, f"at {t:g} s {msg}")
+    # one at a time, at most two at once, and apart
+    live = sorted([c for c in callouts if c["id"] in geo], key=lambda c: c["start"])
+    for k, b in enumerate(live):
+        before = [a for a in live[:k] if a["start"] + a["dur"] > b["start"] + 1e-6]
+        for a in before:
+            if b["start"] - a["start"] < CALLOUT_GAP_S - 1e-6:
+                E(b, f"enters {b['start'] - a['start']:.1f} s after {a['id']}: callouts come one at a time, "
+                     f"at least {CALLOUT_GAP_S} s apart")
+            # every sample of either while both are on screen (Codex review: their own grids may share none), and
+            # each one's line against the other's label
+            lo, hi = b["start"], min(a["start"] + a["dur"], b["start"] + b["dur"])
+            ts = sorted({t for t in list(geo[a["id"]]) + list(geo[b["id"]]) + [lo, hi - 0.001] if lo <= t < hi})
+
+            def clash(t):
+                ga, gb = callout_at(a, t, ctx), callout_at(b, t, ctx)
+                la, lb = [(ga["dot"], ga["elbow"]), (ga["elbow"], ga["end"])], [(gb["dot"], gb["elbow"]), (gb["elbow"], gb["end"])]
+                return (fc.inter(ga["plate"], gb["plate"])
+                        or any(_seg_hits(p, q, g2["plate"]) for ls, g2 in ((la, gb), (lb, ga)) for p, q in ls)
+                        or any(_segs_cross(s1, s2) for s1 in la for s2 in lb))  # two lines crossing
+            hit = next((t for t in ts if clash(t)), None)
+            if hit is not None:
+                E(b, f"at {hit:g} s runs into {a['id']}: their labels or lines overlap")
+        if len(before) + 1 > CALLOUT_AT_ONCE:
+            E(b, f"{len(before) + 1} callouts at once from {fmt_t(b['start'])} (at most {CALLOUT_AT_ONCE})")
+    return errs, warns, bad
+
+
 def end_now(a, plan):
     """What follows the cut, whether the corner logo and the hook headline are drawn, for THIS run: export's own
     --card/--sting/--corner/--hook, validate's flags, else what the last export recorded (Codex review: a first export
@@ -1701,7 +1894,11 @@ def profile_issues(e, plan, s, brand, cap, scenes, memes, tail, corner=False, en
             boxes += [(x["id"], x.get("box") or default_box(x.get("mode"))) for x in timeline
                       if x.get("mode") in ("overlay", "split", "window") and (x.get("box") or default_box(x.get("mode")))]
             boxes += [(k.get("what") or "keep-clear", k["box"]) for k in plan.get("keep_clear", [])
-                      if k.get("box") and not k.get("scene") and not k.get("matte")]
+                      if k.get("box") and not k.get("scene") and not k.get("matte") and not k.get("callout")]
+            for cid in dict.fromkeys(k["callout"] for k in plan.get("keep_clear", []) if k.get("callout")):
+                bs = [k["box"] for k in plan["keep_clear"] if k.get("callout") == cid]
+                x_, y_ = min(b[0] for b in bs), min(b[1] for b in bs)
+                boxes.append((f"callout {cid}", [x_, y_, max(b[0] + b[2] for b in bs) - x_, max(b[1] + b[3] for b in bs) - y_]))
             for name, b in boxes:
                 if b[0] < x0 or b[1] < y0 or b[0] + b[2] > x1 or b[1] + b[3] > y1:
                     bad.append(f"{name} {list(b)}")
@@ -1756,9 +1953,47 @@ def meme_rights(meme_id):
     return "blocked" if memes.is_blocked(m) else m.get("rights") or "unknown"
 
 
+def add_callout(a):
+    """A callout: a dot at --anchor (a point of the 1080x1920 rough cut), a leader line, a label with 1-2 lines.
+    The side with room is taken unless --side says; validate checks it on screen over its whole time."""
+    if a.variant and a.variant not in CALLOUT_VARIANTS:
+        sys.exit(f"callout --variant {a.variant}: allowed {', '.join(CALLOUT_VARIANTS)}")
+    lines = [x.strip() for x in (a.lines or []) if x.strip()]
+    if not 1 <= len(lines) <= 2:
+        sys.exit("callout --lines: the subject, and an optional second line (a detail)")
+    try:
+        x, y = (int(round(float(v))) for v in (a.anchor or "").split(","))
+    except ValueError:
+        sys.exit("callout --anchor X,Y: the point of the object on the 1080x1920 rough cut")
+    if a.source not in SCENE_SOURCES + ["auto"]:
+        sys.exit(f"callout --source {a.source}: where the text comes from ({', '.join(SCENE_SOURCES)})")
+    e = edit_dir(a.edit)
+    cap = load_json(e / "captions.json", {})
+    w = callout_width(lines)
+    with editing_plan(e) as plan:
+        start = resolve_at(a.at, plan, cap)
+        n = 1 + max([int(i["id"][1:]) for i in plan["inserts"] if i["id"].startswith("l") and i["id"][1:].isdigit()] or [0])
+        seg = next((g for g in plan["segments"] if g["start"] <= start < g["end"]), None)
+        c = {"id": f"l{n:02d}", "kind": "callout", "variant": a.variant or "tag", "segment": seg["id"] if seg else None,
+             "at": a.at, "offset": a.offset, "start": round(start + a.offset, 3), "dur": a.dur, "mode": "overlay",
+             "anchor": [x, y], "side": a.side or callout_side(x, w), "below": bool(a.below), "text": {"lines": lines},
+             "w": w, "tone": a.tone, "what": a.what, "why": a.why, "status": "planned",
+             "source": {"kind": a.source, "ref": a.source_ref} if a.source in SCENE_SOURCES else None}
+        moved, why = picture_motion(e, c, keep=True)  # kept in c["motion"] for validate
+        plan["inserts"].append(c)
+        plan["inserts"].sort(key=lambda i: i["start"])
+    if not (0 <= x <= 1080 and 0 <= y <= 1920):
+        warn(f"{c['id']}: the anchor ({x}, {y}) is off the 1080x1920 frame: validate will not pass it")
+    print(f"{c['id']}: callout {c['variant']} (experimental: check the storyboard frames) {fmt_t(c['start'])} +{a.dur} s: "
+          f"“{' / '.join(lines)}” at ({x}, {y}), label {c['side']}{' below' if c['below'] else ''}, ~{w} px wide; "
+          + motion_note(moved, why))
+
+
 def cmd_add(a):
     if a.kind == "scene":
         return add_scene(a)
+    if a.kind == "callout":
+        return add_callout(a)
     if a.source not in SOURCES + ["auto"]:
         sys.exit(f"--source {a.source}: for {a.kind} allowed {', '.join(SOURCES + ['auto'])}")
     if a.source == "online" and not online():  # online sources come only with the online add-on
@@ -1869,6 +2104,7 @@ def cmd_validate(a, quiet=False):
     brolls = [i for i in ins if i["kind"] == "broll" and i["status"] != "skipped"]
     memes = [i for i in ins if i["kind"] == "meme" and i["status"] != "skipped"]
     scenes = [i for i in ins if i["kind"] == "scene" and i["status"] != "skipped"]
+    callouts = [i for i in ins if i["kind"] == "callout" and i["status"] != "skipped"]
     only = plan.get("format") == "scenes-only"
     timeline = [x for x in scenes if x.get("type") != "cover"]  # the cover is a still only
     # scenes that cover the speaker's frame count toward coverage together with B-roll (not in "scenes only")
@@ -1920,8 +2156,8 @@ def cmd_validate(a, quiet=False):
             warns.append(f"the rough cut is horizontal ({src[0]}x{src[1]}): without format framed the kit lays it as a "
                          f"band across the middle; reelcfg.py save edit/<id> --set format=framed")
     for k in plan.get("keep_clear", []) if fdata else []:
-        if k.get("mode") == "window" or k.get("matte"):
-            # a scene window or a presenter layer: the rough cut isn't visible there; the face on screen is the speaker's
+        if k.get("mode") == "window" or k.get("matte") or k.get("callout"):
+            # a callout's label is checked with its callout (check_callouts); a scene window or a presenter layer: the rough cut isn't visible there; the face on screen is the speaker's
             # own (in the window, or the cut-out figure itself)
             continue
         kc = k.get("cam")
@@ -1957,7 +2193,7 @@ def cmd_validate(a, quiet=False):
             last = y
     for i in ins:
         tag = i["id"]
-        if i["kind"] == "scene":  # scenes: check_scenes below
+        if i["kind"] in ("scene", "callout"):  # scenes and callouts: check_scenes and check_callouts below
             continue
         k = KINDS.get(i["kind"])
         if not k:
@@ -2080,28 +2316,37 @@ def cmd_validate(a, quiet=False):
     se, sw, bad = check_scenes(e, plan, s, doc, brand, fdata, cap, scenes, brolls, memes, tail)
     errs += se
     warns += sw
-    for m, ids in tone_issues(s, doc, brolls, memes, timeline, only):
+    end_kind, corner_now, hook_now = end_now(a, plan)
+    hook_text = (getattr(a, "hook", None) if isinstance(getattr(a, "hook", None), str)
+                 else (plan.get("export") or {}).get("hook"))
+    motions = {}
+    ce, cw, cbad = check_callouts(e, plan, s, doc, fdata, callouts, brolls, memes, scenes, corner_now,
+                                  (hook_text or True) if hook_now else False, motions)
+    errs += ce
+    warns += cw
+    bad.update(cbad)
+    for m, ids in tone_issues(s, doc, brolls, memes, timeline + callouts, only):
         if s.get("tone_override"):  # going past the tone on explicit request: a warning, the reason goes into the report
             warns.append(m + " (tone_override: the brand tone is exceeded; note it in the report)")
         else:
             errs.append(m + " (to go past it on explicit request: reelcfg.py save ... --set tone_override=true)")
             bad.update(ids)
-    end_kind, corner_now, hook_now = end_now(a, plan)
     pe, pw, pst = profile_issues(e, plan, s, brand, cap if scenes else (load_json(e / "captions.json", {}) or {}),
                                  scenes, memes, tail, corner_now, end_kind, hook_now)
     errs += pe
     warns += pw
-    # scene status: there is no file, so ready when the fields are valid; an error -> planned
-    moves = {x["id"]: ("planned" if x["id"] in bad else "ready") for x in scenes if x["status"] in ("planned", "ready")}
-    moves = {k: v for k, v in moves.items() if next(x for x in scenes if x["id"] == k)["status"] != v}
+    # scene and callout status: there is no file, so ready when the fields are valid; an error -> planned
+    drawn = scenes + callouts
+    moves = {x["id"]: ("planned" if x["id"] in bad else "ready") for x in drawn if x["status"] in ("planned", "ready")}
+    moves = {k: v for k, v in moves.items() if next(x for x in drawn if x["id"] == k)["status"] != v}
     if moves:
         # the status is written under a second lock: if another session changed the scene meanwhile, its status is left alone
-        bare = lambda x: {k: v for k, v in x.items() if k != "status"}
-        snap = {x["id"]: bare(x) for x in scenes}
+        bare = lambda x: {k: v for k, v in x.items() if k not in ("status", "motion")}
+        snap = {x["id"]: bare(x) for x in drawn}
         stale = []
         with editing_plan(e) as p2:
             for x in p2["inserts"]:
-                if x.get("kind") == "scene" and x["id"] in moves and x.get("status") in ("planned", "ready"):
+                if x.get("kind") in ("scene", "callout") and x["id"] in moves and x.get("status") in ("planned", "ready"):
                     if bare(x) != snap.get(x["id"]):
                         stale.append(x["id"])
                         continue
@@ -2109,11 +2354,17 @@ def cmd_validate(a, quiet=False):
         for k in stale:
             moves.pop(k, None)
             warns.append(f"{k}: the scene changed during the check: its status was left alone, run validate again")
-        for x in scenes:
+        for x in drawn:
             if x["id"] in moves:
                 if not quiet:
                     print(f"{x['id']}: {x['status']} -> {moves[x['id']]}")
                 x["status"] = moves[x["id"]]
+    if motions:  # the picture under the dots, measured now: kept while the anchor, the time and final.mp4 stay
+        with editing_plan(e) as p2:
+            for x in p2["inserts"]:
+                m = motions.get(x["id"]) if x.get("kind") == "callout" else None
+                if m and [x.get("anchor"), x.get("start"), x.get("dur")] == m["key"][:3]:
+                    x["motion"] = m
     if not only:  # picture defects (defects.py): covered, accepted, or a warning
         de, dw, _ = defect_issues(e, plan, s, doc, load_json(e / "captions.json", {}))
         errs += de
@@ -2133,6 +2384,8 @@ def cmd_validate(a, quiet=False):
             cov_line = (f"B-roll {len(brolls)}/{bud['broll_max']}, memes {len(memes)}/{bud.get('memes_max')}, "
                         f"coverage {cover:.1f}/{bud['coverage_max_s']} s")
         print(f"total: {len(ins)} insert(s) (ready {ready}), {cov_line}; "
+              + (f"{len(callouts)} callout(s) (experimental, ready {sum(1 for x in callouts if x['status'] == 'ready')}); "
+                 if callouts else "")
               + (f"{len(timeline)} scene(s) (ready {sum(1 for x in timeline if x['status'] == 'ready')}, "
                  + ("'scenes only' format" if only else
                     f"full {sum(1 for x in timeline if x.get('mode') == 'full')}/"
@@ -2189,7 +2442,9 @@ def cmd_md(a):
                        for i in over if i["kind"] == "meme") or "-"
         sn = "; ".join(f"**{i['id']}** {i.get('type')} {i['mode']}{experimental(i)}: {scene_text(i)} ({i['dur']} s, {i['status']})"
                        for i in over if i["kind"] == "scene") or "-"
-        tr = "; ".join(f"{i['id']}: {i['transition_in']}/{i['transition_out']}" for i in over) or "cut"
+        sn = "; ".join([sn] * (sn != "-") + [f"**{i['id']}** callout “{' / '.join((i.get('text') or {}).get('lines') or [])}” "
+                                             f"({i['dur']} s, {i['status']})" for i in over if i["kind"] == "callout"]) or "-"
+        tr = "; ".join(f"{i['id']}: {i['transition_in']}/{i['transition_out']}" for i in over if "transition_in" in i) or "cut"
         main = g["main"] + (f", {g['camera']}" if g.get("camera") else "") + (f"; graphics: {g['graphics']}" if g.get("graphics") else "")
         com = "; ".join(filter(None, [g.get("notes", "")] + [f"{i['id']}: {i['why']}" for i in over]
                                + ([f"hints: {', '.join(g['hints'])}"] if g.get("hints") else [])))
@@ -2205,6 +2460,14 @@ def cmd_md(a):
                          + (f"Source: {src.get('kind')}{' (' + src['ref'] + ')' if src.get('ref') else ''}. " if src else "")
                          + f"Transition {i.get('transition_in')}/{i.get('transition_out')}"
                          + (", subtitles hidden" if hides_subtitles(i) else "") + f". Status: {i['status']}")
+                continue
+            if i["kind"] == "callout":
+                src = i.get("source") or {}
+                L.append(f"- **{i['id']}** callout {i.get('variant')} (experimental) {fmt_t(i['start'])} +{i['dur']} s: "
+                         f"“{' / '.join((i.get('text') or {}).get('lines') or [])}”, dot at {i.get('anchor')}, label "
+                         f"{i.get('side')}{' below' if i.get('below') else ''}, tone {scene_tone(i, s)}. What: {i['what']}. "
+                         f"Why: {i['why']}. " + (f"Source: {src.get('kind')}{' (' + src['ref'] + ')' if src.get('ref') else ''}. "
+                                                 if src else "") + f"Status: {i['status']}")
                 continue
             c = i.get("candidate") or {}
             L.append(f"- **{i['id']}** {i['kind']} {fmt_t(i['start'])} +{i['dur']} s, {i['mode']}: {i['what']}. "
@@ -2229,7 +2492,11 @@ def cmd_md(a):
         L += [f"{n}. {fmt_t(k['start'])}-{fmt_t(k['end'])} {k.get('what', '')} box {k.get('box')}"
               + (f", camera {k['cam']}" if k.get("cam") else "")
               + (f", presenter layer {k['matte']} (counts in the coverage)" if k.get("matte") else "")
-              + (f" (scene {k['scene']}, written by export)" if k.get("scene") else "") for n, k in enumerate(keep, 1)]
+              + (f" (scene {k['scene']}, written by export)" if k.get("scene") else "")
+              for n, k in enumerate(keep, 1) if not k.get("callout")]
+        # a callout's label has a zone per 0.25 s for the audit: one line here (Fable review: ~10 lines a callout)
+        L += [f"- callout {c} label: its box every 0.25 s on screen, written by export (`remove {c}` takes the callout)"
+              for c in dict.fromkeys(k["callout"] for k in keep if k.get("callout"))]
         L += ["", "Remove a zone: `visual_plan.py keep-clear edit/<id> --remove N`."]
     defects, _ = load_defects(e)
     if defects:  # what the person sees about the picture: each defect and how it is handled
@@ -2275,10 +2542,12 @@ def cmd_keep(a):
             bad = [n for n in a.remove if not 1 <= n <= len(keep)]
             if bad:
                 sys.exit(f"keep_clear has {len(keep)} zone(s) (visual_plan.md numbers them): no {', '.join(map(str, bad))}")
-            own = [n for n in a.remove if keep[n - 1].get("scene")]
+            own = [n for n in a.remove if keep[n - 1].get("scene") or keep[n - 1].get("callout")]
             if own:
-                sys.exit(f"zone {', '.join(map(str, own))} belongs to a scene and export writes it back: remove the scene "
-                         f"(visual_plan.py remove {a.edit} {keep[own[0] - 1]['scene']}) or move it")
+                k0 = keep[own[0] - 1]
+                what = "a scene" if k0.get("scene") else "a callout"
+                sys.exit(f"zone {', '.join(map(str, own))} belongs to {what} and export writes it back: remove {what} "
+                         f"(visual_plan.py remove {a.edit} {k0.get('scene') or k0.get('callout')}) or move it")
             gone = [keep[n - 1] for n in sorted(set(a.remove))]
             plan["keep_clear"] = [k for n, k in enumerate(keep, 1) if n not in set(a.remove)]
         for k in gone:
@@ -2370,7 +2639,7 @@ def cmd_remove(a):
         gone = [i for i in plan["inserts"] if i["id"] in a.ids]
         plan["inserts"] = [i for i in plan["inserts"] if i["id"] not in a.ids]
         if plan.get("keep_clear"):
-            plan["keep_clear"] = [k for k in plan["keep_clear"] if k.get("scene") not in a.ids]
+            plan["keep_clear"] = [k for k in plan["keep_clear"] if k.get("scene") not in a.ids and k.get("callout") not in a.ids]
     for i in gone:
         print(f"removed {i['id']}: {i['kind']} {i.get('type') or i.get('mode')} {fmt_t(i['start'])} +{i['dur']} s: {i['what']}")
     print("files the inserts used stay where they are; validate and export again")
@@ -2585,6 +2854,255 @@ def chin_on_screen(y, t, shots, view=None):
     z, _, cy = cam_fit(s["z"] * (1 + s["drift"]), s["cx"], s["cy"], view)
     c = view[0][1] + view[0][3] / 2 if view else 960
     return (y - cy) * z + c
+
+
+# ── Callouts (references/callouts.md, experimental): a dot on an object of the rough cut, a leader line, a label ──
+# kit/anchor.ts holds the same numbers and functions (tests/scripts/test_callouts.py runs it with node against these)
+CALLOUT = {"dot": 14, "core": 8, "stroke": 5, "reach": 90, "run": 48, "title_h": 70, "title_size": 52, "sub_h": 50,
+           "sub_size": 34, "pad_x": 18}
+CALLOUT_TIMES = {"dot": (0, 6), "line": (3, 11), "title": (8, 18), "sub": (11, 21), "out": 6, "calm_in": 14}
+CALLOUT_VARIANTS = ["tag"]
+CALLOUT_MAX_W = 640      # px: a wider label is a sentence, not a name
+CALLOUT_ZONE = (40, 220, 960, 1500)  # the label: the safe zone, 40 px off the left edge
+CALLOUT_GAP_S = 0.6      # a second callout enters no sooner than this after the first (one element at a time)
+CALLOUT_AT_ONCE = 2
+CALLOUT_LINE_MARGIN = 20  # px around a face that the leader line keeps out of
+HOOK_BOX = [60, 300, 900, 242]  # the kit's hook headline (ReelKit Hook: 100 px lines from y 300), first 2.4 s
+DRIFT = 0.05
+
+
+def drift_zoom(segs, t):
+    """The template's drift at second t (no camera), as ReelKit's Footage draws it (kit/anchor.ts driftZoom): each span
+    of the rough cut scales around the frame's center, 1 -> 1.05 on even spans and back on odd ones."""
+    seg = next((g for g in segs if g["out_start"] <= t < g["out_start"] + g["out_dur"]), segs[-1] if segs else None)
+    if not seg:
+        return 1.0
+    k = min(max((t - seg["out_start"]) / max(1e-6, seg["out_dur"]), 0.0), 1.0)
+    return 1 + DRIFT * k if seg["i"] % 2 == 0 else 1 + DRIFT - DRIFT * k
+
+
+def anchor_on_screen(x, y, t, shots, segs, drift, end, fps=30):
+    """Where point (x, y) of the full-frame rough cut is on screen at second t (kit/anchor.ts anchorOnScreen): through
+    camera.json's shots (x' = (x - cx) * z + 540, references/camera.md), else the template's drift, else in place."""
+    if shots:
+        cam = camera_at(shots, t, end, fps)
+        if cam:
+            z, cx, cy = cam
+            return (x - cx) * z + 540, (y - cy) * z + 960
+        return float(x), float(y)
+    z = drift_zoom(segs, t) if drift else 1.0
+    return 540 + (x - 540) * z, 960 + (y - 960) * z
+
+
+def callout_geometry(px, py, side, below, w, sub):
+    """The callout around its dot on screen (px, py) (kit/anchor.ts calloutGeometry): 45° to the elbow, level to the
+    label, which the line meets at the title's middle; the label `side` of the dot, up (or down, `below`)."""
+    sx, sy = (-1 if side == "left" else 1), (1 if below else -1)
+    ex, ey = px + sx * CALLOUT["reach"], py + sy * CALLOUT["reach"]
+    hx = ex + sx * CALLOUT["run"]
+    h = CALLOUT["title_h"] + (CALLOUT["sub_h"] if sub else 0)
+    return {"dot": [px, py], "elbow": [ex, ey], "end": [hx, ey],
+            "plate": [hx if sx > 0 else hx - w, ey - CALLOUT["title_h"] / 2, w, h]}
+
+
+def callout_entrance(tone_in, sub):
+    """Frames until the callout is fully on screen at a tone whose scene entrance is tone_in frames (kit/anchor.ts)."""
+    return math.ceil((CALLOUT_TIMES["sub"][1] if sub else CALLOUT_TIMES["title"][1]) * tone_in / CALLOUT_TIMES["calm_in"])
+
+
+_WIDE = "WM" + _ru("428 429 416 42e 424 42b 41c")  # the widest capitals (Latin, and Russian Sh, Shch, Zh, Yu, F, Y, M)
+
+
+def _text_w(text, size, upper=False, track=0.0):
+    """A generous width of a line of text: the kit fits the text into the width given (fitSize), so a guess on the wide
+    side keeps the drawn label inside the checked box."""
+    import unicodedata
+    w = 0.0
+    for ch in (text.upper() if upper else text):
+        if unicodedata.category(ch).startswith("M"):  # a combining mark (Thai vowels above, accents) takes no width
+            continue
+        f = (0.28 if ch == " " else 0.92 if ch in _WIDE else 0.62 if ch.isdigit() else
+             (0.72 if ord(ch) > 0x7F else 0.68) if ch.isupper() else 0.58 if ch.islower() else
+             # letters with no case (Thai, Arabic, Devanagari; CJK full width) and other non-ASCII signs (Fable
+             # review: counted as 0.4 em, the label came out narrow and the kit shrank the title to fit it)
+             (1.0 if unicodedata.east_asian_width(ch) in "WF" else 0.62) if ord(ch) > 0x7F else 0.4)
+        w += (f + track) * size
+    return w
+
+
+def callout_width(lines):
+    """The label's width, px: the title at 52 px bold, a second line in 34 px caps (+0.12 em), and the plate's padding."""
+    t = _text_w(lines[0], CALLOUT["title_size"]) if lines else 0.0
+    s = _text_w(lines[1], CALLOUT["sub_size"], upper=True, track=0.12) if len(lines) > 1 else 0.0
+    return int(math.ceil(max(t, s) + 2 * CALLOUT["pad_x"]))
+
+
+def callout_side(x, w):
+    """The side with room for the label (right first): the one where it stays inside the safe zone."""
+    off = CALLOUT["reach"] + CALLOUT["run"]
+    right, left = CALLOUT_ZONE[2] - (x + off + w), (x - off - w) - CALLOUT_ZONE[0]
+    return "right" if right >= 0 or right >= left else "left"
+
+
+def _seg_hits(p, q, box, m=0):
+    """Does segment p-q pass through box (x, y, w, h) grown by m? Sampled every 4 px."""
+    x, y, w, h = box[0] - m, box[1] - m, box[2] + 2 * m, box[3] + 2 * m
+    n = max(1, int(math.hypot(q[0] - p[0], q[1] - p[1]) / 4))
+    return any(x <= p[0] + (q[0] - p[0]) * k / n <= x + w and y <= p[1] + (q[1] - p[1]) * k / n <= y + h
+               for k in range(n + 1))
+
+
+def _segs_cross(s1, s2):
+    """Do two segments ((x, y), (x, y)) cross or touch?"""
+    (a, b), (c, d) = s1, s2
+
+    def side(p, q, r):
+        v = (q[0] - p[0]) * (r[1] - p[1]) - (q[1] - p[1]) * (r[0] - p[0])
+        return (v > 1e-9) - (v < -1e-9)
+
+    def on(p, q, r):
+        return min(p[0], q[0]) - 1e-9 <= r[0] <= max(p[0], q[0]) + 1e-9 and min(p[1], q[1]) - 1e-9 <= r[1] <= max(p[1], q[1]) + 1e-9
+    d1, d2, d3, d4 = side(c, d, a), side(c, d, b), side(a, b, c), side(a, b, d)
+    if d1 * d2 < 0 and d3 * d4 < 0:
+        return True
+    return any(x == 0 and on(*seg, pt) for x, seg, pt in ((d1, (c, d), a), (d2, (c, d), b), (d3, (a, b), c), (d4, (a, b), d)))
+
+
+def _screen_box(b, t, shots, segs, drift, end):
+    """A rough-cut box (x, y, w, h) on screen at second t, through the same camera or drift as an anchor."""
+    x0, y0 = anchor_on_screen(b[0], b[1], t, shots, segs, drift, end)
+    x1, y1 = anchor_on_screen(b[0] + b[2], b[1] + b[3], t, shots, segs, drift, end)
+    return [x0, y0, x1 - x0, y1 - y0]
+
+
+def callout_span(c, fps=30):
+    """The seconds the kit draws a callout over: from frame round(start * fps), for round(dur * fps) frames (Codex
+    review: the checks and the zones used the raw seconds)."""
+    f0 = round(c["start"] * fps)
+    return f0 / fps, (f0 + round(c["dur"] * fps)) / fps
+
+
+def callout_times(c, step=0.25):
+    """The moments a callout is checked at: its start, every step on the grid, and just before its end."""
+    t0, t1 = callout_span(c)
+    ts = {round(t0, 3), round(t1 - 0.001, 3)} | {round(k * step, 3) for k in range(math.ceil(t0 / step), math.floor(t1 / step) + 1)
+                                                if t0 <= k * step < t1}
+    return sorted(ts)
+
+
+# The picture under the dot must hold still: the anchor follows the virtual camera, not the footage's own movement.
+# Measured on real clips (mean change of a 120 px patch from its first frame, levels of 255): a wall, a painting, a
+# plant on a tripod shot 1-6; a handheld walk through a room 56-117; a microphone in a gesturing hand 92
+CALLOUT_STILL = 10
+CALLOUT_MOVES = 25
+
+
+def picture_motion(e, c, keep=False, fresh=None):
+    """How much the rough cut changes under the callout's dot over its time: the largest mean difference of a 120 px
+    patch around the anchor, 4 times a second, from its first frame (levels of 255), on the frame stretched to
+    1080x1920 as the kit draws it. -> (value, None), or (None, why) when it cannot be measured. keep (add): the value
+    goes into the callout ("motion") and is reused while the anchor, the time and final.mp4 stay the same; fresh (validate):
+    a fresh measurement goes there by id instead, and validate keeps it in the plan under its own lock (Codex review: an
+    in-memory one blocked the status from being saved; Fable review: without it ffmpeg ran on every validate)."""
+    import subprocess
+    f = Path(e) / "final.mp4"
+    if not f.is_file():
+        return None, "no final.mp4"
+    if not shutil.which("ffmpeg"):
+        return None, "no ffmpeg"
+    st = f.stat()
+    key = [c["anchor"], c["start"], c["dur"], st.st_size, st.st_mtime_ns]
+    if (c.get("motion") or {}).get("key") == key:
+        return c["motion"]["v"], None
+    r, n, fps = 60, 40, 4
+    x0 = min(max(0, int(c["anchor"][0]) - r), 1080 - 2 * r)
+    y0 = min(max(0, int(c["anchor"][1]) - r), 1920 - 2 * r)
+    try:
+        out = subprocess.run(["ffmpeg", "-v", "error", "-ss", f"{c['start']:.3f}", "-t", f"{c['dur']:.3f}", "-i", str(f),
+                              "-vf", f"fps={fps},scale=1080:1920,crop={2 * r}:{2 * r}:{x0}:{y0},scale={n}:{n},format=gray",
+                              "-f", "rawvideo", "-"], capture_output=True, timeout=120)
+    except (OSError, subprocess.SubprocessError) as err:
+        return None, f"ffmpeg failed ({type(err).__name__})"
+    frames = [out.stdout[k:k + n * n] for k in range(0, len(out.stdout) - n * n + 1, n * n)]
+    want = max(2, int(c["dur"] * fps * 0.8))
+    if out.returncode != 0 or len(frames) < want:
+        return None, f"final.mp4 did not decode ({len(frames)} of ~{int(c['dur'] * fps)} frames)"
+    v = round(max(sum(abs(a - b) for a, b in zip(frames[0], fr)) / (n * n) for fr in frames[1:]), 1)
+    if keep:
+        c["motion"] = {"v": v, "key": key}
+    if fresh is not None:
+        fresh[c["id"]] = {"v": v, "key": key}
+    return v, None
+
+
+def motion_note(v, why=None):
+    """The measurement in words, for add and validate."""
+    if v is None:
+        return f"the picture under the dot is not measured ({why}): check it on the stills"
+    if v <= CALLOUT_STILL:
+        return f"the picture under the dot holds still ({v:g} of 255)"
+    if v <= CALLOUT_MOVES:
+        return f"the picture under the dot changes a little ({v:g} of 255): someone passes or the light changes? check the stills"
+    return (f"the picture moves under the dot ({v:g} of 255, still is <= {CALLOUT_STILL}): the object leaves the dot "
+            f"(a handheld shot, a moving hand): pick a still stretch, or B-roll or a card instead")
+
+
+def hook_lines(text, n=14):
+    """How many lines the kit's hook headline takes: Phrase.tsx breakLines over glue, words that must not part
+    (reels_common.no_break) kept together, lines of up to n characters."""
+    from reels_common import no_break
+    lines = 0
+    for para in str(text).split("\n"):
+        w, toks = para.split(), []
+        for k, x in enumerate(w):
+            if toks and no_break(w[k - 1], x):
+                toks[-1] += " " + x
+            else:
+                toks.append(x)
+        cur = None
+        for tok in toks:
+            if cur is not None and len(cur) + 1 + len(tok) <= n:
+                cur += " " + tok
+            else:
+                lines += cur is not None
+                cur = tok
+        lines += cur is not None
+    return max(1, lines)
+
+
+def callout_context(e, plan):
+    """What places a callout on screen: (captions' spans, camera.json shots, drift on, the video's length)."""
+    cap = load_json(Path(e) / "captions.json", {}) or {}
+    shots = plan_camera(e, plan)
+    return cap.get("segments") or [], shots, not shots, plan.get("duration") or cap.get("duration") or 0.0
+
+
+def callout_at(c, t, ctx):
+    """The callout's geometry on screen at second t."""
+    segs, shots, drift, end = ctx
+    lines = (c.get("text") or {}).get("lines") or []
+    ax, ay = anchor_on_screen(c["anchor"][0], c["anchor"][1], t, shots, segs, drift, end)
+    return callout_geometry(ax, ay, c.get("side"), bool(c.get("below")), c.get("w") or callout_width(lines), len(lines) > 1)
+
+
+def callout_keep_entries(e, plan):
+    """keep_clear entries for ready callouts: the label's box on screen per 0.25 s, for faces.py audit and for the
+    memes, windows and scenes the plan places later."""
+    ctx = callout_context(e, plan)
+    out = []
+    for c in plan.get("inserts", []):
+        if c.get("kind") != "callout" or c.get("status") != "ready":
+            continue
+        ts = callout_times(c)
+        for k, t0 in enumerate(ts[:-1]):
+            t1 = ts[k + 1]
+            boxes = [callout_at(c, t, ctx)["plate"] for t in (t0, (t0 + t1) / 2, t1)]
+            x0, y0 = min(b[0] for b in boxes), min(b[1] for b in boxes)
+            x1, y1 = max(b[0] + b[2] for b in boxes), max(b[1] + b[3] for b in boxes)
+            box = [math.floor(x0), math.floor(y0), math.ceil(x1) - math.floor(x0), math.ceil(y1) - math.floor(y0)]
+            end = round(callout_span(c)[1], 3) if k == len(ts) - 2 else t1
+            out.append({"start": t0, "end": end, "box": box, "what": f"callout {c['id']} label", "callout": c["id"]})
+    return out
 
 
 def subtitle_top(e, s, cam, quiet=False):
@@ -2809,7 +3327,7 @@ def cmd_export(a):
     pub = inside(rem / "public", rem / "public" / name / "inserts", "inserts folder")
     out, skipped = [], []
     for i in plan["inserts"]:
-        if i["kind"] == "scene":  # scenes: a separate list below
+        if i["kind"] in ("scene", "callout"):  # scenes and callouts: separate lists below
             continue
         if i["status"] != "ready":
             skipped.append(f"{i['id']} ({i['status']}) -> {i.get('fallback') or 'main footage'}")
@@ -2839,6 +3357,16 @@ def cmd_export(a):
         scenes.append(sp)
         if sp.get("hide_subtitles"):
             hide.append([sp["start"], round(sp["start"] + sp["dur"], 3)])
+    callouts = []  # drawn by the kit's CalloutLayer from their fields (references/callouts.md)
+    for i in plan["inserts"]:
+        if i["kind"] != "callout":
+            continue
+        if i["status"] != "ready":
+            sk.append(f"{i['id']} ({i['status']})")
+            continue
+        callouts.append({"id": i["id"], "variant": i["variant"], "start": i["start"], "dur": i["dur"], "anchor": i["anchor"],
+                         "side": i["side"], "below": bool(i.get("below")), "lines": (i.get("text") or {}).get("lines") or [],
+                         "w": i.get("w") or callout_width((i.get("text") or {}).get("lines") or []), "tone": i.get("tone")})
     hide = sorted(hide + hidden_windows(plan))  # hide-subs: per-video compositions (a presenter, an accent title)
     # presenter layers (keep-clear --matte): the WebM goes next to the rough cut, where Presenter's src points
     # (matte.py place: "<id>/<name>.webm"); before, it was copied by hand
@@ -2856,18 +3384,22 @@ def cmd_export(a):
             shutil.copy2(m_src, m_dst)
             print(f"matte: {m_src.name} -> public/{name}/{m_src.name}" + (" (updated)" if md else ""))
     # the plan's keep_clear: overlay/split/window scenes (a box on screen); validate (memes, windows) and faces.py audit see them
-    entries = scene_keep_entries(plan)
-    if entries or any(k.get("scene") for k in plan.get("keep_clear", [])):
+    # and the labels of ready callouts, per 0.25 s on screen
+    entries = scene_keep_entries(plan) + callout_keep_entries(e, plan)
+    if entries or any(k.get("scene") or k.get("callout") for k in plan.get("keep_clear", [])):
         with editing_plan(e) as p2:
-            old = [k for k in p2.get("keep_clear", []) if not k.get("scene")]
-            new = old + scene_keep_entries(p2)
+            old = [k for k in p2.get("keep_clear", []) if not (k.get("scene") or k.get("callout"))]
+            sc_k, co_k = scene_keep_entries(p2), callout_keep_entries(e, p2)
+            new = old + sc_k + co_k
             if new != p2.get("keep_clear", []):
                 p2["keep_clear"] = new
-                print(f"keep_clear: {len(new) - len(old)} overlay/split/window scene(s) (for faces.py audit)")
+                print(f"keep_clear: {len(sc_k)} overlay/split/window scene(s), {len({k['callout'] for k in co_k})} "
+                      f"callout label(s) (for faces.py audit)")
     save_json(rem / "src" / "plans" / f"{name}.json", {"id": name, "duration": plan["duration"], "inserts": out,
                                                      **({"scenes": scenes} if scenes else {})})
     print(f"src/plans/{name}.json: {len(out)} insert(s) go into the render" + (f"; no insert (fallback): {'; '.join(skipped)}" if skipped else "")
-          + (f"; {len(scenes)} scene(s)" if scenes or sk else "") + (f" (not ready: {', '.join(sk)})" if sk else "")
+          + (f"; {len(scenes)} scene(s)" if scenes or any(x.startswith("c") for x in sk) else "")
+          + (f"; {len(callouts)} callout(s)" if callouts else "") + (f" (not ready: {', '.join(sk)})" if sk else "")
           + ("; the cover: props.cover" if cover else ""))
     if a.props:
         # props of the universal template composition: rough cut, subtitles, brand, inserts;
@@ -2972,6 +3504,7 @@ def cmd_export(a):
                 p2["subtitles_band"] = [top, min(low, top + h)]
         if s.get("subtitles_shade") is not None:
             props["subtitlesShade"] = float(s["subtitles_shade"])
+        props["callouts"] = callouts  # callouts (kit/Callout.tsx); an older template ignores this prop
         props["scenes"] = scenes  # designed scenes (the scene kit, SceneSpec); an older template ignores this prop
         props["sceneTone"] = s.get("scene_tone") or (s.get("brand_tone") or {}).get("scene_tone")
         if cover:
@@ -3031,9 +3564,13 @@ def main():
     g.add_argument("--tone", help="the scene tone (calm, deadpan, cinematic, feature, punchy, hype, parody); without it, the video's tone")
     g.add_argument("--variant"); g.add_argument("--items-json"); g.add_argument("--value-json")
     g.add_argument("--media", help="a screenshot or a recording (copied to edit/<id>/inserts/)"); g.add_argument("--interaction-json")
-    g.add_argument("--side", choices=["left", "right"], help="window (right by default) / panel (left): the speaker's side")
+    g.add_argument("--side", choices=["left", "right"], help="window (right by default) / panel (left): the speaker's side; callout: the label's side "
+                        "(default: the one with room)")
     g.add_argument("--frame-at", type=float, help="cover: the video second under the cover (otherwise 1.0 s or poster.py pick)")
     g.add_argument("--sound", choices=SCENE_SOUNDS); g.add_argument("--hide-subtitles", action="store_true")
+    g = p.add_argument_group("callout (--kind callout; also --variant tag, --lines, --side, --tone, --source)")
+    g.add_argument("--anchor", metavar="X,Y", help="the object's point on the 1080x1920 rough cut, where the dot goes")
+    g.add_argument("--below", action="store_true", help="the label under the dot (default: above it)")
     p.set_defaults(fn=cmd_add)
     p = sub.add_parser("keep-clear"); p.add_argument("edit"); p.add_argument("--from", dest="start", type=float)
     p.add_argument("--to", dest="end", type=float); p.add_argument("--box", help="x,y,w,h in 1080x1920")

@@ -2,6 +2,7 @@
 "it was just admin admin" went over two plates (Plate holds at most 4 words / 26 characters) and read in two beats.
 cut.py marks the caption words, subs.py keeps the group in one phrase, the kit never ends a block inside it."""
 import json
+import re
 
 from conftest import needs_ffmpeg, run_script, write_json
 from test_kit import KIT
@@ -155,8 +156,9 @@ def test_the_kit_keeps_a_group_on_one_block():
     # a hide window inside a group drops no word of it (Codex review); a group mostly under windows is hidden whole
     assert "[w.phrase, w.keep && `keep:${w.keep}`]" in subs and "!(w.keep && covered.has(`keep:${w.keep}`))" in subs
     assert "(!!w.keep || !hide.some(" in subs
-    ver = (KIT / "kit" / "version.ts").read_text(encoding="utf-8")
-    assert 'KIT_VERSION = "1.12.0"' in ver
+    # the kit that keeps groups is 1.12.0 or later (later releases raise the version)
+    ver = re.search(r'KIT_VERSION = "(\d+)\.(\d+)\.(\d+)"', (KIT / "kit" / "version.ts").read_text(encoding="utf-8"))
+    assert tuple(int(v) for v in ver.groups()) >= (1, 12, 0)
 
 
 def test_a_keep_mark_added_after_apply_makes_the_translation_stale(project):

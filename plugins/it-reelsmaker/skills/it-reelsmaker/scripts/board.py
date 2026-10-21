@@ -168,7 +168,13 @@ def panels(props, plan, doc, fps, shots=False, transitions=False, defects=()):
         mid = (float(ins["start"]) + float(ins["dur"]) / 2) * fps
         add(mid, f"{ins.get('id')} {ins.get('kind')}/{ins.get('mode') or ''}".rstrip("/"),
             tin=ins.get("transition_in"), tout=ins.get("transition_out"), note=(what.get(ins.get("id")) or {}).get("what") or "")
-    for n, kc in enumerate([k for k in plan.get("keep_clear", []) if not k.get("scene")], 1):
+    # a callout once it is fully on screen (its label's zones per 0.25 s are for the audit, not cards)
+    for c in props.get("callouts") or []:
+        tone = c.get("tone") or props.get("sceneTone") or "calm"
+        tin = (tones.get(tone) or {}).get("in", vp.CALLOUT_TIMES["calm_in"])
+        add(round(float(c["start"]) * fps) + vp.callout_entrance(tin, len(c.get("lines") or []) > 1), f"{c['id']} callout",
+            " / ".join(c.get("lines") or []), note=(what.get(c["id"]) or {}).get("what") or "")
+    for n, kc in enumerate([k for k in plan.get("keep_clear", []) if not k.get("scene") and not k.get("callout")], 1):
         add((float(kc["start"]) + float(kc["end"])) / 2 * fps, f"card {n}", note=kc.get("what") or "")
     if shots:
         cam = props.get("camera") or []

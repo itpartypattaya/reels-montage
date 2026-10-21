@@ -42,7 +42,8 @@ A few more things are in the kit and the references but not yet checked in a fin
 - a message thread, an interface with a cursor, an icon or mini-diagram scene;
 - layouts where the speaker moves aside for a scene: split, slide panel, a window in the corner;
 - the cut-out figure: text behind the person, a presenter over a scene (needs `rembg`, below);
-- a phone mockup on the call to action.
+- a phone mockup on the call to action;
+- callouts on objects: a dot on a thing in the frame, a leader line drawn from it and a label wiping in, as in tour and review videos (“sofa”, “the view from the balcony”). Offered when the speaker names something you can see in a still shot. The plan check measures that the picture under the dot holds still (a walk-through filmed by hand is refused: the object would slide away from the dot), follows the virtual camera, and keeps the label off faces, the subtitles and the app's buttons.
 
 ## Requirements
 

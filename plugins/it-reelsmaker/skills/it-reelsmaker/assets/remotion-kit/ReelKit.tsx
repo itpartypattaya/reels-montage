@@ -22,6 +22,10 @@ import { Sample, Sampled, useMedia } from "./kit/Sample";
 export { MediaOn, Sampled, TextProbe, useMedia } from "./kit/Sample";
 export type { Sample } from "./kit/Sample";
 import { breakLines, fitSize, useFontsReady } from "./kit/Phrase";
+import { WHIP_BLUR, cameraAt, driftZoom, fitCamera } from "./kit/anchor";
+import type { Cam, Shot } from "./kit/anchor";
+import { CalloutLayer } from "./kit/Callout";
+import type { CalloutSpec } from "./kit/Callout";
 import { COVER_ZONE, COVER_ZONE_LOW, Cover, CoverText, ResolvedTone, SceneFrameBox, SceneLayer, SceneSpec, contrast, resolveBrandTone, sceneActivity,
   sceneHideIntervals, speakerRectAt, withRollTone } from "./kit/scenes";
 
@@ -53,6 +57,9 @@ export type ReelKitProps = {
   sceneTone?: string | null; // the video's scene tone (reel.json → tone, otherwise the brand tone): for scenes without their own tone
   cover?: SceneSpec | null; // cover scene (not part of the video — the ReelCover composition takes it with the same props)
   framed?: Framed | null; // the “framed” format (visual_plan.py export from reel.json format: framed); absent — the full frame
+  // callouts (visual_plan.py export → props.callouts, references/callouts.md): a dot on an object of the rough cut, a
+  // leader line and a label, the anchor carried by the same camera and drift as the video; absent — none
+  callouts?: CalloutSpec[] | null;
   // board.py / textcheck.py: frame k shows frame frames[k] of the video, frozen; render --frames=0-(n−1) (kit/Sample.tsx)
   sample?: Sample | null;
 };
@@ -96,42 +103,11 @@ const sceneBox = (g: FramedGeo): SceneFrameBox => ({ area: g.area, win: g.win, r
 const clamp = { extrapolateLeft: "clamp", extrapolateRight: "clamp" } as const;
 const easeOut = Easing.out(Easing.cubic);
 
-export type Shot = { t: number; z: number; cx: number; cy: number; drift?: number; whip?: boolean };
-type Cam = { z: number; cx: number; cy: number; blur: number };
-const WHIP = 7; // frames
-const WHIP_BLUR = 6; // px on screen at the whip's peak (camera.md), whatever the zoom
+// the virtual camera (fitCamera's clamp, cameraAt's push-in and whip) and the template's drift live in kit/anchor.ts,
+// plain math the callouts and visual_plan.py share
+export type { CamView, Shot } from "./kit/anchor";
+export { cameraAt, fitCamera } from "./kit/anchor";
 export const STING_IN = 8; // frames: the end card's field fades in over the last phrase (subtitles and their darkening stay)
-// the camera window never shows past the video: in the full frame cx within [540/z, 1080 − 540/z], cy within
-// [960/z, 1920 − 960/z]; in the framed window (view) the window's half size over z inside the video's cover — the same rule
-// as reels_common.cam_fit, so validate and faces.py check the faces where this draws them (T7: a full-frame clamp moved a
-// framed shot at cx 820 to 540)
-export type CamView = { win: Box; video: Box } | null;
-const FULL: Box = { x: 0, y: 0, w: 1080, h: 1920 };
-export const fitCamera = (z: number, cx: number, cy: number, view?: CamView): Cam => {
-  const zz = Math.max(1, z);
-  const win = view?.win ?? FULL;
-  const v = view?.video ?? FULL;
-  const hx = win.w / 2 / zz;
-  const hy = win.h / 2 / zz;
-  return { z: zz, cx: Math.min(Math.max(cx, v.x + hx), v.x + v.w - hx), cy: Math.min(Math.max(cy, v.y + hy), v.y + v.h - hy), blur: 0 };
-};
-const shotAt = (s: Shot, next: Shot | undefined, t: number, end: number, view?: CamView): Cam => {
-  const k = interpolate(t, [s.t, Math.max(s.t + 0.01, next ? next.t : end)], [0, 1], clamp);
-  return fitCamera(s.z * (1 + (s.drift ?? 0) * k), s.cx, s.cy, view);
-};
-export const cameraAt = (shots: Shot[], t: number, end: number, fps: number, view?: CamView): Cam => {
-  let i = -1;
-  shots.forEach((s, k) => { if (s.t <= t + 1e-6) i = k; });
-  const win = view?.win ?? FULL;
-  if (i < 0) return fitCamera(1, win.x + win.w / 2, win.y + win.h / 2, view);
-  const cam = shotAt(shots[i], shots[i + 1], t, end, view);
-  const p = (t - shots[i].t) * fps / WHIP;
-  if (!shots[i].whip || i === 0 || p >= 1) return cam;
-  const prev = shotAt(shots[i - 1], shots[i], shots[i].t, end, view); // where the previous shot ended (with its drift)
-  const e = easeOut(Math.max(0, p));
-  return { z: prev.z + (cam.z - prev.z) * e, cx: prev.cx + (cam.cx - prev.cx) * e, cy: prev.cy + (cam.cy - prev.cy) * e,
-    blur: Math.sin(Math.PI * Math.max(0, p)) * WHIP_BLUR };
-};
 
 export const reelKitMetadata: CalculateMetadataFunction<ReelKitProps> = ({ props }) => ({
   durationInFrames: Math.max(1, Math.round(props.captions.duration * KIT_FPS) +
@@ -141,13 +117,7 @@ export const reelKitMetadata: CalculateMetadataFunction<ReelKitProps> = ({ props
 const Footage: React.FC<{ p: ReelKitProps; bt: ResolvedTone }> = ({ p, bt }) => {
   const frame = useCurrentFrame();
   const t = frame / KIT_FPS;
-  const segs = p.captions.segments;
-  const seg = segs.find((g) => t >= g.out_start && t < g.out_start + g.out_dur) ?? segs[segs.length - 1];
-  let z = 1;
-  if (p.drift && seg) {
-    const k = interpolate(t, [seg.out_start, seg.out_start + seg.out_dur], [0, 1], clamp);
-    z = seg.i % 2 === 0 ? 1 + 0.05 * k : 1.05 - 0.05 * k;
-  }
+  const z = p.drift ? driftZoom(p.captions.segments, t) : 1;
   const media = useMedia(); // before the early returns
   if (!p.video || !media) return null;
   if (p.framed) return <FramedFootage p={p} z={z} />;
@@ -364,6 +334,10 @@ const ReelKitFrame: React.FC<ReelKitProps> = (p) => {
       <Corner p={p} />
       <SceneLayer scenes={p.scenes} brand={p.brand} look={look} words={p.captions.words} scenesOnly={!p.video} sceneTone={p.sceneTone}
         framed={g ? sceneBox(g) : null} />
+      {!g && p.video ? (
+        <CalloutLayer callouts={p.callouts} brand={p.brand} look={look} fonts={fonts} bt={bt} camera={p.camera}
+          segments={p.captions.segments} drift={p.drift} end={p.captions.duration} scenes={p.scenes} words={p.captions.words} />
+      ) : null}
       <MemeLayer inserts={p.inserts} brand={p.brand} />
       <KitSubtitles captions={p.subtitleCaptions ?? p.captions} brand={p.brand} font={fonts.body} mode={p.subtitles} hide={hide}
         top={p.subtitlesTop ?? 1290} look={look} shade={shade} part="text" tail={tail} {...subArea} />
