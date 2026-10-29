@@ -37,19 +37,19 @@ attach — embeds the cover as cover art (an attached picture, mp4 "covr"): what
         Nothing is re-encoded; the last step, after master_audio.py (mastering keeps only the first video stream).
         Check: the video and audio streams and durations are unchanged and the cover is in the file; otherwise exit 1.
 guide — the same image with frames: the profile grid crop 3:4 (center 1080×1440, NOT CONFIRMED, check in the app)
-        and 1:1 (center 1080×1080), in red the UI zones (top 0–220, bottom 1500–1920, right x > 960). The cover's
+        and 1:1 (center 1080×1080), in red the UI zones (by default top 0–220, bottom 1500–1920, right x > 960; the project's
+        own zone when it sets one, reels_common.ui_safe). The cover's
         hook must fit entirely inside 1:1 and stay out of the red.
 """
 import argparse, json, re, shutil, subprocess, sys, tempfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from reels_common import local_media_args, edit_dir, load_config, load_json, utf8_stdio, warn
+from reels_common import local_media_args, edit_dir, load_config, load_json, ui_safe, utf8_stdio, warn
 
 W, H = 1080, 1920
 GRID_34 = (0, 240, 1080, 1440)   # 3:4 centered in the 9:16 frame, NOT CONFIRMED (Instagram profile grid)
 GRID_11 = (0, 420, 1080, 1080)   # 1:1 centered
-UI = [(0, 0, 1080, 220), (0, 1500, 1080, 420), (960, 220, 120, 1280)]  # UI: top, bottom, right column
 PSNR_COVER = 25.0   # frame 0 vs. the cover: below this, the frame was not replaced
 PSNR_KEEP = 35.0    # frame 1 vs. the source: below this, re-encoding visibly damaged the picture
 
@@ -463,13 +463,16 @@ def cmd_guide(a):
     kx, ky = w / W, h / H
     box = lambda b: f"x={round(b[0] * kx)}:y={round(b[1] * ky)}:w={round(b[2] * kx)}:h={round(b[3] * ky)}"
     t = max(2, round(6 * kx))
-    vf = ",".join([f"drawbox={box(z)}:color=red@0.35:t=fill" for z in UI]
+    s = ui_safe()  # top, bottom, right column
+    ui = [(0, 0, W, s["top"]), (0, H - s["bottom"], W, s["bottom"]), (W - s["right"], s["top"], s["right"], H - s["top"] - s["bottom"])]
+    vf = ",".join([f"drawbox={box(z)}:color=red@0.35:t=fill" for z in ui]
                   + [f"drawbox={box(GRID_34)}:color=yellow@0.95:t={t}", f"drawbox={box(GRID_11)}:color=cyan@0.95:t={t}"])
     out.parent.mkdir(parents=True, exist_ok=True)
     sh(["ffmpeg", "-v", "error", "-y", "-i", src, "-vf", vf, "-frames:v", "1", out], "ffmpeg (guide)")
     print(f"{out}: yellow frame, the 3:4 profile grid (1080×1440 centered, y 240–1680), NOT CONFIRMED, check it in the "
-          f"Instagram app; cyan, 1:1 (1080×1080, y 420–1500); red, the UI zones (top 0–220, "
-          f"bottom 1500–1920, right x > 960). The cover's hook goes entirely inside 1:1 and outside the red.")
+          f"Instagram app; cyan, 1:1 (1080×1080, y 420–1500); red, the UI zones (top 0–{s['top']}, "
+          f"bottom {H - s['bottom']}–{H}, right x > {W - s['right']}). The cover's hook goes entirely inside 1:1 and "
+          f"outside the red.")
 
 
 def cmd_attach(a):

@@ -439,6 +439,40 @@ MEME_SIZES = ["s", "m", "l"]
 SUB_BAND = (1250, 1430)
 SUB_MAX_TOP = 1390
 SUB_TOP_KIT = 1290
+# The tolerance of the checks on finished frames (faces.py audit, textcheck.py): an overlap with a face counts from
+# 30 px; the 60 px rule (faces.MARGIN) is enforced when planning. Measured 2026-10-17 on 6 finished videos: the full
+# 60 px flagged 4 moments in 3 of them, one a card just under a chin and the rest single 0.25 s samples with the text
+# far from the face on the still (detector jitter). Here, not in faces.py, so textcheck reads it without OpenCV
+CHECK_MARGIN = 30
+FACE_MARGIN = 60      # the rule: graphics keep this far from a face (faces.MARGIN; memes: meme_layout.face_margin)
+LINE_FACE_MARGIN = 20  # a callout's leader line, thinner than a label, keeps this far from a face (references/callouts.md)
+# The app's UI zone, px from each edge of the 1080x1920 frame: Reels, Shorts and TikTok draw their buttons and caption
+# there. One setting for every check and layout: reel-defaults.json -> meme_layout.safe (a project raises its bottom
+# for TikTok, say); this is its fallback. Before 1.21.1 only the memes read the setting, while textcheck, B-roll windows,
+# callouts, faces.py and matte.py kept these numbers of their own (review 2026-10-30).
+UI_SAFE = {"top": 220, "bottom": 420, "right": 120, "left": 40}
+_UI_SAFE_SEEN = {}
+
+
+def ui_safe(project=None):
+    """{top, bottom, right, left}: the UI zone of this project, every defaults layer read (defaults_layers), a side the
+    layers leave out from UI_SAFE. Kept per project and per state of its files, so a check that asks for every frame
+    reads them once."""
+    root = Path(project or project_root())
+    files = (DEFAULTS_LOCAL, root / PROJECT_DEFAULTS, os.environ.get("REELS_DEFAULTS_OVERLAY"))
+    key = (str(root), tuple((str(f), Path(f).stat().st_mtime_ns) if f and Path(f).is_file() else None for f in files))
+    if key not in _UI_SAFE_SEEN:
+        safe = (load_defaults(root).get("meme_layout") or {}).get("safe") or {}
+        _UI_SAFE_SEEN[key] = {k: int(safe.get(k, v)) for k, v in UI_SAFE.items()}
+    return dict(_UI_SAFE_SEEN[key])
+
+
+def ui_zone(left=None, project=None):
+    """(x0, y0, x1, y1) of the frame outside the UI zone; left: another left edge (a B-roll window may touch it)."""
+    s = ui_safe(project)
+    return (s["left"] if left is None else left, s["top"], 1080 - s["right"], 1920 - s["bottom"])
+
+
 # The height of the kit's subtitle block at its most, two lines (Subtitles.tsx GEO: "Typewriter" 2 x 56 x 1.22; "Bar"
 # 2 plates of 60 x 1.15 + 13 with a 6 px gap; "Accent" 2 x 66 x 1.15 + 16): export records the band the render has as
 # [top, top + this], below the UI line. The kit never draws a third line (T4: a 56-character phrase wrapped into three

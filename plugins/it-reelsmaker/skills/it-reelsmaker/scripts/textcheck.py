@@ -24,7 +24,8 @@ How:
                 margin, as `faces.py audit` takes it; not where the rough cut is covered or moved (a full or split
                 scene, a replacing B-roll, a cutaway meme, a presenter layer) and not on the end card;
        warning  clipped — less than 98 % of the box is visible inside the boxes that clip it;
-       warning  UI zone — above y 220, below y 1500 or right of x 960 (the app's caption, buttons and likes column).
+       warning  UI zone — above y 220, below y 1500, right of x 960 (the app's caption, buttons and likes column) or
+                left of x 40; the project's own zone when its reel-defaults.json sets meme_layout.safe.
   3. Report lines `✗ kind a-b s group «text»`, edit/<id>/textcheck.json; exit code 1 on errors, and on a pass with
      frames missing from the log (a gap would hide a problem: the check is then incomplete, not passed). Faces come from the
      rough cut's faces.json (faces.py scan); without it the face check is skipped and the report says so.
@@ -42,7 +43,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import board as bd  # noqa: E402
-from reels_common import edit_dir, load_json, save_json  # noqa: E402
+from reels_common import CHECK_MARGIN, edit_dir, load_json, save_json, ui_safe  # noqa: E402
 
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -58,8 +59,6 @@ CORE = 0.2  # a line box runs above the capitals and below the baseline: overlap
 VISIBLE = 0.98  # share of a box left by the boxes that clip it
 ALPHA = 0.25  # text fainter than this is fading in or out
 MIN_RUN_S = 0.3
-UI_TOP, UI_BOTTOM, UI_RIGHT = 220, 1500, 960
-FACE_PX = 30  # = faces.CHECK_MARGIN, the checks' tolerance (faces.py imports cv2: read lazily there)
 
 
 def parse_log(text):
@@ -137,12 +136,16 @@ def face_source(e, plan, props, fps):
         hi = min([t + st] + [c - 1e-6 for c in cuts if c > t + 1e-6])
         boxes = [f[:4] for x in fdata["samples"] if lo - 1e-6 <= x["t"] <= hi + 1e-6 for f in x["faces"]]
         cam = vp.camera_at(shots, t, dur, fps, view) if shots else None
-        return [fc.grow(b, fc.CHECK_MARGIN) for b in fc.screen_faces(boxes, cam, win)]  # the checks' tolerance
+        return [fc.grow(b, CHECK_MARGIN) for b in fc.screen_faces(boxes, cam, win)]  # the checks' tolerance
     return faces_at
 
 
-def frame_issues(boxes, faces):
-    """One frame -> [(level, kind, subject, text, detail)]; subject identifies the same problem across frames."""
+def frame_issues(boxes, faces, safe=None):
+    """One frame -> [(level, kind, subject, text, detail)]; subject identifies the same problem across frames. safe: the
+    project's UI zone (reels_common.ui_safe), read here when not given."""
+    s = safe or ui_safe()
+    ui = (("top", (0, 0, W, s["top"])), ("bottom", (0, H - s["bottom"], W, s["bottom"])),
+          ("right", (W - s["right"], 0, s["right"], H)), ("left", (0, 0, s["left"], H)))
     out = []
     seen = [b for b in boxes if b[6] >= ALPHA]
     for b in seen:
@@ -152,12 +155,11 @@ def frame_issues(boxes, faces):
             out.append(("error", "off the frame", ident(key), text, f"{round(past)} px past the edge"))
         elif vis < VISIBLE:
             out.append(("warning", "clipped", ident(key), text, f"{round(vis * 100)} % visible in its box"))
-        zones = [n for n, r in (("top", (0, 0, W, UI_TOP)), ("bottom", (0, UI_BOTTOM, W, H - UI_BOTTOM)),
-                                ("right", (UI_RIGHT, 0, W - UI_RIGHT, H))) if hits(r, b)]
+        zones = [n for n, r in ui if hits(r, b)]
         if zones:
             out.append(("warning", "UI zone", ident(key), text, "/".join(zones)))
         if faces and any(hits(f, b) for f in faces):
-            out.append(("error", "on a face", ident(key), text, f"a measured face + {FACE_PX} px"))
+            out.append(("error", "on a face", ident(key), text, f"a measured face + {CHECK_MARGIN} px"))
     for i, a in enumerate(seen):
         for b in seen[i + 1:]:
             if a[0] == b[0]:
@@ -200,7 +202,9 @@ def runs(per_frame, step, fps):
 
 
 def check(per_frame, faces_at, step, fps):
-    return runs({f: frame_issues(b, faces_at(f / fps) if faces_at else None) for f, b in per_frame.items()}, step, fps)
+    safe = ui_safe()
+    return runs({f: frame_issues(b, faces_at(f / fps) if faces_at else None, safe) for f, b in per_frame.items()},
+                step, fps)
 
 
 def main():

@@ -122,7 +122,8 @@ the same points, for every variant and for moving anchors.
 
 - The dot: a 28 px disc in the plate's ink with the marker color inside (no glow or outline). The line: 5 px, the
   marker color, 90 px at 45° to the elbow, then 48 px level to the label, which it meets at the title's middle.
-- `tag`: the title plate 70 px high, the heading font at 52 px / 700 on the style's marker plate (`look.mark` /
+- `tag` (the sizes are also in `references/typography.md`, “Style specs”: a label next to an object, smaller than a
+  card on purpose): the title plate 70 px high, the heading font at 52 px / 700 on the style's marker plate (`look.mark` /
   `onMark`); the detail plate under it: 50 px, the body font at 34 px / 600, caps, +0.12 em, on the primary color.
 - `line`: the level line runs on under the title, the title stands on it in the brand's `text_on_primary`, the detail
   hangs under it; no plate, no shadow.

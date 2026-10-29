@@ -81,6 +81,8 @@ Everything described below (logo, end card, hook headline, cards, focus brackets
 | face (measured) | no-go zone for any text, 60 px margin |
 | y ≈1250–1390 | subtitles: top = measured chin + 30 px; at the edge away from the speaker or bottom left; centered only if it doesn't fit otherwise |
 
+The UI rows are the defaults; a project with a taller app UI (TikTok's bottom, say) sets its own in `reel-defaults.json → meme_layout.safe` (`top`, `bottom`, `right`, `left`, px from the edge), and every layout and check uses it.
+
 Where the head is comes **from the face-detection model's measurement**, not by eye (`references/faces.md`; false “faces” on knees and hands are not a frame error and are dropped by the filter): faces across the whole rough cut every 0.25 s → for each span, the room in the “headroom” zone (from y 250 to face top − 60) for the hook and cards, in the “chest” zone (from chin + 60 down to the subtitles) and at the sides, plus the subtitle height. The chin stays above the subtitles in every camera shot: zoom is calculated by formula (screen = (x − cx)·z + 540). No model → check frame by frame.
 
 ## 3. Styles — one per video

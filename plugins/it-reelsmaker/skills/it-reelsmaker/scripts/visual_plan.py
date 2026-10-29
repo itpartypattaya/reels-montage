@@ -74,8 +74,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from reels_common import (CORNER_BOX, FRAMED_HOOK_MIN, FRAMED_LABEL_UP, FRAMED_RADIUS, FRAMED_SUB_GAP, MEME_SIZES, NUMBER_RE, SUB_BAND, SUB_BLOCK_H, SUB_MAX_TOP,
                           SUB_TOP_KIT, budget, cam_fit, edit_dir, editing_json, effective, forbidden_hits, framed_area, framed_sub_area,
                           framed_at, framed_issues, framed_source, framed_view, inside, load_config, load_json, locked,
-                          media_kind, online, parse_sets, probe, project_root, safe_slug, save_json, tokens, utf8_stdio,
-                          warn)
+                          media_kind, online, parse_sets, probe, project_root, safe_slug, save_json, tokens, ui_safe,
+                          ui_zone, utf8_stdio, warn, LINE_FACE_MARGIN, UI_SAFE)
 
 SCENE_MODES = ["overlay", "split", "panel", "window", "full"]  # a scene's default mode: the first of its own list
 KINDS = {"broll": {"modes": ["replace", "window"], "prefix": "b"}, "meme": {"modes": ["popup", "cutaway"], "prefix": "m"},
@@ -83,9 +83,9 @@ KINDS = {"broll": {"modes": ["replace", "window"], "prefix": "b"}, "meme": {"mod
          "callout": {"modes": ["overlay"], "prefix": "l"}}  # a label pointing at an object (references/callouts.md)
 # B-roll "window" (the Inserts component of the Remotion template): the box inserts[].box in 1080x1920 screen
 # coordinates; without a box the template uses WINDOW_DEFAULT.
-# Safe zone: right of x 960 are the UI buttons, above y 220 and below 1500 are the UI and the subtitles
+# Safe zone: right of x 960 are the UI buttons, above y 220 and below 1500 are the UI and the subtitles (the defaults:
+# a project's own UI zone moves them, reels_common.ui_zone; a window may touch the left edge)
 WINDOW_DEFAULT = [60, 250, 900, 675]
-WINDOW_ZONE = (0, 220, 960, 1500)
 WINDOW_SLOTS = [WINDOW_DEFAULT, [60, 820, 900, 675]] + [[x, y, w, h] for w, h in ((600, 450), (480, 360))  # 4:3, larger -> smaller
                                                        for y in (250, 1500 - h) for x in (60, 960 - w - 60)]
 # overlay scenes also try low bands in the headroom: every slot above is 360+ px tall and lands on a face that sits
@@ -545,12 +545,12 @@ def resolve_at(at, plan, cap):
 
 
 def text_zone(e):
-    """(x0, y0, x1, y1) where boxes may go: the safe zone (WINDOW_ZONE), or in the "framed" format the window's text
+    """(x0, y0, x1, y1) where boxes may go: the safe zone (ui_zone, from the left edge), or in the "framed" format the window's text
     area (reels_common.framed_area), and the zone's name for messages."""
     fr = framed_at(e)
     if fr:
         return tuple(framed_area(fr)), "the framed window's text area"
-    return WINDOW_ZONE, "the safe zone"
+    return ui_zone(left=0), "the safe zone"
 
 
 def faces_seen(e, plan, data, t0, t1, cam=None, shots_ok=True):
@@ -1631,7 +1631,8 @@ def check_callouts(e, plan, s, doc, fdata, callouts, brolls, memes, scenes, corn
     lb = ml.layout(s, doc).get("subtitles_band", list(SUB_BAND))
     pb = plan.get("subtitles_band") or lb  # the band export measured for the render, and the layout's
     band = [min(lb[0], pb[0]), max(lb[1], pb[1])] if (s.get("subtitles") or "accent") != "none" else None
-    zx0, zy0, zx1, zy1 = CALLOUT_ZONE
+    zx0, zy0, zx1, zy1 = ui_zone()  # the label: the safe zone, 40 px off the left edge by default
+    ui = ui_safe()
     step = (fdata or {}).get("step", 0.25)
     keep = [k for k in plan.get("keep_clear", []) if not k.get("callout")]
     # where the rough cut is not on screen as the anchor has it: a scene that moves or covers it, a replacing B-roll,
@@ -1798,7 +1799,7 @@ def check_callouts(e, plan, s, doc, fdata, callouts, brolls, memes, scenes, corn
             what = {"ring": "ring", "dimension": "dimension"}.get(vr, "dot")
             if any(not (0 <= x_ <= 1080 and 0 <= y_ <= 1920) for x_, y_ in ends):
                 found.setdefault("frame", (t, f"the {what} ({px:.0f}, {py:.0f}) leaves the frame"))
-            elif any(y_ < fc.UI_TOP or y_ > fc.H - fc.UI_BOTTOM or x_ > fc.W - fc.UI_RIGHT for x_, y_ in ends):
+            elif any(y_ < ui["top"] or y_ > fc.H - ui["bottom"] or x_ > fc.W - ui["right"] for x_, y_ in ends):
                 found.setdefault("ui-dot", (t, f"the {what} ({px:.0f}, {py:.0f}) is in the app's UI zone"))
             x, y, pw, ph = plate
             if x < zx0 or y < zy0 or x + pw > zx1 or y + ph > zy1:
@@ -1813,7 +1814,7 @@ def check_callouts(e, plan, s, doc, fdata, callouts, brolls, memes, scenes, corn
                 if own:
                     found.setdefault("person", (t, "the dot is on a face: to point at a person, use --person (the dot "
                                                    "then goes to the shoulder); look at the stills"))
-                elif any(_seg_hits(p, q, f, CALLOUT_LINE_MARGIN) for p, q in segs_):
+                elif any(_seg_hits(p, q, f, LINE_FACE_MARGIN) for p, q in segs_):
                     found.setdefault("line", (t, f"the leader line crosses the face {[round(v) for v in f]}: put the "
                                                  f"label on the other side or under the dot"))
             if band and not any(h0 - 1e-6 <= t <= h1 + 1e-6 for h0, h1 in hidden):
@@ -3032,10 +3033,8 @@ CALLOUT_RING = (24, 400)  # ring --radius, px of the rough cut
 CALLOUT_INK = 3.0        # line: the text's contrast against the lightest (or darkest) 5 % of the picture under it
 CALLOUT_SEEN = 0.8       # a moving anchor: the share of the callout's time its dot is visible, below it a warning
 CALLOUT_MAX_W = 640      # px: a wider label is a sentence, not a name
-CALLOUT_ZONE = (40, 220, 960, 1500)  # the label: the safe zone, 40 px off the left edge
 CALLOUT_GAP_S = 0.6      # a second callout enters no sooner than this after the first (one element at a time)
 CALLOUT_AT_ONCE = 2
-CALLOUT_LINE_MARGIN = 20  # px around a face that the leader line keeps out of
 HOOK_BOX = [60, 300, 900, 242]  # the kit's hook headline (ReelKit Hook: 100 px lines from y 300), first 2.4 s
 DRIFT = 0.05
 
@@ -3177,7 +3176,8 @@ def callout_width(lines, variant="tag"):
 def callout_side(x, w):
     """The side with room for the label (right first): the one where it stays inside the safe zone."""
     off = CALLOUT["reach"] + CALLOUT["run"]
-    right, left = CALLOUT_ZONE[2] - (x + off + w), (x - off - w) - CALLOUT_ZONE[0]
+    zx0, _, zx1, _ = ui_zone()
+    right, left = zx1 - (x + off + w), (x - off - w) - zx0
     return "right" if right >= 0 or right >= left else "left"
 
 
@@ -3950,7 +3950,7 @@ def cmd_export(a):
             # the kit draws at most two lines (Subtitles.tsx): the band is the mode's two-line block from the top, above
             # the UI (T4: the band said 1250-1430 while a three-line phrase reached 1455)
             h = SUB_BLOCK_H.get(props["subtitles"], band[1] - band[0])
-            low = fc.H - fc.UI_BOTTOM
+            low = fc.H - UI_SAFE["bottom"]  # the kit's own geometry: its subtitles do not move with a project's zone
             if fr:  # the subtitle block stays inside the window's text area (the kit lifts it the same way), or with
                 # subtitles_at below right under the window, on the field (the chin is above it, inside the window)
                 a0, a1 = framed_sub_area(fr)[1], framed_sub_area(fr)[3]

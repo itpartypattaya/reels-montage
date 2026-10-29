@@ -35,12 +35,10 @@ import argparse, json, os, re, shutil, subprocess, sys, tempfile, time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from reels_common import local_media_args, inside, safe_slug, edit_dir, load_json, locked, probe, project_settings, run, save_json, utf8_stdio, warn
+from reels_common import local_media_args, inside, safe_slug, edit_dir, load_json, locked, probe, project_settings, run, save_json, ui_safe, utf8_stdio, warn
 
 W, H = 1080, 1920
 SEC_PER_MPX = 0.5     # about 1 s per 1080x1920 frame (2.07 Mpx) on a CPU at low priority
-UI_BOTTOM = 420       # the bottom of the frame under the Reels UI: the presenter's face stays above it
-UI_RIGHT = 120
 NAME_RE = re.compile(r"^[A-Za-z0-9_-]{1,40}$")      # --name goes into file names: safe characters only
 
 # Layouts (references/figure.md, section 2). face: the target height of the YuNet face box on screen, px.
@@ -501,15 +499,16 @@ def cmd_place(a):
                          f"an opaque element across the whole width from y {line[0]} down (a plate in the background "
                          f"color, a lower third, the panel), or use the window layout")
     if fscr:
-        if fscr[1] + fscr[3] > H - UI_BOTTOM:
-            issues.append(f"the chin at {fscr[1] + fscr[3]} is in the UI zone (> {H - UI_BOTTOM}): a smaller --face, "
+        ui = ui_safe()  # the app's UI zone of this project: the presenter's chin stays above it, the face off the right column
+        if fscr[1] + fscr[3] > H - ui["bottom"]:
+            issues.append(f"the chin at {fscr[1] + fscr[3]} is in the UI zone (> {H - ui['bottom']}): a smaller --face, "
                           f"another side or layout")
         if a.layout == "review":
             px, py, pw, ph = L["panel"]
             if fscr[1] < py + ph - 30:
                 issues.append(f"the face (top {fscr[1]}) overlaps the scene panel (bottom {py + ph}): a shorter panel "
                               f"or a smaller --face")
-        if side == "right" and fscr[0] + fscr[2] > W - UI_RIGHT:
+        if side == "right" and fscr[0] + fscr[2] > W - ui["right"]:
             issues.append("the face is under the like-button column on the right: side left")
     for x in issues + notes:
         print("  ⚠ " + x)

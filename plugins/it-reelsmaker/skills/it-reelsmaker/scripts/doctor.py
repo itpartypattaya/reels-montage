@@ -80,7 +80,7 @@ def check_ffmpeg():
 
 def check_python_packages():
     add("Pillow", "recommended", has_module("PIL"), "", INSTALL["pillow"])
-    add("OpenCV (faces.py)", "optional", has_module("cv2"), "", INSTALL["opencv"])
+    add("OpenCV (faces.py; track.py: callouts that follow an object)", "optional", has_module("cv2"), "", INSTALL["opencv"])
     fw = has_module("faster_whisper")
     # the model itself is not looked up: its download cache is where access tokens live too, and the plugin directory
     # holds a plugin that reads that folder for review (1.9.1). transcribe.py loads it from disk only (local_files_only)

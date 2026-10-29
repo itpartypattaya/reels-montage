@@ -2,6 +2,21 @@
 
 What changed in IT Reelsmaker, written for the people who use it. The newest version is on top. The skill shows a short “What's new” note from this file once, on the first edit after an update.
 
+## 1.21.1
+
+- **Your own UI zone counts everywhere.** A project that sets a taller app UI in its `reel-defaults.json`
+  (`meme_layout.safe`, for TikTok's bottom, say) used to get it only for memes: the text check, B-roll windows,
+  callouts, the free zones of `faces.py`, the presenter check of `matte.py` and the cover guide of `poster.py` kept
+  the default 220 / 420 / 120 px. Now all of them read the same setting, and the free zones `faces.py` offers end
+  above a bottom UI that starts above the subtitles. Without your own zone the one new thing is a `textcheck.py`
+  warning for text closer than 40 px to the left edge (the zone's left side, which it did not check before); the
+  kit's own subtitle position does not move with the setting.
+- A callout's label sizes (52 px name, 34 px detail) are in `references/typography.md` too, marked as a label next to
+  an object, not a card; `doctor.py` says that OpenCV is also what callouts that follow an object need.
+- Housekeeping, no change in what the checks report: the face margins (60 px rule, 30 px tolerance of the checks on
+  finished frames, 20 px for a callout's line) are one setting each in `reels_common.py`. The repository's front page
+  now names Remotion's license too (free up to 3 employees, a company license above that).
+
 ## 1.21.0
 
 - **Callouts follow the object.** On a pan or a walk-through filmed by hand the object no longer slides away from the

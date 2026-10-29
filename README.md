@@ -38,3 +38,5 @@ Before version 1.0 this repository was a single skill installed by cloning it in
 ## License
 
 [MIT](LICENSE).
+
+The plugins render with [Remotion](https://www.remotion.dev/), which has its own license: free for individuals, non-profits and companies of up to 3 employees; a larger company (an agency, for example) needs a Remotion company license ([license terms](https://github.com/remotion-dev/remotion/blob/main/LICENSE.md)).

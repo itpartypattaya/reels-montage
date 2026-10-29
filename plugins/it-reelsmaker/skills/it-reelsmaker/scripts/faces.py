@@ -47,8 +47,8 @@ import argparse, importlib.util, json, os, shutil, subprocess, sys, tempfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from reels_common import (SUB_BAND, SUB_MAX_TOP, edit_dir, framed_at, framed_view, load_json, probe, project_root,
-                          project_settings, run, save_json, utf8_stdio, warn)
+from reels_common import (CHECK_MARGIN, FACE_MARGIN, SUB_BAND, SUB_MAX_TOP, edit_dir, framed_at, framed_view,
+                          load_json, probe, project_root, project_settings, run, save_json, ui_safe, utf8_stdio, warn)
 
 W, H = 1080, 1920
 MODEL = None         # --model; otherwise REELS_FACE_MODEL; otherwise it-reelsmaker.json -> face_model (model_path())
@@ -57,13 +57,9 @@ MODEL_HELP = (f"download {MODEL_FILE} yourself from the opencv_zoo project on Gi
               f"models/face_detection_yunet/; direct file: https://media.githubusercontent.com/media/opencv/opencv_zoo/"
               f"main/models/face_detection_yunet/{MODEL_FILE}), keep it outside the plugin folder and pass its path: "
               f"--model <file>, the REELS_FACE_MODEL environment variable or \"face_model\" in it-reelsmaker.json")
-MARGIN = 60          # margin around a face for any graphics: the rule, enforced when planning (zones, keep_clear, validate)
-# The tolerance of the checks on finished frames (render audit, textcheck): an overlap counts from 30 px. Measured
-# 2026-10-17 on 6 finished videos: the full 60 px flagged 4 moments in 3 of them, one a card just under a chin and the
-# rest single 0.25 s samples with the text far from the face on the still (detector jitter)
-CHECK_MARGIN = 30
+MARGIN = FACE_MARGIN  # margin around a face for any graphics: the rule, enforced when planning (zones, keep_clear, validate)
+#                      the checks on finished frames use CHECK_MARGIN (reels_common: 30 px, and why)
 SUB_FACE_GAP = 30    # the subtitles' top sits this far under the measured chin (a design choice, not the check above)
-UI_TOP, UI_BOTTOM, UI_RIGHT = 220, 420, 120
 SUB = SUB_BAND       # the subtitle band graphics keep out of (reels_common: the same as validate); --sub top,bottom
 FRAME = (25, 340, 1030, 1240)  # the "framed" window for a horizontal source (references/techniques.md), x, y, w, h
 SRC_LONG = 960       # measuring in source geometry: the long side of the frame for YuNet (like 540x960 for vertical)
@@ -487,14 +483,17 @@ def segments_of(e):
 def zone_report(f, sub, fr=None):
     """Free zones of the frame for face f (camera already applied). fr: the "framed" window; the headroom and the sides
     are computed inside it."""
+    ui = ui_safe()  # the app's UI zone of this project (reels_common)
+    top = max(ui["top"] + 30, fr[1]) if fr else ui["top"] + 30
+    low = H - ui["bottom"]  # a bottom UI taller than the defaults may start above the subtitles (Codex review)
     if not f:
-        top = max(UI_TOP + 30, fr[1]) if fr else UI_TOP + 30
-        return {"face": None, "ceiling": [top, sub[0] - 40], "chest": None, "left": 960, "right": 960, "sub_ok": True}
-    top = max(UI_TOP + 30, fr[1]) if fr else UI_TOP + 30
-    lft, rgt = (fr[0], min(W - UI_RIGHT, fr[0] + fr[2])) if fr else (40, W - UI_RIGHT)
+        return {"face": None, "ceiling": [top, min(sub[0] - 40, low)], "chest": None, "left": 960, "right": 960,
+                "sub_ok": True}
+    lft, rgt = (fr[0], min(W - ui["right"], fr[0] + fr[2])) if fr else (ui["left"], W - ui["right"])
     fx0, fy0, fx1, fy1 = f[0] - MARGIN, f[1] - MARGIN, f[0] + f[2] + MARGIN, f[1] + f[3] + MARGIN
     ceil = [top, fy0] if fy0 - top >= 120 else None
-    chest = [fy1, sub[0] - 20] if sub[0] - 20 - fy1 >= 120 else None
+    chest_end = min(sub[0] - 20, low)
+    chest = [fy1, chest_end] if chest_end - fy1 >= 120 else None
     return {"face": f, "ceiling": ceil, "chest": chest, "left": max(0, fx0 - lft), "right": max(0, rgt - fx1),
             "sub_ok": f[1] + f[3] + SUB_FACE_GAP <= sub[0], "cut_top": f[1] < (fr[1] if fr else 0)}
 
