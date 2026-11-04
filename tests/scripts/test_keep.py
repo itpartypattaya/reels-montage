@@ -146,10 +146,10 @@ def test_the_kit_keeps_a_group_on_one_block():
     assert "keep?: string" in subs and "export const inKeep" in subs
     # buildChunks: no phrase ends inside a group, and a group that is the whole run stays one chunk past the limits
     assert "!inKeep(prev, w)" in subs and "!inKeep(w, words[k + 1])" in subs
-    assert "if (inKeep(ws[best - 1], ws[best])) return [ws];" in subs
+    assert "if (inKeep(wlist[best - 1], wlist[best])) return [wlist];" in subs
     # bestSplit avoids a group first; fit() splits a group over two lines as if it had no mark, with a warning
-    assert "const score = [inKeep(ws[k - 1], ws[k]) ? 1 : 0," in subs
-    assert "buildChunks(ws.map(({ keep: _k, ...w }) => w), maxWords, maxChars)" in subs
+    assert "const score = [inKeep(wlist[k - 1], wlist[k]) ? 1 : 0," in subs
+    assert "buildChunks(wlist.map(({ keep: _k, ...w }) => w), maxWords, maxChars)" in subs
     assert "does not fit two lines: split as usual" in subs
     # two lines of a group are shown together, lifted above the bottom, not one at a time
     assert "!kept && top + height(g, size, lines.length) > bottom" in subs
