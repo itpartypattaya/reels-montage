@@ -82,8 +82,8 @@ def check_python_packages():
     add("Pillow", "recommended", has_module("PIL"), "", INSTALL["pillow"])
     add("OpenCV (faces.py; track.py: callouts that follow an object)", "optional", has_module("cv2"), "", INSTALL["opencv"])
     fw = has_module("faster_whisper")
-    # the model itself is not looked up: its download cache is where access tokens live too, and the plugin directory
-    # holds a plugin that reads that folder for review (1.9.1). transcribe.py loads it from disk only (local_files_only)
+    # the model itself is not looked up: its download cache belongs to another tool, and the plugin reads no other
+    # tool's folders (1.9.1). transcribe.py loads it from disk only (local_files_only)
     # and stops when it is missing, so the one-time download command is always shown (PR review)
     add("faster-whisper (transcribe.py)", "optional", fw,
         "the model is not checked here; download it once before the first transcript: " + INSTALL["whisper-model"] if fw else "",

@@ -2,8 +2,8 @@
 """Shared helpers for the skill's scripts: project paths, brands, video settings, ffmpeg, word search.
 
 Imported by the other scripts (brand.py, reelcfg.py, visual_plan.py, footage.py, memes.py, ...). Standard library
-only. No network access and no credentials here: online sources live in the it-reelsmaker-online add-on, which this
-module loads only when it is installed (see online()).
+only, no network access: online sources live in the it-reelsmaker-online add-on, which this module loads only when it
+is installed (see online()).
 """
 import contextlib, importlib, json, math, os, re, shutil, subprocess, sys, tempfile, time, unicodedata, uuid
 from pathlib import Path

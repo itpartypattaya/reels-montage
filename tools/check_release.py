@@ -40,6 +40,12 @@ CORE_FORBIDDEN = re.compile(
     r"|\bflux\b|\bimagen\b|hyperframes tts|\bai[-‐‑–— ]generat(?:ed|ion|ing|es?)\b",
     re.I,
 )
+# Words about access secrets in the core: the directory's scan pairs them with any URL in the plugin and holds every
+# version as "Uses a credential from the user's machine" (MCP_FORWARDS_CREDENTIAL_ENV), though the core reads none.
+CORE_CREDENTIAL = re.compile(
+    r"credential|secret|password|passphrase|access[_ -]?tokens?|auth[_ -]?tokens?|bearer|private[_ -]?key|\.env\b",
+    re.I,
+)
 CYRILLIC = re.compile(r"[Ѐ-ӿ]")
 
 errors, warnings = [], []
@@ -141,6 +147,10 @@ def check_plugin(pdir, private_terms):
             if m:
                 line = text[: m.start()].count("\n") + 1
                 errors.append(f"{rel}:{line}: core mentions online provider/keys: {m.group(0)!r}")
+            c = CORE_CREDENTIAL.search(text)
+            if c:
+                line = text[: c.start()].count("\n") + 1
+                errors.append(f"{rel}:{line}: core mentions access secrets (the directory holds it): {c.group(0)!r}")
             n = CORE_NETWORK.search(text) if ext in (".py", ".ts", ".tsx", ".js", ".mjs") else None
             if n:
                 line = text[: n.start()].count("\n") + 1

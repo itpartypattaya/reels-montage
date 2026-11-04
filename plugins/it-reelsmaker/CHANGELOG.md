@@ -16,6 +16,8 @@ What changed in IT Reelsmaker, written for the people who use it. The newest ver
 - Housekeeping, no change in what the checks report: the face margins (60 px rule, 30 px tolerance of the checks on
   finished frames, 20 px for a callout's line) are one setting each in `reels_common.py`. The repository's front page
   now names Remotion's license too (free up to 3 employees, a company license above that).
+- Catalog housekeeping, no change to editing: a few comments reworded so the directory's scan stops reading them
+  as the plugin handling sign-in data (it never did; the core makes no network requests).
 
 ## 1.21.0
 
@@ -188,7 +190,7 @@ What changed in IT Reelsmaker, written for the people who use it. The newest ver
 
 - **Catalog housekeeping, no change to editing.** The listing icon is no longer shipped inside the plugin (the catalog
   holds every version with a picture in it for a manual review; the icon is set in the listing instead), and
-  `doctor.py` no longer looks into the model download cache, a folder where access tokens are kept too: it shows the
+  `doctor.py` no longer looks into the model download cache, a folder of another tool: it shows the
   one-time command that downloads the transcription model instead.
 
 ## 1.9.0

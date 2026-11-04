@@ -52,8 +52,8 @@ EXCLUDE_DIRS = {"edit", "node_modules", "out", "_catalog", ".git", "plans", "mem
 
 
 def err_text(ex, limit=160):
-    """An error for output and JSON: type + text. With the online add-on loaded, secrets are masked first (a source's
-    error may contain them), then the text is cut."""
+    """An error for output and JSON: type + text. With the online add-on loaded, its own filter cleans the text first (a
+    source's error may quote its request), then the text is cut."""
     ext = online()
     return f"{type(ex).__name__}: {(ext.scrub(ex) if ext else str(ex))[:limit]}"
 
