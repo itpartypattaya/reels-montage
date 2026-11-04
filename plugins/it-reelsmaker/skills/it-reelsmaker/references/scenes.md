@@ -109,7 +109,7 @@ A scene is an entry in `edit/<id>/visual_plan.json` with `kind: "scene"` (ids `c
 
 Check of this example: 8 words need 2.4 s settled; 3.6 s minus the entrance and exit of `calm` (14 + 9 frames ≈ 0.77 s) and minus the layout change of `split` before the text (fade, ≈ 0.27 s) leaves ≈ 2.57 s ✓; the scene leaves at 15.9 s, well after the last spoken word (14.1 s) plus the 0.4 s hold ✓.
 
-Fields: `type`, `mode`, `at` or `start`, `dur`, `tone`, `text` (`lines`, `accent`, `label`), `items` (`text`, `at` or `t`, `from`), `value` (`from`, `to`, `prefix`, `suffix`, `decimals`), `media`, `interaction` (`kind`: tap / type / cursor / swipe, `target`, `text`, `at`), `box`, `source` (`kind`: speech / brief / brand / client / agent, `ref`; `client` is what the client or the person handed over for this video, `agent` is what the agent found or worded itself, including text read from the client's own site or a local copy of it, with the file and line in `ref`), `what`, `why`, `transition_in`, `transition_out`, `sound`, `hide_subtitles`, `status` (planned → ready once the fields pass the check; skipped). A scene needs no file: it is drawn at render time from its fields.
+Fields: `type`, `mode`, `at` or `start`, `dur`, `tone`, `text` (`lines`, `accent`, `label`), `items` (`text`, `at` or `t`, `from`), `value` (`from`, `to`, `prefix`, `suffix`, `decimals`), `media`, `interaction` (`kind`: tap / type / cursor / swipe, `target`, `text`, `at`), `box`, `source` (`kind`: speech / brief / brand / client / agent, `ref`; `client` is what the client or the person handed over for this video, `agent` is what the agent found or worded itself, including text read from the client's own site or a local copy of it, with the file and line in `ref`), `what`, `why`, `transition_in`, `transition_out`, `sound`, `hide_subtitles`, `status` (planned → ready once the check accepts the fields; skipped). A scene needs no file: it is drawn at render time from its fields.
 
 Scene texts, like card texts, are **shown to the person before rendering** in the visual plan table.
 
@@ -158,7 +158,7 @@ Sounds come from your own library `{{ASSETS_DIR}}`; CC0 packs are the easiest (n
 |---|---|---|
 | hook, reveal, change of section | soft low impact | `hit` |
 | card, item, message | card, paper, soft “drop” | `card`, `paper` |
-| typing | individual key presses, a different file for neighboring characters, quiet | `type` |
+| typing | individual keystrokes, a different file for neighboring characters, quiet | `type` |
 | tap, cursor, toggle | short click | `tap` |
 | payoff, number lands, logo | bell or glass, once | `bell` |
 

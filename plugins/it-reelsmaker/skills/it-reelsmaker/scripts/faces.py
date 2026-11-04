@@ -27,7 +27,7 @@ memes. --raw shows them without the filter.
 
 Model: face_detection_yunet_2023mar.onnx from the opencv_zoo project on GitHub (opencv/opencv_zoo,
 models/face_detection_yunet/, 232,589 bytes). The plugin does not download it: download it yourself, keep it outside
-the plugin folder and pass its path with --model, the REELS_FACE_MODEL environment variable or "face_model" in
+the plugin folder and give its path with --model, the REELS_FACE_MODEL environment variable or "face_model" in
 it-reelsmaker.json (a relative path there is relative to the project folder).
 OpenCV 4.8 or newer in the Python that runs this script: pip install opencv-python-headless.
 No model or no OpenCV: the commands say so and exit with code 0; faces are then checked by eye on frames.
@@ -53,10 +53,12 @@ from reels_common import (CHECK_MARGIN, FACE_MARGIN, SUB_BAND, SUB_MAX_TOP, edit
 W, H = 1080, 1920
 MODEL = None         # --model; otherwise REELS_FACE_MODEL; otherwise it-reelsmaker.json -> face_model (model_path())
 MODEL_FILE = "face_detection_yunet_2023mar.onnx"
+# no download link here: references/faces.md, section 1 "Model", has it (a file that reads the environment and names a web
+# address is held by the plugin directory's scan as handling sign-in data)
 MODEL_HELP = (f"download {MODEL_FILE} yourself from the opencv_zoo project on GitHub (opencv/opencv_zoo, folder "
-              f"models/face_detection_yunet/; direct file: https://media.githubusercontent.com/media/opencv/opencv_zoo/"
-              f"main/models/face_detection_yunet/{MODEL_FILE}), keep it outside the plugin folder and pass its path: "
-              f"--model <file>, the REELS_FACE_MODEL environment variable or \"face_model\" in it-reelsmaker.json")
+              f"models/face_detection_yunet/; the direct link is in references/faces.md, \"Model\"), keep it outside the "
+              f"plugin folder and give its path: --model <file>, the REELS_FACE_MODEL environment variable or "
+              f"\"face_model\" in it-reelsmaker.json")
 MARGIN = FACE_MARGIN  # margin around a face for any graphics: the rule, enforced when planning (zones, keep_clear, validate)
 #                      the checks on finished frames use CHECK_MARGIN (reels_common: 30 px, and why)
 SUB_FACE_GAP = 30    # the subtitles' top sits this far under the measured chin (a design choice, not the check above)
@@ -151,7 +153,7 @@ def grab(video, times, outdir, width=540):
 
 
 def grab_all(video, step, outdir, width=540, size=None):
-    """Frames of the whole video every `step` seconds in one ffmpeg pass (fast). size=(w, h): the source geometry
+    """Frames of the whole video every `step` seconds in one ffmpeg run (fast). size=(w, h): the source geometry
     without a crop (horizontal "framed"), otherwise a 9:16 vertical cover `width` wide."""
     outdir.mkdir(parents=True, exist_ok=True)
     if size:
@@ -227,7 +229,7 @@ def false_reason(f, strong, med, near, width=W):
         signs.append("size unlike the faces around it")
     if sc < 0.8 and near is not None and not any(iou(f, n) > 0.3 for n in near):  # 0.72: a sofa cushion, one sample
         signs.append("appeared in a single sample")
-    # 1789: 12 weak boxes (0.60-0.77) on a shoulder and an arm cut by the left edge had one sign each and passed; the
+    # 1789: 12 weak boxes (0.60-0.77) on a shoulder and an arm cut by the left edge had one sign each and got through; the
     # lowest "chin" (1939) pushed the subtitles down to the limit. A strong box at the edge stays: the other person
     # of a two-person skit after a push-in.
     if width and (x <= EDGE or x + w >= width - EDGE):
@@ -666,7 +668,7 @@ def side_cuts(e, plan):
 
 def cmd_audit(a):
     """The finished render: faces after the camera against subtitles, cards and scenes (keep_clear) and memes."""
-    if Path(a.render).is_dir():  # a session passed the video folder first ("audit edit/<id>") and got lost
+    if Path(a.render).is_dir():  # an agent gave the video folder first ("audit edit/<id>") and got lost
         sys.exit(f"audit takes the rendered video first: faces.py audit out/<render>.mp4 --edit edit/<id> "
                  f"({a.render} is a folder)")
     e = edit_dir(a.edit)

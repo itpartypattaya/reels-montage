@@ -46,6 +46,10 @@ CORE_CREDENTIAL = re.compile(
     r"credential|secret|password|passphrase|access[_ -]?tokens?|auth[_ -]?tokens?|bearer|private[_ -]?key|\.env\b",
     re.I,
 )
+# The same scan holds a file that reads the environment and names a web address (other authors cleared the hold by
+# keeping the two in different files): in the core, a file has one or the other.
+CORE_ENV_READ = re.compile(r"os\.environ|getenv\(|process\.env|\$PWD\b|\$HOME\b|\bREELS_[A-Z_]+")
+WEB_LINK = re.compile(r"https?://")
 CYRILLIC = re.compile(r"[Ѐ-ӿ]")
 
 errors, warnings = [], []
@@ -151,6 +155,11 @@ def check_plugin(pdir, private_terms):
             if c:
                 line = text[: c.start()].count("\n") + 1
                 errors.append(f"{rel}:{line}: core mentions access secrets (the directory holds it): {c.group(0)!r}")
+            env, link = CORE_ENV_READ.search(text), WEB_LINK.search(text)
+            if env and link:
+                line = text[: env.start()].count("\n") + 1
+                errors.append(f"{rel}:{line}: reads the environment ({env.group(0)!r}) in a file with a web link "
+                              f"(the directory holds it): keep the link in another file")
             n = CORE_NETWORK.search(text) if ext in (".py", ".ts", ".tsx", ".js", ".mjs") else None
             if n:
                 line = text[: n.start()].count("\n") + 1

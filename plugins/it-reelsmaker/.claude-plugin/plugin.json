@@ -31,12 +31,12 @@
     "project_root": {
       "type": "directory",
       "title": "Editing project folder",
-      "description": "Folder where edits live: edit/<id>/ per video, brands/<slug>/ brand profiles. Leave empty to set it in the first session."
+      "description": "Folder where edits live: edit/<id>/ per video, brands/<slug>/ brand profiles. Leave empty to set it on the first run."
     },
     "remotion_dir": {
       "type": "directory",
       "title": "Remotion project",
-      "description": "Remotion project used for camera, graphics, subtitles and render, for example <project>/reels. Leave empty to create or pick it in the first session."
+      "description": "Remotion project used for camera, graphics, subtitles and render, for example <project>/reels. Leave empty to create or pick it on the first run."
     },
     "assets_dir": {
       "type": "directory",

@@ -18,6 +18,8 @@ What changed in IT Reelsmaker, written for the people who use it. The newest ver
   now names Remotion's license too (free up to 3 employees, a company license above that).
 - Catalog housekeeping, no change to editing: a few comments reworded so the directory's scan stops reading them
   as the plugin handling sign-in data (it never did; the core makes no network requests).
+  The face model's download link moved from `faces.py`'s message to `references/faces.md`, "Model", where the
+  message now points.
 
 ## 1.21.0
 

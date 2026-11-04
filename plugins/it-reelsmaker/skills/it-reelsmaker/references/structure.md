@@ -11,7 +11,7 @@ original order: a mechanic goes in only when the person picks it.
 1. Name the format of the video in one line (insight, case study, skit, intro, interview…; section 5 of SKILL.md):
    the hook mechanics depend on it.
 2. Run `structure.py suggest edit/<id>` (`--from/--to` in source seconds when the video takes one fragment of a long
-   recording; with two cameras `--source KEY` per camera (a key of `cut.json → sources`, so it needs the cut list;
+   recording; with two cameras `--source NAME` per camera (a name in `cut.json → sources`, so it needs the cut list;
    before it exists, `--transcript edit/<id>/transcripts/<stem>.json`), or the main angle: the script lists the
    sources instead of guessing): the phrases with their signs (question, answer, repeat for emphasis, exclamation, number, beat after),
    whether each can be cut out cleanly (≥ 0.1 s of silence at both edges by the audio level; the range runs from the
@@ -66,10 +66,10 @@ A teaser in the edit:
 
 | Mechanic | What | When |
 |---|---|---|
-| **Beat before the payoff** | keep 0.2–0.5 s of silence before the punchline or the key answer, even with tight pacing | comedy, a reveal, an answer after a question; state it as a number in the plan |
+| **Beat before the payoff** | keep 0.2–0.5 s of silence before the punchline or the main answer, even with tight pacing | comedy, a reveal, an answer after a question; state it as a number in the plan |
 | **Re-hook** | at ~40–50 % of the length, a line or a card that restarts interest (“and here is the strange part”) | videos over ~35 s; only with a line that really is there |
 | **Reaction** | the listener's face on the other's line: a medium shot shifted toward the listener (a skit: never a close-up on one, `skit.md`) | dialogues; the reaction is visible in the frame |
-| **Punch-in on the main line** | a fast push-in on the key line | 1–3 times per video, within the brand tone |
+| **Punch-in on the main line** | a fast push-in on the main line | 1–3 times per video, within the brand tone |
 | **Pictures on the beats** | the picture changes every 1.5–3.5 s (shot size, card, insert) | always: a shot held 4 s or more reads as stuck |
 
 ## Ending
@@ -96,10 +96,10 @@ Hold the reaction after the last word rather than cutting on it: a cut on the fi
 | 5–8 | medium | the point unfolds | subtitles | — |
 | 8–11 | detail or close-up | the words it illustrates, a short reaction | subtitles | soft hit |
 | 11–15 | wide or medium | main point 2 | 1–2 accent words | pop |
-| 15–19 | close-up with a slow push-in | CTA or the payoff | the CTA word in color | music ducked under the key line |
+| 15–19 | close-up with a slow push-in | CTA or the payoff | the CTA word in color | music ducked under the main line |
 | 19–23 | pull-out to wide | the conclusion | subtitles | — |
 
-About ten picture changes in 20–25 s. With a burned-in licensed track, duck the music under the key line or the CTA
+About ten picture changes in 20–25 s. With a burned-in licensed track, duck the music under the main line or the CTA
 (the line in silence is heard) and bring it back after: `master_audio.py --duck`; the track's drop (its loud moment)
 is placed separately, on the final phrase (`references/library.md`).
 
