@@ -115,7 +115,7 @@ def has_audio(render):
 
 
 def speech_of(render, t0, t1):
-    """The speech mask (speech_mask.py) of the render's sound around [t0, t1] → (mask, env, base): 10 ms windows
+    """The speech mask (speech_mask.py) of the render's sound around [t0, t1] → (mask, envelope, base): 10 ms windows
     from base = t0 - CONTEXT; None without sound (no audio track: T6, every "scenes only" render, crashed here)."""
     import speech_mask as sm
     if not has_audio(render):
@@ -126,15 +126,15 @@ def speech_of(render, t0, t1):
         wav = tmp / "a.wav"
         sh(["ffmpeg", "-v", "error", "-y", "-ss", f"{base:.3f}", "-to", f"{t1 + CONTEXT:.3f}", "-i", render, "-vn",
             "-ac", "1", "-ar", "16000", "-c:a", "pcm_s16le", wav], "ffmpeg (cover audio)")
-        env, hf = sm.load_envs(str(wav))
+        envelope, hf = sm.load_envs(str(wav))
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
-    if not env:
+    if not envelope:
         return None
-    sdb = sm.smax(env)
+    sdb = sm.smax(envelope)
     srt = sorted(x for x in sdb if x > -90)
     thr = min(-30.0, srt[int(len(srt) * 0.95)] - 20) if srt else -45.0
-    return sm.speech_mask(sdb, thr, vl=sm.voiceless(hf)), env, base
+    return sm.speech_mask(sdb, thr, vl=sm.voiceless(hf)), envelope, base
 
 
 def pauses(render, t0, t1, sp=None):
@@ -143,7 +143,7 @@ def pauses(render, t0, t1, sp=None):
     sp = sp or speech_of(render, t0, t1)
     if sp is None:
         return [], None
-    mask, env, base = sp
+    mask, envelope, base = sp
     i0, i1 = max(0, int(round((t0 - base) / 0.01))), min(len(mask), int(round((t1 - base) / 0.01)))
     out, k = [], i0
     while k < i1:
@@ -161,7 +161,7 @@ def pauses(render, t0, t1, sp=None):
             k += 1
     if i1 <= i0:
         return out, None
-    sm_ = [sum(env[max(0, i - 2):i + 3]) / len(env[max(0, i - 2):i + 3]) for i in range(i0, i1)]
+    sm_ = [sum(envelope[max(0, i - 2):i + 3]) / len(envelope[max(0, i - 2):i + 3]) for i in range(i0, i1)]
     quiet = base + (i0 + min(range(len(sm_)), key=lambda i: sm_[i])) * 0.01 + 0.005
     return out, quiet
 

@@ -48,8 +48,8 @@ if hasattr(sys.stdout, "reconfigure"):
 PSNR_MIN = 35.0  # a frame redrawn by Remotion vs the old one: 41-45 dB in a measured case; neighbors catch a shift
 
 
-def run(args, cwd=None, what="command", env=None):
-    r = subprocess.run(local_media_args(args), cwd=cwd, env=env, capture_output=True, text=True, encoding="utf-8",
+def run(args, cwd=None, what="command"):
+    r = subprocess.run(local_media_args(args), cwd=cwd, capture_output=True, text=True, encoding="utf-8",
                        errors="replace")
     if r.returncode != 0:
         # the gist of the error is at the start; the tail is a Node/Rust stack trace, drop it

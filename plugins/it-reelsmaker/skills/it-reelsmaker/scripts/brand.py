@@ -14,7 +14,7 @@ to its scripts folder):
                        [--motion calm|lively|energetic]
     python scripts/brand.py logo acme logo-white.png [--role on_dark]    # logo -> brands/<slug>/assets/ + role in brand.json
     python scripts/brand.py rule acme "Cards only on the left, likes on the right"   # append a design rule to rules.md
-    python scripts/brand.py set acme colors.accent=#19B8BB inserts.use_broll=false
+    python scripts/brand.py change acme colors.accent=#19B8BB inserts.use_broll=false
     python scripts/brand.py tone acme friendly [--set memes.max=1 flash_max=1] [--reset]   # brand tone: preset + field overrides
     python scripts/brand.py use acme --edit edit/4821              # brand into edit/<id>/reel.json + mark as used
     python scripts/brand.py export acme --remotion reels           # src/brands/<slug>.json + logos in public/brands/<slug>/
@@ -509,7 +509,7 @@ def cmd_new(a):
                                                    for k, v in fams.items())
                      + f"; headings {fonts['heading']['family']}, body text and subtitles {fonts['body']['family']}."
                      + (" Italic is in fonts.<role>.italic." if any(v["italic"] for v in fams.values()) else "")
-                     + (f" To change: brand.py set {slug} fonts.heading.family=... fonts.heading.files=[...] (all families are in fonts_found)." if len(fams) > 1 else ""))
+                     + (f" To change: brand.py change {slug} fonts.heading.family=... fonts.heading.files=[...] (all families are in fonts_found)." if len(fams) > 1 else ""))
     else:
         font_note = " No brand fonts found: using Manrope + Inter (they cover Latin and Cyrillic)."
     lut = None
@@ -584,12 +584,12 @@ def set_path(obj, path, value):
     obj[keys[-1]] = value
 
 
-def cmd_set(a):
+def cmd_change(a):
     for it in a.pairs:
         if "=" not in it:
             sys.exit(f"expected field=value, got: {it}")
         if it.split("=", 1)[0].strip() == "slug":
-            sys.exit("slug can't be changed with set: it is the name of the brand folder")
+            sys.exit("slug can't be changed with change: it is the name of the brand folder")
     with editing_brand(a.slug) as (d, b):
         for it in a.pairs:
             k, v = it.split("=", 1)
@@ -640,7 +640,7 @@ def cmd_tone(a):
     print(f"  {tone_summary(rules)}")
     if b.get("motion") and b["motion"] != base.get("motion"):
         print(f"  motion is set explicitly in the profile: {b['motion']} (overrides the preset's {base.get('motion')}; "
-              f"to remove: brand.py set {a.slug} motion=null)")
+              f"to remove: brand.py change {a.slug} motion=null)")
     print(f"for Remotion: brand.py export {a.slug} --remotion <Remotion project>")
 
 
@@ -763,7 +763,7 @@ def main():
     p.add_argument("--why", help="the reason, so a later disliked result can be traced to this rule")
     p.add_argument("--scope", help="which videos it applies to (a format, a style, a scene type)")
     p.set_defaults(fn=cmd_rule)
-    p = sub.add_parser("set"); p.add_argument("slug"); p.add_argument("pairs", nargs="+"); p.set_defaults(fn=cmd_set)
+    p = sub.add_parser("change"); p.add_argument("slug"); p.add_argument("pairs", nargs="+"); p.set_defaults(fn=cmd_change)
     p = sub.add_parser("tone", help="brand tone: preset + field overrides")
     p.add_argument("slug"); p.add_argument("preset", choices=TONE_PRESETS)
     p.add_argument("--set", nargs="*", metavar="FIELD=VALUE", help="preset fields: memes.max=1 flash_max=1 scene_tone=calm ...")

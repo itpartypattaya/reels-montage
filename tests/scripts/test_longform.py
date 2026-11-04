@@ -436,7 +436,7 @@ def test_run_logged_keeps_everything_and_shows_progress(tmp_path, capsys):
     code = ("import sys\nfor k in range(0, 101, 5):\n    print(f'Rendered {k}/100')\n"
             "print('Error: something broke', file=sys.stderr)\nprint('plain line')\n")
     log = tmp_path / "render.log"
-    rc_ = kit.run_logged([sys.executable, "-c", code], tmp_path, dict(os.environ), log)
+    rc_ = kit.run_logged([sys.executable, "-c", code], tmp_path, log)
     out = capsys.readouterr().out
     assert rc_ == 0 and log.read_text(encoding="utf-8").count("Rendered") == 21
     assert out.count("rendered") == 6 and "Error: something broke" in out and "plain line" not in out

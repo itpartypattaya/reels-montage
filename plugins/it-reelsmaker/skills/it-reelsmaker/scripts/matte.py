@@ -9,8 +9,8 @@
            face height (faces.json), side from the source-edge cuts, the figure's and the face's box on screen,
            checks -> props for the Presenter component.
 
-    python scripts/matte.py cut edit/<id> --from 12.4 --to 19.0 [--width 1080] [--name host] [--video <file>] [--rembg <command>] [--dry]
-    python scripts/matte.py place edit/<id> --name host --layout review [--side auto|left|right] [--face 260]
+    python scripts/matte.py cut edit/<id> --from 12.4 --to 19.0 [--width 1080] [--name presenter] [--video <file>] [--rembg <command>] [--dry]
+    python scripts/matte.py place edit/<id> --name presenter --layout review [--side auto|left|right] [--face 260]
 
 Exit code: 0 - done (or --dry); 1 - no cut-out, a check not performed, or the layout breaks the rules.
 --width: 1080 (default) for the hook and for a presenter over a scene. place never scales the figure above its

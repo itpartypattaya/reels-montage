@@ -249,8 +249,8 @@ The video's cut list goes into `edit/<id>/cut.json`: sources (several cameras, e
 
 **Segment edges come from the audio, not the transcript** (`speech_mask.py`; it prints the `ranges` for `cut.json`; the algorithm, verified: matches a manual cut to within ±40 ms):
 ```text
-env    = RMS over 10 ms windows, dBFS
-sdb    = rolling max of env over ±30 ms     # a dip inside a word does not become a pause
+envelope = RMS over 10 ms windows, dBFS
+sdb      = rolling max of envelope over ±30 ms   # a dip inside a word does not become a pause
 speech = sdb ≥ threshold AND the span lasts ≥ 110 ms   # a breath (−36…−42 dBFS) does not pass
 threshold = −30 dBFS; for quiet recordings: min(−30, speech level p95 − 20 dB)
 voiceless-ending pickup: a short burst within 250 ms after a span is part of the word
@@ -272,7 +272,7 @@ After assembling the rough cut, two mandatory checks, both before rendering:
 1. output subtitles: an identical run of 3+ words at adjacent cuts (a whole missed take): `cut.py` warns about it, in `--dry-run` too; a teaser replaying the same seconds is not flagged;
 2. **the edges of all segments by audio** (`speech_mask.py --edl edit/<id>/edl.json`: each segment's source is taken from `edl.json`, exit code 1 on warnings). The “edge inside a word” decision is made on the **raw** envelope, not on the mask: the mask widens speech by ±30 ms and stretches endings, so it would raise false alarms. What is checked:
 ```text
-check window 0.3 s on the far side of the edge; “loud window” = env ≥ threshold (10 ms windows)
+check window 0.3 s on the far side of the edge; “loud window” = envelope ≥ threshold (10 ms windows)
 edge inside a word : ≥15 loud windows within 0.3 s AND the nearest loud window ≤ 80 ms from the edge
                     → a 30–60 ms dip was taken for a pause; suggest an edge in the next silence
 fragment at edge   : by the mask, the first speech span after the edge is shorter than 0.35 s, then silence ≥ 0.2 s

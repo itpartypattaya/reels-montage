@@ -16,7 +16,7 @@ plan.
 ## When it helps
 
 A tour or a review that names things: a room (sofa, kitchen, view), a desk setup, a product, a dish and its price, the
-tools on a workbench; the host's name as they appear. One callout per named object, on the word that names it. Not
+tools on a workbench; the presenter's name as they appear. One callout per named object, on the word that names it. Not
 for abstract ideas (a `word` scene), not for a thesis (a card).
 
 | variant | for | text |
@@ -43,7 +43,7 @@ A whip pan that throws the object out of frame within a second is not for a call
 A callout is offered only when three things hold for a moment of the video, and the offer names those moments:
 
 1. **The words name a thing the viewer sees right then**: a room, a piece of furniture, a dish, a device, a tool, the
-   host. In step 7 the agent finds such moments in the transcript itself (“here”, “look”, “this is”, a named object);
+   presenter. In step 7 the agent finds such moments in the transcript itself (“here”, “look”, “this is”, a named object);
    in step 7a the plan's hint “pointing at an object” marks the same signal on its spans. A thing that is named but
    not in the frame gets B-roll or a card, not a callout.
 2. **The dot can stay on the thing** for 2–3 s: it holds still, or a track or points follow it (above). Look at the
@@ -95,7 +95,7 @@ The other variants and anchors:
 … --variant dimension --anchor 150,1150 --to 650,1150 --lines "120 CM" --source speech …
 … --variant line …                                                    # no plate: validate measures the contrast
 … --keys 0:300,1150 1.2:420,1140 2.4:540,1150 …                      # T:X,Y from the callout's start; T:- hides it
-… --person left|right|center --lines "ANNA" "HOST" …                  # faces.json needed (faces.py scan)
+… --person left|right|center --lines "ANNA" "PRESENTER" …                  # faces.json needed (faces.py scan)
 ```
 
 **Tracking** (`track.py edit/<id> l01 [--dry]`, OpenCV and numpy in the Python that runs it): add the callout with its

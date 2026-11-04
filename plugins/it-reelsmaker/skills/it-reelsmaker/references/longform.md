@@ -13,7 +13,7 @@ The services that cut long videos into clips throw away 20–40 % of what they m
 | a fixed number of clips per upload: a talk has 5–8 truly standalone moments, the rest is filler | no quota: as many cards as meet the checks, plus a reserve |
 | a window of fixed length: the clip starts mid-argument and stops before the payoff | a piece is named by its first and last **words**; the script warns when it starts or ends mid-sentence |
 | the moment needs what was said before ("as I said", "that's why", an answer without its question) | the script warns about back-references in the first words; the card says why it stands alone |
-| only one continuous stretch: the best clip is often a setup at 03:07 and its payoff at 19:58, without the host's "wow" in between | a card joins 2–4 pieces; the host's lines are cut or kept on purpose (`host`) |
+| only one continuous stretch: the best clip is often a setup at 03:07 and its payoff at 19:58, without the interviewer's "wow" in between | a card joins 2–4 pieces; the interviewer's lines are cut or kept on purpose (`other_voice`) |
 | the tool does not know the brand: politics, a former employer's name, a private topic | `excluded` stretches are errors; private topics are marked as risks for the person's consent |
 | the wrong speaker in the frame, wrong subtitles, a cut inside a word | the speaker of each piece is checked; edges are set by audio later (`speech_mask.py`) |
 | a bad clip is seen only after the render | the person approves a list of cards before anything is cut or rendered |
@@ -37,7 +37,7 @@ A word-level transcript from a cloud recognizer is good enough to choose clips, 
 - **length by format**: an insight 20–45 s, a story 30–60 s (`length` in clips.json);
 - **variety**: no two cards on the same point; spread over the recording;
 - **facts and names**: a number or a claim on screen only as the speaker said it; private topics (income, family, health, a client's name, a promise to clients) go into `risks` for the person's consent;
-- **the host**: a question as the hook is fine; their "wow" between two pieces is cut (`host: cut`), unless it is the rhythm of the clip (`host: keep`).
+- **the interviewer**: a question as the hook is fine; their "wow" between two pieces is cut (`other_voice: cut`), unless it is the rhythm of the clip (`other_voice: keep`).
 Ranking is in words, not numbers: `wave` 1 (publish first), 2, 3, and `status: reserve` for the doubtful.
 
 **L4. Check and the list.** `longform.py check edit/<series>` finds each piece in the transcript and checks it (below); fix the errors, look at the warnings. `longform.py sheet edit/<series>` writes `edit/<series>/series.md`: the table and every card with its pieces, hook, ending, risks and findings, and above them the blockers (rights to someone else's recording, consent of the people on screen, music under the speech). **One stop: the person answers on the list by number** ("1–6 and 9; 7 in reserve; 3 shorter"); `longform.py mark edit/<series> <ids> --as approved` (also `reserve`, `rejected`). A card whose pieces move later (a new transcript) loses the approval at the next check.
@@ -52,7 +52,7 @@ Ranking is in words, not numbers: `wave` 1 (publish first), 2, 3, and `status: r
 {
  "goal": "expert advice for employers + the founder's story",
  "length": [15, 60],
- "blockers": ["rights: the recording belongs to the host's channel", "consent of both people on screen"],
+ "blockers": ["rights: the recording belongs to the interviewer's channel", "consent of both people on screen"],
  "rubrics": {"insight": {"label": "INSIGHT"}, "story": {"label": "STORY", "content_format": "story"}},
  "excluded": [{"start": "03:51", "end": "04:27", "why": "politics"}],
  "clips": [
@@ -60,14 +60,14 @@ Ranking is in words, not numbers: `wave` 1 (publish first), 2, 3, and `status: r
    "parts": [{"from_words": "So the client called me on a Friday", "to_words": "and I said give me one week", "near": "03:07"},
              {"from_words": "And that week changed everything", "to_words": "we still work together", "near": "19:58"}],
    "hook": "The client gave me one week", "why": "a story with its payoff 17 minutes later",
-   "ending": "the payoff line, then a hold on the face", "speaker": "Anna", "host": "cut",
+   "ending": "the payoff line, then a hold on the face", "speaker": "Anna", "other_voice": "cut",
    "risks": ["a private topic: confirm with the speaker"], "allow": [], "settings": {}}
  ]
 }
 ```
 
 - `parts`: in the order of the clip (a teaser may come first). By words: `from_words` and `to_words` (5–10 words each, as said; the script matches them with tolerance for word forms and recognition slips, and when the very first or last words were heard differently, a name in another script for example, the edge still takes up to three of them in) and `near` (where to look, ±20 s; `near_end` for a long piece). By seconds: `start` and `end` (a timecode the person gave; snapped to the words inside). Times are seconds or `mm:ss.s`.
-- `speaker`: who carries the clip, as the transcript labels people (a name from the subtitles, `S1`), or a plain word when it has no labels; `host`: what to do with the other voice inside the pieces, `cut` (their short interjections go at the cut) or `keep` (a question that is the hook, a dialogue).
+- `speaker`: who carries the clip, as the transcript labels people (a name from the subtitles, `S1`), or a plain word when it has no labels; `other_voice`: what to do with the other voice inside the pieces, `cut` (their short interjections go at the cut) or `keep` (a question that is the hook, a dialogue).
 - `allow`: warnings meant on purpose: `overlap:06` (shares more than 3 s with card 06), `dup:06` (says much the same).
 - `settings`: extra `reel.json` settings for this clip only (`label`, `profile`, `style`, …); the rubric's `label`, `profile` and `content_format` apply to all its cards.
 - The script adds `resolved` to each piece and `check` to each card; the agent does not write them.
@@ -81,9 +81,9 @@ Ranking is in words, not numbers: `wave` 1 (publish first), 2, 3, and `status: r
 ## The camera of a framed clip
 
 `longform.py camera edit/<series>-<id>` proposes `camera.json` once `cut.py` and `faces.py scan` have run (it reads `captions.json` and `faces.json`, and refuses a `faces.json` older than `final.mp4`). It is the hand-made camera of a measured 12-clip series turned into rules:
-- **people**: the faces of each piece grouped left to right by their position (a group seen for less than a second in all and under 5 % of the faces is a false face, anyone seen longer is a person); **who sits where** is not measured (there is no active-speaker detection), so the first clip asks once: `--side guest=left,host=right` (labels as in the subtitles' speakers, or the card's `speaker`); `--write` keeps it in `longform.json` for every later clip. One person in the frame needs no answer;
-- **when the shot changes**: on a join of the pieces (always, a change of piece too), on a speaker change when the new voice talks 1.5 s or more from its first word (a host's short "wow" is heard over the current shot and never decides whom a shot frames), otherwise on the best pause of 0.1 s or more 1.5–3.5 s into the shot, a sentence end over a comma and a long pause over a short one; a stretch with no such pause is held longer and reported (natural pacing for it, or a shot by hand);
-- **shot sizes**: wide → medium → close → medium (SKILL.md section 9); the close-up centers the speaker's face slightly above the frame's center, the wide shot holds both faces when the window already shows both (it does not pan to a host sitting past its edge), else it leans from the speaker toward the middle of the picture; push-ins within the window's zoom margin (1080 rows: close ×1.13, medium ×1.08; 720 rows and below: ×1.06), a slow push-in on the first and last shots and on the wide ones, never past the margin;
+- **people**: the faces of each piece grouped left to right by their position (a group seen for less than a second in all and under 5 % of the faces is a false face, anyone seen longer is a person); **who sits where** is not measured (there is no active-speaker detection), so the first clip asks once: `--side guest=left,interviewer=right` (labels as in the subtitles' speakers, or the card's `speaker`); `--write` keeps it in `longform.json` for every later clip. One person in the frame needs no answer;
+- **when the shot changes**: on a join of the pieces (always, a change of piece too), on a speaker change when the new voice talks 1.5 s or more from its first word (a interviewer's short "wow" is heard over the current shot and never decides whom a shot frames), otherwise on the best pause of 0.1 s or more 1.5–3.5 s into the shot, a sentence end over a comma and a long pause over a short one; a stretch with no such pause is held longer and reported (natural pacing for it, or a shot by hand);
+- **shot sizes**: wide → medium → close → medium (SKILL.md section 9); the close-up centers the speaker's face slightly above the frame's center, the wide shot holds both faces when the window already shows both (it does not pan to an interviewer sitting past its edge), else it leans from the speaker toward the middle of the picture; push-ins within the window's zoom margin (1080 rows: close ×1.13, medium ×1.08; 720 rows and below: ×1.06), a slow push-in on the first and last shots and on the wide ones, never past the margin;
 - **every shot names its piece** (`"source"`) when the clip has several: their seconds overlap, and the export cannot tell them apart otherwise; `"seg"` when a second of one piece plays twice;
 - it **prints** the shots (time, piece second, size, zoom, frame point, who, why); `--write` writes them with a stamp, and a later `--write` replaces only a file nobody touched: a `camera.json` written or edited by hand stays. Then `visual_plan.py export` and `check.py` (`board.py --shots`: a frame per shot) as usual.
 
@@ -105,6 +105,6 @@ With a fresh context per clip and the series preset, the aim is ≤ 15–18 min 
 - **Never run per-clip tools on the whole recording.** `faces.py` writes every frame as an image before measuring (gigabytes for 90 minutes): that is why each clip gets its pieces as files. `speech_mask.py` and `structure.py suggest` read a long WAV whole unless they get `--from`/`--to`: with them they read only that stretch (plus 1 s and 5 s of room), so a look at one moment of the recording's own WAV costs seconds, not minutes.
 - **Renders one at a time**, `--concurrency 1–2` on 8 GB (`kit.py render`). Remotion copies its project's `public/` on every run; `kit.py render`, `board.py`, `textcheck.py` and `patch_render.py` give each run a `public/` of only that clip's files and remove the run's temp folder afterwards; `kit.py clean-temp` lists what other runs left.
 - **Music under the speech** (a podcast intro, a background track): the speech detector and the denoiser mistake it for speech or noise; fewer cuts, `speech_mask.py --density natural`, `master_audio.py --no-denoise`, and the track's rights are one more blocker.
-- **The host over the guest**: a line said over the other voice cannot be cut cleanly; keep it or end the piece earlier.
+- **The interviewer over the guest**: a line said over the other voice cannot be cut cleanly; keep it or end the piece earlier.
 - **Speaker labels** from an imported diarization are ±1 s at the turns and can swap on one microphone; the speaker check is a hint, the picture decides.
 - **Someone else's recording**: editing is fine, publishing waits for the rights and the consent of the people on screen (SKILL.md, section 1).

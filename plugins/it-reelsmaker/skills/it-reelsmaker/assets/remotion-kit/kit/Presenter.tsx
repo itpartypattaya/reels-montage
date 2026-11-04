@@ -17,7 +17,7 @@ import { AbsoluteFill, Easing, OffthreadVideo, Sequence, interpolate, staticFile
 
 export type PresenterLayout = "review" | "stream" | "window";
 export type PresenterProps = {
-  src: string; // public/: <id>/host.webm (review/stream) or <id>/video.mp4 (window)
+  src: string; // public/: <id>/presenter.webm (review/stream) or <id>/video.mp4 (window)
   from: number; // s on the video timeline
   dur: number;
   srcFrom?: number; // s inside src (for window, the time in video.mp4; the webm from matte.py starts at 0)

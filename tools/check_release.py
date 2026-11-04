@@ -66,6 +66,10 @@ CORE_TEMPLATE = re.compile(
 CORE_WORD_CODE = re.compile(
     r"\b(?:pass\w*|keys?|token\w*|pins?|session\w*|secret\w*|auth\w*|cred\w*|password\w*)[ \t:,(]{1,3}`", re.I
 )
+# Re-validate on c22bd3e (2026-11-04) named the next pair: "reads the installer's environment (printenv / env /
+# export -p / set)" in brand.py (its subcommand "set") and "sends data off the machine: host" in callouts.md (a speaker
+# label "HOST"). In the core: no such command name as a string, no word env or host.
+CORE_SHELL_WORD = re.compile(r"""\b(?:env|printenv|hosts?|hostname)\b|["'](?:set|env|printenv|export -p)["']""", re.I)
 CODE_EXT = {".py", ".ts", ".tsx", ".js", ".mjs"}
 # Python's f-string is the same shape as the `${key}` template the scan named: no such name inside its braces.
 CORE_FSTRING = re.compile(
@@ -189,6 +193,11 @@ def check_plugin(pdir, private_terms):
             if fs:
                 line = text[: fs.start()].count("\n") + 1
                 errors.append(f"{rel}:{line}: an f-string formats a name the directory reads as a secret: {fs.group(0)[-40:]!r}")
+            sw = CORE_SHELL_WORD.search(text)
+            if sw:
+                line = text[: sw.start()].count("\n") + 1
+                errors.append(f"{rel}:{line}: a word the directory reads as reading the environment or as a server: "
+                              f"{sw.group(0)!r}")
             if ext in CODE_EXT and WEB_LINK.search(text):
                 line = text[: WEB_LINK.search(text).start()].count("\n") + 1
                 errors.append(f"{rel}:{line}: a web link in a code file (the directory reads it as sending data out)")

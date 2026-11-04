@@ -197,15 +197,15 @@ def load_mask(wav, start=None, end=None):
     start/end (seconds): read only that stretch of the WAV; the lists still count windows from the file's start (the
     windows before the stretch are silence with no speech), so every index below is the file's."""
     import speech_mask as sm
-    env, hf, t0 = sm.load_span(str(wav), start, end)
-    if not env:
+    envelope, hf, t0 = sm.load_span(str(wav), start, end)
+    if not envelope:
         return None
-    sdb = sm.smax(env)
+    sdb = sm.smax(envelope)
     srt = sorted(x for x in sdb if x > -90)
     p95 = srt[int(len(srt) * 0.95)] if srt else -20
     thr, vl = min(-30.0, p95 - 20), sm.voiceless(hf)
     mask = sm.speech_mask(sdb, thr, vl=vl)
-    quiet = [x < thr and not (mask[k] and vl and vl[k]) for k, x in enumerate(env)]
+    quiet = [x < thr and not (mask[k] and vl and vl[k]) for k, x in enumerate(envelope)]
     pad = int(round(t0 / sm.HOP))
     return [False] * pad + mask, [True] * pad + quiet, sm.HOP
 

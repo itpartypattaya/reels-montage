@@ -29,7 +29,7 @@ tail "-(te)ryali" plus 0.31 s of silence got into the segment and was recognized
 heard twice in the video while the re-transcription was green.
 
 Algorithm (checked against real cutting errors):
-  env = RMS over 10 ms windows in dBFS; sdb = rolling max over ±30 ms;
+  envelope = RMS over 10 ms windows in dBFS; sdb = rolling max over ±30 ms;
   speech = sdb ≥ threshold AND a continuous span ≥ 110 ms;
   voiceless-ending pickup: if a window above the threshold lies within 250 ms after a span, extend the span to it.
 The default threshold is −30 dBFS for a normal recording level. For quiet recordings (phone far away) it is lowered
@@ -60,7 +60,7 @@ def load_envs(path):
 
 
 def load_span(path, start=None, end=None):
-    """load_envs over [start, end) seconds of the file only -> (env, hf, t0): window k of the lists starts at
+    """load_envs over [start, end) seconds of the file only -> (envelope, hf, t0): window k of the lists starts at
     t0 + k * HOP, t0 on the file's own 10 ms grid, so the windows are the ones a whole read gives (wave setpos: the
     samples before the stretch are never read)."""
     tmp = None
@@ -91,7 +91,7 @@ def load_span(path, start=None, end=None):
                 os.remove(tmp)
             except OSError:
                 pass
-    env, hf = [], []
+    envelope, hf = [], []
     for i in range(pre, len(data) - n + 1, n):
         s = h = 0
         p1 = data[i - 1] if i else 0
@@ -102,9 +102,9 @@ def load_span(path, start=None, end=None):
             h += d * d
             p2, p1 = p1, v
         rms, hrms = sqrt(s / n) / 32768, sqrt(h / n) / 32768
-        env.append(20 * log10(rms) if rms > 1e-6 else -120.0)
+        envelope.append(20 * log10(rms) if rms > 1e-6 else -120.0)
         hf.append(20 * log10(hrms) if hrms > 1e-6 else -120.0)
-    return env, hf, i0 / sr
+    return envelope, hf, i0 / sr
 
 
 VL_ABOVE = 15.0   # dB above the high-band noise floor: a voiceless consonant (measured: a final "s" 22 dB over cafe noise)
@@ -128,10 +128,10 @@ def voiceless(hf):
     return [x >= floor + VL_ABOVE for x in hf]
 
 
-def smax(env, k=3):
+def smax(envelope, k=3):
     out = []
-    for i in range(len(env)):
-        out.append(max(env[max(0, i - k): i + k + 1]))
+    for i in range(len(envelope)):
+        out.append(max(envelope[max(0, i - k): i + k + 1]))
     return out
 
 
@@ -230,24 +230,24 @@ NEAR = 8         # windows: a loud sound closer than 80 ms past the edge means t
 FADE = 3         # windows: sound closer than 30 ms to the edge means the cut.py fade (30 ms) will eat a consonant
 
 
-def edge_warnings(env, mask, thr, s, e, vl=None, hf=None, t0=0.0):
+def edge_warnings(envelope, mask, thr, s, e, vl=None, hf=None, t0=0.0):
     """Problems at the edges of segment [s, e] of the source.
 
-    env is the raw envelope (dBFS), used for "where there really is sound"; mask is the speech mask, used for fragments.
+    envelope is the raw envelope (dBFS), used for "where there really is sound"; mask is the speech mask, used for fragments.
     The mask widens speech by ±30 ms and extends voiceless endings, so "an edge inside a mask span" is a false alarm
     by itself; the raw level on the other side of the edge decides. hf: the high-band envelope; with it, hiss cut off
     at an edge counts as a consonant only when its mean is within VL_SPEECH of the speech's high band (a breath is
     quieter there). t0: the time of window 0 (speech_mask.py --from); s, e and the times reported are the file's.
     """
     out = []
-    n = len(env)
+    n = len(envelope)
     T = lambda i: t0 + i * HOP  # noqa: E731  window -> seconds of the file
     if n == 0:  # an empty file or shorter than a 10 ms window: the mask is empty, the edges can't be checked
         return [f"the source has no audio (empty or shorter than {HOP * 1000:.0f} ms): edge {s:.2f}–{e:.2f} can't be checked"]
     if s >= T(n):
         return [f"segment {s:.2f}–{e:.2f} starts past the end of the source audio ({T(n):.2f} s)"]
     si, ei = max(0, min(n - 1, int(round((s - t0) / HOP)))), max(0, min(n - 1, int(round((e - t0) / HOP))))
-    loud = lambda i: 0 <= i < n and env[i] >= thr
+    loud = lambda i: 0 <= i < n and envelope[i] >= thr
     hiss = lambda i: bool(vl) and 0 <= i < len(vl) and vl[i]
     ref = hiss_ref(hf)
 
@@ -317,7 +317,7 @@ QUIET_PAUSE = 0.6   # s: only a short pause (a syllable's room) is checked for o
 QUIET_RUN = 0.05    # s: an unbroken run this long near the threshold
 
 
-def quiet_syllable(env, thr, g0, g1, pmin, t0=0.0):
+def quiet_syllable(envelope, thr, g0, g1, pmin, t0=0.0):
     """ms of the longest unbroken run within NEAR_DB under the threshold inside a short pause that the compression
     removes (pmin..QUIET_PAUSE; 30 ms off each edge, which the ±30 ms rolling max widens), or 0. A quiet syllable
     sits there as a pause (T4: a two-letter word at -35..-40 dBFS under a -33.6 threshold was cut out, 50 ms of it
@@ -327,7 +327,7 @@ def quiet_syllable(env, thr, g0, g1, pmin, t0=0.0):
         return 0
     run = best = 0
     a, b = int((g0 - t0) / HOP) + 3, int((g1 - t0) / HOP) - 3
-    for x in env[a:max(a, b)]:
+    for x in envelope[a:max(a, b)]:
         run = run + 1 if x >= thr - NEAR_DB else 0
         best = max(best, run)
     return best * 10 if best * HOP >= QUIET_RUN - 1e-9 else 0
@@ -360,14 +360,14 @@ def check_edl(path, thr_arg):
     for k, r in enumerate(edl["ranges"]):
         src = r["source"]
         if src not in cache:
-            env, hf = load_envs(edl["sources"][src])
-            sdb, vl = smax(env), voiceless(hf)
+            envelope, hf = load_envs(edl["sources"][src])
+            sdb, vl = smax(envelope), voiceless(hf)
             srt = sorted(x for x in sdb if x > -90)
             p95 = srt[int(len(srt) * 0.95)] if srt else -20
             thr = thr_arg if thr_arg is not None else min(-30.0, p95 - 20)
-            cache[src] = (env, speech_mask(sdb, thr, vl=vl), thr, vl, hf)
-        env, mask, thr, vl, hf = cache[src]
-        w = [x + at_join(x, k, edl["ranges"]) for x in edge_warnings(env, mask, thr, r["start"], r["end"], vl, hf)]
+            cache[src] = (envelope, speech_mask(sdb, thr, vl=vl), thr, vl, hf)
+        envelope, mask, thr, vl, hf = cache[src]
+        w = [x + at_join(x, k, edl["ranges"]) for x in edge_warnings(envelope, mask, thr, r["start"], r["end"], vl, hf)]
         bad += bool(w)
         print(f"{k:2d} {src} {r['start']:.2f}–{r['end']:.2f}" + ("  ok" if not w else "".join("\n    ⚠ " + x for x in w)))
     print(f"\nedges with warnings: {bad} of {len(edl['ranges'])}")
@@ -407,20 +407,20 @@ def main():
     for s0, e0 in spans:
         if (a.start is not None and s0 < a.start) or (a.end is not None and e0 > a.end):
             sys.exit(f"span {s0:g}-{e0:g} is outside --from {a.start} --to {a.end}: widen the window")
-    env, hf, t0 = load_span(a.audio, lo, hi)
+    envelope, hf, t0 = load_span(a.audio, lo, hi)
     vl = voiceless(hf)
-    if not env:
+    if not envelope:
         sys.exit(f"{a.audio} has no audio (empty or shorter than {HOP * 1000:.0f} ms): can't build the mask"
                  + (f" between {'the start' if lo is None else format(lo, 'g') + ' s'} and "
                     f"{'the end' if hi is None else format(hi, 'g') + ' s'}" if lo is not None or hi is not None else ""))
-    sdb = smax(env)
+    sdb = smax(envelope)
     srt = sorted(x for x in sdb if x > -90)
     p95 = srt[int(len(srt) * 0.95)] if srt else -20
     thr = a.thr if a.thr is not None else min(-30.0, p95 - 20)
     mask = speech_mask(sdb, thr, vl=vl)
     print(f"speech level (p95) {p95:.1f} dBFS, threshold {thr:.1f} dBFS, pacing {a.density}: "
           f"pauses ≥{int(pmin * 1000)} ms → {int(keep * 1000)} ms"
-          + (f"; read {t0:.2f}–{t0 + len(env) * HOP:.2f} s of the file" if lo is not None or hi is not None else ""),
+          + (f"; read {t0:.2f}–{t0 + len(envelope) * HOP:.2f} s of the file" if lo is not None or hi is not None else ""),
           file=sys.stderr)
 
     if not spans:
@@ -442,14 +442,14 @@ def main():
             if g1 - g0 > 1.0:
                 warn.append(f"pause {g1 - g0:.2f} s inside at {g0:.2f}: possibly a seam between two takes of the phrase")
         for g0, g1 in gaps:
-            near = quiet_syllable(env, thr, g0, g1, pmin, t0)
+            near = quiet_syllable(envelope, thr, g0, g1, pmin, t0)
             if near:
                 warn.append(f"pause {g0:.2f}-{g1:.2f}: {near} ms of it within {NEAR_DB:g} dB under the threshold: a quiet "
                             f"syllable or a breath. If the transcript has a word there, these ranges drop it: check by "
                             f"ear; lower --thr, or keep the pause with one range across it in cut.json")
         if len(segs) > 1 and segs[0][1] - segs[0][0] < 0.8 and segs[1][0] - segs[0][1] > 0.6:
             warn.append(f"short speech at the start {segs[0][0]:.2f}–{segs[0][1]:.2f} and a pause after it: the tail of another take?")
-        warn += edge_warnings(env, mask, thr, s0, e0, vl, hf, t0)  # an edge cuts speech / a 0.2–0.35 s fragment (missed by the rule above)
+        warn += edge_warnings(envelope, mask, thr, s0, e0, vl, hf, t0)  # an edge cuts speech / a 0.2–0.35 s fragment (missed by the rule above)
         # pause compression: from a pause ≥pmin keep `keep` (half on each side)
         pieces, cur_s = [], segs[0][0] - 0.020
         for (g0, g1) in gaps:

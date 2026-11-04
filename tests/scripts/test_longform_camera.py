@@ -58,7 +58,7 @@ def framed_clip(project, faces_at=(LEFT, RIGHT), host_turns=(), series=True, nam
                                   "frame": [25, 340, 1030, 1240], "samples": samples})
     if series:
         write_json(project / "edit" / "talk" / "longform.json", {"clips": {"01": {"folder": f"edit/{name}"}}})
-        write_json(project / "edit" / "talk" / "clips.json", {"clips": [{"id": "01", "speaker": "guest", "host": "keep"}]})
+        write_json(project / "edit" / "talk" / "clips.json", {"clips": [{"id": "01", "speaker": "guest", "other_voice": "keep"}]})
     return e
 
 

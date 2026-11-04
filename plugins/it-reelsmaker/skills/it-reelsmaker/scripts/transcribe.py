@@ -448,8 +448,8 @@ def cmd_rate(a):
     cap = load_json(e / "captions.json")
     if not cap or not (e / "final.mp4").exists():
         sys.exit(f"{e}: no captions.json or final.mp4: build the rough cut first (cut.py)")
-    env, hf = sm.load_envs(str(e / "final.mp4"))
-    sdb = sm.smax(env)
+    envelope, hf = sm.load_envs(str(e / "final.mp4"))
+    sdb = sm.smax(envelope)
     srt = sorted(x for x in sdb if x > -90)
     thr = min(-30.0, (srt[int(len(srt) * 0.95)] if srt else -20) - 20)
     mask = sm.speech_mask(sdb, thr, vl=sm.voiceless(hf))

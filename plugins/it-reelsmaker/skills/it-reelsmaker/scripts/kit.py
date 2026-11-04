@@ -248,12 +248,12 @@ def npx():
     return shutil.which("npx") or shutil.which("npx.cmd") or "npx"
 
 
-def run_logged(cmd, rem, env, log, mode="w"):
+def run_logged(cmd, rem, log, mode="w"):
     """Run a Remotion command: every line into the log, on the screen only errors, warnings and the progress in steps
     of 20 %. mode "a" adds to the log (a second attempt). -> the exit code."""
     shown = {}
     with open(log, mode, encoding="utf-8", errors="replace") as f:
-        p = subprocess.Popen(cmd, cwd=rem, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
+        p = subprocess.Popen(cmd, cwd=rem, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
                              encoding="utf-8", errors="replace")
         for line in p.stdout:  # universal newlines: a "\r" progress update counts as a line too
             f.write(line if line.endswith("\n") else line + "\n")
@@ -327,7 +327,7 @@ def cmd_render(a, still=False):
         t1 = time.time()
         try:
             with remotion_tmp(rem, props, a.comp) as (_run_dir, extra):
-                code = run_logged(cmd + extra, rem, None, log, "a" if attempts else "w")
+                code = run_logged(cmd + extra, rem, log, "a" if attempts else "w")
         except OSError as x:
             sys.exit(f"cannot run npx ({x}): Node.js with Remotion is needed (doctor.py)")
         why = retry_reason(log) if code != 0 and not still else None

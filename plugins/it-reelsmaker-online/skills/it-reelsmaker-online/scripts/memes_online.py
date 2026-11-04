@@ -7,7 +7,7 @@
                        # only after the person approves the visual plan; only CC0 / PDM / CC BY / CC BY-SA (no NC, no ND);
                        # the license and the attribution go into the sidecar
 
-After fetch: python <core scripts>/memes.py index, then memes.py set <id> description=... emotion=...; from there the
+After fetch: python <core scripts>/memes.py index, then memes.py change <id> description=... emotion=...; from there the
 meme is searched, prepared and placed like a local one (rights cc), and its attribution goes into inserts/credits.json.
 GIPHY and KLIPY forbid downloading their content and burning it into commercial videos: a reference link only (put the
 GIF on as a sticker in the app's own editor, or re-shoot the meme yourself). The Tenor API closed on 2026-06-30.
@@ -150,7 +150,7 @@ def cmd_fetch(a):
              f"(at least 600 px, transparent background kept) next to {dest.stem}.json, which holds the license and "
              f"the attribution; then memes.py index")
         return
-    print(f"{dest} (CC {lic.upper()} {ver}; a sidecar with the attribution); next: memes.py index, then memes.py set "
+    print(f"{dest} (CC {lic.upper()} {ver}; a sidecar with the attribution); next: memes.py index, then memes.py change "
           f"<id> description=... emotion=...")
 
 

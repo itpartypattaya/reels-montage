@@ -6,7 +6,7 @@ A meme goes in only if it amplifies a joke, an emotion, irony or the meaning of 
 up". Rights come before the find: a commercial video burns in only memes with rights own / licensed / cc / library.
 
     python scripts/memes.py index [--dir memes assets/reactions]   # index + contact sheets memes/_index/sheet-*.jpg
-    python scripts/memes.py set <id> description="a statue shrugs" emotion=confusion,irony rights=licensed \\
+    python scripts/memes.py change <id> description="a statue shrugs" emotion=confusion,irony rights=licensed \\
                        use_when="when expectations don't match reality"
     python scripts/memes.py search "confusion the candidate didn't get it" [--edit edit/<id>] [--limit 5] [--emotion confusion]
     python scripts/memes.py prepare <id> --edit edit/<id> --insert m01 [--mode popup|cutaway]   # -> inserts/m01.*, status ready
@@ -87,7 +87,7 @@ def cmd_index(a):
             elif p.with_suffix(".txt").exists():
                 side = {"description": p.with_suffix(".txt").read_text(encoding="utf-8").strip()}
             scanned.append((p, kind, info, w, h, alpha, side))
-    # 2) the merge into the index runs under the lock, on the fresh file (memes.py set edits from another run are kept)
+    # 2) the merge into the index runs under the lock, on the fresh file (memes.py change edits from another run are kept)
     with editing_json(index_path(project), {}) as idx:
         merge_index(idx, project, s, scanned)
     write_sheets(project, root, idx)
@@ -194,7 +194,7 @@ def write_sheets(project, root, idx):
           f"(green stripe: rights cleared, orange: unknown or blocked)")
 
 
-def cmd_set(a):
+def cmd_change(a):
     project = project_root()
     with editing_json(index_path(project), {}) as idx:  # sys.exit inside: the index stays unchanged
         if a.id not in idx:
@@ -405,7 +405,7 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest="cmd", required=True)
     p = sub.add_parser("index"); p.add_argument("--dir", nargs="*"); p.set_defaults(fn=cmd_index)
-    p = sub.add_parser("set"); p.add_argument("id"); p.add_argument("pairs", nargs="+"); p.set_defaults(fn=cmd_set)
+    p = sub.add_parser("change"); p.add_argument("id"); p.add_argument("pairs", nargs="+"); p.set_defaults(fn=cmd_change)
     p = sub.add_parser("search"); p.add_argument("query"); p.add_argument("--edit"); p.add_argument("--limit", type=int, default=5)
     p.add_argument("--emotion"); p.set_defaults(fn=cmd_search)
     p = sub.add_parser("prepare"); p.add_argument("id"); p.add_argument("--edit", required=True); p.add_argument("--insert", required=True)

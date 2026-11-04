@@ -22,7 +22,7 @@ rules and hands the inserts over to Remotion.
     python scripts/visual_plan.py keep-clear edit/4821 --from 3.7 --to 9.6 --box 60,400,760,420 --what "price card"
     python scripts/visual_plan.py keep-clear edit/4821 --remove 2      # the 2nd zone as numbered in visual_plan.md
     python scripts/visual_plan.py keep-clear edit/4821 --from 23.4 --to 26.7 --box 404,1038,632,652 --what presenter \
-        --matte host --own-face 595,1120,181,233     # the presenter layer from matte.py place (it prints this line)
+        --matte presenter --own-face 595,1120,181,233     # the presenter layer from matte.py place (it prints this line)
     python scripts/visual_plan.py hide-subs edit/4821 --from 23.4 --to 26.7 --why "presenter over a scene"
     python scripts/visual_plan.py hide-subs edit/4821 --remove 1       # numbered in visual_plan.md
     python scripts/visual_plan.py remove edit/4821 c03 [b01 ...]       # take inserts out of the plan (to change one: remove, add)
@@ -1490,7 +1490,7 @@ def check_scenes(e, plan, s, doc, brand, fdata, cap, scenes, brolls, memes, tail
             k = contrast(c[fg], c[bg])
             if k < 3.0:
                 errs.append(f"scenes: contrast of {fg} {c[fg]} on {bg} {c[bg]} = {k} < 3.0: large scene text is not readable "
-                            f"(brand.py set {(brand or {}).get('slug')} colors.{fg}=...)")
+                            f"(brand.py change {(brand or {}).get('slug')} colors.{fg}=...)")
                 bad.update(x["id"] for x in scenes)
     # 6, 9. time: no two scenes at once, not over a meme, no full scenes in a row, only cta at the end
     tl.sort(key=lambda x: x["start"])

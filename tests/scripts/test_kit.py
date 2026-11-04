@@ -377,7 +377,7 @@ def _render_setup(project, monkeypatch, outcomes):
     write_json(project / "edit" / "t" / "reelkit-props.json", {"video": "", "captions": {"duration": 1, "segments": [], "words": []}})
     calls = []
 
-    def fake(cmd, rem_, env, log, mode="w"):
+    def fake(cmd, rem_, log, mode="w"):
         code, lines = outcomes[len(calls)]
         calls.append((cmd, mode))
         with open(log, mode, encoding="utf-8") as f:

@@ -42,7 +42,7 @@ clips.json (written by the agent; times as seconds or "mm:ss.s"):
      "clips": [{"id": "01", "title": "…", "rubric": "insight", "wave": 1, "status": "proposed",
                 "parts": [{"from_words": "first words of the piece", "to_words": "its last words", "near": "03:07"},
                           {"start": "19:58.7", "end": "20:11.0"}],
-                "hook": "…", "why": "…", "ending": "…", "speaker": "guest", "host": "cut", "risks": ["…"],
+                "hook": "…", "why": "…", "ending": "…", "speaker": "guest", "other_voice": "cut", "risks": ["…"],
                 "allow": ["overlap:06"], "settings": {"label": "STORY"}}]}
 A piece is named by its words (from_words, to_words, with near: where to look, ±20 s) or by seconds (start, end: a
 timecode the person gave). check writes what it found into "resolved" and its findings into "check"; it never changes
@@ -51,7 +51,7 @@ Errors (exit code 1): a piece not found, found twice (say more words or give nea
 recording, inside an excluded stretch. Warnings, with the words and seconds as evidence: the piece starts or ends
 mid-sentence (only when the transcript has punctuation), its first words point back ("as I said", "that's why"),
 the clip is outside the length, two cards share more than 3 s (allow "overlap:<id>"), two cards say much the same
-(allow "dup:<id>"), the speaker changes inside a piece (the host's "wow": cut it or keep it, host: keep).
+(allow "dup:<id>"), the speaker changes inside a piece (the interviewer's "wow": cut it or keep it, other_voice: keep).
 """
 import argparse, hashlib, json, math, os, re, subprocess, sys, time, unicodedata, uuid
 from pathlib import Path
@@ -504,7 +504,7 @@ def slip(words, toks, t, count, step):
         wu = toks[u][1]
         a, b = (words[wu], words[w]) if step < 0 else (words[w], words[wu])
         if wu != w and (b["start"] - a["end"] > 0.7 or SENTENCE_END.search(a["text"])):
-            break  # a pause, or the end of the sentence before: that word is not the phrase's (the host's "great.")
+            break  # a pause, or the end of the sentence before: that word is not the phrase's (the interviewer's "great.")
         t, w = u, wu
     return w
 
@@ -661,7 +661,7 @@ def check_card(s, card, others, excluded, length, dur):
                 spk.append((w["speaker"], w["start"]))
         if len(spk) > 1:
             warns.append(f"{lab}: the speaker changes inside it (" + ", ".join(f"{a} {tc(t)}" for a, t in spk[:5])
-                         + ")" + ("" if card.get("host") == "keep" else ": cut the other voice or set host: keep"))
+                         + ")" + ("" if card.get("other_voice") == "keep" else ": cut the other voice or set other_voice: keep"))
     if any(r is None for r in res):
         return None, errs, warns
     first = terms_of(" ".join(w["text"] for w in ws[res[0]["w0"]:res[0]["w0"] + 6]))
@@ -803,7 +803,7 @@ def cmd_sheet(a):
                      else "by seconds")
             L.append(f"- piece {chr(97 + k)}: {when} — {words}")
         for piece_id, label in (("hook", "Hook"), ("why", "Why"), ("ending", "Ending"), ("speaker", "Speaker"),
-                           ("host", "The other voice")):
+                           ("other_voice", "The other voice")):
             if c.get(piece_id):
                 L.append(f"- {label}: {c[piece_id]}")
         if c.get("risks"):
@@ -992,7 +992,7 @@ def cmd_extract(a):
                  "Times in cut.json are seconds of each piece's own file; the recording's second = piece offset + "
                  "the piece's second.", "", "## Card", ""]
         for piece_id, label in (("hook", "Hook"), ("why", "Why"), ("ending", "Ending"), ("speaker", "Speaker"),
-                           ("host", "Host lines")):
+                           ("other_voice", "The other voice")):
             if card.get(piece_id):
                 lines.append(f"- {label}: {card[piece_id]}")
         if card.get("risks"):
@@ -1102,8 +1102,8 @@ def face_groups(samples, spans, step=0.25):
     """The faces of the samples inside spans [(t0, t1)] -> the people, left to right: [{x, y, w, h, n}] (median center
     and size, screen coordinates). 1D on x: a gap between face centers wider than 1.5 face widths (at least 80 px)
     parts two people. A group is noise (a false face the filter kept) only when it has under 5 % of the faces AND is
-    seen on less than CAM_SEEN of samples: a host on screen for one 1.5 s turn of a long clip is a person (review of
-    PR #28: dropped, the host's shot went to the guest without asking who sits where)."""
+    seen on less than CAM_SEEN of samples: an interviewer on screen for one 1.5 s turn of a long clip is a person (review of
+    PR #28: dropped, the interviewer's shot went to the guest without asking who sits where)."""
     pts = sorted(((f[0] + f[2] / 2, f, s["t"]) for s in samples if any(a - 1e-6 <= s["t"] < b for a, b in spans)
                   for f in s["faces"]), key=lambda p: p[0])
     if not pts:
@@ -1126,13 +1126,13 @@ def side_names(n):
 
 
 def parse_sides(text):
-    """--side "guest=left,host=right" -> {"guest": "left", "host": "right"}."""
+    """--side "guest=left,interviewer=right" -> {"guest": "left", "interviewer": "right"}."""
     out = {}
     for item in str(text or "").split(","):
         if item.strip():
             who, _, where = item.rpartition("=")
             if not who.strip() or not where.strip():
-                sys.exit(f"--side {text!r}: speaker=side pairs, e.g. guest=left,host=right")
+                sys.exit(f"--side {text!r}: speaker=side pairs, e.g. guest=left,interviewer=right")
             out[who.strip()] = where.strip().lower()
     return out
 
@@ -1212,9 +1212,9 @@ def turn_len(words, who_of, t):
 
 
 def brief_turns(words, who_of):
-    """The indices of the words in turns shorter than CAM_MIN (from a turn's first word to its last): the host's "wow"
+    """The indices of the words in turns shorter than CAM_MIN (from a turn's first word to its last): the interviewer's "wow"
     between two stretches of the guest. They never choose whom a shot frames (review of PR #28: a pause cut just before
-    such a "wow" gave the host a shot of its own)."""
+    such a "wow" gave the interviewer a shot of its own)."""
     out, k = set(), 0
     while k < len(words):
         j = k
@@ -1228,7 +1228,7 @@ def brief_turns(words, who_of):
 
 def plan_cuts(cands, words, who_of, end):
     """The shot changes: a change of piece always; a speaker change when the new speaker talks CAM_MIN or more (a
-    short "wow" from the host is heard over the current shot); otherwise the best pause CAM_MIN-CAM_MAX into the shot
+    short "wow" from the interviewer is heard over the current shot); otherwise the best pause CAM_MIN-CAM_MAX into the shot
     (the score, then the closest to CAM_AIM), never leaving a last shot under CAM_MIN. No pause in reach: the first one
     after it, and the long hold is reported."""
     forced = [c for c in cands if c["source"] or (c["change"] and turn_len(words, who_of, c["t"]) >= CAM_MIN)]
@@ -1282,8 +1282,8 @@ def frame_shot(size, face, others, view, zc, zm):
     (wx, wy, ww, wh), (vx, vy, vw, vh) = view
     fx, fy, fw, fh = face
     ty = fy + CAM_CHIN * fh
-    # only a face the window already shows at its plain framing joins the two-shot: the camera does not pan to a host
-    # sitting past the window's edge (the hand-made series kept such a host out of frame)
+    # only a face the window already shows at its plain framing joins the two-shot: the camera does not pan to an interviewer
+    # sitting past the window's edge (the hand-made series kept such an interviewer out of frame)
     others = [o for o in others if wx <= o["x"] - o["w"] / 2 and o["x"] + o["w"] / 2 <= wx + ww]
     boxes = [(fx - fw / 2, fx + fw / 2)] + [(o["x"] - o["w"] / 2, o["x"] + o["w"] / 2) for o in others]
     x0, x1 = min(b[0] for b in boxes) - CAM_PAIR, max(b[1] for b in boxes) + CAM_PAIR
@@ -1593,7 +1593,7 @@ def main():
     p = sub.add_parser("status"); p.add_argument("edit")
     p = sub.add_parser("camera", help="a camera.json proposal for a framed clip: edit/<series>-<id>")
     p.add_argument("edit")
-    p.add_argument("--side", help="who sits where, once per series: guest=left,host=right (kept in longform.json)")
+    p.add_argument("--side", help="who sits where, once per series: guest=left,interviewer=right (kept in longform.json)")
     p.add_argument("--zmax", type=float, help="the close-up's push-in (default: the window's zoom margin)")
     p.add_argument("--write", action="store_true", help="write edit/<id>/camera.json (never over one edited by hand)")
     a = ap.parse_args()
