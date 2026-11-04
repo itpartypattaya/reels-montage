@@ -30,7 +30,7 @@ Inserts are off in the skill defaults (`use_broll`, `use_memes`, `use_scenes` ar
 }
 ```
 
-The online-sources add-on `it-reelsmaker-online` adds its own keys (`use_online_footage`, `use_online_memes`, `generation_engines`, `generate_now`, providers) and plugs online sources into these priorities. Without the add-on, these keys are ignored.
+The online-sources add-on `it-reelsmaker-online` adds its own settings (`use_online_footage`, `use_online_memes`, `generation_engines`, `generate_now`, providers) and plugs online sources into these priorities. Without the add-on, these keys are ignored.
 
 What each setting does:
 
@@ -46,7 +46,7 @@ What each setting does:
 
 **Turn everything off** (as without inserts): `use_broll=false`, `use_scenes=false`, `use_memes=false`.
 
-**Code scenes only, no footage**: `use_broll=true`, `use_project_footage=false`, `use_local_footage=false`, `use_code_scenes=true`. Designed scenes are a separate key, `use_scenes`.
+**Code scenes only, no footage**: `use_broll=true`, `use_project_footage=false`, `use_local_footage=false`, `use_code_scenes=true`. Designed scenes are a separate setting, `use_scenes`.
 
 **What actually turns on.** Before the plan, the agent checks what is really available: an enabled source that isn't there (empty folders, no library catalog, the Remotion project doesn't build) turns itself off, and the reason goes into the report. This is not an error: the edit proceeds with what is available.
 

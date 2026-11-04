@@ -58,6 +58,13 @@ CORE_TEMPLATE = re.compile(
     r"|`\d+\$\{",
     re.I,
 )
+# Re-validate on 8a20682 (2026-11-04) named the next pair: "reads the installer's pass $$" in references/pitfalls.md
+# ("pass `text` or `cover`") and "sends data off the machine" in remotion.config.ts (a docs link in a comment). In the
+# core: no such word right before a code span, and no web link in a code file.
+CORE_WORD_CODE = re.compile(
+    r"\b(?:pass\w*|keys?|token\w*|pins?|session\w*|secret\w*|auth\w*|cred\w*|password\w*)[ \t:,(]{1,3}`", re.I
+)
+CODE_EXT = {".py", ".ts", ".tsx", ".js", ".mjs"}
 CYRILLIC = re.compile(r"[Ѐ-ӿ]")
 
 errors, warnings = [], []
@@ -167,6 +174,13 @@ def check_plugin(pdir, private_terms):
             if t:
                 line = text[: t.start()].count("\n") + 1
                 errors.append(f"{rel}:{line}: a template the directory reads as a secret or a command: {t.group(0)!r}")
+            w = CORE_WORD_CODE.search(text)
+            if w:
+                line = text[: w.start()].count("\n") + 1
+                errors.append(f"{rel}:{line}: a word the directory reads as a secret right before code: {w.group(0)!r}")
+            if ext in CODE_EXT and WEB_LINK.search(text):
+                line = text[: WEB_LINK.search(text).start()].count("\n") + 1
+                errors.append(f"{rel}:{line}: a web link in a code file (the directory reads it as sending data out)")
             env, link = CORE_ENV_READ.search(text), WEB_LINK.search(text)
             if env and link:
                 line = text[: env.start()].count("\n") + 1

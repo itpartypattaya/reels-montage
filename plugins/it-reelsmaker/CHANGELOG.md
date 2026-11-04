@@ -73,7 +73,7 @@ What changed in IT Reelsmaker, written for the people who use it. The newest ver
   exactly its planned frames, whatever the source's frame rate; a sped-up piece keeps time with its sound too.
 - **The white balance ignores a band the grade adds.** A `look.grade` that pads the picture with a color band was
   measured as part of the video and gave a false correction; the balance is now measured on the video's own pixels.
-- **A clip with no graphics passes `check.py`.** Its storyboard step said "nothing to put on the sheet" and failed;
+- **A clip with no graphics gets through `check.py`.** Its storyboard step said "nothing to put on the sheet" and failed;
   it now passes with that note.
 - `poster.py pick` takes the last render of the video by itself (`--render` is optional), as the guide writes it.
 - The long-recording guide warns that word times from a cloud transcript drift around laughter and pauses, and says

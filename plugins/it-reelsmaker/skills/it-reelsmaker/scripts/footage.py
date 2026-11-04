@@ -239,7 +239,7 @@ PROVIDERS = {p.name: p for p in (ProjectProvider(), LocalProvider(), *_online_pr
 
 
 def put_insert(e, i, keys, when=None):
-    """Write the fields `keys` of insert i into the plan under the lock, re-reading the plan (parallel sessions):
+    """Write the listed fields of insert i into the plan under the lock, re-reading the plan (parallel sessions):
     other sessions' changes to other inserts and fields are not lost. Downloads, ffmpeg and generation run before
     the call, not under the lock. when(cur) -> False: the insert was changed in another session, don't overwrite it.
     A key missing from i deletes the field."""

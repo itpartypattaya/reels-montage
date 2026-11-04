@@ -107,7 +107,7 @@ points nearest to it (the wall around a small object does not outvote it; the sc
 path: the callout keeps a still anchor. The track remembers the rough cut, the anchor and the callout's time: when one changes (a new
 cut, a moved word), validate asks to run `track.py` again. `remove` and `add` again to change the anchor.
 
-**Keys** (`--keys`): straight between keys, held before the first and after the last; `T:-` fades the dot out toward
+**Positions by hand** (`--keys`): straight between them, held before the first and after the last; `T:-` fades the dot out toward
 that key and keeps it hidden until the next one. For a slow, even pan; a handheld shot needs a track.
 
 **A person** (`--person`): faces.json has no identity, so the person is the face on the `left`, the `right` or in the
