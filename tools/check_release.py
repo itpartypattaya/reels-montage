@@ -75,6 +75,9 @@ CORE_SHELL_WORD = re.compile(r"""\b(?:env|printenv|hosts?|hostname)\b|["'](?:set
 # Bisection on a probe branch (2026-11-05): the string "export" in brand.py (its subcommand) is the "reads the
 # environment" half on its own; reelcfg.py and visual_plan.py had it too. In the core code: no such string.
 CORE_EXPORT_STR = re.compile(r"""["']export["']""")
+# Probes on 2026-11-05: with an image in the plugin, a code string with a path wildcard (doctor.py's "@remotion/*")
+# reads as naming that image, and the plugin is held (UNREAD_ASSET_REFERENCED). In the core code: no "/*" in a string.
+CORE_PATH_GLOB = re.compile(r"""["'][^"'\n]*/\*""")
 CORE_WS = re.compile(r"\bwss?\b")
 CODE_EXT = {".py", ".ts", ".tsx", ".js", ".mjs"}
 # Python's f-string is the same shape as the `${key}` template the scan named: no such name inside its braces.
@@ -153,8 +156,19 @@ def check_plugin(pdir, private_terms):
     if not (pdir / "LICENSE").exists():
         errors.append(f"{name}: LICENSE missing")
 
+    # The directory lets an image or a font through without reading it as code, and holds the plugin when any other file
+    # names it ("Image or font file that the plugin's code could run", UNREAD_ASSET_REFERENCED; probes 2026-11-05: the
+    # CHANGELOG naming the icon's path was enough). No text file names one of the plugin's own images or fonts.
+    assets = [f.relative_to(pdir).as_posix() for f in files if f.suffix.lower() in IMAGE_FONT_EXT]
+
     for f in files:
         rel = f.relative_to(ROOT).as_posix()
+        if f.suffix.lower() not in IMAGE_FONT_EXT and f.suffix.lower() in TEXT_EXT:
+            body = f.read_text(encoding="utf-8", errors="replace")
+            for a in assets:
+                if a in body or Path(a).name in body:
+                    line = body[: body.find(a) if a in body else body.find(Path(a).name)].count("\n") + 1
+                    errors.append(f"{rel}:{line}: names the plugin's own image or font {a} (the directory holds it)")
         if f.name in JUNK or "__MACOSX" in f.parts:
             errors.append(f"{rel}: OS junk file")
             continue
@@ -209,6 +223,11 @@ def check_plugin(pdir, private_terms):
                 line = text[: ex.start()].count("\n") + 1
                 errors.append(f"{rel}:{line}: the string 'export' (the directory reads it as a shell command "
                               f"that lists the environment)")
+            pg = CORE_PATH_GLOB.search(text) if ext in CODE_EXT else None
+            if pg:
+                line = text[: pg.start()].count("\n") + 1
+                errors.append(f"{rel}:{line}: a path wildcard in a string ({pg.group(0)!r}): with an image in the plugin "
+                              f"the directory reads it as naming that image")
             ws = CORE_WS.search(text)
             if ws:
                 line = text[: ws.start()].count("\n") + 1

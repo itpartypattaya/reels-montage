@@ -111,9 +111,9 @@ def check_node(remotion):
     if not ver:
         return
     odd = {k: v for k, v in deps.items() if k.startswith("@remotion/") and v.lstrip("^~") != ver.lstrip("^~")}
-    add("@remotion/* = remotion version", "recommended", not odd and not ver.startswith(("^", "~")),
+    add("@remotion packages = remotion version", "recommended", not odd and not ver.startswith(("^", "~")),
         ", ".join(f"{k} {v}" for k, v in odd.items()) or ver,
-        f"set every @remotion/* package to exactly {ver.lstrip('^~')}: npm install --save-exact remotion@{ver.lstrip('^~')} "
+        f"set every @remotion package to exactly {ver.lstrip('^~')}: npm install --save-exact remotion@{ver.lstrip('^~')} "
         f"@remotion/cli@{ver.lstrip('^~')} ...")
     add("node_modules installed", "recommended", (Path(remotion) / "node_modules" / "remotion").is_dir(), "",
         f"cd {remotion} && npm install")

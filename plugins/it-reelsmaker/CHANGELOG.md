@@ -34,6 +34,10 @@ What changed in IT Reelsmaker, written for the people who use it. The newest ver
   Three kit files renamed a variable or rewrote a number format the scan misread (the font list in `Phrase.tsx`,
   the entrance progress in `SceneLayer.tsx`, the item number in `List.tsx`); they draw exactly as before, so there
   is no kit update to run.
+- **Catalog housekeeping.** The plugin has an icon for the directory; `doctor.py` names the Remotion
+  packages without a `*` in its check label; `plugin.json` drops four listing links that Claude Code never read
+  (the directory listing keeps the documentation, support, privacy and terms links it took at submission; they are
+  in the README too).
 - **`export` is now `stage`.** `visual_plan.py export` and `brand.py export` are `visual_plan.py stage` and
   `brand.py stage`, with the same arguments: they put the video (or the brand) into the Remotion project. The plan
   keeps the ending you chose under `finish`; a plan staged before this version still keeps its corner logo and a

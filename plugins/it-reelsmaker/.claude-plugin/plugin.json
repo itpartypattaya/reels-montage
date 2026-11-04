@@ -10,10 +10,6 @@
   },
   "homepage": "https://github.com/itpartypattaya/reels-montage/tree/main/plugins/it-reelsmaker",
   "repository": "https://github.com/itpartypattaya/reels-montage",
-  "documentationUrl": "https://github.com/itpartypattaya/reels-montage/blob/main/plugins/it-reelsmaker/README.md",
-  "privacyPolicyUrl": "https://github.com/itpartypattaya/reels-montage/blob/main/plugins/it-reelsmaker/PRIVACY.md",
-  "supportUrl": "https://github.com/itpartypattaya/reels-montage/issues",
-  "termsOfServiceUrl": "https://github.com/itpartypattaya/reels-montage/blob/main/plugins/it-reelsmaker/LICENSE",
   "license": "MIT",
   "keywords": [
     "video",

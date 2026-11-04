@@ -19,12 +19,12 @@ not retried. "temp_cleanup": false in it-reelsmaker.json keeps Remotion's own wa
 
 What the kit is: src/ReelKit.tsx (the ReelKit and ReelCover compositions: the rough cut, subtitles, brand, inserts,
 designed scenes, all from props written by `visual_plan.py stage --props`) and src/kit/ (its components). The
-starter project adds package.json with pinned versions (all @remotion/* packages at the same version as remotion),
+starter project adds package.json with pinned versions (all @remotion packages at the same version as remotion),
 tsconfig.json, remotion.config.ts, src/index.ts, src/Root.tsx (ReelKit, ReelCover and the code scenes from
 src/gen/registry.ts), and empty src/brands/, src/plans/, public/.
 
 The script never runs npm and never touches the network: after `new` it prints the install command. `update`
-replaces only the kit's own files (src/ReelKit.tsx, src/kit/**); Root.tsx, src/gen/, brands, plans and public/ stay
+replaces only the kit's own files (src/ReelKit.tsx and everything in src/kit/); Root.tsx, src/gen/, brands, plans and public/ stay
 yours. Files it replaces are copied to .kit-backup/<time>/ first. With a project folder (edit/, brands/ or
 it-reelsmaker.json), `new` writes remotion_dir into it-reelsmaker.json unless it is already set.
 """

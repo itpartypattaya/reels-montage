@@ -12,7 +12,7 @@ _catalog/catalog.md and the overview sheets.
 The folder: --dir; otherwise every folder in library_dirs (reel settings: defaults, brand inserts) and in
 it-reelsmaker.json -> assets_dir (a relative path there is relative to the project folder).
 
-Output in <folder>/_catalog/: catalog.json (everything), catalog.md (to read), sheets/*.jpg + *.txt (overview sheets
+Output in <folder>/_catalog/: catalog.json (everything), catalog.md (to read), the .jpg and .txt files in sheets/ (overview sheets
 of images and videos, 80 per sheet: number on the sheet -> file -> verdict). verdicts.json and memes.json (the
 reaction-meme annotation) in _catalog/ are yours: the script never changes them.
 
@@ -284,7 +284,7 @@ def fmt_md(entries, verdicts=None):
           f"and run the script again." if verdicts else
           "No verdicts yet: the entries list technical data only. To add them, create `_catalog/verdicts.json` "
           "(the format is in `python scripts/library_catalog.py --help`) and run the script again."),
-         "Images and videos: pick by eye on the overview sheets `sheets/*.jpg` (the stripe under a picture: green - ok, "
+         "Images and videos: pick by eye on the overview sheets, the .jpg files in `sheets/` (the stripe under a picture: green - ok, "
          "orange - caution or check license, red - no, gray - no verdict; number -> file in the .txt next to it).",
          "Audio: place a sound by its sound start, not by the start of the file.", ""]
     by = {}
