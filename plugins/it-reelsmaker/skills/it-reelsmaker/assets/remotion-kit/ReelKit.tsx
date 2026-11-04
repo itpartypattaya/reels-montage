@@ -1,6 +1,6 @@
 // ReelKit — a universal video template for any brand: the rough cut (final.mp4) + inserts from the visual plan +
 // subtitles and, optionally, a hook, a corner mark and an end card — all in the brand profile's colors and fonts.
-// Data arrives as props (`visual_plan.py export … --props`); the video's code is not copied:
+// Data arrives as props (`visual_plan.py stage … --props`); the video's code is not copied:
 //   npx remotion render ReelKit out/<brand>-<slug>-<date>.mp4 --props=<edit>/reelkit-props.json
 // Custom graphics (plates on words, etc.) still live in your own Reel<id>.tsx; the kit plugs in there too
 // (BrollLayer/MemeLayer/KitSubtitles/SceneLayer). Older Reel*.tsx files do not use the kit.
@@ -42,10 +42,10 @@ export type ReelKitProps = {
   inserts: Insert[];
   subtitles: SubtitleMode;
   subtitlesShade?: number; // “typewriter”: darkening of the lower part 0..1 (reel.json → subtitles_shade; default 0.35; visual_plan.py shade measures it)
-  subtitlesTop?: number; // top of the subtitles (y); from the face measurement — visual_plan.py export --props: chin + 30 px, ≤ 1390
+  subtitlesTop?: number; // top of the subtitles (y); from the face measurement — visual_plan.py stage --props: chin + 30 px, ≤ 1390
   hideSubtitles?: [number, number][];
   drift?: boolean; // slow scale drift per segment (when there is no camera)
-  // virtual camera (references/camera.md): shots in output seconds, from edit/<id>/camera.json via visual_plan.py export;
+  // virtual camera (references/camera.md): shots in output seconds, from edit/<id>/camera.json via visual_plan.py stage;
   // { z, cx, cy } — the scale and the source point that ends up in the frame center; drift — a slow push-in over the shot
   // (+0.02–0.06); whip — a 7-frame move from the previous shot with a light motion blur instead of a cut
   camera?: Shot[] | null;
@@ -53,11 +53,11 @@ export type ReelKitProps = {
   corner?: boolean; // brand mark in the corner
   cornerTop?: number; // its top over the video (default 236); export: a paid ad's safe zone top (references/profiles.md)
   endCard?: { line1?: string; line2?: string; seconds?: number } | null; // no line1: a logo sting (logo with the tagline)
-  scenes?: SceneSpec[] | null; // designed scenes (visual_plan.py export --props → scenes); absent — the video renders as before
+  scenes?: SceneSpec[] | null; // designed scenes (visual_plan.py stage --props → scenes); absent — the video renders as before
   sceneTone?: string | null; // the video's scene tone (reel.json → tone, otherwise the brand tone): for scenes without their own tone
   cover?: SceneSpec | null; // cover scene (not part of the video — the ReelCover composition takes it with the same props)
-  framed?: Framed | null; // the “framed” format (visual_plan.py export from reel.json format: framed); absent — the full frame
-  // callouts (visual_plan.py export → props.callouts, references/callouts.md): a dot on an object of the rough cut, a
+  framed?: Framed | null; // the “framed” format (visual_plan.py stage from reel.json format: framed); absent — the full frame
+  // callouts (visual_plan.py stage → props.callouts, references/callouts.md): a dot on an object of the rough cut, a
   // leader line and a label, the anchor carried by the same camera and drift as the video; absent — none
   callouts?: CalloutSpec[] | null;
   // board.py / textcheck.py: frame k shows frame frames[k] of the video, frozen; render --frames=0-(n−1) (kit/Sample.tsx)
@@ -263,7 +263,7 @@ export const EndCard: React.FC<{ p: ReelKitProps; look: Look; fonts: { heading: 
   const k = frame - v;
   const bg = interpolate(k, [0, STING_IN], [0, 1], clamp);
   const a = interpolate(k, [3, 15], [0, 1], { ...clamp, easing: easeOut });
-  // a logo sting (no line1): the logo centered, under it the brand line (line2, visual_plan.py export --sting takes
+  // a logo sting (no line1): the logo centered, under it the brand line (line2, visual_plan.py stage --sting takes
   // brand.tagline); with no line2 the logo variant that carries the tagline. With a CTA (SKILL.md: logo, tagline, CTA):
   // the logo, the brand line (brand.tagline) small under it, then the CTA lines; a profile without a tagline takes the
   // logo variant that carries it, if there is one. The CTA card once showed the logo without the brand line.

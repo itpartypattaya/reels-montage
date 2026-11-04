@@ -1,4 +1,4 @@
-// Brand in Remotion: the profile type (src/brands/<slug>.json from `brand.py export`) and font loading.
+// Brand in Remotion: the profile type (src/brands/<slug>.json from `brand.py stage`) and font loading.
 // The reference copy is the skill's assets/remotion-kit/; older Reel*.tsx compositions do not use kit and are not changed.
 import { continueRender, delayRender, staticFile } from "remotion";
 import * as Inter from "@remotion/google-fonts/Inter";
@@ -18,7 +18,7 @@ import * as PTSans from "@remotion/google-fonts/PTSans";
 
 // files — upright faces, italic — italic faces (brand.py font_families); the face is still detected from the file name
 export type BrandFont = { family: string; weights?: number[]; source?: "google" | "local"; files?: string[]; italic?: string[] };
-// Brand tone (brand.json → tone: the expanded preset from `brand.py export`, reel-defaults.json → brand_tones). kit reads
+// Brand tone (brand.json → tone: the expanded preset from `brand.py stage`, reel-defaults.json → brand_tones). kit reads
 // only the loudness of effects and the permissions: overshoot (spring bounce) and shake (the hype tone's light shake). The
 // other preset fields (memes, transitions, caps) are for visual_plan.py validate. No field → calm, no bounce or shake.
 export type BrandTone = {
@@ -126,7 +126,7 @@ export const alpha = (hex: string, a: number) => {
   return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${a})`;
 };
 
-// Video style (brand.json → styles; the style prop ← visual_plan.py export). kit implements two kinds of plate:
+// Video style (brand.json → styles; the style prop ← visual_plan.py stage). kit implements two kinds of plate:
 //   “marker” / “v2” — text on a marker plate: color is colors.extra.marker (or extra.marker_yellow), otherwise accent;
 //     text on its own marker is extra.on_marker (or extra.ink) or #111111, on accent it is text_on_accent. “v2” sets everything in the
 //     body font (typography.md: Inter only);

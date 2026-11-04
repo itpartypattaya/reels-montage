@@ -29,7 +29,7 @@ defaults sit after the project's and under the brand tone's ceiling, and visual_
 only when the person asks for it, or profile=ad for a paid ad.
 format=framed: a horizontal source in a rounded window on the style's field, with an optional caps label above it
 (references/techniques.md); window (x, y, w, h on the 1080x1920 screen) and label are its options. The kit draws it
-from the props that visual_plan.py export writes; faces.py and visual_plan.py read the same window.
+from the props that visual_plan.py stage writes; faces.py and visual_plan.py read the same window.
 `defaults` shows or edits <project>/reel-defaults.json: your defaults for every video of the project (default brand,
 inserts, library folders, ...), in the same format as the plugin's assets/reel-defaults.json, only the settings you change.
 --set/--unset touch the "settings" fields; other sections (intensity and brand tone labels in your language, ...) are
@@ -37,8 +37,8 @@ edited in the file by hand. The file stays in the project: plugin updates never 
 workflow=quick|standard|full: how many questions and stops the agent makes (SKILL.md, section 6); standard by default.
 `preset` keeps a series' answers in <project>/presets/<name>.json: the video's settings (brand, style, subtitles,
 inserts, profile, format and label, workflow, ...) and its finish (corner logo, end card or sting with the card's
-lines, from the last export); `use` writes them into the next video's reel.json, and visual_plan.py export draws that
-finish until the video's own export changes it. Measured values (subtitles_shade, window), a one-off tone_override
+lines, from the last stage); `use` writes them into the next video's reel.json, and visual_plan.py stage draws that
+finish until the video's own stage changes it. Measured values (subtitles_shade, window), a one-off tone_override
 and the hook stay per video.
 """
 import argparse, json, re, sys
@@ -160,20 +160,20 @@ def preset_path(name):
 
 
 def finish_from(e, own):
-    """The video's ending for a preset: its last export; a plan exported before 1.13 gives the corner logo and a sting
+    """The video's ending for a preset: its last stage; a plan staged before 1.13 gives the corner logo and a sting
     back from its markers (a card's lines were not stored); else the finish its reel.json got from a preset.
     -> (finish, note or None)."""
     plan = load_json(e / "visual_plan.json", {}) or {}
-    if plan.get("export"):
-        exp = plan["export"]
+    if plan.get("finish"):
+        exp = plan["finish"]
         return {"corner": bool(exp.get("corner")), "end": exp.get("end")}, None
     kind = (plan.get("end_card") or {}).get("kind")
     if plan.get("corner") or kind:
-        note = ("its end card's lines were not stored (exported before 1.13): the series gets no card; give it with "
-                "--card at the next video's export") if kind == "card" else None
+        note = ("its end card's lines were not stored (staged before 1.13): the series gets no card; give it with "
+                "--card at the next video's stage") if kind == "card" else None
         return {"corner": bool(plan.get("corner")), "end": {"kind": "sting"} if kind == "sting" else None}, note
     fin = own.get("finish") if isinstance(own.get("finish"), dict) else {}
-    return {"corner": bool(fin.get("corner")), "end": fin.get("end")}, (None if fin else "that video has no export yet: "
+    return {"corner": bool(fin.get("corner")), "end": fin.get("end")}, (None if fin else "that video has no stage yet: "
                                                                         "no ending in the preset")
 
 
@@ -229,8 +229,8 @@ def cmd_preset(a):
     slug = settings.get("brand")
     if slug and find_brand(slug, project_root())[1] is None:
         warn(f"the preset's brand {slug} is not in this project (brand.py list)")
-    if (load_json(e / "visual_plan.json", {}) or {}).get("export"):
-        print("  this video was exported already: its own ending stays; --card / --sting / --corner change it")
+    if (load_json(e / "visual_plan.json", {}) or {}).get("finish"):
+        print("  this video was staged already: its own ending stays; --card / --sting / --corner change it")
     from visual_plan import refresh_plan
     if refresh_plan(e):
         print("the settings snapshot in visual_plan.json is updated")
@@ -240,7 +240,7 @@ def cmd_save(a):
     over = parse_sets(a.set)
     if "finish" in over:
         sys.exit("not saved: finish is the series preset's ending (reelcfg.py preset use); a video's own ending is set "
-                 "with visual_plan.py export --card / --sting / --corner")
+                 "with visual_plan.py stage --card / --sting / --corner")
     known = KNOWN | set(addon_keys("SETTING_KEYS_BOOL")) | set(addon_keys("SETTING_KEYS"))
     for k in over:
         if k not in known:

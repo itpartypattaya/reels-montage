@@ -29,7 +29,7 @@ rules and hands the inserts over to Remotion.
     python scripts/visual_plan.py validate edit/4821        # errors -> exit code 1; warnings -> exit code 0
     python scripts/visual_plan.py md edit/4821              # visual_plan.md: show it to the person before the render
     python scripts/visual_plan.py shade edit/4821           # the "Typewriter" darkening for 4.5:1 -> reel.json subtitles_shade
-    python scripts/visual_plan.py export edit/4821 --remotion reels [--name 4821]
+    python scripts/visual_plan.py stage edit/4821 --remotion reels [--name 4821]
 
 --at: a second on the timeline (5.2), a span (s03, its start) or a word (word:paint#1, the start of its nth occurrence).
 Insert statuses: planned -> ready (the file is prepared) | pending (waiting for a code scene or for the person's
@@ -38,9 +38,9 @@ render; an unfilled code-scene brief (gen) on an insert that is not ready is a w
 Settings come from edit/<id>/reel.json (reelcfg.py save); the plan holds only a snapshot, and validate refreshes it.
 `init --set` saves the settings to reel.json. keep-clear without a plan creates a plan with no inserts (a graphics registry).
 keep-clear --matte NAME marks a presenter layer (matte.py place prints the command): its span counts in the coverage,
---own-face is the presenter's own face (validate and faces.py audit don't flag it in its own zone), and export copies
+--own-face is the presenter's own face (validate and faces.py audit don't flag it in its own zone), and stage copies
 edit/<id>/matte/NAME.webm to public/<id>/. hide-subs: windows where a per-video composition hides the subtitles
-(a presenter, an accent title): export adds them to props.hideSubtitles, faces.py audit reads them.
+(a presenter, an accent title): stage adds them to props.hideSubtitles, faces.py audit reads them.
 Coverage is the union of the intervals of all inserts (B-roll and memes, popups included, and presenter layers);
 coverage and spacing are errors.
 --source online (online footage and memes) needs the online-sources add-on it-reelsmaker-online; without it the online
@@ -53,19 +53,19 @@ brand's tones, the reading-time floor for the scene tone, a quote from the speec
 has a source, contrast of the brand colors, coverage (full/split/panel/window together with B-roll), the
 overlay/split/window box (face, safe zone, keep_clear), no two scenes at once, not over a meme, only cta in the last 2 s.
 The brand tone's ceilings (memes, transitions, flash/whip, full) are errors; reel.json -> tone_override: true turns them
-into warnings (going louder on explicit request, noted in the report). export --props writes props.scenes and adds the
+into warnings (going louder on explicit request, noted in the report). stage --props writes props.scenes and adds the
 overlay/split/window scenes to keep_clear (faces.py audit sees them), and records the render's subtitle band in the plan
 (subtitles_band: the top below the measured chin), which faces.py audit checks.
 The "framed" format (reel.json -> format: framed, optional window and label; references/techniques.md): a horizontal
 rough cut in a rounded window on the style's field. The camera is clamped to the window (as the kit draws it), boxes
 and the subtitle band stay inside the window's text area (reels_common.framed_area: with no label the field above the
 window joins it; reel.json -> subtitles_at: below puts the subtitle band on the field under the window instead,
-reels_common.framed_sub_area), scenes are overlay or full (full covers the window), and export writes props.framed (the
+reels_common.framed_sub_area), scenes are overlay or full (full covers the window), and stage writes props.framed (the
 window, the label, the rough cut's size, the field color, where the subtitles go) so ReelKit draws the layout itself. validate checks that faces.json was
 measured in the source geometry and that the rough cut is horizontal.
 The "scenes only" format (init --scenes-only --duration N): no speech spans, --at in seconds only, every scene is full,
 scene coverage >= 95 %; transitions are cuts (the texts hand over at the join, as the kit draws it) and more than 4 frames
-of empty field at a join is a warning; export --props: video "", empty captions with the duration, subtitles none.
+of empty field at a join is a warning; stage --props: video "", empty captions with the duration, subtitles none.
 """
 import argparse, contextlib, datetime, filecmp, hashlib, json, math, re, shutil, sys
 from pathlib import Path
@@ -215,15 +215,15 @@ def load_plan(e):
     return p
 
 
-# what a rebuilt plan (init, init --force) keeps from the old one besides keep_clear: the last export's hook, corner
-# logo and end (review 2026-10-18: init after an export lost them, the next export dropped the card), the subtitle band
+# what a rebuilt plan (init, init --force) keeps from the old one besides keep_clear: the last stage's hook, corner
+# logo and end (review 2026-10-18: init after a stage lost them, the next stage dropped the card), the subtitle band
 # the render has, the subtitles hidden by a per-video composition
-KEEP_ON_INIT = ("export", "hook", "corner", "end_card", "subtitles_band", "hide_subtitles")
+KEEP_ON_INIT = ("finish", "hook", "corner", "end_card", "subtitles_band", "hide_subtitles")
 
 
 def ensure_plan(e):
     """No plan yet and inserts and designed scenes off: a plan without inserts is created on the spot (as keep-clear
-    does), so a plain edit needs no `init` before validate, md or export. Inserts or scenes on and no plan: still an
+    does), so a plain edit needs no `init` before validate, md or stage. Inserts or scenes on and no plan: still an
     error, since `init` is where they are planned."""
     s, prov, doc, bdir, brand = current_settings(e)
     eff, why = effective(s)
@@ -232,11 +232,11 @@ def ensure_plan(e):
     if old is not None:
         if old.get("auto") and inserts_on:  # made by keep-clear or a plain edit, before inserts were turned on
             sys.exit(f"{plan_path(e)} was made without inserts and they are on now: run visual_plan.py init (it keeps "
-                     f"keep_clear and the last export's choices)")
+                     f"keep_clear and the last stage's choices)")
         return
     if inserts_on:
         sys.exit(f"no plan: {plan_path(e)}; inserts or designed scenes are on, so run visual_plan.py init first")
-    if not load_json(e / "captions.json"):  # review 2026-10-18: a plan without it exported "captions": null to the kit
+    if not load_json(e / "captions.json"):  # review 2026-10-18: a plan without it staged "captions": null to the kit
         sys.exit(f"no {e / 'captions.json'}: the plan follows the rough cut, build it first (cut.py)")
     with locked(plan_path(e)):
         if load_json(plan_path(e)) is None:
@@ -469,7 +469,7 @@ def cmd_init(a):
         s, prov, doc, bdir, brand = current_settings(e, old)
         plan = build_plan(e, cap, s, prov, doc)
         plan["keep_clear"] = (old or {}).get("keep_clear", [])
-        plan.update({k: old[k] for k in KEEP_ON_INIT if k in (old or {})})  # the last export's finish, the subtitle band
+        plan.update({k: old[k] for k in KEEP_ON_INIT if k in (old or {})})  # the last stage's finish, the subtitle band
         for d in load_defects(e)[0]:  # defects.py: a span with a bad picture gets the cover hint
             for g in plan["segments"]:
                 if g["start"] < d["end"] and g["end"] > d["start"]:
@@ -786,7 +786,7 @@ def scene_tone(sc, s):
 # that covers one says so (`add … --covers d03`); only a full scene, a replacing B-roll (a code scene is one) or a
 # cutaway meme takes the face off screen: overlay, split, panel and window leave it there. The insert has to be on
 # screen from COVER_PAD before the defect to COVER_PAD after it, its entrance finished by then and its exit not yet
-# begun (a fade or a slide shows the defect through it), and ready (export takes only ready inserts); a defect left on
+# begun (a fade or a slide shows the defect through it), and ready (stage takes only ready inserts); a defect left on
 # purpose is accepted with a reason (`accept`), for that stretch only. references/inserts.md, "Covering a bad
 # stretch".
 COVER_PAD = 0.25
@@ -835,7 +835,7 @@ def same_defect(acc, d):
 
 def defect_issues(e, plan, s, doc, cap):
     """-> (errors, warnings, {defect id: how it is handled}) for the picture defects of edit/<id>. A ready insert covers
-    a defect (export takes only ready ones); a planned one marked --covers is checked now and counts once it is ready."""
+    a defect (stage takes only ready ones); a planned one marked --covers is checked now and counts once it is ready."""
     defects, stale = load_defects(e)
     errs, warns, state = [], ([stale] if stale else []), {}
     if not defects:
@@ -889,7 +889,7 @@ def defect_issues(e, plan, s, doc, cap):
         if d["id"] in planned:
             state[d["id"]] = f"to be covered by {planned[d['id']]} (not ready yet)"
             warns.append(f"{d['id']}: {d['kind']} {fmt_t(d['start'])}-{fmt_t(d['end'])}: {planned[d['id']]} will cover it "
-                         f"once it is ready (until then the export leaves the defect on screen)")
+                         f"once it is ready (until then the stage leaves the defect on screen)")
             continue
         state[d["id"]] = "open"
         if ac:
@@ -940,7 +940,7 @@ def hides_subtitles(sc):
 
 
 def without_own(plan, sc):
-    """The plan for checking a scene box: without the scene's own keep_clear entry (export writes it)."""
+    """The plan for checking a scene box: without the scene's own keep_clear entry (stage writes it)."""
     return {**plan, "keep_clear": [k for k in plan.get("keep_clear", []) if k.get("scene") != sc.get("id")]}
 
 
@@ -1091,7 +1091,7 @@ def add_scene(a):
               "sound": a.sound, "hide_subtitles": bool(a.hide_subtitles) or mode in ("split", "panel", "window", "full") or a.type in ("slogan", "hook", "quote", "list"),
               "status": "planned", "fallback": "main footage"}
         if a.type == "cover" and a.frame_at is not None:
-            sc["frame_at"] = round(a.frame_at, 3)  # the video second under the cover (the cover composition, export -> cover.frameAt)
+            sc["frame_at"] = round(a.frame_at, 3)  # the video second under the cover (the cover composition, stage -> cover.frameAt)
         if a.cam:
             sc["cam"] = [float(x) for x in a.cam.split(",")]
         if getattr(a, "covers", None):
@@ -1125,44 +1125,44 @@ def read_need(n, R):
     return R.get("short_s", 0.8) if n <= R.get("short_words", 3) else max(R.get("min_s", 1.2), R.get("per_word_s", 0.3) * n)
 
 
-END_CARD_S = 2.6  # the end card / logo sting the kit appends after the rough cut (export --card / --sting)
+END_CARD_S = 2.6  # the end card / logo sting the kit appends after the rough cut (stage --card / --sting)
 
 
 def end_tail(a, plan):
-    """Seconds the export appends after the rough cut (an end card or a logo sting): "the last 2 s" count from the end
+    """Seconds the stage appends after the rough cut (an end card or a logo sting): "the last 2 s" count from the end
     of the whole video (T5: a stat scene ending 1.95 s before the end of a 25.0 s cut was flagged, while a 2.6 s sting
-    followed and the video was 27.6 s). During export: its --card/--sting/--no-end, else the last export's choice
-    (finish_of); validate takes --card/--sting before the export, else what the last export recorded ("end_card")."""
+    followed and the video was 27.6 s). During stage: its --card/--sting/--no-end, else the last stage's choice
+    (finish_of); validate takes --card/--sting before the stage, else what the last stage recorded ("end_card")."""
     if getattr(a, "sting", False) or getattr(a, "card", None):
         return END_CARD_S
-    if getattr(a, "cmd", None) == "export":
+    if getattr(a, "cmd", None) == "stage":
         return END_CARD_S if finish_of(a, plan)[0]["end"] else 0.0
     return float((plan.get("end_card") or {}).get("seconds") or 0.0)
 
 
 def finish_of(a, plan):
-    """What export draws around the cut: the hook headline, the corner logo, the end card or the logo sting. A flag sets
-    it, --no-hook/--no-corner/--no-end take it off, and with neither the last export's choice stays (review 2026-10-17:
-    a re-export for a late fix dropped the approved hook and end card, and the missing card changed the video's length).
+    """What stage draws around the cut: the hook headline, the corner logo, the end card or the logo sting. A flag sets
+    it, --no-hook/--no-corner/--no-end take it off, and with neither the last stage's choice stays (review 2026-10-17:
+    a re-stage for a late fix dropped the approved hook and end card, and the missing card changed the video's length).
     -> ({"hook": text|None, "corner": bool, "end": {"kind": "card", "lines": [...]}|{"kind": "sting"}|None},
-        notes for the person, names of what was kept from the last export)."""
-    last = dict(plan.get("export") or {})
+        notes for the person, names of what was kept from the last stage)."""
+    last = dict(plan.get("finish") or {})
     notes = []
     preset = (plan.get("settings") or {}).get("finish")  # a series preset's finish (reelcfg.py preset use)
-    legacy = plan.get("corner") or plan.get("end_card") or plan.get("hook")  # markers of an export before 1.13
+    legacy = plan.get("corner") or plan.get("end_card") or plan.get("hook")  # markers of a stage before 1.13
     if not last and not legacy and isinstance(preset, dict) and preset:  # only a video with no ending of its own
         last = {"hook": None, "corner": bool(preset.get("corner")), "end": preset.get("end")}
-    elif not last:  # a plan exported before 1.13 kept only markers: the corner and a sting come back, texts cannot
+    elif not last:  # a plan staged before 1.13 kept only markers: the corner and a sting come back, texts cannot
         if plan.get("corner"):
             last["corner"] = True
         kind = (plan.get("end_card") or {}).get("kind")
         if kind == "sting":
             last["end"] = {"kind": "sting"}
         elif kind == "card" and not (getattr(a, "card", None) or getattr(a, "sting", False) or getattr(a, "no_end", False)):
-            notes.append("the last export had an end card, but its lines are not stored: give --card again (or --no-end)")
-            last["end"] = {"kind": "card", "lines": None}  # still on: validate and this export count its 2.6 s
+            notes.append("the last stage had an end card, but its lines are not stored: give --card again (or --no-end)")
+            last["end"] = {"kind": "card", "lines": None}  # still on: validate and this stage count its 2.6 s
         if plan.get("hook") and not (getattr(a, "hook", None) or getattr(a, "no_hook", False)):
-            notes.append("the last export had a hook headline, but its text is not stored: give --hook again (or --no-hook)")
+            notes.append("the last stage had a hook headline, but its text is not stored: give --hook again (or --no-hook)")
             last["hook"] = True
     kept = []
     if getattr(a, "no_hook", False):
@@ -1308,7 +1308,7 @@ def check_scenes(e, plan, s, doc, brand, fdata, cap, scenes, brolls, memes, tail
         need_items = "items" in spec["need"]
         if need_items and len(items) < 2:
             E(sc, f"{len(items)} item(s): at least 2 are needed (items)")
-        for k, it in enumerate(items):  # items are checked for any scene: export writes their times for the kit
+        for k, it in enumerate(items):  # items are checked for any scene: stage writes their times for the kit
             if not isinstance(it, dict):
                 E(sc, f"item {k + 1}: not an object")
                 continue
@@ -1629,7 +1629,7 @@ def check_callouts(e, plan, s, doc, fdata, callouts, brolls, memes, scenes, corn
     R = (doc.get("scenes") or {}).get("reading") or {}
     tones = {k: v for k, v in (doc.get("scene_tones") or {}).items() if not k.startswith("_")}
     lb = ml.layout(s, doc).get("subtitles_band", list(SUB_BAND))
-    pb = plan.get("subtitles_band") or lb  # the band export measured for the render, and the layout's
+    pb = plan.get("subtitles_band") or lb  # the band stage measured for the render, and the layout's
     band = [min(lb[0], pb[0]), max(lb[1], pb[1])] if (s.get("subtitles") or "accent") != "none" else None
     zx0, zy0, zx1, zy1 = ui_zone()  # the label: the safe zone, 40 px off the left edge by default
     ui = ui_safe()
@@ -1638,7 +1638,7 @@ def check_callouts(e, plan, s, doc, fdata, callouts, brolls, memes, scenes, corn
     # where the rough cut is not on screen as the anchor has it: a scene that moves or covers it, a replacing B-roll,
     # a cutaway meme
     cover = [x for x in scenes if x.get("mode") in COVER_MODES and x.get("type") != "cover"]
-    # B-roll and memes only when ready: export renders nothing else, the main footage stays (Fable review)
+    # B-roll and memes only when ready: stage renders nothing else, the main footage stays (Fable review)
     cover += [x for x in brolls + memes if x.get("mode") in ("replace", "cutaway") and x.get("status") == "ready"]
     # where the subtitles are hidden their band is free: hide-subs windows and scenes that hide them
     hidden = [tuple(h) for h in hidden_windows(plan)] + [(x["start"], x["start"] + x["dur"]) for x in scenes
@@ -1873,12 +1873,12 @@ def check_callouts(e, plan, s, doc, fdata, callouts, brolls, memes, scenes, corn
 
 
 def end_now(a, plan):
-    """What follows the cut, whether the corner logo and the hook headline are drawn, for THIS run: export's own
-    --card/--sting/--corner/--hook, validate's flags, else what the last export recorded (Codex review: a first export
-    --card was not counted, and an export without a card after one with it still counted the old card). Export keeps
-    the last export's choice unless a flag changes it (finish_of).
+    """What follows the cut, whether the corner logo and the hook headline are drawn, for THIS run: stage's own
+    --card/--sting/--corner/--hook, validate's flags, else what the last stage recorded (Codex review: a first stage
+    --card was not counted, and a stage without a card after one with it still counted the old card). Stage keeps
+    the last stage's choice unless a flag changes it (finish_of).
     -> (end kind or None, corner, hook)."""
-    if getattr(a, "cmd", None) == "export":
+    if getattr(a, "cmd", None) == "stage":
         fin = finish_of(a, plan)[0]
         return (fin["end"] or {}).get("kind"), fin["corner"], bool(fin["hook"])
     if getattr(a, "card", None):
@@ -1887,7 +1887,7 @@ def end_now(a, plan):
         kind = "sting"
     else:
         kind = (plan.get("end_card") or {}).get("kind")
-    # a standalone validate also trusts the last export's record
+    # a standalone validate also trusts the last stage's record
     corner = bool(getattr(a, "corner", False)) or bool(plan.get("corner"))
     hook = bool(getattr(a, "hook", None)) or bool(plan.get("hook"))
     return kind, corner, hook
@@ -1933,8 +1933,8 @@ def profile_issues(e, plan, s, brand, cap, scenes, memes, tail, corner=False, en
             early = [x for x in timeline if float(x.get("start", 99)) <= 0.5]
             put(item, hook or early or (first is not None and first <= 1.0),
                 f"the first word starts at {first if first is None else round(first, 2)} s and no scene opens the "
-                f"video: a slow start (cut the lead-in, or open with a hook scene or the export --hook headline; "
-                f"validate --hook when the export will have one)")
+                f"video: a slow start (cut the lead-in, or open with a hook scene or the stage --hook headline; "
+                f"validate --hook when the stage will have one)")
         elif check == "length":
             lo, hi = pr.get("length") or (None, None)
             put(item, not lo or lo - 0.5 <= total <= hi + 0.5,
@@ -1948,7 +1948,7 @@ def profile_issues(e, plan, s, brand, cap, scenes, memes, tail, corner=False, en
                 + (" (two only for a job opening: content_format offer)" if pr.get("cta_max", 1) < 2 else ""))
         elif check == "cta_present":
             put(item, ctas or cards or CTA_RE.search(spoken.lower()),
-                "no CTA: no cta scene, no end card (export --card) and none spoken in the last 40 % of the video")
+                "no CTA: no cta scene, no end card (stage --card) and none spoken in the last 40 % of the video")
         elif check == "brand_early":
             n = float(pr.get("brand_by_s") or 3)
             names = [x for x in {str(brand.get("name") or ""), *(brand.get("aliases") or [])} if str(x).strip()]
@@ -1959,7 +1959,7 @@ def profile_issues(e, plan, s, brand, cap, scenes, memes, tail, corner=False, en
             hit = corner or any(k in heard or k in seen for k in keys)
             hit = hit or any(x.get("type") == "cover" for x in timeline if float(x.get("start", 99)) <= n)
             put(item, hit, f"the brand ({', '.join(names) or 'no name in brand.json'}) is not heard or seen by {n:g} s: "
-                           f"say it, show it in the hook or a scene, or add the corner logo (export --corner; "
+                           f"say it, show it in the hook or a scene, or add the corner logo (stage --corner; "
                            f"validate --corner)")
         elif check == "safe_zone":
             z = pr.get("safe_zone")
@@ -1973,7 +1973,7 @@ def profile_issues(e, plan, s, brand, cap, scenes, memes, tail, corner=False, en
             boxes += [(k.get("what") or "keep-clear", k["box"]) for k in plan.get("keep_clear", [])
                       if k.get("box") and not k.get("scene") and not k.get("matte") and not k.get("callout")]
             # callouts from the plan itself, where the render puts their labels: their keep_clear entries come only
-            # with export, after this check (PR 32 review: a first export of an ad let a label out of the zone)
+            # with stage, after this check (PR 32 review: a first stage of an ad let a label out of the zone)
             ctx = callout_context(e, plan)
             for c in plan.get("inserts", []):
                 if (c.get("kind") != "callout" or c.get("status") == "skipped" or not _point(c.get("anchor"))
@@ -1988,13 +1988,13 @@ def profile_issues(e, plan, s, brand, cap, scenes, memes, tail, corner=False, en
             for name, b in boxes:
                 if b[0] < x0 or b[1] < y0 or b[0] + b[2] > x1 or b[1] + b[3] > y1:
                     bad.append(f"{name} {list(b)}")
-            # the subtitles: export lifts them into the zone itself (a band an earlier export recorded lower is not
+            # the subtitles: stage lifts them into the zone itself (a band an earlier stage recorded lower is not
             # blocked: Codex review); only a block taller than the zone can't fit
             h = SUB_BLOCK_H.get(str(s.get("subtitles") or "accent"), max(SUB_BLOCK_H.values()))
             if not only and y1 - y0 < h:
                 bad.append(f"the subtitles ({h} px) do not fit between y {y0} and {y1}")
             fr = None if only else framed_at(e)
-            if corner and not fr:  # export puts it at the zone's top for this profile (props.cornerTop)
+            if corner and not fr:  # stage puts it at the zone's top for this profile (props.cornerTop)
                 cx, cy, cw, ch = CORNER_BOX
                 b = [cx, max(cy, y0), cw, ch]
                 if b[0] < x0 or b[0] + b[2] > x1 or b[1] + b[3] > y1:
@@ -2232,7 +2232,7 @@ def follow_rough_cut(e, plan, cap, s, prov, doc, quiet=False):
 
 def cmd_validate(a, quiet=False):
     e = edit_dir(a.edit)
-    ensure_plan(e)  # md and export validate first, so all three work on a plain edit without `init`
+    ensure_plan(e)  # md and stage validate first, so all three work on a plain edit without `init`
     # settings are the current ones from reel.json (reelcfg.py save), not the plan's snapshot; the snapshot is refreshed
     with locked(plan_path(e)):
         plan = load_plan(e)
@@ -2479,7 +2479,7 @@ def cmd_validate(a, quiet=False):
     warns += sw
     end_kind, corner_now, hook_now = end_now(a, plan)
     hook_text = (getattr(a, "hook", None) if isinstance(getattr(a, "hook", None), str)
-                 else (plan.get("export") or {}).get("hook"))
+                 else (plan.get("finish") or {}).get("hook"))
     motions = {}
     ce, cw, cbad = check_callouts(e, plan, s, doc, fdata, callouts, brolls, memes, scenes, corner_now,
                                   (hook_text or True) if hook_now else False, motions)
@@ -2658,10 +2658,10 @@ def cmd_md(a):
         L += [f"{n}. {fmt_t(k['start'])}-{fmt_t(k['end'])} {k.get('what', '')} box {k.get('box')}"
               + (f", camera {k['cam']}" if k.get("cam") else "")
               + (f", presenter layer {k['matte']} (counts in the coverage)" if k.get("matte") else "")
-              + (f" (scene {k['scene']}, written by export)" if k.get("scene") else "")
+              + (f" (scene {k['scene']}, written by stage)" if k.get("scene") else "")
               for n, k in enumerate(keep, 1) if not k.get("callout")]
         # a callout's label has a zone per 0.25 s for the audit: one line here (Fable review: ~10 lines a callout)
-        L += [f"- callout {c} label: its box every 0.25 s on screen, written by export (`remove {c}` takes the callout)"
+        L += [f"- callout {c} label: its box every 0.25 s on screen, written by stage (`remove {c}` takes the callout)"
               for c in dict.fromkeys(k["callout"] for k in keep if k.get("callout"))]
         L += ["", "Remove a zone: `visual_plan.py keep-clear edit/<id> --remove N`."]
     defects, _ = load_defects(e)
@@ -2712,7 +2712,7 @@ def cmd_keep(a):
             if own:
                 k0 = keep[own[0] - 1]
                 what = "a scene" if k0.get("scene") else "a callout"
-                sys.exit(f"zone {', '.join(map(str, own))} belongs to {what} and export writes it back: remove {what} "
+                sys.exit(f"zone {', '.join(map(str, own))} belongs to {what} and stage writes it back: remove {what} "
                          f"(visual_plan.py remove {a.edit} {k0.get('scene') or k0.get('callout')}) or move it")
             gone = [keep[n - 1] for n in sorted(set(a.remove))]
             plan["keep_clear"] = [k for n, k in enumerate(keep, 1) if n not in set(a.remove)]
@@ -2725,10 +2725,10 @@ def cmd_keep(a):
     entry = {"start": a.start, "end": a.end, "box": box, "what": a.what}
     if a.cam:  # the span's camera, so that validate checks the face where the viewer sees it
         entry["cam"] = [float(x) for x in a.cam.split(",")]
-    if a.matte:  # a presenter layer (matte.py place): coverage, its WebM copied by export
+    if a.matte:  # a presenter layer (matte.py place): coverage, its WebM copied by stage
         entry["matte"] = safe_slug(a.matte, "--matte", dots=True)
         if not (e / "matte" / f"{entry['matte']}.webm").exists():
-            warn(f"no {e / 'matte' / (entry['matte'] + '.webm')}: export has nothing to copy until matte.py cut makes it")
+            warn(f"no {e / 'matte' / (entry['matte'] + '.webm')}: stage has nothing to copy until matte.py cut makes it")
     if a.own_face:  # the presenter's own face on screen: not a no-go for its own layer
         entry["own_face"] = [int(x) for x in a.own_face.split(",")]
         if len(entry["own_face"]) != 4:
@@ -2760,7 +2760,7 @@ def cmd_keep(a):
 
 def cmd_hide(a):
     """Windows where the subtitles are hidden by something the plan doesn't hold as a scene (a presenter over a scene, an
-    accent title in a per-video composition): export puts them into props.hideSubtitles, faces.py audit reads them.
+    accent title in a per-video composition): stage puts them into props.hideSubtitles, faces.py audit reads them.
     --remove N takes windows out (numbered as in visual_plan.md, from 1)."""
     e = edit_dir(a.edit)
     ensure_plan(e)  # a plain edit has no init (SKILL.md step 7a)
@@ -2785,7 +2785,7 @@ def cmd_hide(a):
         print(f"hide_subtitles removed: {fmt_t(h['start'])}-{fmt_t(h['end'])} {h.get('why', '')}".rstrip())
     if not a.remove:
         print(f"hide_subtitles: {fmt_t(a.start)}-{fmt_t(a.end)}" + (f" ({a.why})" if a.why else "")
-              + "; export puts it into props.hideSubtitles, faces.py audit reads it")
+              + "; stage puts it into props.hideSubtitles, faces.py audit reads it")
 
 
 def hidden_windows(plan):
@@ -2794,7 +2794,7 @@ def hidden_windows(plan):
 
 
 def cmd_remove(a):
-    """Take inserts (B-roll, memes, scenes) out of the plan, with the zones export wrote for those scenes. To change an
+    """Take inserts (B-roll, memes, scenes) out of the plan, with the zones stage wrote for those scenes. To change an
     insert: remove it and add it again (T1 edited visual_plan.json by hand five times for want of this)."""
     e = edit_dir(a.edit)
     with editing_plan(e) as plan:
@@ -2808,7 +2808,7 @@ def cmd_remove(a):
             plan["keep_clear"] = [k for k in plan["keep_clear"] if k.get("scene") not in a.ids and k.get("callout") not in a.ids]
     for i in gone:
         print(f"removed {i['id']}: {i['kind']} {i.get('type') or i.get('mode')} {fmt_t(i['start'])} +{i['dur']} s: {i['what']}")
-    print("files the inserts used stay where they are; validate and export again")
+    print("files the inserts used stay where they are; validate and stage again")
 
 
 def scene_face(e, sc):
@@ -2886,7 +2886,7 @@ def source_files(e):
 def same_source(a, b, files=None):
     """A shot's "source" names a segment's source: the same path, file name or stem, or the cut.json name of that
     file (captions.json segments carry the name; T2: "source": "<file>.MOV" against segments of "front" failed
-    the export)."""
+    the stage)."""
     a, b = str(a or ""), str(b or "")
     if not (a and b):
         return False
@@ -2962,7 +2962,7 @@ def camera_shots(e, plan, cap, quiet=False):
 
 
 def plan_camera(e, plan):
-    """camera.json shots for the checks (validate): [] without camera.json, or when it does not resolve (export
+    """camera.json shots for the checks (validate): [] without camera.json, or when it does not resolve (stage
     reports that)."""
     if not (Path(e) / "camera.json").is_file():
         return []
@@ -3683,11 +3683,11 @@ def cmd_shade(a):
     if fr and fr["subtitles_at"] == "below" and not zone:
         print("subtitles_at below: the subtitles sit on the field under the framed window, not over the video; no "
               "darkening is needed (the kit draws none there). Check the subtitle color against the field instead: "
-              "export warns when they do not read")
+              "stage warns when they do not read")
         return
     top = a.top or (plan.get("subtitles_band") or [None])[0] or subtitle_top(e, s, shots, quiet=True)[0]
-    if fr and not a.top:  # "framed": the block inside the window's text area, as export puts it (Codex review: before
-        # the first export a short window [25,340,1030,800] was measured at y 1290, below the window, "no frame")
+    if fr and not a.top:  # "framed": the block inside the window's text area, as stage puts it (Codex review: before
+        # the first stage a short window [25,340,1030,800] was measured at y 1290, below the window, "no frame")
         a0, a1 = framed_sub_area(fr)[1], framed_sub_area(fr)[3]
         top = max(a0, min(top, a1 - SUB_BLOCK_H["typewriter"]))
     bottom = min(1500, top + SHADE_LINES)
@@ -3793,16 +3793,16 @@ def cmd_export(a):
             print("error: " + m)
         sys.exit("the plan has errors: fix them (or use --force)")
     plan = load_plan(e)  # after validate the settings snapshot is current
-    fin, notes, kept = finish_of(a, plan)  # hook, corner logo, end: this run's flags, else the last export's choice
-    if notes:  # reviews 2026-10-18: a warning and a dropped card made the video 2.6 s shorter, and the next export was silent
-        sys.exit("nothing exported, the plan is unchanged: " + "; ".join(notes))
+    fin, notes, kept = finish_of(a, plan)  # hook, corner logo, end: this run's flags, else the last stage's choice
+    if notes:  # reviews 2026-10-18: a warning and a dropped card made the video 2.6 s shorter, and the next stage was silent
+        sys.exit("nothing staged, the plan is unchanged: " + "; ".join(notes))
     end = fin["end"] or {}
     if kept:
-        print(f"kept from {'the last export' if plan.get('export') else 'the series preset'}: {', '.join(kept)} "
+        print(f"kept from {'the last stage' if plan.get('finish') else 'the series preset'}: {', '.join(kept)} "
               f"(--no-hook, --no-corner, --no-end take them off)")
     rem = Path(a.remotion).resolve()
     if not (rem / "package.json").is_file() or not (rem / "src").is_dir():
-        sys.exit(f"not a Remotion project (no package.json or src/): {rem}; nothing exported")
+        sys.exit(f"not a Remotion project (no package.json or src/): {rem}; nothing staged")
     name = safe_slug(a.name or plan["id"], "--name", dots=True)
     pub = inside(rem / "public", rem / "public" / name / "inserts", "inserts folder")
     out, skipped = [], []
@@ -3889,7 +3889,7 @@ def cmd_export(a):
         # `npx remotion render <Template> ... --props=<file>`
         brand = load_json(rem / "src" / "brands" / f"{safe_slug(plan['brand'], 'the plan brand')}.json")
         if not brand:
-            sys.exit(f"no src/brands/{plan['brand']}.json: run brand.py export {plan['brand']} --remotion {a.remotion}")
+            sys.exit(f"no src/brands/{plan['brand']}.json: run brand.py stage {plan['brand']} --remotion {a.remotion}")
         only = plan.get("format") == "scenes-only"
         vid, src_v = rem / "public" / name / "video.mp4", e / "final.mp4"
         if not only and not src_v.exists():
@@ -3998,16 +3998,16 @@ def cmd_export(a):
             print(f"scenes: {len(scenes)} in props.scenes; subtitles hidden in {len(hide)} window(s)")
         save_json(Path(a.props), props)
         print(f"template props: {a.props}")
-    else:  # an agent ran export without --props and read the plans line as "done": no props, no render
+    else:  # an agent ran stage without --props and read the plans line as "done": no props, no render
         print(f"no --props: the template props (rough cut, subtitles, brand, scenes) are NOT written, the ReelKit render "
               f"needs them: add --props {(e / 'reelkit-props.json').as_posix()}")
-    # what follows the cut, recorded once the export is through (during it end_tail() reads --sting/--card): validate
+    # what follows the cut, recorded once the stage is through (during it end_tail() reads --sting/--card): validate
     # counts "the last 2 s" from the whole video's end. Codex review: written before the Remotion project check, a
-    # failed export left an end card that the next validate counted
-    # The full choice goes into "export" (the next export keeps it, finish_of); the markers are what validate and the
+    # failed stage left an end card that the next validate counted
+    # The full choice goes into "finish" (the next stage keeps it, finish_of); the markers are what validate and the
     # profile's items read (end_tail, end_now, profile_issues)
     with editing_plan(e) as p2:
-        p2["export"] = fin
+        p2["finish"] = fin
         for k, on in (("corner", fin["corner"]), ("hook", bool(fin["hook"]))):
             if on:
                 p2[k] = True
@@ -4066,7 +4066,7 @@ def main():
     p.add_argument("--to", dest="end", type=float); p.add_argument("--box", help="x,y,w,h in 1080x1920")
     p.add_argument("--what"); p.add_argument("--cam", help="z,cx,cy of the camera on this span")
     p.add_argument("--remove", type=int, nargs="+", metavar="N", help="remove zone N (numbered in visual_plan.md, from 1)")
-    p.add_argument("--matte", help="a presenter layer: the matte.py name (counts in the coverage, export copies its WebM)")
+    p.add_argument("--matte", help="a presenter layer: the matte.py name (counts in the coverage, stage copies its WebM)")
     p.add_argument("--own-face", help="x,y,w,h: the presenter's own face on screen (not flagged in its own zone)")
     p.set_defaults(fn=cmd_keep)
     p = sub.add_parser("hide-subs", help="hide the subtitles in a window a per-video composition covers")
@@ -4083,18 +4083,18 @@ def main():
     p.set_defaults(fn=cmd_remove)
     p = sub.add_parser("validate"); p.add_argument("edit")
     g = p.add_mutually_exclusive_group()
-    g.add_argument("--sting", action="store_true", help="a logo sting will follow the cut (export --sting): the last 2 s "
+    g.add_argument("--sting", action="store_true", help="a logo sting will follow the cut (stage --sting): the last 2 s "
                                                         "count from the end of the whole video")
-    g.add_argument("--card", action="store_true", help="an end card will follow the cut (export --card)")
-    p.add_argument("--corner", action="store_true", help="the export will draw the corner logo (export --corner): the "
+    g.add_argument("--card", action="store_true", help="an end card will follow the cut (stage --card)")
+    p.add_argument("--corner", action="store_true", help="the stage will draw the corner logo (stage --corner): the "
                                                          "brand counts as seen from the first frame")
-    p.add_argument("--hook", action="store_true", help="the export will show a hook headline (export --hook): the video "
+    p.add_argument("--hook", action="store_true", help="the stage will show a hook headline (stage --hook): the video "
                                                        "counts as opening on its hook")
     p.set_defaults(fn=lambda a: sys.exit(1 if cmd_validate(a)[0] else 0))
     p = sub.add_parser("md"); p.add_argument("edit"); p.set_defaults(fn=cmd_md)
     p = sub.add_parser("shade", help="measure the darkening behind \"Typewriter\" subtitles (reel.json subtitles_shade)")
     p.add_argument("edit"); p.add_argument("--color", help="the subtitle text color (default: the brand's text_on_primary)")
-    p.add_argument("--top", type=int, help="the subtitles' top y (default: the band export recorded, else the chin)")
+    p.add_argument("--top", type=int, help="the subtitles' top y (default: the band stage recorded, else the chin)")
     g = p.add_mutually_exclusive_group()
     g.add_argument("--zone", metavar="X,Y,W,H", help="measure a text zone instead of the subtitle band (a flat darkening)")
     g.add_argument("--scene", metavar="ID", help="measure the box of this scene, over its time (a flat darkening)")
@@ -4102,12 +4102,12 @@ def main():
     p.add_argument("--to", dest="end", type=float, help="--zone: up to this second")
     p.add_argument("--target", type=float, help="the contrast to reach (default 4.5 for subtitles, 3.0 for a zone: large text)")
     p.set_defaults(fn=cmd_shade)
-    p = sub.add_parser("export"); p.add_argument("edit"); p.add_argument("--remotion", required=True); p.add_argument("--name")
+    p = sub.add_parser("stage"); p.add_argument("edit"); p.add_argument("--remotion", required=True); p.add_argument("--name")
     p.add_argument("--force", action="store_true"); p.add_argument("--props", help="the props file for the template composition")
     p.add_argument("--subtitles", choices=["accent", "plate", "typewriter", "none"])
-    # hook, corner logo and end are kept from the last export unless a flag changes them (finish_of)
+    # hook, corner logo and end are kept from the last stage unless a flag changes them (finish_of)
     g = p.add_mutually_exclusive_group()
-    g.add_argument("--hook", help="the hook headline over the first 2.4 s (kept by later exports)")
+    g.add_argument("--hook", help="the hook headline over the first 2.4 s (kept by later stages)")
     g.add_argument("--no-hook", action="store_true", help="take the hook headline off")
     g = p.add_mutually_exclusive_group()
     g.add_argument("--card", nargs="+", metavar="LINE", help="the end card: 1-2 CTA lines")

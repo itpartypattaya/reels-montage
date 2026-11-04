@@ -34,7 +34,7 @@ apply   — checks the translation (every phrase translated, the source still ma
           covers a whole phrase: then every translated word of that phrase gets it, and the kit shows the translated
           phrase on one block. A keep group inside a longer phrase is named and not carried (its words cannot be found in
           the translation); the phrase is still translated as one.
-          Then: reel.json "subtitles_lang": "<lang>" → visual_plan.py export uses captions-<lang>.json for the subtitles.
+          Then: reel.json "subtitles_lang": "<lang>" → visual_plan.py stage uses captions-<lang>.json for the subtitles.
 srt     — SubRip subtitles for upload to the platform (YouTube, a player; on Instagram the captions are auto-made):
           the phrases with their times, up to 2 lines of 42 characters; a phrase longer than that becomes several
           subtitles (split at a sentence end or a comma nearest the middle, timed by its words; a translation by
@@ -157,7 +157,7 @@ def fingerprint(cap):
     """The rough cut a translation belongs to: the words with their times and speakers, the length and the segments
     (the kit takes the render length from the duration). Codex review: speakers corrected in cut.json with the words
     unchanged kept the old fingerprint, and the translated captions kept the old colors. The same for a cut.json "keep"
-    mark (Codex review, PR 31: a keep added after apply left captions-<lang>.json without it, and the export took it).
+    mark (Codex review, PR 31: a keep added after apply left captions-<lang>.json without it, and the stage took it).
     Without speakers and keep marks the value is the one 1.5.0 wrote, so an earlier translation stays valid."""
     segs = [(s.get("out_start"), s.get("out_dur"), s.get("src_start"), s.get("src_end")) for s in cap.get("segments", [])]
     words = [(w.get("text"), w.get("start"), w.get("end")) + ((w["speaker"],) if w.get("speaker") else ())
@@ -289,7 +289,7 @@ def cmd_apply(a):
                     "language": a.lang, "captions": fingerprint(cap),
                     "translation": translation_id(load_json(subs_file(e, a.lang)))})
     print(f"{out}: {len(ps)} phrase(s), {len(words)} word(s)" + (f"; {len(warns)} warning(s)" if warns else "")
-          + f". For the render: reel.json \"subtitles_lang\": \"{a.lang}\", then visual_plan.py export")
+          + f". For the render: reel.json \"subtitles_lang\": \"{a.lang}\", then visual_plan.py stage")
 
 
 def srt_time(t):

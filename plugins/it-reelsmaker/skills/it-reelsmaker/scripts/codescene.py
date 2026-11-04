@@ -298,7 +298,7 @@ def cmd_scaffold(a):
         sys.exit(f"{a.insert}: no such insert with source=generated")
     rem = outside_plugin(Path(a.remotion).resolve())
     if not (rem / "src" / "brands" / f"{plan['brand']}.json").exists():
-        sys.exit(f"no src/brands/{plan['brand']}.json; first run python scripts/brand.py export {plan['brand']} "
+        sys.exit(f"no src/brands/{plan['brand']}.json; first run python scripts/brand.py stage {plan['brand']} "
                  f"--remotion {a.remotion}")
     g = i.setdefault("gen", {})
     g["engine"] = "code"

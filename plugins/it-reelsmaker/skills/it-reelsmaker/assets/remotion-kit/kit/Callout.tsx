@@ -5,7 +5,7 @@
 // line between two points with its label at the middle. The anchor is a point of the rough cut (or a path of points:
 // points, a track, a person), carried to the screen by the same camera and drift as the video (kit/anchor.ts); the line
 // and the label keep their size in screen pixels.
-// Props come from `visual_plan.py export … --props` (props.callouts), which has checked them against faces, the
+// Props come from `visual_plan.py stage … --props` (props.callouts), which has checked them against faces, the
 // subtitles, the UI zones and the other graphics. Only over the full frame: in the framed format and while a scene
 // moves or covers the video (split, panel, window, full) nothing is drawn (validate refuses that overlap).
 import React from "react";

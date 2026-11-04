@@ -1,5 +1,5 @@
 // Neutral default profile: kit builds without src/brands/<slug>.json (ReelKit preview in Studio, gen/ examples).
-// In a render the brand always arrives via props (`visual_plan.py export … --props`); this profile never gets there.
+// In a render the brand always arrives via props (`visual_plan.py stage … --props`); this profile never gets there.
 import { Brand } from "./brand";
 
 export const neutralBrand: Brand = {

@@ -265,7 +265,7 @@ def test_export_without_props_says_so(project):
     rem = project / "reels"
     (rem / "src").mkdir(parents=True)
     write_json(rem / "package.json", {"name": "reels"})
-    r = run_script("visual_plan.py", "export", "edit/4821", "--remotion", rem, cwd=project)
+    r = run_script("visual_plan.py", "stage", "edit/4821", "--remotion", rem, cwd=project)
     assert "no --props" in r.stdout and "reelkit-props.json" in r.stdout
     assert not (e / "reelkit-props.json").exists()
 

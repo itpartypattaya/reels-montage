@@ -1011,7 +1011,7 @@ def cmd_extract(a):
              "differs": "; cut.json kept as it was — its sources differ from the new pieces, check them"}[wrote]
           + ("; reel.json from the series" if new_reel else ""))
     print(f"next: speech_mask.py on each piece for the real edges -> cut.json ranges, then the usual steps from 5 "
-          f"(cut plan, cut.py, faces, export, check.py, kit.py render) in {rel(ce, project)}")
+          f"(cut plan, cut.py, faces, stage, check.py, kit.py render) in {rel(ce, project)}")
 
 
 def local_edges(doc, part, res, t0):
@@ -1462,7 +1462,7 @@ def cmd_camera(a):
             mm.setdefault("sides", {}).update(given)
     print(f"\n{rel(f, project)}: {len(shots)} shots" + (f"; the sides kept for the series in {rel(se / 'longform.json', project)}"
                                                        if given and se is not None else "")
-          + f". Next: visual_plan.py export {ce.name} (camera.json -> the kit's props), then check.py {ce.name} "
+          + f". Next: visual_plan.py stage {ce.name} (camera.json -> the kit's props), then check.py {ce.name} "
           f"(the board: board.py --shots gives a frame per shot); edit any shot by hand, a later run keeps your file")
     return 0
 
@@ -1480,7 +1480,7 @@ def stage(ce, project):
     """The stages of a clip folder by its files: (label, state) with state ok / stale / FAILED / —. A stage is ok when
     its file is newer than everything it was made from (the rough cut: cut.json AND each piece and transcript cut.json
     names, which a re-extract replaces) and every stage before it is ok; once one is stale, so is everything after it
-    (review of PR #27: a re-extracted clip still showed its old rough cut, export and render as current)."""
+    (review of PR #27: a re-extracted clip still showed its old rough cut, stage and render as current)."""
     cut, final = ce / "cut.json", ce / "final.mp4"
     props, board, render, cover = ce / "reelkit-props.json", ce / "board" / "board.md", ce / "render.json", ce / "cover.jpg"
     made_from = [cut]
@@ -1491,7 +1491,7 @@ def stage(ce, project):
                 made_from.append(q if q.is_absolute() else project / q)
     rj = load_json(render, {}) or {}
     out, broken = [], False
-    for label, f, inputs in (("cut", final, made_from), ("export", props, [final]), ("board", board, [props]),
+    for label, f, inputs in (("cut", final, made_from), ("stage", props, [final]), ("board", board, [props]),
                              ("render", render, [props]), ("cover", cover, [render])):
         if not f.is_file():
             out.append((label, "—"))

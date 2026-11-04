@@ -427,7 +427,7 @@ BRAND_SCHEMA = 2  # 1 -> 2: brand tone (references/migrations.md)
 MEME_SIZES = ["s", "m", "l"]
 # The subtitle band, y in the 1080x1920 frame, one value for every script: cards, memes and scenes keep out of it
 # (visual_plan.py validate, meme_layout.py), faces.py checks faces against it (reel-defaults.json ->
-# meme_layout.subtitles_band overrides it). export puts the subtitles' top at the measured chin + 30 px within
+# meme_layout.subtitles_band overrides it). stage puts the subtitles' top at the measured chin + 30 px within
 # SUB_BAND[0]..SUB_MAX_TOP (below are 420 px of UI); with no face measurement the kit's own top, SUB_TOP_KIT
 # (ReelKit.tsx). faces.py once had its own band (1290-1400): zones offered a chest down to 1270, where validate
 # rejected a card, and audit checked a band the render did not have.
@@ -469,7 +469,7 @@ def ui_zone(left=None, project=None):
 
 
 # The height of the kit's subtitle block at its most, two lines (Subtitles.tsx GEO: "Typewriter" 2 x 56 x 1.22; "Bar"
-# 2 plates of 60 x 1.15 + 13 with a 6 px gap; "Accent" 2 x 66 x 1.15 + 16): export records the band the render has as
+# 2 plates of 60 x 1.15 + 13 with a 6 px gap; "Accent" 2 x 66 x 1.15 + 16): stage records the band the render has as
 # [top, top + this], below the UI line. The kit never draws a third line (T4: a 56-character phrase wrapped into three
 # lines reached y 1455 while the recorded band ended at 1430).
 SUB_BLOCK_H = {"typewriter": 137, "plate": 170, "accent": 168}
@@ -478,7 +478,7 @@ SUB_BLOCK_H = {"typewriter": 137, "plate": 170, "accent": 168}
 # optional caps label above it. edit/<id>/reel.json -> "format": "framed", "window": [x, y, w, h] (optional, FRAMED_WINDOW
 # by default), "label": "..." (optional), "subtitles_at": "below" (optional: the subtitle band on the field under the
 # window, not inside it). One window for every script and the kit: faces.py maps its measurement into
-# it, visual_plan.py clamps the camera to it and keeps text inside it, export hands it to ReelKit (props.framed), which
+# it, visual_plan.py clamps the camera to it and keeps text inside it, stage hands it to ReelKit (props.framed), which
 # draws the window, the label and the video inside it (no per-video composition).
 FORMATS = ("full", "framed")
 FRAMED_WINDOW = (25, 340, 1030, 1240)

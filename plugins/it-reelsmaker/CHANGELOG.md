@@ -34,6 +34,10 @@ What changed in IT Reelsmaker, written for the people who use it. The newest ver
   Three kit files renamed a variable or rewrote a number format the scan misread (the font list in `Phrase.tsx`,
   the entrance progress in `SceneLayer.tsx`, the item number in `List.tsx`); they draw exactly as before, so there
   is no kit update to run.
+- **`export` is now `stage`.** `visual_plan.py export` and `brand.py export` are `visual_plan.py stage` and
+  `brand.py stage`, with the same arguments: they put the video (or the brand) into the Remotion project. The plan
+  keeps the ending you chose under `finish`; a plan staged before this version still keeps its corner logo and a
+  sting, and asks once for the hook and the end card's lines (`--hook`, `--card`).
 - **Two renames.** `brand.py set` and `memes.py set` are now `brand.py change` and `memes.py change` (same
   arguments: `change <slug> field=value`), and `brand.py tone … --set` is `--field`. The clip card's field that says what to do with the other voice in a
   long recording (`cut` or `keep`) is now `other_voice`; a card written before is read as `cut`, and `longform.py

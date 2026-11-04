@@ -1,4 +1,4 @@
-// Insert layers from the visual plan (src/plans/<id>.json ← `visual_plan.py export`): B-roll and memes.
+// Insert layers from the visual plan (src/plans/<id>.json ← `visual_plan.py stage`): B-roll and memes.
 // Empty list → the layers draw nothing, the video renders as if there were no inserts.
 import React from "react";
 import {

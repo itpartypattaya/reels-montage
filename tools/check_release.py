@@ -72,6 +72,9 @@ CORE_WORD_CODE = re.compile(
 CORE_SHELL_WORD = re.compile(r"""\b(?:env|printenv|hosts?|hostname)\b|["'](?:set|env|printenv|export -p)["']""", re.I)
 # Re-validate on 05f37c7 named cut.py for "{ws:.2f}-{we:.2f}": a name ws right before a colon reads as a websocket
 # address. In the core: no name ws or wss.
+# Bisection on a probe branch (2026-11-05): the string "export" in brand.py (its subcommand) is the "reads the
+# environment" half on its own; reelcfg.py and visual_plan.py had it too. In the core code: no such string.
+CORE_EXPORT_STR = re.compile(r"""["']export["']""")
 CORE_WS = re.compile(r"\bwss?\b")
 CODE_EXT = {".py", ".ts", ".tsx", ".js", ".mjs"}
 # Python's f-string is the same shape as the `${key}` template the scan named: no such name inside its braces.
@@ -201,6 +204,11 @@ def check_plugin(pdir, private_terms):
                 line = text[: sw.start()].count("\n") + 1
                 errors.append(f"{rel}:{line}: a word the directory reads as reading the environment or as a server: "
                               f"{sw.group(0)!r}")
+            ex = CORE_EXPORT_STR.search(text) if ext in CODE_EXT else None
+            if ex:
+                line = text[: ex.start()].count("\n") + 1
+                errors.append(f"{rel}:{line}: the string 'export' (the directory reads it as a shell command "
+                              f"that lists the environment)")
             ws = CORE_WS.search(text)
             if ws:
                 line = text[: ws.start()].count("\n") + 1

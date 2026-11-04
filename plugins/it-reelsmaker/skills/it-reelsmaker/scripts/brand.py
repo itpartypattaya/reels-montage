@@ -17,7 +17,7 @@ to its scripts folder):
     python scripts/brand.py change acme colors.accent=#19B8BB inserts.use_broll=false
     python scripts/brand.py tone acme friendly [--field memes.max=1 flash_max=1] [--reset]   # brand tone: preset + field overrides
     python scripts/brand.py use acme --edit edit/4821              # brand into edit/<id>/reel.json + mark as used
-    python scripts/brand.py export acme --remotion reels           # src/brands/<slug>.json + logos in public/brands/<slug>/
+    python scripts/brand.py stage acme --remotion reels           # src/brands/<slug>.json + logos in public/brands/<slug>/
 
 Logos, fonts and LUTs live inside the brand: brands/<slug>/assets/ (new and logo copy them there), so a brand moves
 between projects as one folder. Logo roles: on_dark - light (for a dark background and over video), on_light - dark,
@@ -446,7 +446,7 @@ def cmd_logo(a):
                 warn(f"{a.slug}: logo {role} replaced (was {logos[role]}, the file stays in assets/)")
             logos[role] = store(d, p)
             print(f"{a.slug}: logos.{role} = {logos[role]}")
-    print("for Remotion: brand.py export " + a.slug + " --remotion <Remotion project>")
+    print("for Remotion: brand.py stage " + a.slug + " --remotion <Remotion project>")
 
 
 def cmd_new(a):
@@ -641,7 +641,7 @@ def cmd_tone(a):
     if b.get("motion") and b["motion"] != base.get("motion"):
         print(f"  motion is set explicitly in the profile: {b['motion']} (overrides the preset's {base.get('motion')}; "
               f"to remove: brand.py change {a.slug} motion=null)")
-    print(f"for Remotion: brand.py export {a.slug} --remotion <Remotion project>")
+    print(f"for Remotion: brand.py stage {a.slug} --remotion <Remotion project>")
 
 
 def tone_for_profile(a):
@@ -688,7 +688,7 @@ def cmd_use(a):
         print("the settings snapshot in visual_plan.json is updated")
 
 
-def cmd_export(a):
+def cmd_stage(a):
     d, b = find_brand(a.slug)
     if not b:
         sys.exit(f"no brand {a.slug}")
@@ -772,7 +772,7 @@ def main():
                                      "expert-clip, promo, ad); the main tone's preset removes it")
     p.set_defaults(fn=cmd_tone)
     p = sub.add_parser("use"); p.add_argument("slug"); p.add_argument("--edit", required=True); p.set_defaults(fn=cmd_use)
-    p = sub.add_parser("export"); p.add_argument("slug"); p.add_argument("--remotion", required=True); p.set_defaults(fn=cmd_export)
+    p = sub.add_parser("stage"); p.add_argument("slug"); p.add_argument("--remotion", required=True); p.set_defaults(fn=cmd_stage)
     a = ap.parse_args()
     a.fn(a)
 

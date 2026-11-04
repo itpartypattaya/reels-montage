@@ -86,7 +86,7 @@ unless marked “real case” (🟢 verified, `references/playbook.md`); the per
 
 ### Every profile
 
-- **ALL-1** (auto) the video starts on speech or a hook within the first second (a scene, or the `export --hook`
+- **ALL-1** (auto) the video starts on speech or a hook within the first second (a scene, or the `stage --hook`
   headline: `validate --hook`): no logo intro, no greeting, no slow lead-in. [platform] Meta, TikTok and YouTube Shorts all ask for the point within ~3 s; [data] a logo-only opening cut
   6-second views by 14 % (Vidmob × TikTok).
 - **ALL-2** (auto) the length is within the format's (or the ad's) range.
@@ -145,7 +145,7 @@ unless marked “real case” (🟢 verified, `references/playbook.md`); the per
 ### Promo
 
 - **PROMO-1** (auto) the brand is heard or seen within 5 s: its name spoken or in a scene, or the corner logo
-  (`export --corner`). [platform] Google ABCD “brand early”; [data] the brand with the main message in the first 5 s
+  (`stage --corner`). [platform] Google ABCD “brand early”; [data] the brand with the main message in the first 5 s
   raised the odds of high purchase intent 1.7× (Meta × Toluna, 2026).
 - **PROMO-2** (agent) the brand appears more than once, not only on the end card. [data] repeated branding worked 1.8×
   better than one logo at the end (Meta × Toluna).
@@ -164,7 +164,7 @@ unless marked “real case” (🟢 verified, `references/playbook.md`); the per
 ### Paid ad
 
 - **AD-1** (auto, error) all text, logos, CTAs, memes and the subtitles stay inside the ad safe zone (x 65–1015,
-  y 269–1248): `export` lifts the subtitles and moves the corner logo down into it (kit 1.8.0); in the framed format
+  y 269–1248): `stage` lifts the subtitles and moves the corner logo down into it (kit 1.8.0); in the framed format
   the label and the corner logo above the window need the window low enough; full-frame scenes are checked on stills.
   [platform] Meta.
 - **AD-2** (auto) the brand or the product within 3 s. [platform] Meta, TikTok.

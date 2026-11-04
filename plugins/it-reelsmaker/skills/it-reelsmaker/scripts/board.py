@@ -6,10 +6,10 @@ per minute of video on a laptop) runs once the sheet is approved.
     python scripts/board.py edit/4821 [--props edit/4821/reelkit-props.json] [--remotion reels] [--comp ReelKit]
         [--shots] [--transitions] [--defects] [--cols 5] [--per-page 20] [--scale 0.3334]
 
-When: after `visual_plan.py export … --props` (step 8), before the full render (`kit.py render`). Again after fixes: it is cheap.
+When: after `visual_plan.py stage … --props` (step 8), before the full render (`kit.py render`). Again after fixes: it is cheap.
 
 How:
-  1. Panels from the props the render will use (scene times, tones and transitions as exported) and the plan (what
+  1. Panels from the props the render will use (scene times, tones and transitions as staged) and the plan (what
      each insert and card is): a scene at the moment its whole text is on screen + 0.3 s (the timing validate uses,
      kit/scenes/tones.ts), never past its settled window; B-roll, a meme, a graphics card (keep_clear) at their middle;
      the hook headline and the end card once settled. --shots adds a frame per camera shot, --transitions the middle of
@@ -64,7 +64,7 @@ def remotion_dir(given):
 def props_path(e, given):
     p = Path(given) if given else e / "reelkit-props.json"
     if not p.is_file():
-        sys.exit(f"no props: {p} (visual_plan.py export {e.name} --remotion … --props {p})")
+        sys.exit(f"no props: {p} (visual_plan.py stage {e.name} --remotion … --props {p})")
     return p.resolve()
 
 

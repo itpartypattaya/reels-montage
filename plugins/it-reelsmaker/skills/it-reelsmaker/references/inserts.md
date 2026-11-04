@@ -160,7 +160,7 @@ it. Not found: a blink (not a defect anyway), eyes looking down at notes with th
 
 **Timing:** the insert is on screen from 0.25 s before the defect to 0.25 s after it, and has finished entering by
 then and still there: enter and leave by a cut (a fade or a slide shows the defect through it for 7–14
-frames); leave in a pause or at a word boundary. Only a ready insert counts as covering (the export takes only ready
+frames); leave in a pause or at a word boundary. Only a ready insert counts as covering (the stage takes only ready
 ones); an acceptance holds for its stretch only, and a re-cut that moves the defect asks again. Mark it in the plan: `visual_plan.py add … --covers d03`; `validate` fails an insert that says it covers a
 defect and does not (wrong mode, too short, entering over it), and warns about a defect nothing covers. A defect left on
 purpose: `visual_plan.py accept edit/<id> d03 --why "a natural glance"` (into the report). `board.py --defects` puts a
@@ -312,4 +312,4 @@ Two insert layers, from the plan data:
 
 Each insert is a `<Sequence from={start·fps} durationInFrames={dur·fps}>`; video uses `OffthreadVideo muted`, images use `Img`.
 
-The kit's `ReelKit` composition is that universal template: it is assembled from props (`visual_plan.py export … --props <file>`, then `--props=<absolute path>` for Remotion) without code of its own: the rough cut, inserts, scenes, subtitles in brand colors and, optionally, a hook, a corner mark and an end card. Video-specific graphics go into a per-video composition that reuses the kit's components.
+The kit's `ReelKit` composition is that universal template: it is assembled from props (`visual_plan.py stage … --props <file>`, then `--props=<absolute path>` for Remotion) without code of its own: the rough cut, inserts, scenes, subtitles in brand colors and, optionally, a hook, a corner mark and an end card. Video-specific graphics go into a per-video composition that reuses the kit's components.

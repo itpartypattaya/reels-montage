@@ -18,7 +18,7 @@ once more by itself (says so; both attempts stay in render.log and in render.jso
 not retried. "temp_cleanup": false in it-reelsmaker.json keeps Remotion's own ways.
 
 What the kit is: src/ReelKit.tsx (the ReelKit and ReelCover compositions: the rough cut, subtitles, brand, inserts,
-designed scenes, all from props written by `visual_plan.py export --props`) and src/kit/ (its components). The
+designed scenes, all from props written by `visual_plan.py stage --props`) and src/kit/ (its components). The
 starter project adds package.json with pinned versions (all @remotion/* packages at the same version as remotion),
 tsconfig.json, remotion.config.ts, src/index.ts, src/Root.tsx (ReelKit, ReelCover and the code scenes from
 src/gen/registry.ts), and empty src/brands/, src/plans/, public/.

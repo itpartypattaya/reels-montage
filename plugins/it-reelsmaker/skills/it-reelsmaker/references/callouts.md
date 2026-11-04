@@ -166,7 +166,7 @@ the kit draws it (a sample where the anchor is hidden is skipped):
 - the times the kit draws: from frame round(start × 30), for round(dur × 30) frames;
 - refused for now: the framed format, a horizontal rough cut without it, and the "scenes only" format.
 
-A callout that is accepted becomes `ready`; export writes it to `props.callouts` (a person's path computed from faces.json)
+A callout that is accepted becomes `ready`; stage writes it to `props.callouts` (a person's path computed from faces.json)
 and its label, per 0.25 s where it is drawn, to `keep_clear`, so `faces.py audit` checks the render and the memes or
 windows placed later keep off it. `textcheck.py` measures the label as `callout:<id>`. The cover (`ReelCover`) does not
 draw callouts.

@@ -10,7 +10,7 @@ The skill's rule "no text on a face, chin above the subtitles" is checked here:
   check  - whether a given card / hook / end card (x,y,w,h) covers a face in a given interval;
   audit  - the finished render (after camera and graphics): faces against the subtitle band (where speech is heard and
            no scene hides the subtitles), the keep_clear zones (cards, hook, CTA, registered by visual_plan.py
-           keep-clear; designed scenes overlay/split/window by visual_plan.py export, and ready scenes are also read
+           keep-clear; designed scenes overlay/split/window by visual_plan.py stage, and ready scenes are also read
            straight from the plan) and memes; the top of the head cut off by the frame edge; a face cut at the left or
            right edge (in the render, and from faces.json through camera.json, where a half face is not detected).
 
@@ -499,7 +499,7 @@ def zone_report(f, sub, fr=None):
 
 
 def sub_band(e, given=None, rendered=False):
-    """(top, bottom) of the subtitles: --sub; for the audit of a render, the band visual_plan.py export gave it (the
+    """(top, bottom) of the subtitles: --sub; for the audit of a render, the band visual_plan.py stage gave it (the
     plan's subtitles_band: the top below the measured chin); otherwise the band graphics keep out of, as validate
     checks it (reel-defaults.json -> meme_layout.subtitles_band, reels_common.SUB_BAND)."""
     if given:
@@ -585,7 +585,7 @@ def cmd_check(a):
 
 def audit_zones(plan):
     """What the audit checks against faces from the plan: keep_clear (cards + overlay/split/window scenes, written by
-    visual_plan.py export; if export has not run yet, ready scenes are taken from the plan) and the windows where the
+    visual_plan.py stage; if stage has not run yet, ready scenes are taken from the plan) and the windows where the
     subtitles are hidden - by scenes (split/full/slogan/hide_subtitles) and by the plan's hide-subs windows (a per-video
     composition: a presenter, an accent title; T2 flagged "a face in the subtitle band" under a presenter whose
     composition had hidden them) - where "a face in the subtitle band" is not an error. -> (keep, hidden)."""

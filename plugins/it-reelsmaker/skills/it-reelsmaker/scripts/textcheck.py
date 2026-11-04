@@ -6,7 +6,7 @@ which the plan check (visual_plan.py validate) cannot.
     python scripts/textcheck.py edit/4821 [--props edit/4821/reelkit-props.json] [--remotion reels] [--comp ReelKit]
         [--step 3] [--keep-log]
 
-When: after `visual_plan.py export … --props` (step 8), with the storyboard sheet (board.py), before the full render;
+When: after `visual_plan.py stage … --props` (step 8), with the storyboard sheet (board.py), before the full render;
 again after any fix of text or layout. Takes seconds: 15 s for a 58 s video.
 
 How:

@@ -524,7 +524,7 @@ def cmd_place(a):
     props = {"src": f"<id>/{a.name}.webm", "from": meta["from"], "dur": round(meta["to"] - meta["from"], 3),
              "layout": a.layout, "side": side, "scale": s, "x": round(ox), "y": round(oy), "panel": L["panel"] if a.layout == "review" else None}
     # the zone of the presenter layer: its own face is not a no-go for it (validate and faces.py audit skip it), the
-    # span counts in the inserts' coverage, and export copies the WebM to public/<id>/
+    # span counts in the inserts' coverage, and stage copies the WebM to public/<id>/
     keep = {"start": meta["from"], "end": meta["to"], "box": fig, "what": f"presenter ({a.name})", "matte": a.name}
     if fscr:
         keep["own_face"] = fscr
