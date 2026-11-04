@@ -96,7 +96,7 @@ def check_node(remotion):
     major = int(re.match(r"v(\d+)", v).group(1)) if re.match(r"v(\d+)", v) else 0
     add("Node.js 18+", "recommended", major >= 18, v, INSTALL["node"])
     if not remotion:
-        add("Remotion project", "recommended", False, "not set", "set remotion_dir in it-reelsmaker.json or pass "
+        add("Remotion project", "recommended", False, "not set", "set remotion_dir in it-reelsmaker.json or give "
             "--remotion; a new one: " + INSTALL["remotion"])
         return
     pkg = Path(remotion) / "package.json"
@@ -113,7 +113,7 @@ def check_node(remotion):
     odd = {k: v for k, v in deps.items() if k.startswith("@remotion/") and v.lstrip("^~") != ver.lstrip("^~")}
     add("@remotion/* = remotion version", "recommended", not odd and not ver.startswith(("^", "~")),
         ", ".join(f"{k} {v}" for k, v in odd.items()) or ver,
-        f"pin every @remotion/* package to exactly {ver.lstrip('^~')}: npm install --save-exact remotion@{ver.lstrip('^~')} "
+        f"set every @remotion/* package to exactly {ver.lstrip('^~')}: npm install --save-exact remotion@{ver.lstrip('^~')} "
         f"@remotion/cli@{ver.lstrip('^~')} ...")
     add("node_modules installed", "recommended", (Path(remotion) / "node_modules" / "remotion").is_dir(), "",
         f"cd {remotion} && npm install")
@@ -131,7 +131,7 @@ def check_temp():
 
 
 def check_models(settings):
-    fm = os.environ.get("REELS_FACE_MODEL") or settings.get("face_model") or ""
+    fm = settings.get("face_model") or ""
     if str(fm).startswith("${"):
         fm = ""
     p = Path(str(fm)).expanduser() if fm else None
@@ -140,7 +140,8 @@ def check_models(settings):
     add("YuNet face model", "optional", p and p.is_file(), str(p) if p else "not set", INSTALL["face-model"])
     rb = shutil.which("rembg")
     add("rembg (matte.py)", "optional", rb, "", INSTALL["rembg"])
-    home = Path(os.environ.get("U2NET_HOME") or Path.home() / ".u2net")
+    m = settings.get("matte")
+    home = Path(str((m.get("models") if isinstance(m, dict) else None) or Path.home() / ".u2net")).expanduser()
     add("rembg model u2net_human_seg", "optional", (home / "u2net_human_seg.onnx").is_file(), str(home), INSTALL["rembg-model"])
 
 
@@ -178,7 +179,7 @@ def main():
                 print(f"       -> {r['fix']}")
         print("required: all present" if not missing else f"required missing: {', '.join(r['name'] for r in missing)}")
     # the start-up check is skipped later on this record, so it needs the render environment too (review 2026-10-18:
-    # Node.js, the Remotion project, node_modules and the kit are "recommended" and a pass without them hid them)
+    # Node.js, the Remotion project, node_modules and the kit are "recommended" and a success without them hid them)
     remember(project, ok=not [r for r in rows if r["level"] in ("required", "recommended") and not r["ok"]])
     sys.exit(1 if missing else 0)
 
@@ -187,7 +188,7 @@ def remember(project, ok):
     """Everything required and recommended present: it-reelsmaker.json -> doctor_ok {version}, so the skill runs doctor
     again only after
     a plugin update or when a tool fails (review 2026-10-17: doctor, kit check and the other start-up steps ran in every
-    session); a failed run removes it (review 2026-10-18), so the next session checks again. Only in an editing project,
+    run); a failed run removes it (review 2026-10-18), so the next run checks again. Only in an editing project,
     never in a random folder."""
     if not is_project(project):
         return

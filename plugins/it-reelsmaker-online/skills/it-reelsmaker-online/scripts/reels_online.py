@@ -455,14 +455,9 @@ def _write_json(f, obj):
 
 
 def find_project(arg=None):
-    """The project folder, found the way the core's project_root() finds it: REELS_PROJECT; else --project; else
-    project_root from it-reelsmaker.json in the current folder or above; else the nearest folder upwards with edit/ or
-    brands/; else the current folder."""
-    env = os.environ.get("REELS_PROJECT")
-    if env:
-        if arg and Path(arg).resolve() != Path(env).resolve():
-            print(f"note: REELS_PROJECT is set, so the core uses {Path(env).resolve()}; --project {arg} is ignored")
-        return Path(env).resolve()
+    """The project folder, found the way the core's project_root() finds it: --project; else project_root from
+    it-reelsmaker.json in the current folder or above; else the nearest folder upwards with edit/ or brands/; else the
+    current folder. The core reads no environment variables since 1.22 (REELS_PROJECT is gone)."""
     if arg:
         return Path(arg).resolve()
     p = Path.cwd().resolve()
@@ -498,9 +493,6 @@ def cmd_link(a):
         _write_json(f, doc)
     print(f"{f}: online_scripts = {HERE}")
     print("Run link again after each add-on update: the add-on folder path contains its version.")
-    env = os.environ.get("REELS_ONLINE_SCRIPTS")
-    if env and Path(env).resolve() != HERE:
-        print(f"note: REELS_ONLINE_SCRIPTS={env} is set and takes precedence over this link")
 
 
 def cmd_unlink(a):

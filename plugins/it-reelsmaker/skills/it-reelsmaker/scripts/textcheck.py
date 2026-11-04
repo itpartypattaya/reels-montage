@@ -26,8 +26,8 @@ How:
        warning  clipped — less than 98 % of the box is visible inside the boxes that clip it;
        warning  UI zone — above y 220, below y 1500, right of x 960 (the app's caption, buttons and likes column) or
                 left of x 40; the project's own zone when its reel-defaults.json sets meme_layout.safe.
-  3. Report lines `✗ kind a-b s group «text»`, edit/<id>/textcheck.json; exit code 1 on errors, and on a pass with
-     frames missing from the log (a gap would hide a problem: the check is then incomplete, not passed). Faces come from the
+  3. Report lines `✗ kind a-b s group «text»`, edit/<id>/textcheck.json; exit code 1 on errors, and on an apparent success with
+     frames missing from the log (a gap would hide a problem: the check is then incomplete, not a success). Faces come from the
      rough cut's faces.json (faces.py scan); without it the face check is skipped and the report says so.
 
 The kit's own text carries data-rk groups; in a per-video composition text without one is grouped by its block, and
@@ -62,7 +62,7 @@ MIN_RUN_S = 0.3
 
 
 def parse_log(text):
-    """Remotion's verbose output -> {frame: [box…]}; a box is (key, text, x, y, w, h, alpha, visible). A frame logged
+    """Remotion's verbose output -> {frame: [box…]}; a box is (group, text, x, y, w, h, alpha, visible). A frame logged
     twice (Remotion echoes the browser's console) keeps its last line."""
     dec = json.JSONDecoder()
     out = {}

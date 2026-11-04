@@ -50,6 +50,8 @@ CORE_CREDENTIAL = re.compile(
 # keeping the two in different files): in the core, a file has one or the other.
 CORE_ENV_READ = re.compile(r"os\.environ|getenv\(|process\.env|\$PWD\b|\$HOME\b|\bREELS_[A-Z_]+")
 WEB_LINK = re.compile(r"https?://")
+# Since 1.22 the core reads no environment variables at all, as other plugins did to clear the same hold.
+CORE_READS_ENV = re.compile(r"os\.environ|os\.getenv|\bgetenv\(|process\.env")
 # The portal's Validate named two kit files (2026-11-04): `${key}` in a template string read as "reads the installer's
 # key" and `0${k + 1}` as "a command assembled at run time". In the core, a template does not interpolate a name that
 # sounds like a secret, and does not start with digits right before `${`.
@@ -65,6 +67,11 @@ CORE_WORD_CODE = re.compile(
     r"\b(?:pass\w*|keys?|token\w*|pins?|session\w*|secret\w*|auth\w*|cred\w*|password\w*)[ \t:,(]{1,3}`", re.I
 )
 CODE_EXT = {".py", ".ts", ".tsx", ".js", ".mjs"}
+# Python's f-string is the same shape as the `${key}` template the scan named: no such name inside its braces.
+CORE_FSTRING = re.compile(
+    r"""\bf["'][^"'\n]*\{[^{}\n]*\b(?:key|keys|token\w*|pass\w*|pins?|session\w*|secret\w*|auth\w*|cred\w*)\b[^{}\n]*\}""",
+    re.I,
+)
 CYRILLIC = re.compile(r"[Ѐ-ӿ]")
 
 errors, warnings = [], []
@@ -178,9 +185,18 @@ def check_plugin(pdir, private_terms):
             if w:
                 line = text[: w.start()].count("\n") + 1
                 errors.append(f"{rel}:{line}: a word the directory reads as a secret right before code: {w.group(0)!r}")
+            fs = CORE_FSTRING.search(text) if ext == ".py" else None
+            if fs:
+                line = text[: fs.start()].count("\n") + 1
+                errors.append(f"{rel}:{line}: an f-string formats a name the directory reads as a secret: {fs.group(0)[-40:]!r}")
             if ext in CODE_EXT and WEB_LINK.search(text):
                 line = text[: WEB_LINK.search(text).start()].count("\n") + 1
                 errors.append(f"{rel}:{line}: a web link in a code file (the directory reads it as sending data out)")
+            reads_env = CORE_READS_ENV.search(text) if ext in CODE_EXT else None
+            if reads_env:
+                line = text[: reads_env.start()].count("\n") + 1
+                errors.append(f"{rel}:{line}: the core reads the environment ({reads_env.group(0)!r}): take the "
+                              f"setting from it-reelsmaker.json or an argument")
             env, link = CORE_ENV_READ.search(text), WEB_LINK.search(text)
             if env and link:
                 line = text[: env.start()].count("\n") + 1

@@ -2,8 +2,15 @@
 
 What changed in IT Reelsmaker, written for the people who use it. The newest version is on top. The skill shows a short “What's new” note from this file once, on the first edit after an update.
 
-## 1.21.1
+## 1.22.0
 
+- **The plugin reads no environment variables.** Every setting comes from `it-reelsmaker.json`, the project's
+  `reel-defaults.json` or an argument, so nothing in it reads values set on your machine outside the project. If you set
+  one of these, move it: `REELS_PROJECT` → `project_root`; `REELS_FACE_MODEL` → `face_model` or `--model`;
+  `REELS_MATTE_REMBG` → `matte.rembg` or `--rembg`; rembg's models outside `~/.u2net` → `matte.models`;
+  `REELS_ONLINE_SCRIPTS` → the add-on's `link` command; the `REELS_DEFAULTS_OVERLAY` layer is gone (use the project's
+  `reel-defaults.json`). Renders still get their own temp folder; nothing else changes in editing
+  (`references/migrations.md`).
 - **Your own UI zone counts everywhere.** A project that sets a taller app UI in its `reel-defaults.json`
   (`meme_layout.safe`, for TikTok's bottom, say) used to get it only for memes: the text check, B-roll windows,
   callouts, the free zones of `faces.py`, the presenter check of `matte.py` and the cover guide of `poster.py` kept
@@ -28,8 +35,8 @@ What changed in IT Reelsmaker, written for the people who use it. The newest ver
 
 - **Callouts follow the object.** On a pan or a walk-through filmed by hand the object no longer slides away from the
   dot: `track.py edit/<id> l01` follows it frame by frame and gives the callout a path; it stops at a joint of the
-  rough cut and where the object leaves the frame, and the dot fades out there. For a slow pan, keys by hand:
-  `--keys 0:300,1150 2.4:540,1150`. `validate` measures the picture along the path, so a track or keys that slip off
+  rough cut and where the object leaves the frame, and the dot fades out there. For a slow pan, points by hand:
+  `--keys 0:300,1150 2.4:540,1150`. `validate` measures the picture along the path, so a track or points that slip off
   the object are refused, and asks for a new track when the rough cut changes. Needs OpenCV and numpy in your Python.
 - **Four more callout variants** (experimental, `--variant`): `line` (the name over the line, no plate; refused where
   the picture under it is too light to read it), `badge` (a price or a rating in a circle), `ring` (a ring around one
@@ -59,7 +66,7 @@ What changed in IT Reelsmaker, written for the people who use it. The newest ver
   if needed. A phrase too long even for two lines is split as usual. `cut.py --dry-run` lists the marked phrases, and
   the mark carries over to translated subtitles when it covers a whole phrase. Kit 1.12.0 (`kit.py update`).
 - **The render tries again once.** A render that stops with Remotion's "No frame found at position" (seen on an 8 GB
-  laptop; the same command passed when run again by hand) now reruns once by itself and says so. Both attempts stay
+  laptop; the same command worked when run again by hand) now reruns once by itself and says so. Both attempts stay
   in `render.log` and in `render.json`; any other failure stops as before.
 
 ## 1.18.0
@@ -74,7 +81,7 @@ What changed in IT Reelsmaker, written for the people who use it. The newest ver
 - **The white balance ignores a band the grade adds.** A `look.grade` that pads the picture with a color band was
   measured as part of the video and gave a false correction; the balance is now measured on the video's own pixels.
 - **A clip with no graphics gets through `check.py`.** Its storyboard step said "nothing to put on the sheet" and failed;
-  it now passes with that note.
+  it now succeeds with that note.
 - `poster.py pick` takes the last render of the video by itself (`--render` is optional), as the guide writes it.
 - The long-recording guide warns that word times from a cloud transcript drift around laughter and pauses, and says
   how to fix them on each clip.
@@ -270,7 +277,7 @@ Fixes found while editing two videos:
   - the plugin settings (project, Remotion and library folders, face model) now reach the scripts: the skill copies
     them into the project's `it-reelsmaker.json`, the only file the scripts read;
   - spot fixes and stills render the real video (the kit's `ReelKit` composition with the video's props) instead of
-    a per-video composition that usually does not exist, and the props path is passed whole, so a render from a
+    a per-video composition that usually does not exist, and the props path is given whole, so a render from a
     Remotion folder inside the project no longer fails to find it;
   - a promo without footage gets its exact start command (`visual_plan.py init … --scenes-only --duration 20`);
   - the speech rate is checked when the words exist (after the transcript, and exactly after the rough cut), and
@@ -339,7 +346,7 @@ Fixes found while editing two videos:
   (kit 1.6.0: `kit.py update`).
 - **Two cameras**: the structure check asks which camera to analyze instead of silently taking the last transcript;
   `transcribe.py rate` measures syllables per second on the cut, per camera and per segment; camera shots may name
-  their file as well as its key; the face zones never mix the two angles.
+  their file as well as its name; the face zones never mix the two angles.
 - A cutaway from your own footage gets the same color as the cut around it.
 - A word only the local model heard can be removed from the subtitles (`"to": ""` in the cut list's fixes).
 - Fewer false alarms: a breath at a cut edge is no longer reported as a cut consonant (a final “s” still is);
@@ -347,7 +354,7 @@ Fixes found while editing two videos:
   knows about them. `visual_plan.md` shows the hints for each line; the list hint no longer fires on ordinary commas;
   chat bubbles are at least 40 px.
 - **A teaser no longer doubles a word.** When a line from later plays first, a word the transcript stretched over the
-  pause before another piece used to show up in both; now every word is shown once per pass through the source, in
+  pause before another piece used to show up in both; now every word is shown once per run through the source, in
   any order of the pieces (a line deliberately played twice still gets its subtitles twice). A dash the recognizer
   returns as a word joins the word before it instead of lighting up on its own.
 - **Subtitles read better** (kit 1.6.0: `kit.py update`): chunks follow sentences, pauses and punctuation instead of
@@ -370,7 +377,7 @@ Fixes found while editing two videos:
   apart by their lips), and every subtitle mode colors the words by speaker: the first in the usual colors, the
   second in the accent, or your own colors (`colors.speakers` in the brand). Before, the guide asked for it and
   nothing could do it: a skit needed two subtitle layers in its own composition.
-- **Music ducked under a key line**: `master_audio.py --duck 21.3-23.9` lowers the music (−14 dB by default) while
+- **Music ducked under a main line**: `master_audio.py --duck 21.3-23.9` lowers the music (−14 dB by default) while
   the line plays and brings it back, the voice untouched. The guides now tell this apart from the track's drop, its
   loud moment placed on the final phrase.
 - **A quiet word is no longer cut out silently.** A short word spoken a few dB under the speech threshold looked
@@ -421,8 +428,8 @@ Fixes found while editing two videos:
 - **Its cover and its sound are finished by the plugin.** The cover pick works on a render without a sound track
   (it used to crash) and takes the settled hook frame; the cover drawn without video sits on the style's field with
   only the accent word on the marker, like the scenes (it came out on the dark color with both lines highlighted).
-  A master of scene sounds over silence passes the same acceptance check later (`master_audio.py --check`) that it
-  passed when it was made: no −14 LUFS target without a voice or music, the peak still checked.
+  A master of scene sounds over silence meets the same acceptance check later (`master_audio.py --check`) that it
+  met when it was made: no −14 LUFS target without a voice or music, the peak still checked.
 - **Scenes read better on a light field** (kit 1.6.0): the focus brackets around a number and the tap on a call to
   action button are drawn in a color that stands out from the field, the tap no longer covers a letter of the
   button, and a counting number keeps its unit next to it (“6 days”, not “6   days”).
@@ -454,14 +461,14 @@ Fixes found while editing two videos:
   before it. `balance.py --still SECOND` writes the frame a `--ref` box is measured in (a frame grabbed from a 720p
   source is smaller than the one the box refers to).
 - Smaller fixes: a teaser's cut end no longer lands 40 ms inside the last syllable on some lines; the beat after a
-  line is measured by the audio where the transcript glued the pause into a word; a dash token no longer counts as a
+  line is measured by the audio where the transcript glued the pause into a word; a lone dash no longer counts as a
   word; `structure.py` keeps to the source cut.json names and skips a broken cut.json in another folder; a short
   re-transcription takes the language code of any transcriber (“rus”, “en-US”); the render audit no longer reports a
   face cut at the side under B-roll or a cutaway; picking project footage goes on without the look when the raw
   source has moved; the burned-in subtitles and the `.srt` break lines by the same short words; translated subtitles
   are rebuilt when only the speakers change; the darkening of a framed video is measured where its subtitles go;
   a silent master mastered again with music loses its “no sound” tag, so the loudness is checked; a render with a
-  silent track becomes a master without one, which passes its own check; a failed export no longer records an end
+  silent track becomes a master without one, which meets its own check; a failed export no longer records an end
   card; the subtitles' height in a custom framed window allows for the drift around the window's center;
   `balance.py` no longer suggests a one-step fix (0.01) for grays that are already neutral: it was measurement noise
   and differed between ffmpeg builds.
@@ -469,7 +476,7 @@ Fixes found while editing two videos:
 ## 1.5.0
 
 - **Subtitles in another language.** `subs.py` splits the speech into phrases, Claude translates them in the
-  session (in the brand's voice, as short as the speech), the plugin checks the reading speed and puts the
+  conversation (in the brand's voice, as short as the speech), the plugin checks the reading speed and puts the
   translation on the same rhythm as the speech; one setting (`subtitles_lang`) burns it into the video. A re-cut
   keeps the translations of the phrases that did not change.
 - **Subtitle files for the platforms**: `subs.py srt` makes a `.srt` of the original or the translation.

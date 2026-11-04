@@ -286,7 +286,7 @@ ATTEMPT_MARK = "===== kit.py: attempt"  # the line render.log gets before each f
 
 def retry_reason(log):
     """The line of the last attempt in the log that names RETRY_ON, or None: a render that failed with it is run once
-    more by itself. Seen once on an 8 GB laptop (2026-10-20, a 34-min talk's clip): the same command passed when run
+    more by itself. Seen once on an 8 GB laptop (2026-10-20, a 34-min talk's clip): the same command worked when run
     again by hand; the cause is not known. Any other failure is not retried."""
     try:
         txt = Path(log).read_text(encoding="utf-8", errors="replace")
@@ -326,15 +326,15 @@ def cmd_render(a, still=False):
     while True:
         t1 = time.time()
         try:
-            with remotion_tmp(rem, props, a.comp) as (env, extra):
-                code = run_logged(cmd + extra, rem, env, log, "a" if attempts else "w")
+            with remotion_tmp(rem, props, a.comp) as (_run_dir, extra):
+                code = run_logged(cmd + extra, rem, None, log, "a" if attempts else "w")
         except OSError as x:
             sys.exit(f"cannot run npx ({x}): Node.js with Remotion is needed (doctor.py)")
         why = retry_reason(log) if code != 0 and not still else None
         attempts.append({"code": code, "seconds": round(time.time() - t1, 1), **({"error": why} if why else {})})
         if not why or len(attempts) > RETRIES:
             break
-        print(f"  the render failed with Remotion's \"{RETRY_ON}\" ({why}): a rerun of the same command passed before, "
+        print(f"  the render failed with Remotion's \"{RETRY_ON}\" ({why}): a rerun of the same command worked before, "
               f"so it runs once more by itself (both attempts stay in {log.name})", flush=True)
         with open(log, "a", encoding="utf-8") as f:
             f.write(f"\n{ATTEMPT_MARK} {len(attempts) + 1} (the one before failed with Remotion's frame error) =====\n")

@@ -235,7 +235,7 @@ def test_poster_pick_takes_the_last_render_without_render(project):
            "-i", "sine=f=300:d=3,volume='if(between(t,1.6,1.9),0,1)':eval=frame", "-map", "0:v", "-map", "1:a",
            "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", project / "r.mp4")
     r = run_script("poster.py", "pick", "edit/p1", "-o", e / "cover.jpg", cwd=project, check=False)
-    assert r.returncode != 0 and "pass --render" in r.stderr
+    assert r.returncode != 0 and "give --render" in r.stderr
     write_json(e / "render.json", {"out": str(project / "r.mp4"), "ok": True})
     r = run_script("poster.py", "pick", "edit/p1", "-o", e / "cover.jpg", cwd=project)
     assert "the last kit.py render" in r.stdout and (e / "cover.jpg").is_file()
@@ -517,7 +517,7 @@ def test_master_audio_ducks_the_music_under_a_key_line(project):
     assert r.returncode == 0, r.stdout + r.stderr
     r = run_script("master_audio.py", *common, "-o", "ducked.mp4", "--duck", "2.0-3.6", cwd=project, check=False)
     assert r.returncode == 0, r.stdout + r.stderr
-    assert "music ducked under a key line: 2.00-3.60 s by -14 dB" in r.stdout
+    assert "music ducked under a main line: 2.00-3.60 s by -14 dB" in r.stdout
     music, voice = "highpass=f=2000,highpass=f=2000", "lowpass=f=800,lowpass=f=800"
     plain, ducked = project / "plain.mp4", project / "ducked.mp4"
     inside = band_db(ducked, 2.3, 3.3, music) - band_db(plain, 2.3, 3.3, music)

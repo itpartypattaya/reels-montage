@@ -108,7 +108,7 @@ unless marked “real case” (🟢 verified, `references/playbook.md`); the per
 - **EDU-2** (agent) the promise (what the viewer will learn) is said or on screen in the first 3 s. [platform]
 - **EDU-3** (agent) one point on screen at a time; in a list, the step number is visible (“2/5”). [practice; the
   segmenting principle of multimedia learning]
-- **EDU-4** (agent) the key term is highlighted: an accent word or an accent title on its word. [signaling principle]
+- **EDU-4** (agent) the main term is highlighted: an accent word or an accent title on its word. [signaling principle]
 - **EDU-5** (agent) a diagram or list scene does not repeat the subtitles word for word next to itself: the subtitles
   are hidden or shortened under it (the kit hides them under list scenes by default). [redundancy principle]
 - **EDU-6** (validate) text on screen stays long enough to read (the reading-time floor of `references/scenes.md`).
@@ -120,7 +120,7 @@ unless marked “real case” (🟢 verified, `references/playbook.md`); the per
   Shorts guidance; [data] a direct look into the camera raised 2-second views by 14 % (Vidmob × TikTok).
 - **FUN-2** (agent) a teaser variant was among the structures offered, and it does not give the punchline away
   (`references/structure.md`). [ours; real case: the strongest structures of the skits came from teasers]
-- **FUN-3** (agent) no dead air: the speech mask and the cut edges pass; a beat only before a punchline. [practice]
+- **FUN-3** (agent) no dead air: the speech mask and the cut edges are accepted; a beat only before a punchline. [practice]
 - **FUN-4** (agent) the ending is a payoff with a hold or a loop back to the start; no CTA card after the punchline
   unless the brief chose one. [practice; the loop's effect is not measured anywhere]
 - **FUN-5** (validate) memes and reused clips have known rights and fit the brand tone.
@@ -175,7 +175,7 @@ unless marked “real case” (🟢 verified, `references/playbook.md`); the per
   [platform] Meta advertising standards, TikTok ad policies.
 - **AD-6** (auto for memes, error; agent for the rest) memes and reused clips only with known rights (own, licensed,
   CC); music only from a licensed or commercial library. `validate` sees only the memes' rights, so the item is never
-  marked passed: B-roll and music are confirmed by the agent. [platform] TikTok, Meta.
+  marked done: B-roll and music are confirmed by the agent. [platform] TikTok, Meta.
 - **AD-7** (agent) 3–5 hook variants are offered for testing (other opening lines or teaser starts); made on request.
   [platform] TikTok: 3–5 creatives per ad group.
 - **AD-8** (agent) native, not low quality: a source of 720p or more, clear sound. [platform] TikTok.

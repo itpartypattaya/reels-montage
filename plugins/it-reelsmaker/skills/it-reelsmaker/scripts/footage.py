@@ -83,7 +83,7 @@ def _key(p):
 
 
 def cut_extracts(e):
-    """{path key: (file, entry)} of the cutaways cut.py made from cut.json "extract" (edit/<id>/<name>.mp4) that
+    """{path: (file, entry)} of the cutaways cut.py made from cut.json "extract" (edit/<id>/<name>.mp4) that
     exist. They come from the video's own source on purpose, already in the rough cut's look: valid project footage
     that needs no second look."""
     out = {}
@@ -239,18 +239,18 @@ PROVIDERS = {p.name: p for p in (ProjectProvider(), LocalProvider(), *_online_pr
 
 
 def put_insert(e, i, keys, when=None):
-    """Write the listed fields of insert i into the plan under the lock, re-reading the plan (parallel sessions):
-    other sessions' changes to other inserts and fields are not lost. Downloads, ffmpeg and generation run before
-    the call, not under the lock. when(cur) -> False: the insert was changed in another session, don't overwrite it.
-    A key missing from i deletes the field."""
+    """Write the listed fields of insert i into the plan under the lock, re-reading the plan (parallel runs):
+    other runs' changes to other inserts and fields are not lost. Downloads, ffmpeg and generation run before
+    the call, not under the lock. when(cur) -> False: the insert was changed in another run, don't overwrite it.
+    A field missing from i deletes the field."""
     from visual_plan import editing_plan
     with editing_plan(e) as plan:
         cur = next((x for x in plan["inserts"] if x["id"] == i["id"]), None)
         if cur is None:
-            warn(f"{i['id']}: the insert is no longer in the plan (deleted in another session); result not written")
+            warn(f"{i['id']}: the insert is no longer in the plan (deleted by another run); result not written")
             return False
         if when and not when(cur):
-            warn(f"{i['id']}: the insert was changed in another session while this ran; not overwriting it")
+            warn(f"{i['id']}: the insert was changed by another run while this ran; not overwriting it")
             return False
         for k in keys:
             if k in i:
@@ -386,20 +386,20 @@ def cmd_index(a):
 def cmd_describe(a):
     project = project_root()
     idxf = project / "footage_index.json"
-    key = a.path.replace("\\", "/")
-    f = next((q for q in (project / key, Path(a.path)) if q.is_file()), None)
+    ref_id = a.path.replace("\\", "/")
+    f = next((q for q in (project / ref_id, Path(a.path)) if q.is_file()), None)
     if f is not None and rel(f, project) != str(f):
-        key = rel(f, project)  # the index keys are paths from the project folder
+        ref_id = rel(f, project)  # the index entries are named by paths from the project folder
     with editing_json(idxf, {}) as idx:
-        if key not in idx:
+        if ref_id not in idx:
             if f is None or f.suffix.lower() not in VIDEO_EXT | IMAGE_EXT:
-                sys.exit(f"not in the index and no such video or photo in the project: {key} (footage.py index)")
-            idx[key] = {**file_facts(f), "description": "", "tags": [], "exclude": False}  # a new file, an extract
-        idx[key]["description"] = a.text
+                sys.exit(f"not in the index and no such video or photo in the project: {ref_id} (footage.py index)")
+            idx[ref_id] = {**file_facts(f), "description": "", "tags": [], "exclude": False}  # a new file, an extract
+        idx[ref_id]["description"] = a.text
         if a.tags:
-            idx[key]["tags"] = [t.strip() for t in a.tags.split(",") if t.strip()]
-        idx[key]["exclude"] = bool(a.exclude)
-    print(f"{key}: {a.text}")
+            idx[ref_id]["tags"] = [t.strip() for t in a.tags.split(",") if t.strip()]
+        idx[ref_id]["exclude"] = bool(a.exclude)
+    print(f"{ref_id}: {a.text}")
 
 
 def cmd_search(a):
@@ -639,7 +639,7 @@ def cmd_prepare(a):
     elif a.lut == "brand":
         e = edit_dir(a.edit) if a.edit else edit_for_out(a.out)
         if not e:
-            warn("--lut brand: could not tell which video this is (no reel.json near --out); pass --edit edit/<id>")
+            warn("--lut brand: could not tell which video this is (no reel.json near --out); give --edit edit/<id>")
         _, _, _, bdir, brand = load_config(e)
         lut = resolve_lut("brand", brand, bdir, project_root())
     elif a.lut:

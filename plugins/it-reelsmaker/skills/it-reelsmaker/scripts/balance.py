@@ -3,8 +3,8 @@
 of the GRADED video neutral.
 
     python scripts/balance.py edit/<id> [--frames 6] [--write] [--json]
-    python scripts/balance.py edit/<id> --ref [KEY:]SECOND,X,Y,W,H [--ref ...] [--write]
-    python scripts/balance.py edit/<id> --still [KEY:]SECOND        (the frame to find a --ref box on)
+    python scripts/balance.py edit/<id> --ref [SOURCE:]SECOND,X,Y,W,H [--ref ...] [--write]
+    python scripts/balance.py edit/<id> --still [SOURCE:]SECOND        (the frame to find a --ref box on)
 
 Why the graded result and not the source: a LUT shifts the balance of whatever goes into it, and on a warm face the
 shift is easy to miss. Real case: a 720p phone video on an overcast balcony, brand LUT at 60%: the LUT pulled blue
@@ -32,7 +32,7 @@ Automatic mode (how it works; seconds: everything runs on one small still, not o
     1, or near-gray B > R), or warmer while its grays read warm, is refused, with a pointer to --ref;
   • two probe gains give a linear model and its answer is the start; then a search in steps of 0.01 on measured
     candidates (the near-gray set changes with every candidate, so the model alone is not trusted): about 10-20
-    passes of the still. Grays already neutral and a best fix of one step: no fix (one step is within the noise of
+    runs over the still. Grays already neutral and a best fix of one step: no fix (one step is within the noise of
     the 8-bit chain and differs between ffmpeg builds).
 Real case for the share and direction checks: an interview at a laptop in front of panoramic windows (sky, sea,
 glass: mean R/B 0.72, the white T-shirt the main near-gray object, 11% of the pixels). Without them the search
@@ -43,18 +43,18 @@ Reference patch (--ref, the eyedropper): when the frame is dominated by colored 
 neon, a colored wall, mixed daylight and lamps) its near-gray pixels are not a reliable reference; name an object
 known to be white or gray instead: a white T-shirt or shirt, a white or gray wall, paper, a gray card, a white
 laptop (not skin, not the sky, not a window, not a clipped highlight). --ref SECOND,X,Y,W,H: the source second and a
-box in the frame as cut.py scales that source (1080x1920 for a vertical video); with several sources, KEY:SECOND
-(the source key in cut.json) or a second inside a kept range of only one source. Several --ref are averaged, each
+box in the frame as cut.py scales that source (1080x1920 for a vertical video); with several sources, SOURCE:SECOND
+(the source name in cut.json) or a second inside a kept range of only one source. Several --ref are averaged, each
 with the same weight (a shaded and a lit part of the same shirt is a good pair). The gains (rr, gg, bb) make the
 patch's mean neutral after the full chain (LUT included) with its brightness kept. Find the box on the still that
---still [KEY:]SECOND writes (edit/<id>/verify/still-<key>-<second>.png, scaled as cut.py scales that source, its size
+--still [SOURCE:]SECOND writes (edit/<id>/verify/still-<source>-<second>.png, scaled as cut.py scales that source, its size
 printed): a frame grabbed from the source itself is at the source's own size (720x1280 for a 720p phone video), and a
 box measured on it lands on another object of the 1080x1920 frame.
 
 Prints the measurements with no balance fix, with the current look.correct and with the suggestion (with --ref: the
 patch numbers too), and the suggested "correct" string; writes edit/<id>/verify/balance.png (rows: the same frames
 with no fix, current, suggested; the reference frames first, the patch marked; needs Pillow, otherwise numbers
-only): look at the grays and the skin. --write puts the suggestion into cut.json -> look.correct (other keys kept);
+only): look at the grays and the skin. --write puts the suggestion into cut.json -> look.correct (other fields kept);
 then rebuild the rough cut with cut.py. Fewer than 1% near-gray pixels: no automatic suggestion, use --ref.
 """
 import argparse, json, math, subprocess, sys, tempfile
@@ -122,7 +122,7 @@ def look_key(look):
 
 def frames_key(cut):
     """Which frames a measurement saw: the sources (files) with the scale mode of cut.json, and the kept ranges.
-    -> (sources, ranges) keys. The scale is in the sources key (review 2026-10-18, Codex on GitHub): "auto" crops a
+    -> (sources, ranges) signatures. The scale is in the sources signature (review 2026-10-18, Codex on GitHub): "auto" crops a
     non-9:16 source to 1080x1920 and "none" keeps it whole, so the pixels and a --ref box's coordinates change."""
     src = cut.get("sources") or cut.get("source")
     rng = [[r.get("source"), r.get("start"), r.get("end")] for r in (cut.get("ranges") or []) if isinstance(r, dict)]
@@ -133,7 +133,7 @@ def frames_key(cut):
 def is_gain_mixer(f):
     """colorchannelmixer with only rr/gg/bb set: a balance fix (this script's own, or one made by hand)."""
     name, _, args = f.partition("=")
-    keys = [a.partition("=")[0].strip() for a in args.split(":") if a.strip()]  # a positional value is not a key
+    keys = [a.partition("=")[0].strip() for a in args.split(":") if a.strip()]  # a positional value is not a name
     return name.strip() == "colorchannelmixer" and bool(keys) and all(k in ("rr", "gg", "bb") for k in keys)
 
 
@@ -167,60 +167,60 @@ def frame_size(sv):
     return (1080, 1920) if sv["scale"] else (sv["info"].get("w") or 1080, sv["info"].get("h") or 1920)
 
 
-def ref_source(label, spec, key, sec, t, c):
-    """The source key of a --ref or --still: KEY given, the only source, or the one whose kept range holds second t."""
-    if key and key not in c["sources"]:
-        sys.exit(f"{label} {spec!r}: no source {key!r} in cut.json (sources: {', '.join(c['sources'])})")
-    if key:
-        return key
+def ref_source(label, spec, source_id, sec, t, c):
+    """The source name of a --ref or --still: SOURCE given, the only source, or the one whose kept range holds second t."""
+    if source_id and source_id not in c["sources"]:
+        sys.exit(f"{label} {spec!r}: no source {source_id!r} in cut.json (sources: {', '.join(c['sources'])})")
+    if source_id:
+        return source_id
     inside = sorted({r["source"] for r in c["ranges"] if r["start"] <= t <= r["end"]})
     if len(c["sources"]) == 1:
         return next(iter(c["sources"]))
     if len(inside) == 1:
         return inside[0]
-    sys.exit(f"{label} {spec!r}: several sources; name one as KEY:{sec} (sources: {', '.join(c['sources'])})")
+    sys.exit(f"{label} {spec!r}: several sources; name one as SOURCE:{sec} (sources: {', '.join(c['sources'])})")
 
 
 def write_still(c, spec, out_dir):
-    """--still [KEY:]SECOND: the source frame at that second, scaled as cut.py scales it, as a PNG -> (path, w, h)."""
-    key, _, sec = spec.strip().rpartition(":")
+    """--still [SOURCE:]SECOND: the source frame at that second, scaled as cut.py scales it, as a PNG -> (path, w, h)."""
+    source_id, _, sec = spec.strip().rpartition(":")
     try:
         t = float(sec)
     except ValueError:
-        sys.exit(f"--still {spec!r}: expected [KEY:]SECOND")
-    key = ref_source("--still", spec, key, sec, t, c)
-    sv = c["sources"][key]
+        sys.exit(f"--still {spec!r}: expected [SOURCE:]SECOND")
+    source_id = ref_source("--still", spec, source_id, sec, t, c)
+    sv = c["sources"][source_id]
     if not 0 <= t <= float(sv["info"].get("dur") or 0):
-        sys.exit(f"--still {spec!r}: second {t} is outside the source {key!r}")
+        sys.exit(f"--still {spec!r}: second {t} is outside the source {source_id!r}")
     out_dir.mkdir(parents=True, exist_ok=True)
-    f = out_dir / f"still-{key}-{t:.2f}.png"
+    f = out_dir / f"still-{source_id}-{t:.2f}.png"
     ffmpeg(["-ss", f"{t:.3f}", "-i", sv["path"], "-frames:v", "1", "-vf",
             ",".join(filter(None, [sv["scale"], "setsar=1"])), f])
     return (f, *frame_size(sv))
 
 
 def parse_ref(spec, c):
-    """--ref [KEY:]SECOND,X,Y,W,H -> {source, t, box}; the box rounded to even numbers (yuv420p keeps 2x2 chroma
-    blocks inside the patch). Without KEY: the only source, or the one whose kept range holds that second."""
+    """--ref [SOURCE:]SECOND,X,Y,W,H -> {source, t, box}; the box rounded to even numbers (yuv420p keeps 2x2 chroma
+    blocks inside the patch). Without SOURCE: the only source, or the one whose kept range holds that second."""
     parts = [p.strip() for p in spec.split(",")]
     if len(parts) != 5:
-        sys.exit(f"--ref {spec!r}: expected [KEY:]SECOND,X,Y,W,H")
-    key, _, sec = parts[0].rpartition(":")
+        sys.exit(f"--ref {spec!r}: expected [SOURCE:]SECOND,X,Y,W,H")
+    source_id, _, sec = parts[0].rpartition(":")
     try:
         t = float(sec)
         x, y, w, h = (int(round(float(v))) for v in parts[1:])
     except ValueError:
         sys.exit(f"--ref {spec!r}: SECOND, X, Y, W, H must be numbers")
-    key = ref_source("--ref", spec, key, sec, t, c)
-    sv = c["sources"][key]
+    source_id = ref_source("--ref", spec, source_id, sec, t, c)
+    sv = c["sources"][source_id]
     fw, fh = frame_size(sv)
     x, y = x - x % 2, y - y % 2
     w, h = w - w % 2, h - h % 2
     if w < 4 or h < 4 or x < 0 or y < 0 or x + w > fw or y + h > fh:
         sys.exit(f"--ref {spec!r}: the box must lie inside the {fw}x{fh} frame and be at least 4x4 px")
     if not 0 <= t <= float(sv["info"].get("dur") or 0):
-        sys.exit(f"--ref {spec!r}: second {t} is outside the source {key!r}")
-    return {"source": key, "t": t, "box": (x, y, w, h)}
+        sys.exit(f"--ref {spec!r}: second {t} is outside the source {source_id!r}")
+    return {"source": source_id, "t": t, "box": (x, y, w, h)}
 
 
 def make_still(c, times, tmp):
@@ -586,10 +586,10 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("edit", help="the video folder, edit/<id>, with cut.json")
     ap.add_argument("--frames", type=int, default=6, help="frames to measure, spread over the kept ranges (1..12, default 6)")
-    ap.add_argument("--ref", action="append", default=[], metavar="[KEY:]SECOND,X,Y,W,H",
+    ap.add_argument("--ref", action="append", default=[], metavar="[SOURCE:]SECOND,X,Y,W,H",
                     help="a white or gray object as the reference: source second and a box in the frame as cut.py "
                          "scales that source (1080x1920 for a vertical video); several allowed, averaged")
-    ap.add_argument("--still", metavar="[KEY:]SECOND",
+    ap.add_argument("--still", metavar="[SOURCE:]SECOND",
                     help="only write the frame at that source second, scaled as cut.py scales it, to find a --ref box on")
     ap.add_argument("--write", action="store_true", help="put the suggested correction into cut.json -> look.correct")
     ap.add_argument("--json", action="store_true", help="print the measurements and the suggestion as JSON")

@@ -312,7 +312,7 @@ export const SceneLayer: React.FC<{ scenes?: SceneSpec[] | null; brand: Brand; l
                 framed={p.framed} />
             </div>
           </Sequence>
-          {flashes(s, bt, p.words ?? [], fps, !!p.scenesOnly, !!p.framed).map((t) => <FlashAt key={`${s.id}-${t}`} t={t} brand={p.brand} />)}
+          {flashes(s, bt, p.words ?? [], fps, !!p.scenesOnly, !!p.framed).map((t) => <FlashAt key={String(s.id) + "-" + String(t)} t={t} brand={p.brand} />)}
         </React.Fragment>
       ))}
     </>

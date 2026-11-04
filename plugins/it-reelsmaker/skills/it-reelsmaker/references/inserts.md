@@ -30,11 +30,11 @@ Inserts are off in the skill defaults (`use_broll`, `use_memes`, `use_scenes` ar
 }
 ```
 
-The online-sources add-on `it-reelsmaker-online` adds its own settings (`use_online_footage`, `use_online_memes`, `generation_engines`, `generate_now`, providers) and plugs online sources into these priorities. Without the add-on, these keys are ignored.
+The online-sources add-on `it-reelsmaker-online` adds its own settings (`use_online_footage`, `use_online_memes`, `generation_engines`, `generate_now`, providers) and plugs online sources into these priorities. Without the add-on, these settings are ignored.
 
 What each setting does:
 
-| Key | Meaning |
+| Setting | Meaning |
 |---|---|
 | `use_broll` | B-roll at all |
 | `use_project_footage` / `use_local_footage` | B-roll sources: project, library |
@@ -101,7 +101,7 @@ Spans shorter than 1.2 s merge with their neighbors.
 - segment join → B-roll will hide the cut;
 - segment longer than 6 s without a cut;
 - number → a card, not B-roll;
-- pointing at an object (“here”, “look”, or the same in the speaker's language) → B-roll of the object, or, when the object is in the frame and the dot can stay on it (a still shot, keys, or `track.py` on a handheld one), a callout (`references/callouts.md`, “Offering it”);
+- pointing at an object (“here”, “look”, or the same in the speaker's language) → B-roll of the object, or, when the object is in the frame and the dot can stay on it (a still shot, points, or `track.py` on a handheld one), a callout (`references/callouts.md`, “Offering it”);
 - emotion or irony (“!”, “imagine”, “nightmare”, or the same in the speaker's language);
 - hook;
 - ending or CTA.

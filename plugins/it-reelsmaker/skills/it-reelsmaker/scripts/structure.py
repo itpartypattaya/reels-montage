@@ -4,12 +4,12 @@ and whether this source was edited before. A draft for the agent, not a decision
 transcript and the audio (a question, an answer, a repeat for emphasis, a number, a beat after a line, clean silence at
 the edges); what is funny, controversial or strong is the agent's call (references/structure.md).
 
-    python scripts/structure.py suggest edit/<id> [--source KEY | --transcript F] [--from S --to S] [--audio W] [--json]
+    python scripts/structure.py suggest edit/<id> [--source NAME | --transcript F] [--from S --to S] [--audio W] [--json]
     python scripts/structure.py history edit/<id> | <source file>
 
 suggest reads the word-level transcript of ONE source (cut.json -> sources -> transcript, else
 edit/<id>/transcripts/<stem>.json) on the source timeline. Several sources in cut.json (two cameras), or several
-transcripts and no cut.json: name one with --source KEY (the cut.json key) or --transcript F; the script lists the
+transcripts and no cut.json: name one with --source NAME (the cut.json name) or --transcript F; the script lists the
 choices instead of guessing (T2: it silently took the newest transcript, the other angle, 87.8 s long, and analyzed
 --from 59 --to 108 on it). Two cameras: run it per source, or on the main angle. It splits the transcript into
 phrases (sentence end, pause > 0.5 s, speaker change, at most 40 words) and prints:
@@ -95,7 +95,7 @@ def norm(t):
 
 
 def join_punct(words):
-    """Punctuation tokens joined to their word, as cut.py lays them into the subtitles: an opening quote or bracket
+    """Punctuation marks joined to their word, as cut.py lays them into the subtitles: an opening quote or bracket
     to the next word, anything else to the previous one. A lone dash counted as a word and, of no length, as a
     retake sign: "Sales — that is life." lost its place among the teasers."""
     out, prefix = [], ""
@@ -581,7 +581,7 @@ def source_files(cut):
 
 
 def names_file(text, stem):
-    """Whether notes name the source file itself, as a whole token: the stem with a video extension ("sunrise.mp4"),
+    """Whether notes name the source file itself, as a whole word: the stem with a video extension ("sunrise.mp4"),
     or a camera-like stem of letters and digits alone ("IMG_1234"). A plain word stem needs the extension: a brand or
     another file sharing it is not the source (T5: the brand of the same name, "sunrise-promo.mp4" another render)."""
     exts = "|".join(sorted(x.lstrip(".") for x in VIDEO_EXT))
@@ -627,11 +627,11 @@ def history(project, stem, skip=None):
 # ---- commands ----
 
 def source_transcripts(e):
-    """{cut.json source key: its transcript path}, resolved as cut.py does: the source's "transcript" (the project
+    """{cut.json source name: its transcript path}, resolved as cut.py does: the source's "transcript" (the project
     root, then the video folder), else edit/<id>/transcripts/<file stem>.json."""
     cut = load_json(e / "cut.json") or {}
     out = {}
-    for key, s in (cut.get("sources") or {}).items():
+    for source_id, s in (cut.get("sources") or {}).items():
         f = s.get("file") if isinstance(s, dict) else s if isinstance(s, str) else None
         tr = s.get("transcript") if isinstance(s, dict) else None
         if tr:
@@ -641,13 +641,13 @@ def source_transcripts(e):
                     p = base / p
                     break
         else:
-            p = e / "transcripts" / f"{Path(str(f or key)).stem}.json"
-        out[str(key)] = p
+            p = e / "transcripts" / f"{Path(str(f or source_id)).stem}.json"
+        out[str(source_id)] = p
     return out
 
 
 def transcript_of(e, given=None, source=None):
-    """The one transcript to analyze: --transcript; --source KEY; the only source of cut.json; without cut.json the
+    """The one transcript to analyze: --transcript; --source NAME; the only source of cut.json; without cut.json the
     only transcript in transcripts/. Several and no choice -> exit with the list (never the newest by guess)."""
     if given:
         return Path(given)
@@ -659,7 +659,7 @@ def transcript_of(e, given=None, source=None):
     if len(srcs) == 1:  # even when it is missing: the only transcript in transcripts/ may be another take's
         return next(iter(srcs.values()))
     if len(srcs) > 1:
-        sys.exit(f"cut.json has {len(srcs)} sources: name the one to analyze with --source KEY (or --transcript F): "
+        sys.exit(f"cut.json has {len(srcs)} sources: name the one to analyze with --source NAME (or --transcript F): "
                  + "; ".join(f"{k} ({p.relative_to(e).as_posix() if p.is_relative_to(e) else p}"
                              f"{'' if p.exists() else ', not transcribed yet'})" for k, p in srcs.items())
                  + ". Two cameras: run it per source, or on the main angle")
@@ -840,7 +840,7 @@ def main(argv=None):
     s.add_argument("--from", dest="start", type=float, help="source seconds: analyze the fragment from here")
     s.add_argument("--to", dest="end", type=float, help="source seconds: ...up to here")
     s.add_argument("--transcript", help="the transcript file to analyze")
-    s.add_argument("--source", help="the cut.json source key whose transcript to analyze (two cameras: per source)")
+    s.add_argument("--source", help="the cut.json source name whose transcript to analyze (two cameras: per source)")
     s.add_argument("--audio")
     s.add_argument("--json", action="store_true")
     s.set_defaults(fn=cmd_suggest)

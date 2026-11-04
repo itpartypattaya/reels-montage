@@ -224,7 +224,7 @@ const Hook: React.FC<{ p: ReelKitProps; look: Look; font: string }> = ({ p, look
   const end = p.hook.until * KIT_FPS;
   const out = interpolate(frame, [end - 8, end], [1, 0], clamp);
   const lines = breakLines(p.hook.text, 14); // line breaks by meaning: prepositions and numbers do not dangle (typography.md)
-  // font size 100, but every line must fit in x 60–960 (with plate padding of 0.2 em): a long glued token reduces the size;
+  // font size 100, but every line must fit in x 60–960 (with plate padding of 0.2 em): a long glued word reduces the size;
   // “framed”: the top of the window's text area (with no label, the field above the window), its width
   const g = p.framed ? framedGeometry(p.framed) : null;
   const maxW = g ? g.area.w : 900;
@@ -419,7 +419,7 @@ export const ReelCover: React.FC<ReelCoverProps> = (p) => {
 };
 
 // text and frameAt are null: --props are merged over defaultProps, so a non-empty default text would override props.cover
-// from export (“Cover template” on the real cover), and frameAt: 1 would override cover.frameAt. To try it in Studio, pass your own text in the props.
+// from export (“Cover template” on the real cover), and frameAt: 1 would override cover.frameAt. To try it in Studio, give your own text in the props.
 export const reelCoverDefaults: ReelCoverProps = {
   video: "",
   frameAt: null,

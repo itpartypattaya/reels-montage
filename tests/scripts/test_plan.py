@@ -501,7 +501,7 @@ def test_reelcfg_knows_every_default_key(project):
     assert set(defaults["settings"]) <= reelcfg.KNOWN
     plan_project(project)
     r = run_script("reelcfg.py", "save", "edit/4821", "--set", "subtitles_shade=0.4", cwd=project)
-    assert "unknown key" not in r.stderr
+    assert "unknown setting" not in r.stderr
 
 
 def test_init_counts_designed_scenes_as_inserts(project):
@@ -914,7 +914,7 @@ def test_a_plan_exported_before_1_13_asks_for_the_texts_again(project):
     r = run_script("visual_plan.py", "export", "edit/4821", "--remotion", rem, "--props", rem / "props.json", cwd=project,
                    check=False)
     out = r.stdout + r.stderr
-    assert r.returncode != 0 and "pass --hook again" in out and "pass --card again" in out
+    assert r.returncode != 0 and "give --hook again" in out and "give --card again" in out
     assert not (rem / "props.json").exists()
     kept = load_plan(e)
     assert kept["end_card"] == {"kind": "card", "seconds": 2.6} and kept["hook"] is True and "export" not in kept
@@ -1056,7 +1056,7 @@ def test_a_preset_does_not_hide_an_old_plans_texts(project):
     rem = _export_project(project, e)
     r = run_script("visual_plan.py", "export", "edit/4821", "--remotion", rem, "--props", rem / "p.json", cwd=project,
                    check=False)
-    assert r.returncode != 0 and "pass --card again" in (r.stdout + r.stderr)
+    assert r.returncode != 0 and "give --card again" in (r.stdout + r.stderr)
 
 
 def test_doctor_forgets_a_pass_after_a_failure(project):

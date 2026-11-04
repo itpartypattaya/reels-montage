@@ -76,7 +76,7 @@ export const zoomAt = (t: number, camera: Shot[] | null | undefined, segments: D
 
 // a moving anchor: rows [t, x, y, v, s] — seconds from the callout's start, the point on the rough cut, its visibility
 // 0..1 (0 — hidden: the object is lost or out of the shot) and the object's scale from the first row (s, optional, 1);
-// straight between rows, held before the first and after the last (keys by hand, track.py, a person from faces.json)
+// straight between rows, held before the first and after the last (points by hand, track.py, a person from faces.json)
 export type PathRow = number[];
 export type PathPoint = { x: number; y: number; v: number; s: number };
 const row = (r: PathRow): PathPoint => ({ x: r[1], y: r[2], v: r[3] ?? 1, s: r[4] ?? 1 });

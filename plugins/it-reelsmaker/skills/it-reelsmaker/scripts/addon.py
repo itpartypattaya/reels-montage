@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 """Run a command of the optional online add-on (it-reelsmaker-online) through the core.
 
-The core is the only entry point: it finds the add-on (env REELS_ONLINE_SCRIPTS or it-reelsmaker.json ->
-online_scripts, written by the add-on's link command) and runs one of its commands. Without the add-on this script
+The core is the only entry point: it finds the add-on (it-reelsmaker.json -> online_scripts, written by the
+add-on's link command) and runs one of its commands. Without the add-on this script
 says so and exits; editing continues with local sources.
 
     python scripts/addon.py                       # is the add-on linked, and which commands it has

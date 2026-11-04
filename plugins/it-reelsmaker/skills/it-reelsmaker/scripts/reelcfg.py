@@ -16,10 +16,10 @@ transitions, full scenes); to go beyond them on explicit request: reelcfg.py sav
     python scripts/reelcfg.py preset use weekly-tips edit/4822            # the next video of the series
     python scripts/reelcfg.py preset list
 
-`show` prints the resulting settings, where each key comes from, and the fallback: what turns off by itself (for
+`show` prints the resulting settings, where each setting comes from, and the fallback: what turns off by itself (for
 example online sources when the online-sources add-on `it-reelsmaker-online` is not installed) and why. This is not an
 error: editing continues with what is available.
-`save` adds keys to edit/<id>/reel.json (only the ones given; defaults are not copied there); it creates the folder
+`save` adds settings to edit/<id>/reel.json (only the ones given; defaults are not copied there); it creates the folder
 edit/<id> if it doesn't exist yet. reel.json is the only source of the video's settings: visual_plan.py takes them
 from here.
 profile=<id> (educational, entertaining, expert-clip, promo, ad) and content_format=<id> (insight, list, case, story,
@@ -31,8 +31,8 @@ format=framed: a horizontal source in a rounded window on the style's field, wit
 (references/techniques.md); window (x, y, w, h on the 1080x1920 screen) and label are its options. The kit draws it
 from the props that visual_plan.py export writes; faces.py and visual_plan.py read the same window.
 `defaults` shows or edits <project>/reel-defaults.json: your defaults for every video of the project (default brand,
-inserts, library folders, ...), in the same format as the plugin's assets/reel-defaults.json, only the keys you change.
---set/--unset touch the "settings" keys; other sections (intensity and brand tone labels in your language, ...) are
+inserts, library folders, ...), in the same format as the plugin's assets/reel-defaults.json, only the settings you change.
+--set/--unset touch the "settings" fields; other sections (intensity and brand tone labels in your language, ...) are
 edited in the file by hand. The file stays in the project: plugin updates never touch it.
 workflow=quick|standard|full: how many questions and stops the agent makes (SKILL.md, section 6); standard by default.
 `preset` keeps a series' answers in <project>/presets/<name>.json: the video's settings (brand, style, subtitles,
@@ -67,7 +67,7 @@ PRESETS = "presets"  # <project>/presets/<name>.json
 
 
 def addon_keys(name):
-    """Setting keys added by the online-sources add-on (its module's <name> list); empty when it is not installed."""
+    """Settings added by the online-sources add-on (its module's <name> list); empty when it is not installed."""
     return list(getattr(online(), name, None) or ())
 
 
@@ -113,7 +113,7 @@ def cmd_show(a):
     print(f"brand tone: {tone_summary(bt)}" + ("  [tone_override: the tone's ceilings are only warnings]" if s.get("tone_override") else ""))
     st = s.get("scene_tone")
     if st and st not in (bt.get("scene_tones") or []):
-        print(f"  ⚠ the video's scene tone {st} is not one of the brand's tones ({', '.join(bt.get('scene_tones') or [])}): validate won't pass it without tone_override")
+        print(f"  ⚠ the video's scene tone {st} is not one of the brand's tones ({', '.join(bt.get('scene_tones') or [])}): validate won't accept it without tone_override")
     else:
         print(f"video scene tone: {st or '—'} ← {prov.get('scene_tone', '—')}")
     lvl = (doc.get("intensity") or {}).get(s["intensity"], {})
@@ -155,7 +155,7 @@ def preset_path(name):
     project = project_root()
     if not is_project(project):
         sys.exit(f"no editing project here ({project}: no edit/, brands/ or it-reelsmaker.json); run it from the project "
-                 f"folder or set REELS_PROJECT")
+                 f"folder or set project_root in it-reelsmaker.json")
     return project / PRESETS / f"{name}.json"
 
 
@@ -244,14 +244,14 @@ def cmd_save(a):
     known = KNOWN | set(addon_keys("SETTING_KEYS_BOOL")) | set(addon_keys("SETTING_KEYS"))
     for k in over:
         if k not in known:
-            warn(f"unknown key {k}, saving it as is")
+            warn(f"unknown setting {k}, saving it as is")
     pr, fm = profiles_of(load_defaults() or {})
     for k, known_ids in (("profile", pr), ("content_format", fm)):
         if over.get(k) is not None and over[k] not in known_ids:
             sys.exit(f"not saved: unknown {k} {over[k]!r} (known: {', '.join(known_ids)}; references/profiles.md)")
     bad_workflow(over)
     e = edit_dir(a.edit, create=True)  # step 0 of a new video: the edit/<id> folder doesn't exist yet
-    if {"format", "window", "label", "subtitles_at"} & set(over):  # the framed format's keys are checked together, before saving
+    if {"format", "window", "label", "subtitles_at"} & set(over):  # the framed format's fields are checked together, before saving
         bad = framed_issues({**(load_json(e / "reel.json", {}) or {}), **over})
         if bad:
             sys.exit("not saved: " + "; ".join(bad))
@@ -280,21 +280,21 @@ def cmd_defaults(a):
     if not (a.set or a.unset):
         doc = load_json(f, None)
         if doc is None:
-            print(f"{f}: no project defaults yet (the plugin's defaults apply); create: reelcfg.py defaults --set key=value")
+            print(f"{f}: no project defaults yet (the plugin's defaults apply); create: reelcfg.py defaults --set field=value")
         else:
             print(f"{f}:")
             print(json.dumps(doc, ensure_ascii=False, indent=1))
         return
     if not is_project(project):
         sys.exit(f"no editing project here ({project}: no edit/, brands/ or it-reelsmaker.json); run it from the project "
-                 f"folder or set REELS_PROJECT")
+                 f"folder or set project_root in it-reelsmaker.json")
     over = parse_sets(a.set or [])
     bad_workflow(over)
     known = KNOWN | set(addon_keys("SETTING_KEYS_BOOL")) | set(addon_keys("SETTING_KEYS"))
     unset = [RENAMED.get(k, k) for k in (a.unset or [])]
     for k in list(over) + unset:
         if k not in known:
-            warn(f"unknown key {k}, saving it as is")
+            warn(f"unknown setting {k}, saving it as is")
     with editing_json(f, {}) as doc:
         s = doc.setdefault("settings", {})
         s.update(over)

@@ -421,7 +421,7 @@ def logo_role(p, taken=None, role=None):
 
 @contextlib.contextmanager
 def editing_brand(slug):
-    """The brand profile under a lock: read it again, change it, write it atomically (parallel sessions)."""
+    """The brand profile under a lock: read it again, change it, write it atomically (parallel runs)."""
     d, b = find_brand(slug)
     if not b:
         sys.exit(f"no brand {slug}; available: {', '.join(s for s, _, _ in list_brands())}")
@@ -565,7 +565,7 @@ def cmd_new(a):
 
 
 def cmd_rule(a):
-    with editing_brand(a.slug) as (d, b):  # the profile lock also covers rules.md: two sessions won't overwrite each other's rules
+    with editing_brand(a.slug) as (d, b):  # the profile lock also covers rules.md: two runs won't overwrite each other's rules
         p = inside(d, d / (b.get("rules") or "rules.md"), "rules file")
         text = p.read_text(encoding="utf-8") if p.exists() else f"# Brand design rules: {b.get('name')}\n"
         # an owner decision with its reason and scope (references/playbook.md): a disliked result is traced to it later
@@ -587,7 +587,7 @@ def set_path(obj, path, value):
 def cmd_set(a):
     for it in a.pairs:
         if "=" not in it:
-            sys.exit(f"expected key=value, got: {it}")
+            sys.exit(f"expected field=value, got: {it}")
         if it.split("=", 1)[0].strip() == "slug":
             sys.exit("slug can't be changed with set: it is the name of the brand folder")
     with editing_brand(a.slug) as (d, b):
@@ -608,7 +608,7 @@ def cmd_tone(a):
     sets = {}
     for it in a.set or []:
         if "=" not in it:
-            sys.exit(f"--set expects key=value, got: {it}")
+            sys.exit(f"--set expects field=value, got: {it}")
         k, v = (x.strip() for x in it.split("=", 1))
         head = k.split(".")[0]
         if head not in base or head in ("label", "for"):
@@ -766,7 +766,7 @@ def main():
     p = sub.add_parser("set"); p.add_argument("slug"); p.add_argument("pairs", nargs="+"); p.set_defaults(fn=cmd_set)
     p = sub.add_parser("tone", help="brand tone: preset + field overrides")
     p.add_argument("slug"); p.add_argument("preset", choices=TONE_PRESETS)
-    p.add_argument("--set", nargs="*", metavar="KEY=VALUE", help="preset fields: memes.max=1 flash_max=1 scene_tone=calm ...")
+    p.add_argument("--set", nargs="*", metavar="FIELD=VALUE", help="preset fields: memes.max=1 flash_max=1 scene_tone=calm ...")
     p.add_argument("--reset", action="store_true", help="remove the previous overrides")
     p.add_argument("--profile", help="the brand's own tone for this video profile (educational, entertaining, "
                                      "expert-clip, promo, ad); the main tone's preset removes it")

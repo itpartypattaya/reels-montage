@@ -8,7 +8,7 @@ Rules (assets/reel-defaults.json → meme_layout; the size comes from the meme_s
   • not allowed: on the face (+60 px around it), on the subtitle band (y 1250–1430), in the UI zones (top 220,
     bottom 420, right 120 px by default; meme_layout.safe, the same for every check), on the video's active graphics (keep_clear in the plan: cards, hook, CTA).
 Face: found automatically with the YuNet model (faces.py: a measurement of the whole rough cut in faces.json, or three
-frames of the meme); without the model, the agent looks at frames with a grid (inserts/<id>-grid.jpg) and passes
+frames of the meme); without the model, the agent looks at frames with a grid (inserts/<id>-grid.jpg) and gives
 --face x,y,w,h. No face in the frame: --no-face.
 
 A library for memes.py and visual_plan.py; it has no command line of its own.

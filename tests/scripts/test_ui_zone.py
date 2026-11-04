@@ -70,19 +70,19 @@ def test_the_free_zones_end_above_the_projects_bottom_ui(project):
     assert z["chest"] is None or z["chest"][1] <= 1020, z
 
 
-def test_another_overlay_file_gives_its_own_zone(project, tmp_path, monkeypatch):
-    # Codex review: the zone was kept by the files' times only, so a second overlay written in the same instant
-    # returned the first one's zone
+def test_another_project_file_gives_its_own_zone(project, tmp_path):
+    # Codex review: the zone was kept by the files' times only, so a second file written in the same instant
+    # returned the first one's zone (then an overlay file; since 1.22 there are only the project files)
     import os
     from reels_common import ui_safe
-    a, b = tmp_path / "a.json", tmp_path / "b.json"
+    other = tmp_path / "other"
+    (other / "edit").mkdir(parents=True)
+    a, b = project / "reel-defaults.json", other / "reel-defaults.json"
     write_json(a, {"meme_layout": {"safe": {"bottom": 520}}})
     write_json(b, {"meme_layout": {"safe": {"bottom": 620}}})
     os.utime(b, ns=(a.stat().st_atime_ns, a.stat().st_mtime_ns))
-    monkeypatch.setenv("REELS_DEFAULTS_OVERLAY", str(a))
-    assert ui_safe()["bottom"] == 520
-    monkeypatch.setenv("REELS_DEFAULTS_OVERLAY", str(b))
-    assert ui_safe()["bottom"] == 620
+    assert ui_safe(project)["bottom"] == 520
+    assert ui_safe(other)["bottom"] == 620
 
 
 def test_a_project_without_its_own_zone_keeps_the_platform_one(project):

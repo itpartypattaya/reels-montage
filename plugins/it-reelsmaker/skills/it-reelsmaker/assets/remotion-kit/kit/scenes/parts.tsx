@@ -71,7 +71,7 @@ export const surfaces = (b: Brand, look: Look): { field: Surface; card: Surface;
 // ── words and speech ──
 // Cyrillic "yo" is normalized to "ye" so that both spellings match.
 export const norm = (s: string): string => s.toLowerCase().replace(/\u0451/g, "\u0435").replace(/[^\p{L}\p{N}]+/gu, "");
-export const tokens = (s: string): string[] => glue(s).split(/[  ]+/).filter((t) => norm(t) !== "");
+export const wordsOf = (s: string): string[] => glue(s).split(/[  ]+/).filter((t) => norm(t) !== "");
 
 /** Time (s) of each phrase word from the scene's speech: words are searched in order; not found → null (spread evenly later). */
 /** Time of each scene word in the speech: the first identical word after the previous one, only within the scene window

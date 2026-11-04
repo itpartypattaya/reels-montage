@@ -107,11 +107,11 @@ def find_remotion(render, given):
     for d in [Path(render).resolve().parent, *Path(render).resolve().parents, Path.cwd()]:
         if (d / "package.json").exists() and (d / "src").is_dir():
             return d
-    sys.exit("no Remotion project found; pass --remotion <folder>")
+    sys.exit("no Remotion project found; give --remotion <folder>")
 
 
 def frames_at(video, indices, outdir, tag):
-    """Frames by NUMBER (select=eq(n,...), one decoder pass, stops at the last needed one) -> {n: png}.
+    """Frames by NUMBER (select=eq(n,...), one decoder run, stops at the last needed one) -> {n: png}.
     Not by time: in a spliced file the timestamps may shift, and seeking with -ss would fetch a neighboring frame,
     a false "shift"."""
     outdir.mkdir(parents=True, exist_ok=True)
@@ -266,14 +266,14 @@ def main():
         if a.props:
             cmd.append(f"--props={a.props}")
         t = time.time()
-        with remotion_tmp(rem, a.props, a.comp) as (env, extra):  # a run folder of its own, removed afterwards
-            run(cmd + extra, cwd=rem, what="patch render (Remotion)", env=env)
+        with remotion_tmp(rem, a.props, a.comp) as (_run_dir, extra):  # a run folder of its own, removed afterwards
+            run(cmd + extra, cwd=rem, what="patch render (Remotion)")
         pm = probe_video(patch)
         if pm["frames"] != k2 - k1:
             sys.exit(f"patch: {pm['frames']} frames instead of {k2 - k1}")
-        for key in ("width", "height", "fps"):
-            if pm[key] != meta[key]:
-                sys.exit(f"the patch does not match the render in {key}: {pm[key]} ≠ {meta[key]}")
+        for field in ("width", "height", "fps"):
+            if pm[field] != meta[field]:
+                sys.exit(f"the patch does not match the render in {field}: {pm[field]} ≠ {meta[field]}")
         print(f"patch rendered in {time.time() - t:.0f} s")
 
         # 2. audio
@@ -284,8 +284,8 @@ def main():
             cmd = [npx(), "--no", "remotion", "render", a.comp, str(wav), "--codec=wav", "--log=error"]
             if a.props:
                 cmd.append(f"--props={a.props}")
-            with remotion_tmp(rem, a.props, a.comp) as (env, extra):
-                run(cmd + extra, cwd=rem, what="audio render (Remotion)", env=env)
+            with remotion_tmp(rem, a.props, a.comp) as (_run_dir, extra):
+                run(cmd + extra, cwd=rem, what="audio render (Remotion)")
             audio_src = wav
             print(f"audio re-rendered in {time.time() - t:.0f} s")
 

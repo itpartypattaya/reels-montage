@@ -20,7 +20,7 @@ What is recorded:
   audio (wav, mp3, m4a, flac, aac, ogg): duration, sound start (silence at the start of the file), peak and mean
     loudness; kind "music" in a top folder named Music (or when the library folder itself is named so), else "sfx";
   images and videos (png, jpg, jpeg, webp; mp4, mov, webm, gif): size, background by the corners (transparent /
-    green chroma key / black / white / other), alpha, duration of a video;
+    green screen / black / white / other), alpha, duration of a video;
   verdict, why and rights_block, from your verdicts file.
 
 Verdicts file: --verdicts FILE, by default <folder>/_catalog/verdicts.json if it exists. The plugin ships no
@@ -105,14 +105,14 @@ def audio_kind(rel):
 
 
 def bg_of(im):
-    """Background by the corners: transparent / green chroma key / black / white / other."""
+    """Background by the corners: transparent / green screen / black / white / other."""
     im = im.convert("RGBA").resize((64, 64))
     px = [im.getpixel(xy) for xy in [(1, 1), (62, 1), (1, 62), (62, 62)]]
     if all(a < 20 for *_, a in px):
         return "transparent"
     r, g, b = [sum(c[i] for c in px) / 4 for i in range(3)]
     if g > 180 and r < 90 and b < 90:
-        return "green chroma key"
+        return "green screen"
     if max(r, g, b) < 30:
         return "black"
     if min(r, g, b) > 225:
@@ -393,7 +393,7 @@ def library_roots(arg=None):
         elif p not in out:
             out.append(p)
     if not out:
-        sys.exit("no asset library folder: pass --dir <folder>, or set assets_dir in it-reelsmaker.json "
+        sys.exit("no asset library folder: give --dir <folder>, or set assets_dir in it-reelsmaker.json "
                  "(or library_dirs in the reel settings)")
     return out
 

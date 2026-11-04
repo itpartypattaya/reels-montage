@@ -24,7 +24,7 @@ def framed_project(project, **reel):
 def test_reelcfg_saves_the_framed_format_and_refuses_a_bad_window(project):
     e = plan_project(project)
     r = run_script("reelcfg.py", "save", "edit/4821", "--set", "format=framed", "label=Candidate interview", cwd=project)
-    assert "unknown key" not in r.stderr, r.stderr  # T7: "unknown key format, saving it as is"
+    assert "unknown setting" not in r.stderr, r.stderr  # T7: "unknown key format, saving it as is" (now "unknown setting")
     reel = json.loads((e / "reel.json").read_text(encoding="utf-8"))
     assert reel["format"] == "framed" and reel["label"] == "Candidate interview"
     shown = run_script("reelcfg.py", "show", "edit/4821", cwd=project).stdout

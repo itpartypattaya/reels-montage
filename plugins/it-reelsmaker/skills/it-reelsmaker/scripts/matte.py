@@ -21,10 +21,10 @@ a cut-out is shown above its own pixels. Speed: about 1 s per 1080x1920 frame on
 about 45 s to start the model; --dry prints the estimate.
 
 rembg is yours to install, best in a separate venv (about 810 MB): pip install "rembg[cpu,cli]". The command:
---rembg, else the REELS_MATTE_REMBG environment variable, else it-reelsmaker.json -> matte.rembg
+--rembg, else it-reelsmaker.json -> matte.rembg
 (e.g. {"matte": {"rembg": "~/venvs/rembg/bin/rembg"}}), else rembg on PATH.
 The plugin never downloads models: download u2net_human_seg (about 170 MB) once yourself with
-rembg d u2net_human_seg; rembg keeps it in U2NET_HOME or ~/.u2net. This Python needs Pillow (the figure's box).
+rembg d u2net_human_seg; rembg keeps it in ~/.u2net (another folder: it-reelsmaker.json -> matte.models). This Python needs Pillow (the figure's box).
 Model: u2net_human_seg only (about 1.5 GB of memory): larger models need more memory than a small machine has.
 Before a run the free memory and disk of this computer are checked. Cut-outs run one at a time per project (a lock
 file edit/.matte.lock); memory is checked again under the lock. --wait: minutes to wait for the lock (default 20).
@@ -173,10 +173,17 @@ def pack_cmd(fps, inp, dst):
             "-pix_fmt", "yuva420p", "-auto-alt-ref", "0", "-b:v", "3M", "-row-mt", "1", str(dst)]
 
 
+def models_dir():
+    """it-reelsmaker.json -> matte.models (a folder you moved rembg's models to), or None: rembg's own default, the
+    .u2net folder in your home folder."""
+    m = project_settings().get("matte")
+    v = m.get("models") if isinstance(m, dict) else None
+    return Path(str(v)).expanduser() if v and not str(v).startswith("${") else None
+
+
 def model_file(model):
-    """Where rembg keeps a model: U2NET_HOME, otherwise <XDG_DATA_HOME or the home folder>/.u2net."""
-    base = os.environ.get("U2NET_HOME") or Path(os.environ.get("XDG_DATA_HOME") or Path.home()) / ".u2net"
-    return Path(base).expanduser() / f"{model}.onnx"
+    """Where rembg keeps a model: matte.models, otherwise ~/.u2net (models_dir)."""
+    return (models_dir() or Path.home() / ".u2net") / (model + ".onnx")
 
 
 def free_mb():
@@ -208,20 +215,20 @@ def free_mb():
 
 
 class Local:
-    """rembg on this computer (the cut command's default engine). The online add-on passes its own engine with the
+    """rembg on this computer (the cut command's default engine). The online add-on gives its own engine with the
     same check / run / cleanup methods to cmd_cut."""
 
     def __init__(self, a):
         self.model = a.model
         self.lock = edit_dir(a.edit).parent / ".matte"  # -> edit/.matte.lock: one cut-out at a time per project
         m = project_settings().get("matte")
-        v = next((str(x) for x in (a.rembg, os.environ.get("REELS_MATTE_REMBG"), m.get("rembg") if isinstance(m, dict)
-                                   else None) if x and not str(x).startswith("${")), "rembg")
+        v = next((str(x) for x in (a.rembg, m.get("rembg") if isinstance(m, dict) else None)
+                  if x and not str(x).startswith("${")), "rembg")
         self.rembg = shutil.which(str(Path(v).expanduser()))
         if not self.rembg:
             sys.exit(f"rembg is not found ({v}). Install it yourself, best in a separate venv: pip install "
-                     f"\"rembg[cpu,cli]\" (about 810 MB), then pass its path with --rembg, the REELS_MATTE_REMBG "
-                     f"environment variable or {{\"matte\": {{\"rembg\": \"<path>\"}}}} in it-reelsmaker.json. "
+                     f"\"rembg[cpu,cli]\" (about 810 MB), then give its path with --rembg or "
+                     f"{{\"matte\": {{\"rembg\": \"<path>\"}}}} in it-reelsmaker.json. "
                      f"Without rembg: the \"window\" layout (no cut-out)")
 
     def check(self, n_mpx, model):
@@ -257,6 +264,8 @@ class Local:
             if mem is not None and mem < need:
                 raise Fail(f"not enough memory under the lock (free {mem} MB, needed {need}): wait and try again")
             print(f"rembg on this computer (up to {limit / 60:.0f} min)...", flush=True)
+            if models_dir():  # rembg finds its models through U2NET_HOME: the folder the pre-check found it in
+                os.putenv("U2NET_HOME", str(models_dir()))
             try:
                 r = subprocess.run(local_media_args([*nice, self.rembg, *rembg_args(self.model, src, res)]), capture_output=True,
                                    text=True, encoding="utf-8", errors="replace", timeout=limit)
@@ -450,7 +459,7 @@ def cmd_place(a):
     oy = H - H * s
     if a.layout == "review" and face:
         # "review": the forehead at the panel's bottom edge (the hair overlaps the panel a little: depth), the body goes
-        # off the bottom of the frame. If the bottom of the figure's video rises above the frame bottom (a cut shows), pin it down.
+        # off the bottom of the frame. If the bottom of the figure's video rises above the frame bottom (a cut shows), hold it down.
         px, py, pw, ph = L["panel"]
         oy = max(H - H * s, (py + ph - 10) - face[1] * s)
     # the cut check in screen coordinates, at any scale: every edge the figure touches lies on the frame edge or beyond
@@ -541,8 +550,8 @@ def parser(prog=None, doc=__doc__):
     p.add_argument("--fps", type=float)
     p.add_argument("--name", default="person"); p.add_argument("--video"); p.add_argument("--model", default="u2net_human_seg")
     p.add_argument("--wait", type=float, default=20, help="minutes to wait for the cut-out queue (one at a time)")
-    p.add_argument("--rembg", help="the rembg command or its path (default: REELS_MATTE_REMBG, then matte.rembg in "
-                                   "it-reelsmaker.json, then rembg on PATH)")
+    p.add_argument("--rembg", help="the rembg command or its path (default: matte.rembg in it-reelsmaker.json, "
+                                   "then rembg on PATH)")
     p.add_argument("--dry", action="store_true"); p.set_defaults(fn=cmd_cut)
     p = sub.add_parser("place"); p.add_argument("edit"); p.add_argument("--name", default="person")
     p.add_argument("--layout", choices=list(LAYOUTS), default="review"); p.add_argument("--side", choices=["auto", "left", "right"], default="auto")

@@ -67,8 +67,8 @@ const GOOGLE: Record<string, FontModule> = {
 const loaded = new Map<string, string>();
 
 const loadGoogle = (f: BrandFont): string => {
-  const key = `${f.family}|${(f.weights ?? []).join(",")}`;
-  if (loaded.has(key)) return loaded.get(key)!;
+  const fontSig = f.family + "|" + (f.weights ?? []).join(",");
+  if (loaded.has(fontSig)) return loaded.get(fontSig)!;
   const mod = GOOGLE[f.family] ?? GOOGLE[f.family.replace(/\s+/g, "")];
   if (!mod) {
     console.warn(`kit: font ${f.family} is not registered in src/kit/brand.ts — using Inter`);
@@ -83,7 +83,7 @@ const loadGoogle = (f: BrandFont): string => {
   // upright faces only: a fontStyle "italic" gets the browser's slanted upright face, not the family's italic (to use a
   // real italic, load it in your composition: loadFont("italic", { weights, subsets }) from the same module)
   const { fontFamily } = mod.loadFont("normal", { weights: weights.length ? weights : [have[0]], subsets });
-  loaded.set(key, fontFamily);
+  loaded.set(fontSig, fontFamily);
   return fontFamily;
 };
 

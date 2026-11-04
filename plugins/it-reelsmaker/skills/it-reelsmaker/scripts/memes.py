@@ -27,7 +27,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from reels_common import (GIF_EXT, IMAGE_EXT, VIDEO_EXT, edit_dir, editing_json, effective, library_dirs, load_config, load_json, media_kind,
-                          online, probe, project_root, rel, run, score, tokens, utf8_stdio, warn)
+                          online, probe, project_root, rel, run, score, terms, utf8_stdio, warn)
 from footage import put_insert, rights_blocked, save_credit, verdict_columns
 
 RIGHTS_OK = {"own", "licensed", "cc", "library"}  # library: the asset library, rights per the catalog's verdict
@@ -87,7 +87,7 @@ def cmd_index(a):
             elif p.with_suffix(".txt").exists():
                 side = {"description": p.with_suffix(".txt").read_text(encoding="utf-8").strip()}
             scanned.append((p, kind, info, w, h, alpha, side))
-    # 2) the merge into the index runs under the lock, on the fresh file (memes.py set edits from another session are kept)
+    # 2) the merge into the index runs under the lock, on the fresh file (memes.py set edits from another run are kept)
     with editing_json(index_path(project), {}) as idx:
         merge_index(idx, project, s, scanned)
     write_sheets(project, root, idx)
@@ -105,7 +105,7 @@ def merge_index(idx, project, s, scanned):
         e.update({"path": r, "type": kind, "w": w or info.get("w"), "h": h or info.get("h"),
                   "dur": round(info["dur"], 2) if info.get("dur") else None, "has_audio": bool(info.get("has_audio")),
                   "alpha": alpha})
-        e["tags"] = sorted(set(e.get("tags", [])) | set(tokens(p.stem)) | set(side.get("tags", [])))
+        e["tags"] = sorted(set(e.get("tags", [])) | set(terms(p.stem)) | set(side.get("tags", [])))
         for k in ("description", "emotion", "use_when", "rights", "source", *CREDIT_KEYS):
             if side.get(k) and not e.get(k):
                 e[k] = side[k]
@@ -139,7 +139,7 @@ def merge_index(idx, project, s, scanned):
                       "description": m.get("description", ""), "emotion": m.get("emotion", []),
                       "use_when": m.get("use_when", ""), "rights": "blocked" if blocked else "library", "library": lib,
                       "sheet": m.get("sheet"), "verdicts": verdicts, "verdict_why": c.get("why", "")})
-            e["tags"] = sorted(set(tokens(Path(path).parent.name)) | set(tokens(m.get("description", ""))))
+            e["tags"] = sorted(set(terms(Path(path).parent.name)) | set(terms(m.get("description", ""))))
             e.setdefault("added", datetime.date.today().isoformat())
             idx[mid] = e
             seen.add(mid)

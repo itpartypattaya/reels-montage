@@ -51,7 +51,7 @@ fix, fix_at transcription fixes: every occurrence of a word, or one occurrence n
             "fix_at": [{"text": "you", "at": 46.4, "to": ""}]; the sound is not touched. "text" is the word as the
             transcript has it and "at" its start AFTER retime: for a retimed word, its new "start". "fix" may also
             be a list of ["word", "replacement"] pairs.
-retime      exact timings of key words measured on the waveform: (word, transcript start) -> (start, end).
+retime      exact timings of main words measured on the waveform: (word, transcript start) -> (start, end).
             fix_at and retime entries may name a "source": then only that source's words (the pieces of one long
             recording, longform.py extract, each start at 0 s, so "at" alone can match a word of another piece).
 keep        phrases the subtitles never split: {"text": first word as the transcript has it, "at": its start (after
@@ -101,7 +101,7 @@ FADE = 0.03
 MIN_WORD = 0.08  # s: the shortest word on the subtitle timeline
 LUT_MIX = 0.6
 REPLAY = 0.2     # s: two pieces of one source overlapping by more than this replay the same speech (a teaser, a restart)
-GAP_MAX = 1.0    # s: a gap this short between two pieces of one pass is a removed pause, not a dropped line
+GAP_MAX = 1.0    # s: a gap this short between two pieces of one run is a removed pause, not a dropped line
 KEEP_CHARS = 48  # characters: a keep phrase longer than this may not fit two subtitle lines (Plate, Accent): named
 JOIN_REPEAT = 3  # words: an identical run this long in two adjacent pieces is a take said twice (repeats_at_joins)
 
@@ -222,7 +222,7 @@ def fix_map(v):
 
 def word_fixes(v, name, fields, sources=None):
     """cut.json "fix_at" / "retime" / "keep": a list of {"text", "at", ...} entries, checked (a dict or an entry without "at"
-    crashed the cut with an AttributeError or a KeyError). An optional "source" (a key of "sources") limits the entry to
+    crashed the cut with an AttributeError or a KeyError). An optional "source" (a name in "sources") limits the entry to
     that source: the pieces of a long recording each start at 0 s, so the same word at the same second of two pieces
     would otherwise both get the fix."""
     if not v:
@@ -369,7 +369,7 @@ def fixed(w, c, src=None):
 
 
 def same_pass(a, b):
-    """Two pieces of one source are parts of one pass through it, so a word between them is shown once: they don't
+    """Two pieces of one source are parts of one run through it, so a word between them is shown once: they don't
     replay the same speech. A piece inside the other, or an overlap over REPLAY, replays it (a teaser shown again in
     its place, a restart): each keeps its own copy of the words. The order of the pieces in the list does not matter
     (T3: a question moved to the start lost nothing, but its last word, which the transcript stretched over the pause
@@ -385,7 +385,7 @@ EDGE_TOUCH = 0.05  # s: a word left out of the subtitles that a piece holds this
 
 
 def owner(w, group):
-    """The piece of one pass that shows a word: the one holding most of it (a tie: the earlier in the list), when the
+    """The piece of one run that shows a word: the one holding most of it (a tie: the earlier in the list), when the
     word is heard in the cut: the pieces hold most of it or its center, or it starts inside a piece and runs on in it
     for HEARD (recognizers stretch a word's END over the pause after it: T7's "inache?" 50.52-51.96 is spoken by 51.06,
     where the piece ends), or, the mirror, it ends inside a piece after HEARD in it (its START stretched back over the
@@ -423,14 +423,14 @@ def speaker_in(w, r):
 
 
 def punct_only(text):
-    """A token of punctuation alone (faster-whisper returns a dash as a word): it is not a word of its own."""
+    """A punctuation mark alone (faster-whisper returns a dash as a word): it is not a word of its own."""
     t = str(text).strip()
     return bool(t) and all(unicodedata.category(ch).startswith("P") for ch in t)
 
 
 def timeline(c, words, said=None):
-    """Words on the new timeline: each word once per pass through its source (a replay shows it again), punctuation
-    tokens joined to their word. said: a list that gets each caption word's transcript text, in caption order
+    """Words on the new timeline: each word once per run through its source (a replay shows it again), punctuation
+    words joined to their word. said: a list that gets each caption word's transcript text, in caption order
     (mark_keep matches on it: two transcript words may share a start time)."""
     fps, segments, captions, offset = c["fps"], [], [], 0.0
     frames = 0
@@ -479,7 +479,7 @@ def mark_keep(c, said, captions):
     the phrase between two subtitle blocks (finding 8 of an English test: "it was just admin admin" on two plates read
     as a joke in two beats). The first word is matched as fix_at matches it: its transcript text, its start (after
     retime) within 0.02 s, the entry's source if it names one; the group is that word and the next words-1 caption
-    words (the words as the subtitles show them: a punctuation token is part of its word, a word removed with fix_at
+    words (the words as the subtitles show them: a punctuation mark is part of its word, a word removed with fix_at
     -> "" is not counted). A phrase the cut shows twice (a teaser) is marked at each place: "k1", "k1-2". -> ([(id,
     text, out start, words)], [problem]): a mark that matches no word, runs past the last word or overlaps another.
     said: the transcript text of each caption word (timeline(..., said)), so a word is matched as itself, not by its
@@ -517,10 +517,10 @@ def speakers_of(captions):
 
 def dropped_in_gaps(c, words, captions):
     """Transcript words in no range that sit mostly (half their length or more) inside a short gap (<= GAP_MAX)
-    removed between two pieces of one pass through a source -> [(word, source, word start, word end, gap start,
+    removed between two pieces of one run through a source -> [(word, source, word start, word end, gap start,
     gap end)]. Such a gap is a pause the speech mask compressed: a quiet syllable below its threshold reads as a pause
     there, and the cut drops it from the sound and the subtitles without a word (T4). A word removed on purpose
-    ("to": "") and a punctuation token are not named; a line dropped on purpose leaves a longer gap."""
+    ("to": "") and a punctuation mark are not named; a line dropped on purpose leaves a longer gap."""
     shown = {(c["ranges"][w["seg"]]["source"], w["src"]) for w in captions}
     out = []
     for src, ws in words.items():

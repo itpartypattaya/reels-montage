@@ -14,8 +14,8 @@
     python scripts/longform.py camera edit/talk-03 [--side guest=left] [--write]   # camera.json for the framed clip
 
 Why this way (references/longform.md has the whole process):
-  - choosing is cheap, finishing is not: on a real 36-minute interview the list of 15 clips took ~5 M cached tokens,
-    each finished clip ~10 M and ~30 min, in a session that kept the whole series in its context. So the series gets
+  - choosing is cheap, finishing is not: on a real 36-minute interview the list of 15 clips took ~5 M of cached context,
+    each finished clip ~10 M and ~30 min, in a conversation that kept the whole series in its context. So the series gets
     one list and one "yes", and each clip is finished in a fresh context from its own folder;
   - no virality score: nothing shows it predicts views. A card says what the clip is about, its hook, its ending and
     why; this script checks what can be measured, the person decides the rest on the list;
@@ -62,8 +62,9 @@ from reels_common import (NUMBER_RE, edit_dir, editing_json, is_project, load_js
 
 HERE = Path(__file__).resolve().parent
 SCHEMA = 1
+PIECE_ID = "key"   # a piece's name in a card's pieces (longform.json); formatted text reads it through this name
 PAD = 3.0            # s of the recording kept around each piece: room for speech_mask.py to set the real edges
-CHUNK = 600          # s per outline part: ~4-6 k tokens of text, read in one go
+CHUNK = 600          # s per outline part: ~4-6 k of context, read in one go
 NEAR_WINDOW = 20.0   # s around "near" where a piece's words are looked for (timecodes from subtitles are ±1-2 s)
 TO_SPAN = 240.0      # s after a piece's start where its last words are looked for
 MATCH_MIN = 0.6      # share of a piece's words that must be found in order
@@ -74,7 +75,7 @@ DUP_MIN = 0.5        # word overlap of two cards' texts read as "much the same"
 LENGTH = (15.0, 60.0)
 BEAT_GAP = 2.0       # s of silence before a line: a possible seam between topics (outline mark)
 SENTENCE_END = re.compile(r"[.!?…]['\")»”]*$")
-TOKEN_RE = re.compile(r"[^\W_]+", re.UNICODE)
+TERM_RE = re.compile(r"[^\W_]+", re.UNICODE)
 STATUSES = ("proposed", "approved", "reserve", "rejected")
 BACKREF_FIRST = set("he she they it this that these those also because which then so and but "
                     "\u043e\u043d \u043e\u043d\u0430 \u043e\u043d\u0438 \u043e\u043d\u043e \u044d\u0442\u043e \u044d\u0442\u043e\u0442 \u044d\u0442\u0430 \u044d\u0442\u0438 \u0442\u043e\u0442 \u0442\u0430 \u0442\u0435 \u0442\u0430\u043c \u0442\u043e\u0433\u0434\u0430 \u0442\u043e\u0436\u0435 \u0442\u0430\u043a\u0436\u0435 \u043f\u043e\u0442\u043e\u043c\u0443 \u043f\u043e\u044d\u0442\u043e\u043c\u0443 \u0438 \u0430 \u043d\u043e".split())
@@ -119,16 +120,16 @@ def tc(t):
     return (f"{int(h)}:{int(m):02d}:{s:04.1f}" if h else f"{int(m):02d}:{s:04.1f}")
 
 
-def norm_token(t):
+def norm_term(t):
     t = unicodedata.normalize("NFKC", t).lower().replace("\u0451", "\u0435")
     return t
 
 
-def tokens_of(text):
-    return [norm_token(t) for t in TOKEN_RE.findall(str(text))]
+def terms_of(text):
+    return [norm_term(t) for t in TERM_RE.findall(str(text))]
 
 
-def same_token(a, b):
+def same_term(a, b):
     if a == b:
         return True
     if len(a) >= 5 and len(b) >= 5 and a[:5] == b[:5]:  # a word in another form: the same first five letters
@@ -173,8 +174,8 @@ def transcript_file(e, m):
 
 
 def stream(e, m):
-    """The recording's text as tokens with times: from the word-level transcript when there is one, else from the
-    imported cues (each cue's time shared evenly between its tokens: ±1-2 s). -> dict(kind, rev, words, tokens,
+    """The recording's text as words with times: from the word-level transcript when there is one, else from the
+    imported cues (each cue's time shared evenly between its words: ±1-2 s). -> dict(kind, rev, words, terms,
     punct, file)."""
     tf = transcript_file(e, m)
     words, kind, f = [], None, None
@@ -203,12 +204,12 @@ def stream(e, m):
                  f"longform.py import {e.name} <subtitles.srt|.vtt>")
     toks = []
     for i, w in enumerate(words):
-        for t in tokens_of(w["text"]):
+        for t in terms_of(w["text"]):
             toks.append((t, i))
     ends = sum(1 for w in words if SENTENCE_END.search(w["text"]))
     st = f.stat()
     return {"kind": kind, "file": f, "rev": fingerprint([str(f.name), st.st_size, st.st_mtime_ns]),
-            "words": words, "tokens": toks, "punct": ends >= max(1, len(words) // 80)}
+            "words": words, "terms": toks, "punct": ends >= max(1, len(words) // 80)}
 
 
 # --- import: subtitles -> cues ----------------------------------------------------------------------------------
@@ -455,7 +456,7 @@ def cmd_outline(a):
     print(f"{od}: {n} part(s) of {chunk / 60:g} min from the {'word-level transcript' if s['kind'] == 'words' else 'imported subtitles (±1-2 s)'}"
           + ("" if s["punct"] else "; no punctuation: sentence edges are not checked"))
     for k, t0, t1, nl, nw, nc in index:
-        print(f"  part-{k:02d}.md  {tc(t0)}–{tc(t1)}  {nl} lines, {nw} words, ~{nc // 3500 + 1}k tokens")
+        print(f"  part-{k:02d}.md  {tc(t0)}–{tc(t1)}  {nl} lines, {nw} words, ~{nc // 3500 + 1}k of context")
     if spk_time:
         tot = sum(spk_time.values()) or 1
         print("speakers: " + ", ".join(f"{k} {v / tot:.0%}" for k, v in sorted(spk_time.items(), key=lambda x: -x[1])))
@@ -466,17 +467,17 @@ def cmd_outline(a):
 # --- check: resolve the cards' pieces --------------------------------------------------------------------------
 
 def lcs_match(a, b):
-    """Anchor tokens a against stream tokens b: -> (matched count, index in b of the first and last matched token,
-    index in a of the first and last matched token)."""
+    """Anchor words a against stream words b: -> (matched count, index in b of the first and last matched word,
+    index in a of the first and last matched word)."""
     n, k = len(a), len(b)
     dp = [[0] * (k + 1) for _ in range(n + 1)]
     for i in range(n - 1, -1, -1):
         for j in range(k - 1, -1, -1):
-            dp[i][j] = dp[i + 1][j + 1] + 1 if same_token(a[i], b[j]) else max(dp[i + 1][j], dp[i][j + 1])
+            dp[i][j] = dp[i + 1][j + 1] + 1 if same_term(a[i], b[j]) else max(dp[i + 1][j], dp[i][j + 1])
     i = j = 0
     first = last = a_first = a_last = None
     while i < n and j < k:
-        if same_token(a[i], b[j]) and dp[i][j] == dp[i + 1][j + 1] + 1:
+        if same_term(a[i], b[j]) and dp[i][j] == dp[i + 1][j + 1] + 1:
             if first is None:
                 first, a_first = j, i
             last, a_last = j, i
@@ -492,7 +493,7 @@ EDGE_SLIP = 3  # unmatched first/last words of a phrase taken as misheard (≤ t
 
 
 def slip(words, toks, t, count, step):
-    """Move a matched edge token t by up to `count` tokens (step -1: back, +1: on) over words the recognizer heard
+    """Move a matched edge word t by up to `count` words (step -1: back, +1: on) over words the recognizer heard
     differently ("Vse, kovid" heard as "Soka net", a brand name in another script), stopping at a pause of 0.7 s.
     -> the word index of the new edge."""
     w = toks[t][1]
@@ -511,18 +512,18 @@ def slip(words, toks, t, count, step):
 def find_words(s, phrase, lo, hi, near=None, last=False):
     """Where in [lo, hi] s of the recording the phrase is said. -> (finds sorted best first, anchor length): each find
     {score, start, end, w0, w1} (w0/w1: indexes of the first and last matched word)."""
-    a = tokens_of(phrase)
+    a = terms_of(phrase)
     if not a:
         return [], 0
     a = a[-12:] if last else a[:12]
-    toks, words = s["tokens"], s["words"]
+    toks, words = s["terms"], s["words"]
     span = len(a) + 3
     finds = []
     for i in range(len(toks)):
         w = words[toks[i][1]]
         if w["start"] < lo - 0.01 or w["start"] > hi:
             continue
-        if not any(same_token(toks[i][0], x) for x in a[:3]):
+        if not any(same_term(toks[i][0], x) for x in a[:3]):
             continue
         b = [t for t, _ in toks[i:i + span]]
         got, f0, f1, a0, a1 = lcs_match(a, b)
@@ -663,7 +664,7 @@ def check_card(s, card, others, excluded, length, dur):
                          + ")" + ("" if card.get("host") == "keep" else ": cut the other voice or set host: keep"))
     if any(r is None for r in res):
         return None, errs, warns
-    first = tokens_of(" ".join(w["text"] for w in ws[res[0]["w0"]:res[0]["w0"] + 6]))
+    first = terms_of(" ".join(w["text"] for w in ws[res[0]["w0"]:res[0]["w0"] + 6]))
     hit = next((" ".join(p) for p in BACKREF_PHRASES if any(tuple(first[i:i + len(p)]) == p for i in range(len(first)))), None)
     if not hit and first and first[0] in BACKREF_FIRST:
         hit = first[0]
@@ -674,7 +675,7 @@ def check_card(s, card, others, excluded, length, dur):
     if not lo <= total <= hi:
         warns.append(f"{total:.0f} s of speech: outside {lo:g}–{hi:g} s (before the cut removes pauses)")
     allow = set(card.get("allow") or [])
-    text = set(t for r in res for t in tokens_of(" ".join(w["text"] for w in ws[r["w0"]:r["w1"] + 1])) if len(t) >= 4)
+    text = set(t for r in res for t in terms_of(" ".join(w["text"] for w in ws[r["w0"]:r["w1"] + 1])) if len(t) >= 4)
     for o in others:
         if o["id"] == card["id"] or not o.get("_res"):
             continue
@@ -721,14 +722,14 @@ def cmd_check(a):
                              "why": x.get("why")})
         length = tuple(float(v) for v in (doc.get("length") or LENGTH))
         cards = doc["clips"]
-        for c in cards:  # first pass: every card's pieces, for the overlap and sameness checks
+        for c in cards:  # first run: every card's pieces, for the overlap and sameness checks
             res = []
             for p in c.get("parts") or []:
                 r, _e, _n = resolve_part(s, p, dur)
                 res.append(r)
             c["_res"] = res if res and all(res) else None
             if c["_res"]:
-                c["_text"] = set(t for r in res for t in tokens_of(" ".join(w["text"] for w in s["words"][r["w0"]:r["w1"] + 1]))
+                c["_text"] = set(t for r in res for t in terms_of(" ".join(w["text"] for w in s["words"][r["w0"]:r["w1"] + 1]))
                                  if len(t) >= 4)
         for c in cards:
             if a.clip and str(c["id"]) not in a.clip:
@@ -801,10 +802,10 @@ def cmd_sheet(a):
             words = (f"«{p.get('from_words', '')}» … «{p.get('to_words', '')}»" if p.get("from_words")
                      else "by seconds")
             L.append(f"- piece {chr(97 + k)}: {when} — {words}")
-        for key, label in (("hook", "Hook"), ("why", "Why"), ("ending", "Ending"), ("speaker", "Speaker"),
+        for piece_id, label in (("hook", "Hook"), ("why", "Why"), ("ending", "Ending"), ("speaker", "Speaker"),
                            ("host", "The other voice")):
-            if c.get(key):
-                L.append(f"- {label}: {c[key]}")
+            if c.get(piece_id):
+                L.append(f"- {label}: {c[piece_id]}")
         if c.get("risks"):
             L.append("- Risks: " + "; ".join(c["risks"]))
         for x in ck.get("errors") or []:
@@ -926,14 +927,14 @@ def cmd_extract(a):
     recut = len(rec.get("pieces") or []) != len(parts)  # a piece added or dropped: the old cut.json no longer fits
     from transcribe import check_doc, source_wav
     for k, p in enumerate(parts):
-        key = chr(97 + k)
+        piece_id = chr(97 + k)
         t0 = max(0.0, math.floor((p["start"] - pad) * fps) / fps)
         t1 = min(dur_src, p["end"] + pad)
-        frag = ce / "src" / f"{cid}{key}.mp4"  # the folder's name: short and safe, whatever the recording is called
-        old = next((x for x in rec.get("pieces") or [] if x.get("key") == key), None)
+        frag = ce / "src" / f"{cid}{piece_id}.mp4"  # the folder's name: short and safe, whatever the recording is called
+        old = next((x for x in rec.get("pieces") or [] if x.get("key") == piece_id), None)
         fresh = (rec.get("inputs") == inputs and old and frag.is_file() and old.get("identity") == ident(frag))
         if not fresh:
-            print(f"piece {key}: {tc(t0)}–{tc(t1)} of {src.name} -> {rel(frag, project)} ...", flush=True)
+            print(f"piece {piece_id}: {tc(t0)}–{tc(t1)} of {src.name} -> {rel(frag, project)} ...", flush=True)
             cut_piece(src, t0, t1 - t0, frag)
             recut = True
         pr = probe(frag)
@@ -945,22 +946,22 @@ def cmd_extract(a):
             d = slice_doc(parent, t0, t0 + (pr.get("dur") or (t1 - t0)), lang, fid, off, frag.name)
             errs = [x for x in check_doc(d) if not x.startswith("note:")]  # a long word is a note, not a fault
             if errs:
-                sys.exit(f"the slice of piece {key} is not a valid transcript: {errs[0]}")
+                sys.exit(f"the slice of piece {piece_id} is not a valid transcript: {errs[0]}")
             save_json(out, d)
         else:
             how = "whisper"
             cur = load_json(out) if out.is_file() else None
             if not cur or cur.get("source_identity") != fid:
-                print(f"piece {key}: no word-level transcript of the recording, transcribing the piece (medium) ...",
+                print(f"piece {piece_id}: no word-level transcript of the recording, transcribing the piece (medium) ...",
                       flush=True)
                 cmd = [sys.executable, str(HERE / "transcribe.py"), str(ce), str(frag), "--model", a.model]
                 if lang:
                     cmd += ["--language", lang]
                 r = subprocess.run(cmd)
                 if r.returncode != 0:
-                    sys.exit(f"transcribe.py failed on piece {key}")
+                    sys.exit(f"transcribe.py failed on piece {piece_id}")
         local = local_edges(load_json(out) or {}, card["parts"][k], p, t0)
-        pieces.append({"key": key, "file": rel(frag, project), "transcript": rel(out, project), "offset": round(t0, 3),
+        pieces.append({"key": piece_id, "file": rel(frag, project), "transcript": rel(out, project), "offset": round(t0, 3),
                        "end": round(t1, 3), "start_in": local[0], "end_in": local[1], "identity": ident(frag),
                        "words": how, "wav": rel(wav, project)})
     wrote = write_cut(ce, project, card, pieces, recut=bool(rec) and bool(recut))
@@ -987,13 +988,13 @@ def cmd_extract(a):
     if not pm.exists():
         lines = [f"# {card.get('title') or cid}", "",
                  f"Clip {card['id']} of the series {e.name}: from the long recording {m['source']['name']}, "
-                 + ", ".join(f"piece {x['key']} {tc(x['offset'])}–{tc(x['end'])} ({x['file']})" for x in pieces) + ".",
+                 + ", ".join(f"piece {x[PIECE_ID]} {tc(x['offset'])}–{tc(x['end'])} ({x['file']})" for x in pieces) + ".",
                  "Times in cut.json are seconds of each piece's own file; the recording's second = piece offset + "
                  "the piece's second.", "", "## Card", ""]
-        for key, label in (("hook", "Hook"), ("why", "Why"), ("ending", "Ending"), ("speaker", "Speaker"),
+        for piece_id, label in (("hook", "Hook"), ("why", "Why"), ("ending", "Ending"), ("speaker", "Speaker"),
                            ("host", "Host lines")):
-            if card.get(key):
-                lines.append(f"- {label}: {card[key]}")
+            if card.get(piece_id):
+                lines.append(f"- {label}: {card[piece_id]}")
         if card.get("risks"):
             lines.append("- Risks: " + "; ".join(card["risks"]))
         lines += ["", "## Decisions", "", "## Open items", ""]
@@ -1022,7 +1023,7 @@ def local_edges(doc, part, res, t0):
         return guess
     s = {"words": [{"text": str(w["text"]).strip(), "start": float(w["start"]), "end": float(w["end"]),
                     "speaker": speaker_of(w)} for w in ws]}
-    s["tokens"] = [(t, i) for i, w in enumerate(s["words"]) for t in tokens_of(w["text"])]
+    s["terms"] = [(t, i) for i, w in enumerate(s["words"]) for t in terms_of(w["text"])]
     a, _ = find_words(s, part["from_words"], guess[0] - 4, guess[0] + 4, guess[0])
     b, _ = find_words(s, part.get("to_words") or "", guess[1] - 4, guess[1] + 4, guess[1], last=True)
     st = a[0]["start"] if a else guess[0]
@@ -1042,7 +1043,7 @@ def write_cut(ce, project, card, pieces, recut=False):
     f = ce / "cut.json"
     sources = {x["key"]: {"file": x["file"], "transcript": x["transcript"]} for x in pieces}
     ranges = [{"source": x["key"], "start": max(0.0, round(x["start_in"] - 0.05, 3)), "end": round(x["end_in"] + 0.08, 3),
-               "beat": f"piece {x['key']}"} for x in pieces]
+               "beat": f"piece {x[PIECE_ID]}"} for x in pieces]
     with locked(f):
         cur = load_json(f, None) if f.is_file() else None
         if cur is not None and not recut:
@@ -1067,7 +1068,7 @@ def write_cut(ce, project, card, pieces, recut=False):
 CAM_MIN, CAM_MAX, CAM_AIM = 1.5, 3.5, 2.6  # s a shot holds; the hold a change is sought near
 CAM_GAP = 0.1         # s: the shortest pause between words a shot may change on (references/camera.md); a join always
 CAM_CEIL = 1.3        # the picture's ceiling: the window's enlargement of the source times the push-in (techniques.md)
-CAM_LOW = 1.06        # the push-in left when the enlargement alone passes the ceiling (720p and below)
+CAM_LOW = 1.06        # the push-in left when the enlargement alone exceeds the ceiling (720p and below)
 CAM_MEDIUM = 0.6      # a medium shot's push-in: this share of the close-up's
 CAM_LEAN = 0.15       # a wide shot leans this share from the speaker toward the middle (of the pair, or of the picture)
 CAM_TOWARD = 0.35     # a medium shot sits this share of the way from the close-up's frame to the wide one's
@@ -1325,7 +1326,7 @@ def camera_plan(ce, data, cap, sides, default_who, zmax=None):
     for n, (t0, c) in enumerate(starts):
         t1 = starts[n + 1][0] if n + 1 < len(starts) else end
         g = c["seg"] if c["kind"] in ("start", "join") else seg_at(segs, t0)
-        key = str(g.get("source"))
+        piece_id = str(g.get("source"))
         talk = {}
         for j, w in enumerate(words):
             d = min(w["end"], t1) - max(w["start"], t0)
@@ -1333,10 +1334,10 @@ def camera_plan(ce, data, cap, sides, default_who, zmax=None):
                 talk[who_of(w)] = talk.get(who_of(w), 0.0) + d
         who = max(talk, key=talk.get) if talk else (rows[-1]["who"] if rows else default_who)
         size = CYCLE[n % len(CYCLE)]
-        gr = groups.get(key) or []
+        gr = groups.get(piece_id) or []
         k = group_of(who, gr, sides) if gr else None
         if gr and k is None:
-            unknown.setdefault(who, (key, gr))
+            unknown.setdefault(who, (piece_id, gr))
             k = 0
         if gr:
             face = shot_face(data["samples"], t0, t1, gr, k)
@@ -1348,12 +1349,12 @@ def camera_plan(ce, data, cap, sides, default_who, zmax=None):
                 notes.append(f"shot {n + 1}: the speaker's face is cut by the window's side (x {sx:.0f} on screen)")
         else:
             z, cx, cy = 1.0, int(view[0][0] + view[0][2] / 2), int(view[0][1] + view[0][3] / 2)
-            notes.append(f"shot {n + 1}: no face measured in piece {key}: the frame as is")
+            notes.append(f"shot {n + 1}: no face measured in piece {piece_id}: the frame as is")
         src = g["src_start"] if c["kind"] in ("start", "join") else to_src(g, t0)
         shot = {"src": round(src, 3)}
         if many:
-            shot["source"] = key
-        same = [x for x in segs if str(x.get("source")) == key and x["src_start"] - 0.001 <= src <= x["src_end"] + 0.001]
+            shot["source"] = piece_id
+        same = [x for x in segs if str(x.get("source")) == piece_id and x["src_start"] - 0.001 <= src <= x["src_end"] + 0.001]
         if len(same) > 1:
             shot["seg"] = g["i"]
         drift = 0.03 if n == 0 else 0.04 if n == len(starts) - 1 else 0.02 if size == "wide" else 0.0
@@ -1368,7 +1369,7 @@ def camera_plan(ce, data, cap, sides, default_who, zmax=None):
                "pause": f"a pause of {c['gap']:.2f} s after “{c['after'][-24:]}”" if c.get("gap") else ""}[c["kind"]]
         if c.get("change"):
             why += f"; {who} speaks"
-        rows.append({"n": n + 1, "t": t0, "key": key, "src": shot["src"], "size": size, "z": z, "cx": cx, "cy": cy,
+        rows.append({"n": n + 1, "t": t0, "key": piece_id, "src": shot["src"], "size": size, "z": z, "cx": cx, "cy": cy,
                      "drift": drift, "who": who, "why": why, "hold": t1 - t0})
         if t1 - t0 > CAM_MAX + 0.4:
             notes.append(f"shot {n + 1} holds {t1 - t0:.1f} s: no pause of {CAM_GAP:g} s between words in reach (tight "
@@ -1415,9 +1416,9 @@ def cmd_camera(a):
     print(f"camera for {rel(ce, project)}: framed, window {[wx, wy, ww, wh]}; the source has {info['src_h']} rows, "
           f"the window enlarges it x{info['base']:.2f}, so push-ins up to x{info['zc']:.2f} (close) and "
           f"x{info['zm']:.2f} (medium)")
-    for key, gr in info["groups"].items():
+    for piece_id, gr in info["groups"].items():
         names = side_names(len(gr))
-        print(f"  people in piece {key}: " + (", ".join(f"{names[j]} (x {g['x']:.0f}, {g['n']} faces)"
+        print(f"  people in piece {piece_id}: " + (", ".join(f"{names[j]} (x {g['x']:.0f}, {g['n']} faces)"
                                                        for j, g in enumerate(gr)) or "no face measured"))
     if sides:
         print("  sides: " + ", ".join(f"{k} = {v}" for k, v in sides.items())
@@ -1425,7 +1426,7 @@ def cmd_camera(a):
     if unknown:
         print("\nwho sits where is not known for: " + ", ".join(unknown) + ". Look at a frame and say it once for the "
               "series, e.g. --side " + ",".join(f"{w}=left" for w in unknown))
-        for who, (key, gr) in unknown.items():
+        for who, (piece_id, gr) in unknown.items():
             t = next((r["t"] for r in rows if r["who"] == who), 0.0)
             print(f"  a frame of {who} speaking: ffmpeg -ss {t + 0.5:.2f} -i {rel(final, project)} -frames:v 1 "
                   f"{rel(ce / 'verify' / 'side.jpg', project)}")
@@ -1433,7 +1434,7 @@ def cmd_camera(a):
         return 1
     print(f"\n  {'#':>2}  {'at s':>6}  {'source s':<12} {'size':<7} {'z':>4} {'cx':>5} {'cy':>5}  {'who':<10} why")
     for r in rows:
-        src = (f"{r['key']} " if info["many"] else "") + f"{r['src']:.3f}"
+        src = (f"{r[PIECE_ID]} " if info["many"] else "") + f"{r['src']:.3f}"
         print(f"  {r['n']:>2}  {r['t']:6.2f}  {src:<12} {r['size']:<7} {r['z']:4.2f} {r['cx']:5d} {r['cy']:5d}  "
               f"{str(r['who'])[:10]:<10} {r['why']}" + (f" (drift {r['drift']:g})" if r["drift"] and r["n"] > 1 else ""))
     count = {s: sum(1 for r in rows if r["size"] == s) for s in ("wide", "medium", "close")}

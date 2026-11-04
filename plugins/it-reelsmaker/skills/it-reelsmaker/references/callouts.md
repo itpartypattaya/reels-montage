@@ -4,7 +4,7 @@ A mark on an object in the frame, a leader line drawn from it, and a label that 
 code in the brand's colors and fonts; the kit's `CalloutLayer` draws it from the plan, with no per-video composition.
 Five variants: `tag` (the name on the style's marker plate, a short detail in small caps under it), `line` (the name
 over the line, no plate), `badge` (a number in a circle), `ring` (a ring around the object instead of the dot),
-`dimension` (a measuring line between two points). The dot stays still, follows keys set by hand, follows the object
+`dimension` (a measuring line between two points). The dot stays still, follows points set by hand, follows the object
 tracked by `track.py`, or follows a person's face.
 
 **Experimental**: a still `tag` was checked on one real talking-head clip (a static tripod shot with camera.json
@@ -28,7 +28,7 @@ for abstract ideas (a `word` scene), not for a thesis (a card).
 | `dimension` | a size: a desk's width, a room's length | the measure (a source is required); two still points |
 
 **The dot must stay on the object.** The anchor is a point of the rough cut: it follows the virtual camera and the
-template's drift exactly, and the footage's own movement only through keys or a track:
+template's drift exactly, and the footage's own movement only through points or a track:
 
 - a tripod shot, a static detail or a pause in a handheld walk: a still anchor;
 - a slow pan along an object (a shelf, a facade): two or three `--keys`;
@@ -46,7 +46,7 @@ A callout is offered only when three things hold for a moment of the video, and 
    host. In step 7 the agent finds such moments in the transcript itself (“here”, “look”, “this is”, a named object);
    in step 7a the plan's hint “pointing at an object” marks the same signal on its spans. A thing that is named but
    not in the frame gets B-roll or a card, not a callout.
-2. **The dot can stay on the thing** for 2–3 s: it holds still, or a track or keys follow it (above). Look at the
+2. **The dot can stay on the thing** for 2–3 s: it holds still, or a track or points follow it (above). Look at the
    frame at that word first; `add` then measures the picture under the dot (the mean change of the picture around it,
    of 255: up to 10 holds still, above 25 the object leaves the dot; measured on real clips: a wall or a painting on a
    tripod 1–6, a handheld walk through a room 56–117, a microphone in a gesturing hand 92, a tracked tower on a fast
@@ -54,7 +54,7 @@ A callout is offered only when three things hold for a moment of the video, and 
 3. **There is room** for the label clear of the face and the subtitles (validate checks it).
 
 **Where in the skill.** Step 7, the techniques question: callouts are not a standing option. When at least one moment
-passes all three, they become an option that names the objects and the moments, for example “Callouts on objects
+meets all three, they become an option that names the objects and the moments, for example “Callouts on objects
 (experimental): ‘sofa’ 0:16, ‘the view’ 0:19 — a dot, a line and a label in the brand's colors”; recommend them for a
 tour, a review, a setup or a dish, not for a talking head with nothing to show. When things are named but the shot
 whips past them, there is no option: one line under the question says why (“callouts won't hold here: the camera
@@ -108,7 +108,7 @@ path: the callout keeps a still anchor. The track remembers the rough cut, the a
 cut, a moved word), validate asks to run `track.py` again. `remove` and `add` again to change the anchor.
 
 **Positions by hand** (`--keys`): straight between them, held before the first and after the last; `T:-` fades the dot out toward
-that key and keeps it hidden until the next one. For a slow, even pan; a handheld shot needs a track.
+that point and keeps it hidden until the next one. For a slow, even pan; a handheld shot needs a track.
 
 **A person** (`--person`): faces.json has no identity, so the person is the face on the `left`, the `right` or in the
 `center` of the frame, picked in every sample (0.25 s) and smoothed; the dot goes to the shoulder on the label's side
@@ -153,7 +153,7 @@ the kit draws it (a sample where the anchor is hidden is skipped):
   hides them); the label, the dot or ring and the line off the other graphics (keep_clear, overlay scenes, windows,
   popup memes, the corner logo, the hook headline at its own height) and off each other;
 - no camera shot change inside the callout (the dot would jump with the picture);
-- the picture under the dot holds still, along its path for keys and a track, the patch growing with a track's scale
+- the picture under the dot holds still, along its path for points and a track, the patch growing with a track's scale
   (error above 25 of 255, a warning above 10; not measured without `final.mp4` or ffmpeg, then check the stills); a person's dot follows the face detector and
   is not measured;
 - `line`: the text's contrast against the lightest and the darkest 5 % of the picture under it, at least 3:1;
@@ -162,11 +162,11 @@ the kit draws it (a sample where the anchor is hidden is skipped):
   B-roll, a ready cutaway meme): the dot would point at nothing;
 - the reading time after the entrance and before the fade (the scenes' floor: 0.8 s up to 3 words);
 - the variant's own: a ring's radius 24–400, a badge no wider than 260 px, a dimension's two points at least 80 px
-  apart and no keys, track or person on it;
+  apart and no points, track or person on it;
 - the times the kit draws: from frame round(start × 30), for round(dur × 30) frames;
 - refused for now: the framed format, a horizontal rough cut without it, and the "scenes only" format.
 
-A callout that passes becomes `ready`; export writes it to `props.callouts` (a person's path computed from faces.json)
+A callout that is accepted becomes `ready`; export writes it to `props.callouts` (a person's path computed from faces.json)
 and its label, per 0.25 s where it is drawn, to `keep_clear`, so `faces.py audit` checks the render and the memes or
 windows placed later keep off it. `textcheck.py` measures the label as `callout:<id>`. The cover (`ReelCover`) does not
 draw callouts.

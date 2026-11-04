@@ -305,7 +305,7 @@ def cmd_pick(a):
     render = Path(a.render) if a.render else last_render(e)
     if render is None:
         sys.exit(f"no --render and no successful kit.py render recorded in {e / 'render.json'}: "
-                 f"pass --render out/<file>.mp4")
+                 "give --render out/<file>.mp4")
     if not a.render:
         print(f"render: {render} (the last kit.py render, render.json)")
     if not render.is_file():

@@ -3,7 +3,7 @@
 // Remotion clamps a frozen frame to the composition's range (a 4-frame composition froze frame 935 at frame 3).
 // Used by board.py (the storyboard sheet: a settled frame of every scene and insert) and textcheck.py (text boxes every
 // 0.1 s). probe: <TextProbe> logs the boxes of the text on screen (read with --log=verbose); media: false leaves out the
-// rough cut, B-roll, memes and screen recordings (text does not depend on them, the pass is faster). A per-video
+// rough cut, B-roll, memes and screen recordings (text does not depend on them, the run is faster). A per-video
 // composition gets the same with <Sampled sample={p.sample}> around its content.
 import React from "react";
 import { AbsoluteFill, Freeze, continueRender, delayRender, useCurrentFrame } from "remotion";
@@ -31,8 +31,8 @@ export const Sampled: React.FC<{ sample: Sample; children: React.ReactNode }> = 
 // Text boxes in composition pixels: measured from the root's own box (the page puts the composition far off screen while
 // it renders: without that, y came out near −1 000 000), after the fonts load and a frame is laid out (measured at once,
 // the first frame of every browser tab was lost: Remotion attaches its console listener a moment later).
-// A line per frame: RK_TEXT {"f": frame, "b": [[key, text, x, y, w, h, alpha, visible], …]}.
-//   key — the closest data-rk="…" group (kit: sub, hook, label, endcard, cover, scene:<id>; none in a per-video
+// A line per frame: RK_TEXT {"f": frame, "b": [[gid, text, x, y, w, h, alpha, visible], …]}.
+//   gid — the closest data-rk="…" group (kit: sub, hook, label, endcard, cover, scene:<id>; none in a per-video
 //     composition) + "/" + the nearest block-level parent, so the words of one line are one box and two lines, or two
 //     texts of one scene, are two;
 //   alpha — the product of the opacities up to the root (text under 0.05 is left out);
@@ -43,7 +43,7 @@ const PROBE = "RK_TEXT ";
 const INLINE = new Set(["inline", "inline-block", "inline-flex", "contents"]);
 const CORE = 0.2; // the share of a line box above and below its letters (textcheck.py takes the same)
 
-type Box = { key: string; text: string; x: number; y: number; w: number; h: number; a: number; v: number };
+type Box = { gid: string; text: string; x: number; y: number; w: number; h: number; a: number; v: number };
 
 export const TextProbe: React.FC<{ root: React.RefObject<HTMLDivElement | null>; frame: number }> = ({ root, frame }) => {
   React.useLayoutEffect(() => {
@@ -64,7 +64,7 @@ export const TextProbe: React.FC<{ root: React.RefObject<HTMLDivElement | null>;
       obs.disconnect();
       try {
         const el = root.current;
-        if (el) console.log(PROBE + JSON.stringify({ f: frame, b: measure(el).map((b) => [b.key, b.text, b.x, b.y, b.w, b.h, b.a, b.v]) }));
+        if (el) console.log(PROBE + JSON.stringify({ f: frame, b: measure(el).map((b) => [b.gid, b.text, b.x, b.y, b.w, b.h, b.a, b.v]) }));
       } finally {
         finish();
       }
@@ -100,7 +100,7 @@ const measure = (el: HTMLElement): Box[] => {
     alphaOf.set(e, v);
     return v;
   };
-  const keyOf = (e: Element): string => {
+  const gidOf = (e: Element): string => {
     let group = "";
     let block: Element | null = null;
     for (let q: Element | null = e; q && q !== el; q = q.parentElement) {
@@ -129,7 +129,7 @@ const measure = (el: HTMLElement): Box[] => {
     if (!text || !parent) continue;
     const a = alpha(parent);
     if (a < 0.05) continue;
-    const key = keyOf(parent);
+    const gid = gidOf(parent);
     const clip = clipOf(parent);
     const range = document.createRange();
     range.selectNodeContents(n);
@@ -137,9 +137,9 @@ const measure = (el: HTMLElement): Box[] => {
       if (r.width < 1 || r.height < 1) continue;
       const core = new DOMRect(r.left, r.top + CORE * r.height, r.width, (1 - 2 * CORE) * r.height);
       const vis = clip ? overlap(core, clip) / (core.width * core.height) : 1;
-      const b: Box = { key, text, x: (r.left - R.left) / k, y: (r.top - R.top) / k, w: r.width / k, h: r.height / k, a, v: vis };
-      // the words of one line (spans of one block) become one box: same key, the same line, a gap under half the height
-      const same = out.find((o) => o.key === key && Math.min(o.y + o.h, b.y + b.h) - Math.max(o.y, b.y) > 0.5 * Math.min(o.h, b.h)
+      const b: Box = { gid, text, x: (r.left - R.left) / k, y: (r.top - R.top) / k, w: r.width / k, h: r.height / k, a, v: vis };
+      // the words of one line (spans of one block) become one box: same gid, the same line, a gap under half the height
+      const same = out.find((o) => o.gid === gid && Math.min(o.y + o.h, b.y + b.h) - Math.max(o.y, b.y) > 0.5 * Math.min(o.h, b.h)
         && Math.max(o.x, b.x) - Math.min(o.x + o.w, b.x + b.w) < 0.5 * Math.min(o.h, b.h));
       if (same) {
         const x2 = Math.max(same.x + same.w, b.x + b.w);
@@ -164,7 +164,7 @@ const measure = (el: HTMLElement): Box[] => {
 const overlap = (a: DOMRect, b: DOMRect) =>
   Math.max(0, Math.min(a.right, b.right) - Math.max(a.left, b.left)) * Math.max(0, Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top));
 
-// a stable name for a block element within one frame (its path from the root): two frames of one scene give the same key
+// a stable name for a block element within one frame (its path from the root): two frames of one scene give the same gid
 const elementId = (e: Element): string => {
   const path: number[] = [];
   for (let q: Element | null = e; q && q.parentElement; q = q.parentElement) {

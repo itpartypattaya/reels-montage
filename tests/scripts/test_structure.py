@@ -272,7 +272,7 @@ def test_two_cameras_need_a_source_and_a_long_to_is_flagged(project):
                                                      "words": words_of([("Another angle entirely.", 0.5, 2.0)])})
     write_json(e / "cut.json", {"sources": {"front": {"file": "IMG_7777.MOV"}, "side": {"file": "IMG_8888.MOV"}}})
     r = run_script("structure.py", "suggest", "edit/0002", cwd=project, check=False)
-    assert r.returncode != 0 and "--source KEY" in r.stderr and "front (transcripts/IMG_7777.json)" in r.stderr
+    assert r.returncode != 0 and "--source NAME" in r.stderr and "front (transcripts/IMG_7777.json)" in r.stderr
     assert "side (transcripts/IMG_8888.json)" in r.stderr
     r, doc = suggest(project, e, "--source", "front", "--to", "30")
     assert doc["transcript"].endswith("IMG_7777.json") and doc["phrases"][0]["text"] == "So, are you ready?"

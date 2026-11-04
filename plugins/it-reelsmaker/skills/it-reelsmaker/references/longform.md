@@ -10,7 +10,7 @@ The services that cut long videos into clips throw away 20–40 % of what they m
 
 | Why a clip is useless | Here |
 |---|---|
-| a fixed number of clips per upload: a talk has 5–8 truly standalone moments, the rest is filler | no quota: as many cards as pass the checks, plus a reserve |
+| a fixed number of clips per upload: a talk has 5–8 truly standalone moments, the rest is filler | no quota: as many cards as meet the checks, plus a reserve |
 | a window of fixed length: the clip starts mid-argument and stops before the payoff | a piece is named by its first and last **words**; the script warns when it starts or ends mid-sentence |
 | the moment needs what was said before ("as I said", "that's why", an answer without its question) | the script warns about back-references in the first words; the card says why it stands alone |
 | only one continuous stretch: the best clip is often a setup at 03:07 and its payoff at 19:58, without the host's "wow" in between | a card joins 2–4 pieces; the host's lines are cut or kept on purpose (`host`) |
@@ -28,7 +28,7 @@ The services that cut long videos into clips throw away 20–40 % of what they m
 
 A word-level transcript from a cloud recognizer is good enough to choose clips, but its word times drift around laughter, applause and long pauses (a 34-minute talk: ±0.3–1.5 s). In the clip that shows up as words missing from the subtitles or lit too early, and a phrase said twice with laughter in between can come back as one, which `structure.py` then cannot flag as a retake. On each clip, listen at the laughs and seams, and give the words there their real times in `cut.json → retime` (measured on the waveform; `cut.py` names the words it left out at the edges).
 
-**L2. Reading.** `longform.py outline edit/<series>` writes the transcript as short lines into `edit/<series>/outline/part-NN.md`, 10 minutes per part (~4–6 k tokens each), and prints the index. Read **every** part; note candidates per part (time, the idea, the first and last words); then choose across the parts. Marks: `‖` a pause of 2 s or more before the line (a possible seam between topics), `?` a question, `→` its answer, `#` a number, `♪` music under the line.
+**L2. Reading.** `longform.py outline edit/<series>` writes the transcript as short lines into `edit/<series>/outline/part-NN.md`, 10 minutes per part (~4–6 k of context each), and prints the index. Read **every** part; note candidates per part (time, the idea, the first and last words); then choose across the parts. Marks: `‖` a pause of 2 s or more before the line (a possible seam between topics), `?` a question, `→` its answer, `#` a number, `♪` music under the line.
 
 **L3. The cards** in `edit/<series>/clips.json` (format below). What makes a candidate:
 - **one idea that stands alone**: a viewer who saw nothing before understands it; a story with its setup, turn and payoff; a claim with its reason or proof;
@@ -44,7 +44,7 @@ Ranking is in words, not numbers: `wave` 1 (publish first), 2, 3, and `status: r
 
 **L5. Extract.** `longform.py extract edit/<series> <id>` for an approved, checked card: each piece with ±3 s of room as its own file in `edit/<series>-<id>/src/` (re-encoded, frame-exact), its 16 kHz WAV (the same file `transcribe.py audio` makes), its transcript (cut out of the whole one and moved to the piece's own timeline, or Whisper on the piece when there is no word-level transcript of the recording), `cut.json` with a source per piece and rough ranges from the words, `reel.json` from the series preset plus the card's `settings` and the rubric's label (`format=framed` for a horizontal recording unless the preset says otherwise), and `project.md` with the card. Run again: unchanged inputs do nothing and keep your `cut.json`; a changed card, transcript or `--pad` re-cuts the pieces, and then `cut.json` is written anew from their words (its ranges, `fix_at` and `retime` were seconds of the old files; the old one stays as `cut.prev-<time>.json`, speed, look and `fix` are carried over) and `status` shows the rough cut and everything after it as stale; `reel.json` is never overwritten.
 
-**L6. Each clip — in a fresh context.** A series in one long session costs most of its tokens in re-reading the context (a measured series: ~10 M cached tokens per clip, ~300 k context per call). Finish each clip in a new session or a subagent that starts from `edit/<series>-<id>/project.md` and the series preset, one clip after another (one render at a time on 8 GB): `speech_mask.py` on each piece for the real edges (`cut.json` → `ranges`, with `"source"` per range and per `fix_at` / `retime` entry), then SKILL.md from step 5 (cut plan, `cut.py`, `faces.py`, camera, export, `check.py`, `kit.py render`, cover, master). `workflow=quick` fits a series once its preset is set. `longform.py status edit/<series>` shows every card's stage (`ok`, `stale`: a later step is older than the one before it), the seconds of the recording already used and the disk.
+**L6. Each clip — in a fresh context.** A series in one long conversation spends most of its context budget re-reading the context (a measured series: ~10 M of cached context per clip, ~300 k context per call). Finish each clip in a new conversation or a subagent that starts from `edit/<series>-<id>/project.md` and the series preset, one clip after another (one render at a time on 8 GB): `speech_mask.py` on each piece for the real edges (`cut.json` → `ranges`, with `"source"` per range and per `fix_at` / `retime` entry), then SKILL.md from step 5 (cut plan, `cut.py`, `faces.py`, camera, export, `check.py`, `kit.py render`, cover, master). `workflow=quick` fits a series once its preset is set. `longform.py status edit/<series>` shows every card's stage (`ok`, `stale`: a later step is older than the one before it), the seconds of the recording already used and the disk.
 
 ## clips.json
 
@@ -69,7 +69,7 @@ Ranking is in words, not numbers: `wave` 1 (publish first), 2, 3, and `status: r
 - `parts`: in the order of the clip (a teaser may come first). By words: `from_words` and `to_words` (5–10 words each, as said; the script matches them with tolerance for word forms and recognition slips, and when the very first or last words were heard differently, a name in another script for example, the edge still takes up to three of them in) and `near` (where to look, ±20 s; `near_end` for a long piece). By seconds: `start` and `end` (a timecode the person gave; snapped to the words inside). Times are seconds or `mm:ss.s`.
 - `speaker`: who carries the clip, as the transcript labels people (a name from the subtitles, `S1`), or a plain word when it has no labels; `host`: what to do with the other voice inside the pieces, `cut` (their short interjections go at the cut) or `keep` (a question that is the hook, a dialogue).
 - `allow`: warnings meant on purpose: `overlap:06` (shares more than 3 s with card 06), `dup:06` (says much the same).
-- `settings`: extra `reel.json` keys for this clip only (`label`, `profile`, `style`, …); the rubric's `label`, `profile` and `content_format` apply to all its cards.
+- `settings`: extra `reel.json` settings for this clip only (`label`, `profile`, `style`, …); the rubric's `label`, `profile` and `content_format` apply to all its cards.
 - The script adds `resolved` to each piece and `check` to each card; the agent does not write them.
 
 ## What check reports
@@ -92,8 +92,8 @@ Against the hand-made camera of the measured series (12 clips, 15–44 s, the si
 ## Cost of one recording
 
 Measured on a 36-minute two-person interview:
-- 12 clips finished one by one in one session, before this process: the list of 15 cards ~5 M cached tokens and ~40 k output; finishing ~10 M cached tokens and ~30 min per clip;
-- this process, choosing in a fresh context from imported subtitles: 4 outline parts (~18 k tokens of text), 22 cards (17 + 5 in reserve) in ~13 min and ~210 k tokens; 11 of the 15 clips the person had approved by hand came back with at least half of their seconds;
+- 12 clips finished one by one in one conversation, before this process: the list of 15 cards ~5 M of cached context and ~40 k of output; finishing ~10 M of cached context and ~30 min per clip;
+- this process, choosing in a fresh context from imported subtitles: 4 outline parts (~18 k of context), 22 cards (17 + 5 in reserve) in ~13 min and ~210 k of context; 11 of the 15 clips the person had approved by hand came back with at least half of their seconds;
 - `extract` of a card with two pieces: ~2 min with Whisper on the pieces (no word-level transcript), ~30 s per piece cut out of a word-level one, ~1 s when nothing changed;
 - local Whisper `medium` on a busy laptop: 2.3× the audio's length (1.6× when it runs alone);
 - a 40 s clip in the framed format: the checks before the render 32 s, the render 3.9 min with `--concurrency 2`.

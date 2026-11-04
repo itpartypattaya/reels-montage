@@ -2,6 +2,12 @@
 
 What changed in IT Reelsmaker Online. The newest version is on top.
 
+## 1.5.1
+
+- Follows core 1.22, which reads no environment variables: the project folder comes from `--project` or
+  `it-reelsmaker.json`, and the add-on is found only through `link` (`online_scripts`), so `REELS_PROJECT` and
+  `REELS_ONLINE_SCRIPTS` no longer apply. The add-on's own switches (`REELS_OFFLINE`, keys) are unchanged.
+
 ## 1.5.0
 
 - **A whole long recording goes to the cloud transcript.** The upload limit is 25 MB, about 13 minutes of the core's

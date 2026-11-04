@@ -73,14 +73,14 @@ const easeIn = Easing.in(Easing.cubic);
 const look = (k: number, n: number, tin: Transition, tout: Transition) => {
   const IN = tin === "whip" ? 5 : tin === "slide" ? 8 : tin === "fade" ? 7 : 0;
   const OUT = tout === "whip" ? 5 : tout === "slide" ? 8 : tout === "fade" ? 7 : 0;
-  const pin = IN ? interpolate(k, [0, IN], [0, 1], { ...clamp, easing: easeOut }) : 1;
+  const inProg = IN ? interpolate(k, [0, IN], [0, 1], { ...clamp, easing: easeOut }) : 1;
   const pout = OUT ? interpolate(k, [n - OUT, n], [1, 0], { ...clamp, easing: easeIn }) : 1;
   let opacity = 1, scale = 1, blur = 0, x = 0;
-  if (tin === "fade") opacity *= pin;
+  if (tin === "fade") opacity *= inProg;
   if (tout === "fade") opacity *= pout;
-  if (tin === "whip") { scale *= 1 + 0.14 * (1 - pin); blur += 14 * (1 - pin); }
+  if (tin === "whip") { scale *= 1 + 0.14 * (1 - inProg); blur += 14 * (1 - inProg); }
   if (tout === "whip") { scale *= 1 + 0.1 * (1 - pout); blur += 14 * (1 - pout); }
-  if (tin === "slide") x += 1080 * (1 - pin);
+  if (tin === "slide") x += 1080 * (1 - inProg);
   if (tout === "slide") x -= 1080 * (1 - pout);
   return { opacity, scale, blur, x };
 };

@@ -14,7 +14,7 @@ phrases — the speech of the finished rough cut (captions.json) split into phra
           words ("src"); "text" is the translation, empty for a new phrase. Run again after a re-cut: a phrase whose
           words did not change keeps its translation (phrases that became one get their translations joined), a
           changed one is emptied and listed.
-          The translation is written into "text" by the agent itself in the session (it knows the brand's voice and
+          The translation is written into "text" by the agent itself in the conversation (it knows the brand's voice and
           forbidden words from rules.md), or by a translation service of the person's choice; one phrase of the
           translation per phrase of the speech, never merged or split, so the times stay true. Names, numbers and terms
           stay as they are said; keep it as short as the speech (reading time, below).

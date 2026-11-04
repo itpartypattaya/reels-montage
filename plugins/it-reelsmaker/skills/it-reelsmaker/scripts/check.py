@@ -22,11 +22,11 @@ from reels_common import edit_dir, project_root, utf8_stdio
 HERE = Path(__file__).resolve().parent
 SHEET_FRAMES = 12  # 6 x 2, as the contact sheet of SKILL.md step 9
 AUDIT_SKIPPED = "face audit skipped"  # faces.py audit without OpenCV or the face model: it exits 0, nothing checked
-NO_GRAPHICS = "nothing to put on the sheet"  # board.py on a clip with no graphics: it passes, nothing to show (board.NOTHING)
+NO_GRAPHICS = "nothing to put on the sheet"  # board.py on a clip with no graphics: it succeeds, nothing to show (board.NOTHING)
 
 
 def step(name, cmd, skipped=None, empty=None):
-    """Run one check as its own script, its output passed through; -> (name, "ok" | "FAIL" | "skip" | "none"). skipped:
+    """Run one check as its own script, its output shown as is; -> (name, "ok" | "FAIL" | "skip" | "none"). skipped:
     the line a script prints when it could not check (review 2026-10-18: the faces audit without OpenCV or the model
     exits 0); empty: the line it prints when there is nothing to check (a clip with no graphics has no storyboard)."""
     print(f"\n=== {name}: {subprocess.list2cmdline([str(x) for x in cmd[1:]])}", flush=True)
@@ -100,7 +100,7 @@ def main():
     skip = [n for n, st in results if st == "skip"]
     if skip:
         print(f"not checked: {', '.join(skip)} (doctor.py says what is missing): check those by eye")
-    print("all checks passed" if not bad else f"failed: {', '.join(bad)}: fix them before "
+    print("all checks succeeded" if not bad else f"failed: {', '.join(bad)}: fix them before "
           + ("showing the video" if a.render else "the full render"))
     sys.exit(1 if bad else 0)
 

@@ -27,8 +27,8 @@ memes. --raw shows them without the filter.
 
 Model: face_detection_yunet_2023mar.onnx from the opencv_zoo project on GitHub (opencv/opencv_zoo,
 models/face_detection_yunet/, 232,589 bytes). The plugin does not download it: download it yourself, keep it outside
-the plugin folder and give its path with --model, the REELS_FACE_MODEL environment variable or "face_model" in
-it-reelsmaker.json (a relative path there is relative to the project folder).
+the plugin folder and give its path with --model or "face_model" in it-reelsmaker.json (a relative path there is
+relative to the project folder).
 OpenCV 4.8 or newer in the Python that runs this script: pip install opencv-python-headless.
 No model or no OpenCV: the commands say so and exit with code 0; faces are then checked by eye on frames.
 Remotion camera: screen = (x - cx)*z + 540, (y - cy)*z + 960 (references/faces.md, section 2).
@@ -51,14 +51,13 @@ from reels_common import (CHECK_MARGIN, FACE_MARGIN, SUB_BAND, SUB_MAX_TOP, edit
                           load_json, probe, project_root, project_settings, run, save_json, ui_safe, utf8_stdio, warn)
 
 W, H = 1080, 1920
-MODEL = None         # --model; otherwise REELS_FACE_MODEL; otherwise it-reelsmaker.json -> face_model (model_path())
+MODEL = None         # --model; otherwise it-reelsmaker.json -> face_model (model_path())
 MODEL_FILE = "face_detection_yunet_2023mar.onnx"
 # no download link here: references/faces.md, section 1 "Model", has it (a file that reads the environment and names a web
 # address is held by the plugin directory's scan as handling sign-in data)
 MODEL_HELP = (f"download {MODEL_FILE} yourself from the opencv_zoo project on GitHub (opencv/opencv_zoo, folder "
               f"models/face_detection_yunet/; the direct link is in references/faces.md, \"Model\"), keep it outside the "
-              f"plugin folder and give its path: --model <file>, the REELS_FACE_MODEL environment variable or "
-              f"\"face_model\" in it-reelsmaker.json")
+              f"plugin folder and give its path: --model <file> or \"face_model\" in it-reelsmaker.json")
 MARGIN = FACE_MARGIN  # margin around a face for any graphics: the rule, enforced when planning (zones, keep_clear, validate)
 #                      the checks on finished frames use CHECK_MARGIN (reels_common: 30 px, and why)
 SUB_FACE_GAP = 30    # the subtitles' top sits this far under the measured chin (a design choice, not the check above)
@@ -96,11 +95,10 @@ print(json.dumps(out))
 
 
 def model_path():
-    """The YuNet model file: --model, else REELS_FACE_MODEL, else it-reelsmaker.json -> face_model (relative to the
-    project folder). None: not set. An unexpanded ${...} value (a plugin setting left empty) counts as not set."""
-    for v in (MODEL, os.environ.get("REELS_FACE_MODEL")):
-        if v and not str(v).startswith("${"):
-            return Path(v).expanduser().resolve()
+    """The YuNet model file: --model, else it-reelsmaker.json -> face_model (relative to the project folder). None: not
+    set. An unexpanded ${...} value (a plugin setting left empty) counts as not set."""
+    if MODEL and not str(MODEL).startswith("${"):
+        return Path(MODEL).expanduser().resolve()
     v = project_settings().get("face_model")
     if v and not str(v).startswith("${"):
         p = Path(v).expanduser()
@@ -760,8 +758,8 @@ def main():
     p.set_defaults(fn=cmd_audit)
     for name, sp in sub.choices.items():
         sp.add_argument("--raw", action="store_true", help="without the false-face filter (debugging)")
-        sp.add_argument("--model", help=f"the YuNet model file ({MODEL_FILE}); default: REELS_FACE_MODEL, "
-                                        f"then face_model in it-reelsmaker.json")
+        sp.add_argument("--model", help=f"the YuNet model file ({MODEL_FILE}); default: face_model in "
+                                        f"it-reelsmaker.json")
     a = ap.parse_args()
     MODEL = a.model or None
     a.fn(a)
