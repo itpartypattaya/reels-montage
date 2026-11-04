@@ -167,9 +167,9 @@ const allFaces = (): number => {
 };
 
 export const useFontsLoaded = (families: string[] = []): boolean => {
-  const key = Array.from(new Set(families.filter(Boolean))).sort().join("|") || "*";
-  const [ready, setReady] = useState(() => fontsOk.has(key));
-  const [handle] = useState(() => (fontsOk.has(key) ? null : delayRender(`kit: fonts ${key} for text width measurement`)));
+  const fontSet = Array.from(new Set(families.filter(Boolean))).sort().join("|") || "*";
+  const [ready, setReady] = useState(() => fontsOk.has(fontSet));
+  const [handle] = useState(() => (fontsOk.has(fontSet) ? null : delayRender(`kit: fonts ${fontSet} for text width measurement`)));
   const cleared = useRef(false);
   useEffect(() => {
     if (handle === null || cleared.current) return;
@@ -177,7 +177,7 @@ export const useFontsLoaded = (families: string[] = []): boolean => {
     let last = -1;
     let stable = 0;
     const t0 = Date.now();
-    const fams = key === "*" ? [] : key.split("|");
+    const fams = fontSet === "*" ? [] : fontSet.split("|");
     const tick = () => {
       if (!alive) return;
       const counts = fams.length ? fams.map(familyFaces) : [allFaces()];
@@ -186,8 +186,8 @@ export const useFontsLoaded = (families: string[] = []): boolean => {
       last = n;
       const timeout = Date.now() - t0 > 5000;
       if (stable >= 3 || timeout) {
-        if (timeout) console.warn(`kit: fonts ${key} did not appear within 5 s — measuring as is`);
-        fontsOk.add(key);
+        if (timeout) console.warn(`kit: fonts ${fontSet} did not appear within 5 s — measuring as is`);
+        fontsOk.add(fontSet);
         setReady(true);
         if (!cleared.current) continueRender(handle);
         cleared.current = true;
@@ -199,7 +199,7 @@ export const useFontsLoaded = (families: string[] = []): boolean => {
     return () => {
       alive = false;
     };
-  }, [handle, key]);
+  }, [handle, fontSet]);
   // unmounted before the fonts were ready — do not hold the render
   useEffect(() => () => {
     if (handle !== null && !cleared.current) {

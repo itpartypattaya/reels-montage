@@ -223,7 +223,7 @@ const SceneFrame: React.FC<{ spec: SceneSpec; brand: Brand; look: Look; fonts: {
     inner: { w: Math.floor((stage.w - 2 * pad[1]) / enterGrow(tone)), h: stage.h - 2 * pad[0] }, shell, words, radius,
   };
 
-  const pin = tl.L ? interpolate(frame, [0, tl.L], [0, 1], { ...clamp, easing: easeOut }) : 1;
+  const inProg = tl.L ? interpolate(frame, [0, tl.L], [0, 1], { ...clamp, easing: easeOut }) : 1;
   const pout = tl.Lout ? interpolate(frame, [tl.n - tl.Lout, tl.n], [0, 1], { ...clamp, easing: easeIn }) : 0;
 
   // a field over the whole frame (full) or above the speaker (slogan in split): enters by opacity or as a wipe, leaves the same way
@@ -231,8 +231,8 @@ const SceneFrame: React.FC<{ spec: SceneSpec; brand: Brand; look: Look; fonts: {
   const slogan = s.type === "slogan";
   if (mode === "full" || slogan) {
     const shutter = (k: SceneCtx["tl"]["tin"]) => k === "slide" || k === "whip" || (slogan && k === "fade");
-    const x = (shutter(tl.tin) ? -(1 - pin) * W : 0) + (shutter(tl.tout) ? pout * W : 0);
-    const op = (tl.tin === "fade" && !shutter(tl.tin) ? pin : 1) * (tl.tout === "fade" && !shutter(tl.tout) ? 1 - pout : 1);
+    const x = (shutter(tl.tin) ? -(1 - inProg) * W : 0) + (shutter(tl.tout) ? pout * W : 0);
+    const op = (tl.tin === "fade" && !shutter(tl.tin) ? inProg : 1) * (tl.tout === "fade" && !shutter(tl.tout) ? 1 - pout : 1);
     const h = mode === "full" ? H : 900;
     field = fb ? (
       // “framed”: the field covers the window, not the frame (the style's field is already around it)
@@ -246,7 +246,7 @@ const SceneFrame: React.FC<{ spec: SceneSpec; brand: Brand; look: Look; fonts: {
   let shellStyle: React.CSSProperties = { position: "absolute", left: stage.x, top: stage.y, display: "flex", flexDirection: "column", boxSizing: "border-box" };
   if (shell === "card") {
     const side = (s.side ?? "left") === "left" ? 1 : -1; // panel: the card slides in from the side opposite the speaker
-    const slide = mode === "panel" ? (1 - pin) * (stage.w + 80) * side + pout * (stage.w + 80) * side : 0;
+    const slide = mode === "panel" ? (1 - inProg) * (stage.w + 80) * side + pout * (stage.w + 80) * side : 0;
     // panel: the card is as wide as the zone, as tall as its content, centered on the zone (not an empty 1100 px sheet)
     shellStyle = {
       ...shellStyle, maxWidth: stage.w, maxHeight: stage.h, padding: `${pad[0]}px ${pad[1]}px`,
@@ -263,16 +263,16 @@ const SceneFrame: React.FC<{ spec: SceneSpec; brand: Brand; look: Look; fonts: {
     let op = 1;
     let blur = 0;
     if (tl.tin === "slide") {
-      tf.push(`translateX(${(1 - pin) * 80}px)`);
-      op *= pin;
+      tf.push(`translateX(${(1 - inProg) * 80}px)`);
+      op *= inProg;
     }
     if (tl.tout === "slide") {
       tf.push(`translateX(${-pout * 80}px)`);
       op *= 1 - pout;
     }
     if (tl.tin === "whip") {
-      tf.push(`scale(${1 + 0.1 * (1 - pin)})`);
-      blur += 12 * (1 - pin);
+      tf.push(`scale(${1 + 0.1 * (1 - inProg)})`);
+      blur += 12 * (1 - inProg);
     }
     if (tl.tout === "whip") {
       tf.push(`scale(${1 + 0.08 * pout})`);

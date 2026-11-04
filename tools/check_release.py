@@ -50,6 +50,14 @@ CORE_CREDENTIAL = re.compile(
 # keeping the two in different files): in the core, a file has one or the other.
 CORE_ENV_READ = re.compile(r"os\.environ|getenv\(|process\.env|\$PWD\b|\$HOME\b|\bREELS_[A-Z_]+")
 WEB_LINK = re.compile(r"https?://")
+# The portal's Validate named two kit files (2026-11-04): `${key}` in a template string read as "reads the installer's
+# key" and `0${k + 1}` as "a command assembled at run time". In the core, a template does not interpolate a name that
+# sounds like a secret, and does not start with digits right before `${`.
+CORE_TEMPLATE = re.compile(
+    r"\$\{(?!user_config\.|CLAUDE_)[^}\n]*\b(?:key|keys|token|tokens|pass\w*|secret\w*|auth\w*|pin|cred\w*|session\w*)\b[^}\n]*\}"
+    r"|`\d+\$\{",
+    re.I,
+)
 CYRILLIC = re.compile(r"[Ѐ-ӿ]")
 
 errors, warnings = [], []
@@ -155,6 +163,10 @@ def check_plugin(pdir, private_terms):
             if c:
                 line = text[: c.start()].count("\n") + 1
                 errors.append(f"{rel}:{line}: core mentions access secrets (the directory holds it): {c.group(0)!r}")
+            t = CORE_TEMPLATE.search(text)
+            if t:
+                line = text[: t.start()].count("\n") + 1
+                errors.append(f"{rel}:{line}: a template the directory reads as a secret or a command: {t.group(0)!r}")
             env, link = CORE_ENV_READ.search(text), WEB_LINK.search(text)
             if env and link:
                 line = text[: env.start()].count("\n") + 1

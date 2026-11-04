@@ -46,8 +46,8 @@ const clamp = { extrapolateLeft: "clamp", extrapolateRight: "clamp" } as const;
 // a font is otherwise fetched only once some text on screen uses it, and before the scene starts nothing does.
 // The wait is capped, so a missing font can't hang the render; the warning names it.
 const useBrandFonts = (fonts: string[]) => {
-  const key = fonts.join("|"); // a string, so the effect doesn't rerun on every frame
-  const [handle] = React.useState(() => delayRender(`brand fonts ${key}`));
+  const fontSet = fonts.join("|"); // a string, so the effect doesn't rerun on every frame
+  const [handle] = React.useState(() => delayRender(`brand fonts ${fontSet}`));
   React.useEffect(() => {
     let done = false;
     const finish = (warning?: string) => {
@@ -57,8 +57,8 @@ const useBrandFonts = (fonts: string[]) => {
       if (warning) console.warn(warning);
       continueRender(handle);
     };
-    const timer = setTimeout(() => finish(`fonts not loaded in 5 s, rendering with a fallback: ${key}`), 5000);
-    const list = key.split("|");
+    const timer = setTimeout(() => finish(`fonts not loaded in 5 s, rendering with a fallback: ${fontSet}`), 5000);
+    const list = fontSet.split("|");
     Promise.all(list.map((f) => document.fonts.load(f)))
       .then((faces) => {
         const missing = list.filter((_, i) => faces[i].length === 0);
@@ -66,7 +66,7 @@ const useBrandFonts = (fonts: string[]) => {
       })
       .catch((e) => finish(`font loading failed: ${e}`));
     return () => finish();
-  }, [key, handle]);
+  }, [fontSet, handle]);
 };
 
 // Accent: whole words, ignoring case and the punctuation around them ("think" is not "thinking").

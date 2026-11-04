@@ -20,6 +20,9 @@ What changed in IT Reelsmaker, written for the people who use it. The newest ver
   as the plugin handling sign-in data (it never did; the core makes no network requests).
   The face model's download link moved from `faces.py`'s message to `references/faces.md`, "Model", where the
   message now points.
+  Three kit files renamed a variable or rewrote a number format the scan misread (the font list in `Phrase.tsx`,
+  the entrance progress in `SceneLayer.tsx`, the item number in `List.tsx`); they draw exactly as before, so there
+  is no kit update to run.
 
 ## 1.21.0
 
