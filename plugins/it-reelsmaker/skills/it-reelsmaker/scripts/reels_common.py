@@ -1201,11 +1201,11 @@ def take_stems(text):
     return [stem(w) for w in take_words(text) if significant(w)]
 
 
-def restart_at(ws):
+def restart_at(wlist):
     """The restart phrase (RESTART_WORDS) in a list of take_words, or None."""
-    for k in range(len(ws)):
+    for k in range(len(wlist)):
         for p in RESTART_WORDS:
-            if tuple(ws[k:k + len(p)]) == p:
+            if tuple(wlist[k:k + len(p)]) == p:
                 return " ".join(p)
     return None
 

@@ -70,6 +70,9 @@ CORE_WORD_CODE = re.compile(
 # export -p / set)" in brand.py (its subcommand "set") and "sends data off the machine: host" in callouts.md (a speaker
 # label "HOST"). In the core: no such command name as a string, no word env or host.
 CORE_SHELL_WORD = re.compile(r"""\b(?:env|printenv|hosts?|hostname)\b|["'](?:set|env|printenv|export -p)["']""", re.I)
+# Re-validate on 05f37c7 named cut.py for "{ws:.2f}-{we:.2f}": a name ws right before a colon reads as a websocket
+# address. In the core: no name ws or wss.
+CORE_WS = re.compile(r"\bwss?\b")
 CODE_EXT = {".py", ".ts", ".tsx", ".js", ".mjs"}
 # Python's f-string is the same shape as the `${key}` template the scan named: no such name inside its braces.
 CORE_FSTRING = re.compile(
@@ -198,6 +201,10 @@ def check_plugin(pdir, private_terms):
                 line = text[: sw.start()].count("\n") + 1
                 errors.append(f"{rel}:{line}: a word the directory reads as reading the environment or as a server: "
                               f"{sw.group(0)!r}")
+            ws = CORE_WS.search(text)
+            if ws:
+                line = text[: ws.start()].count("\n") + 1
+                errors.append(f"{rel}:{line}: the name {ws.group(0)!r} (the directory reads it as a websocket address)")
             if ext in CODE_EXT and WEB_LINK.search(text):
                 line = text[: WEB_LINK.search(text).start()].count("\n") + 1
                 errors.append(f"{rel}:{line}: a web link in a code file (the directory reads it as sending data out)")

@@ -182,9 +182,9 @@ def stream(e, m):
     doc = load_json(tf) if tf.is_file() else None
     if doc and doc.get("words"):
         from transcribe import join_hyphen_parts
-        ws = [w for w in doc["words"] if w.get("type", "word") == "word" and str(w.get("text", "")).strip()]
+        wlist = [w for w in doc["words"] if w.get("type", "word") == "word" and str(w.get("text", "")).strip()]
         words = [{"text": str(w["text"]).strip(), "start": float(w["start"]), "end": float(w["end"]),
-                  "speaker": speaker_of(w)} for w in join_hyphen_parts(ws)]
+                  "speaker": speaker_of(w)} for w in join_hyphen_parts(wlist)]
         kind, f = "words", tf
     else:
         cf = e / "cues.json"
@@ -567,8 +567,8 @@ def pick(finds, near, what):
 
 def snap_seconds(s, t0, t1):
     """A piece given in seconds -> the words inside it (word edges). -> (w0, w1) or (None, None)."""
-    ws = s["words"]
-    inside = [i for i, w in enumerate(ws) if w["end"] > t0 + 0.05 and w["start"] < t1 - 0.05]
+    wlist = s["words"]
+    inside = [i for i, w in enumerate(wlist) if w["end"] > t0 + 0.05 and w["start"] < t1 - 0.05]
     return (inside[0], inside[-1]) if inside else (None, None)
 
 
@@ -611,22 +611,22 @@ def resolve_part(s, p, dur, prev_end=None):
                          f"{tc(s['words'][w1]['end'])}")
     else:
         return None, ["a piece needs from_words + to_words (with near), or start + end"], notes
-    ws = s["words"]
-    r = {"start": round(ws[w0]["start"], 3), "end": round(ws[w1]["end"], 3), "w0": w0, "w1": w1,
-         "first": " ".join(w["text"] for w in ws[w0:w0 + 6]), "last": " ".join(w["text"] for w in ws[max(w0, w1 - 5):w1 + 1])}
+    wlist = s["words"]
+    r = {"start": round(wlist[w0]["start"], 3), "end": round(wlist[w1]["end"], 3), "w0": w0, "w1": w1,
+         "first": " ".join(w["text"] for w in wlist[w0:w0 + 6]), "last": " ".join(w["text"] for w in wlist[max(w0, w1 - 5):w1 + 1])}
     if r["end"] <= r["start"]:
         errs.append(f"{tc(r['start'])}: the last words come before the first ones")
     return r, errs, notes
 
 
-def quote(ws, i, j):
-    return " ".join(w["text"] for w in ws[max(0, i):max(0, j)])
+def quote(wlist, i, j):
+    return " ".join(w["text"] for w in wlist[max(0, i):max(0, j)])
 
 
 def check_card(s, card, others, excluded, length, dur):
     """-> (resolved parts or None, errors, warnings)."""
     errs, warns, res = [], [], []
-    ws = s["words"]
+    wlist = s["words"]
     parts = card.get("parts") or []
     if not parts:
         return None, ["no parts"], warns
@@ -648,15 +648,15 @@ def check_card(s, card, others, excluded, length, dur):
                             + (f" ({x['why']})" if x.get("why") else ""))
         if s["punct"]:
             w0, w1 = r["w0"], r["w1"]
-            if w0 > 0 and not SENTENCE_END.search(ws[w0 - 1]["text"]) and ws[w0]["start"] - ws[w0 - 1]["end"] < 0.3:
-                warns.append(f"{lab} starts mid-sentence at {tc(ws[w0]['start'])}: «…{quote(ws, w0 - 5, w0)} | "
-                             f"{quote(ws, w0, w0 + 4)}»")
-            if (w1 + 1 < len(ws) and not SENTENCE_END.search(ws[w1]["text"])
-                    and ws[w1 + 1]["start"] - ws[w1]["end"] < 0.3):
-                warns.append(f"{lab} ends mid-sentence at {tc(ws[w1]['end'])}: «{quote(ws, w1 - 3, w1 + 1)} | "
-                             f"{quote(ws, w1 + 1, w1 + 5)}…»")
+            if w0 > 0 and not SENTENCE_END.search(wlist[w0 - 1]["text"]) and wlist[w0]["start"] - wlist[w0 - 1]["end"] < 0.3:
+                warns.append(f"{lab} starts mid-sentence at {tc(wlist[w0]['start'])}: «…{quote(wlist, w0 - 5, w0)} | "
+                             f"{quote(wlist, w0, w0 + 4)}»")
+            if (w1 + 1 < len(wlist) and not SENTENCE_END.search(wlist[w1]["text"])
+                    and wlist[w1 + 1]["start"] - wlist[w1]["end"] < 0.3):
+                warns.append(f"{lab} ends mid-sentence at {tc(wlist[w1]['end'])}: «{quote(wlist, w1 - 3, w1 + 1)} | "
+                             f"{quote(wlist, w1 + 1, w1 + 5)}…»")
         spk = []
-        for w in ws[r["w0"]:r["w1"] + 1]:
+        for w in wlist[r["w0"]:r["w1"] + 1]:
             if w.get("speaker") and (not spk or spk[-1][0] != w["speaker"]):
                 spk.append((w["speaker"], w["start"]))
         if len(spk) > 1:
@@ -664,7 +664,7 @@ def check_card(s, card, others, excluded, length, dur):
                          + ")" + ("" if card.get("other_voice") == "keep" else ": cut the other voice or set other_voice: keep"))
     if any(r is None for r in res):
         return None, errs, warns
-    first = terms_of(" ".join(w["text"] for w in ws[res[0]["w0"]:res[0]["w0"] + 6]))
+    first = terms_of(" ".join(w["text"] for w in wlist[res[0]["w0"]:res[0]["w0"] + 6]))
     hit = next((" ".join(p) for p in BACKREF_PHRASES if any(tuple(first[i:i + len(p)]) == p for i in range(len(first)))), None)
     if not hit and first and first[0] in BACKREF_FIRST:
         hit = first[0]
@@ -675,7 +675,7 @@ def check_card(s, card, others, excluded, length, dur):
     if not lo <= total <= hi:
         warns.append(f"{total:.0f} s of speech: outside {lo:g}–{hi:g} s (before the cut removes pauses)")
     allow = set(card.get("allow") or [])
-    text = set(t for r in res for t in terms_of(" ".join(w["text"] for w in ws[r["w0"]:r["w1"] + 1])) if len(t) >= 4)
+    text = set(t for r in res for t in terms_of(" ".join(w["text"] for w in wlist[r["w0"]:r["w1"] + 1])) if len(t) >= 4)
     for o in others:
         if o["id"] == card["id"] or not o.get("_res"):
             continue
@@ -1017,12 +1017,12 @@ def cmd_extract(a):
 def local_edges(doc, part, res, t0):
     """The piece's first and last words on its own timeline: the anchors found again in its own transcript (a Whisper
     run on the piece hears the edges better than subtitles did), else the resolved seconds minus the offset."""
-    ws = [w for w in doc.get("words") or [] if w.get("type", "word") == "word" and str(w.get("text", "")).strip()]
+    wlist = [w for w in doc.get("words") or [] if w.get("type", "word") == "word" and str(w.get("text", "")).strip()]
     guess = (round(res["start"] - t0, 3), round(res["end"] - t0, 3))
-    if not ws or not part.get("from_words"):
+    if not wlist or not part.get("from_words"):
         return guess
     s = {"words": [{"text": str(w["text"]).strip(), "start": float(w["start"]), "end": float(w["end"]),
-                    "speaker": speaker_of(w)} for w in ws]}
+                    "speaker": speaker_of(w)} for w in wlist]}
     s["terms"] = [(t, i) for i, w in enumerate(s["words"]) for t in terms_of(w["text"])]
     a, _ = find_words(s, part["from_words"], guess[0] - 4, guess[0] + 4, guess[0])
     b, _ = find_words(s, part.get("to_words") or "", guess[1] - 4, guess[1] + 4, guess[1], last=True)

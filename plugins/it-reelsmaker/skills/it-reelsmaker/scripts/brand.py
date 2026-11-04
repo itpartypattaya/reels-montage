@@ -15,7 +15,7 @@ to its scripts folder):
     python scripts/brand.py logo acme logo-white.png [--role on_dark]    # logo -> brands/<slug>/assets/ + role in brand.json
     python scripts/brand.py rule acme "Cards only on the left, likes on the right"   # append a design rule to rules.md
     python scripts/brand.py change acme colors.accent=#19B8BB inserts.use_broll=false
-    python scripts/brand.py tone acme friendly [--set memes.max=1 flash_max=1] [--reset]   # brand tone: preset + field overrides
+    python scripts/brand.py tone acme friendly [--field memes.max=1 flash_max=1] [--reset]   # brand tone: preset + field overrides
     python scripts/brand.py use acme --edit edit/4821              # brand into edit/<id>/reel.json + mark as used
     python scripts/brand.py export acme --remotion reels           # src/brands/<slug>.json + logos in public/brands/<slug>/
 
@@ -267,13 +267,13 @@ def cmd_show(a):
         print("  brand insert defaults: " + ", ".join(f"{k}={v}" for k, v in b["inserts"].items()))
     if b.get("forbidden_imagery"):
         print("  not allowed in the frame: " + ", ".join(b["forbidden_imagery"]))
-    shown = set()
+    shown = {}
     for k, label in (("rules", "rules"), ("guide", "video guide"), ("cta_library", "CTA library")):
         if b.get(k):
             p = brand_file(b[k], d)
             print(f"  {label}: {p or b[k] + ' ✗'}")
             if p:
-                shown.add(Path(p).resolve())
+                shown[Path(p).resolve()] = True
     others = sorted(p for p in Path(d).glob("*.md") if p.resolve() not in shown)
     if others:
         print("  other brand documents: " + ", ".join(p.name for p in others) + " (linked from rules.md)")
@@ -605,10 +605,10 @@ def cmd_tone(a):
     from reels_common import load_defaults
     tones = (load_defaults() or {}).get("brand_tones") or {}
     base = tones.get(a.preset) or {}
-    sets = {}
-    for it in a.set or []:
+    fields_given = {}
+    for it in a.field or []:
         if "=" not in it:
-            sys.exit(f"--set expects field=value, got: {it}")
+            sys.exit(f"--field expects field=value, got: {it}")
         k, v = (x.strip() for x in it.split("=", 1))
         head = k.split(".")[0]
         if head not in base or head in ("label", "for"):
@@ -618,24 +618,24 @@ def cmd_tone(a):
             ref = ref.get(part) if isinstance(ref, dict) else None
         if isinstance(ref, (int, float)) and not isinstance(ref, bool):
             try:
-                sets[k] = int(v) if re.fullmatch(r"-?\d+", v) else float(v)
+                fields_given[k] = int(v) if re.fullmatch(r"-?\d+", v) else float(v)
             except ValueError:
                 sys.exit(f"{k}: a number is needed, got {v!r}")
         else:
-            sets[k] = parse_value(v)
+            fields_given[k] = parse_value(v)
     if a.profile:
         return tone_for_profile(a)
     with editing_brand(a.slug) as (d, b):
         t = b.get("tone") if isinstance(b.get("tone"), dict) else {}
         old = t.get("preset")
         over = {} if a.reset else dict(t.get("overrides") or {})
-        for k, v in sets.items():
+        for k, v in fields_given.items():
             set_path(over, k, v)
         b["tone"] = {"preset": a.preset, **({"overrides": over} if over else {}),
                      **({"by_profile": t["by_profile"]} if t.get("by_profile") else {})}  # the profile tones stay
         rules, _ = tone_rules(b, slug=a.slug)
     print(f"{a.slug}: tone {old or '-'} -> {a.preset}" + (f"; overridden: {json.dumps(over, ensure_ascii=False)}" if over else ""))
-    if over and not sets and old != a.preset:
+    if over and not fields_given and old != a.preset:
         print("  the previous tone's overrides are kept (--reset removes them)")
     print(f"  {tone_summary(rules)}")
     if b.get("motion") and b["motion"] != base.get("motion"):
@@ -652,8 +652,8 @@ def tone_for_profile(a):
     pr, _ = profiles_of(load_defaults() or {})
     if a.profile not in pr:
         sys.exit(f"no profile {a.profile!r}; available: {', '.join(pr)}")
-    if a.set or a.reset:
-        sys.exit("--set/--reset change the main tone; a profile's tone is a preset as is")
+    if a.field or a.reset:
+        sys.exit("--field/--reset change the main tone; a profile's tone is a preset as is")
     with editing_brand(a.slug) as (d, b):
         t = b.get("tone") if isinstance(b.get("tone"), dict) else {}
         if not t.get("preset"):
@@ -766,7 +766,7 @@ def main():
     p = sub.add_parser("change"); p.add_argument("slug"); p.add_argument("pairs", nargs="+"); p.set_defaults(fn=cmd_change)
     p = sub.add_parser("tone", help="brand tone: preset + field overrides")
     p.add_argument("slug"); p.add_argument("preset", choices=TONE_PRESETS)
-    p.add_argument("--set", nargs="*", metavar="FIELD=VALUE", help="preset fields: memes.max=1 flash_max=1 scene_tone=calm ...")
+    p.add_argument("--field", nargs="*", metavar="NAME=VALUE", help="preset fields: memes.max=1 flash_max=1 scene_tone=calm ...")
     p.add_argument("--reset", action="store_true", help="remove the previous overrides")
     p.add_argument("--profile", help="the brand's own tone for this video profile (educational, entertaining, "
                                      "expert-clip, promo, ad); the main tone's preset removes it")

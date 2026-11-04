@@ -35,7 +35,7 @@ What changed in IT Reelsmaker, written for the people who use it. The newest ver
   the entrance progress in `SceneLayer.tsx`, the item number in `List.tsx`); they draw exactly as before, so there
   is no kit update to run.
 - **Two renames.** `brand.py set` and `memes.py set` are now `brand.py change` and `memes.py change` (same
-  arguments: `change <slug> field=value`). The clip card's field that says what to do with the other voice in a
+  arguments: `change <slug> field=value`), and `brand.py tone … --set` is `--field`. The clip card's field that says what to do with the other voice in a
   long recording (`cut` or `keep`) is now `other_voice`; a card written before is read as `cut`, and `longform.py
   check` then warns about the other voice in that piece, so the card gets fixed on the next check. The presenter
   examples are named `presenter`. The directory's scan misread the old words.

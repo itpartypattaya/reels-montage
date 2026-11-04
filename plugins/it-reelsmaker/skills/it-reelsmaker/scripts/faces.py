@@ -244,11 +244,11 @@ def clean_frames(frames, times=None, step=None, width=W):
     n = len(frames)
     strong_w = [[f[2] for f in fr if f[4] >= STRONG] for fr in frames]
 
-    def median(ws):
-        ws = sorted(ws)
-        return ws[len(ws) // 2] if ws else None
+    def median(wlist):
+        wlist = sorted(wlist)
+        return wlist[len(wlist) // 2] if wlist else None
 
-    glob = median([w for ws in strong_w for w in ws])
+    glob = median([w for wlist in strong_w for w in wlist])
     keep, rej = [], []
     for k, fr in enumerate(frames):
         strong = [f for f in fr if f[4] >= STRONG]

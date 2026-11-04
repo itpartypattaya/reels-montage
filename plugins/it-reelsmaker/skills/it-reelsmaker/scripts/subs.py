@@ -253,10 +253,10 @@ def timed_words(p):
     """The translated phrase's words over the phrase's time, by length (+1 for the space). "phrase": the phrase id, so
     the kit hides a whole translated phrase that a scene covers for the most part (a random tail of it after the
     scene does not read)."""
-    ws = units(p["text"])
-    tot = sum(len(w) + 1 for w, _ in ws)
+    wlist = units(p["text"])
+    tot = sum(len(w) + 1 for w, _ in wlist)
     t, out = p["start"], []
-    for w, glue in ws:
+    for w, glue in wlist:
         d = (p["end"] - p["start"]) * (len(w) + 1) / tot
         out.append({"text": w, "start": round(t, 3), "end": round(t + d, 3), "type": "word", "phrase": p["id"],
                     **({"glue": True} if glue else {}), **({"seg": p["seg"]} if p.get("seg") is not None else {}),
@@ -278,9 +278,9 @@ def cmd_apply(a):
     words = [w for p in ps for w in timed_words(p)]
     whole = {p["keep"] for p in ps if p.get("keep")}
     for gid in dict.fromkeys(w["keep"] for w in cap["words"] if w.get("keep") and w["keep"] not in whole):
-        ws = [w for w in cap["words"] if w.get("keep") == gid]
-        p = next((p for p in ps if p["start"] <= ws[0]["start"] <= p["end"]), None)
-        warn(f"keep {gid} «{' '.join(str(w['text']) for w in ws)}» is part of the phrase {p['id'] if p else '?'}, not the "
+        wlist = [w for w in cap["words"] if w.get("keep") == gid]
+        p = next((p for p in ps if p["start"] <= wlist[0]["start"] <= p["end"]), None)
+        warn(f"keep {gid} «{' '.join(str(w['text']) for w in wlist)}» is part of the phrase {p['id'] if p else '?'}, not the "
              f"whole of it: the translation has no word-to-word map, so the mark is not carried and the kit may split "
              f"the translated phrase as usual")
     out = e / f"captions-{a.lang}.json"
@@ -303,13 +303,13 @@ def two_lines(t, width=WIDTH):
     rules as glue() on the cards). T3: lines of 54-59 characters and "more than five / years"."""
     if len(t) <= width or " " not in t:
         return [t]
-    ws, best = t.split(), None
-    for k in range(1, len(ws)):
-        l1, l2 = " ".join(ws[:k]), " ".join(ws[k:])
+    wlist, best = t.split(), None
+    for k in range(1, len(wlist)):
+        l1, l2 = " ".join(wlist[:k]), " ".join(wlist[k:])
         over = max(0, len(l1) - width) + max(0, len(l2) - width)
         # rather after punctuation, or before a conjunction or a preposition (a new clause starts there)
-        bonus = 8 if l1[-1] in ",;:.!?…" else 4 if bare(ws[k]) in SHORT_WORDS else 0
-        score = (over, no_break(ws[k - 1], ws[k]), max(len(l1), len(l2)) - bonus)
+        bonus = 8 if l1[-1] in ",;:.!?…" else 4 if bare(wlist[k]) in SHORT_WORDS else 0
+        score = (over, no_break(wlist[k - 1], wlist[k]), max(len(l1), len(l2)) - bonus)
         if best is None or score < best[0]:
             best = (score, [l1, l2])
     return best[1]

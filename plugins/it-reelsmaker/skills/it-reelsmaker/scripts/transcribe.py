@@ -405,7 +405,7 @@ def cmd_splice(a):
         if b:
             save_json(b, doc)
         save_json(f, new)
-    txt = lambda ws: " ".join(str(w.get("text", "")) for w in ws if w.get("type", "word") == "word") or "-"
+    txt = lambda wlist: " ".join(str(w.get("text", "")) for w in wlist if w.get("type", "word") == "word") or "-"
     print(f"{f}: {t0:.2f}-{t1:.2f} s from {sp.name}: removed {len(removed)} ({txt(removed)}), added {len(added)} "
           f"({txt(added)})" + (f"; before: {b.name}" if b else "; the backup of this state is already there"))
     for n in check_doc(new):
@@ -460,13 +460,13 @@ def cmd_rate(a):
     for g in segs:
         g0, g1 = g["out_start"], g["out_start"] + g["out_dur"]
         lo, hi = int(round(g0 / sm.HOP)), int(round(g1 / sm.HOP))
-        ws = [w for w in cap.get("words", []) if w.get("seg") == g["i"]]
-        nums = [w for w in ws if is_number(w["text"])]
+        wlist = [w for w in cap.get("words", []) if w.get("seg") == g["i"]]
+        nums = [w for w in wlist if is_number(w["text"])]
         # a number in digits: its vowels are not in the text, so its time is left out too
         cut = masked(mask, sm.HOP, [(max(g0, float(w["start"])), min(g1, float(w["end"]))) for w in nums
                                     if min(g1, float(w["end"])) > max(g0, float(w["start"]))])
         speech = max(0.0, sum(mask[lo:hi]) * sm.HOP - cut)
-        v = sum(vowels(w["text"]) for w in ws if not is_number(w["text"]))
+        v = sum(vowels(w["text"]) for w in wlist if not is_number(w["text"]))
         rows.append((g, v, speech, [str(w["text"]) for w in nums], cut))
         t = total.setdefault(g.get("source"), [0, 0.0, 0, 0, 0.0])
         t[0] += v; t[1] += speech; t[2] += 1; t[3] += len(nums); t[4] += cut

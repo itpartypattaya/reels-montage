@@ -29,7 +29,7 @@ def test_new_brand_refuses_the_plugin_folder(project):
 def test_tone_and_set(project):
     run_script("brand.py", "new", "--name", "Acme", "--colors", "#0B3D2E,#F2C14E", "--slug", "acme", "--tone", "warm",
                cwd=project)
-    run_script("brand.py", "tone", "acme", "bold", "--set", "memes.max=1", cwd=project)
+    run_script("brand.py", "tone", "acme", "bold", "--field", "memes.max=1", cwd=project)
     b = brand_json(project)
     assert b["tone"]["preset"] == "bold" and b["tone"]["overrides"] == {"memes": {"max": 1}}
     run_script("brand.py", "change", "acme", "inserts.use_broll=false", cwd=project)

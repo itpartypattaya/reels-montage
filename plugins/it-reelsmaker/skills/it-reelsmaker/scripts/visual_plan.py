@@ -700,14 +700,14 @@ def scene_timeline(sc, T, mode, fps, words, only=False):
 def word_times(toks, words, t0, t1):
     """As wordTimes in the scene kit (kit/scenes/parts.tsx): each word of the scene is the first identical spoken word
     after the previous one, only within the scene's window (t0 - 0.3 ... t1). -> [second or None]."""
-    ws = [(t, w["start"]) for w in words if t0 - 0.3 <= w["start"] <= t1 for t in norm_words(w.get("text", ""))]
+    wlist = [(t, w["start"]) for w in words if t0 - 0.3 <= w["start"] <= t1 for t in norm_words(w.get("text", ""))]
     j, out = 0, []
     for tok in toks:
         q = (norm_words(tok) or [""])[0]
         hit = None
-        for i in range(j, len(ws)):
-            if ws[i][0] == q:
-                j, hit = i + 1, ws[i][1]
+        for i in range(j, len(wlist)):
+            if wlist[i][0] == q:
+                j, hit = i + 1, wlist[i][1]
                 break
         out.append(hit)
     return out

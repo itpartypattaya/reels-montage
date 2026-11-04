@@ -77,18 +77,18 @@ export const wordsOf = (s: string): string[] => glue(s).split(/[  ]+/).filter((
 /** Time of each scene word in the speech: the first identical word after the previous one, only within the scene window
  *  [from − 0.3; to] (otherwise a word spoken earlier in the video would “appear” at once). visual_plan.py word_times computes the same. */
 export const wordTimes = (toks: string[], words: Word[], from = -Infinity, to = Infinity): (number | null)[] => {
-  const ws: { n: string; start: number }[] = [];
+  const wlist: { n: string; start: number }[] = [];
   words.filter((w) => w.start >= from - 0.3 && w.start <= to).forEach((w) => w.text.split(/\s+/).forEach((t) => {
     const n = norm(t);
-    if (n) ws.push({ n, start: w.start });
+    if (n) wlist.push({ n, start: w.start });
   }));
   let j = 0;
   return toks.map((tok) => {
     const n = norm(tok);
-    for (let i = j; i < ws.length; i++) {
-      if (ws[i].n === n) {
+    for (let i = j; i < wlist.length; i++) {
+      if (wlist[i].n === n) {
         j = i + 1;
-        return ws[i].start;
+        return wlist[i].start;
       }
     }
     return null;
