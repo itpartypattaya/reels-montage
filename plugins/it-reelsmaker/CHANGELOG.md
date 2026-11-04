@@ -11,6 +11,10 @@ What changed in IT Reelsmaker, written for the people who use it. The newest ver
   `REELS_ONLINE_SCRIPTS` → the add-on's `link` command; the `REELS_DEFAULTS_OVERLAY` layer is gone (use the project's
   `reel-defaults.json`). Renders still get their own temp folder; nothing else changes in editing
   (`references/migrations.md`).
+- **The master no longer encodes the video again for the cover.** `master_audio.py --cover` used to put the cover
+  into frame 0, which re-encoded the whole video; now the video is copied as it is, the cover is embedded as cover art
+  and saved next to the master as `…-cover.jpg` for uploading by hand. Frame 0 (what messengers show) stays the render's;
+  `poster.py bake` still puts the cover there when you ask for it.
 - **Your own UI zone counts everywhere.** A project that sets a taller app UI in its `reel-defaults.json`
   (`meme_layout.safe`, for TikTok's bottom, say) used to get it only for memes: the text check, B-roll windows,
   callouts, the free zones of `faces.py`, the presenter check of `matte.py` and the cover guide of `poster.py` kept

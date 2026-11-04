@@ -28,12 +28,12 @@ Ducking under a main line (--duck A-B[:dB], repeatable, seconds of the render): 
   the music after the sidechain, before the mix, and the voice is not touched. Two different things: "duck the music
   under the main line" (--duck) and "the track's drop" (a loud moment of the track itself, placed with --drop-at).
 The video is not re-encoded: the audio goes into the finished render (-c:v copy), +faststart.
-The cover (--cover edit/<id>/cover.jpg, picked with poster.py pick): the master is built with it in one run — frame 0
-  replaced by the cover (poster.py bake: the only re-encode, frame count and durations checked), the sound mastered, the
-  cover embedded as cover art (poster.py attach: the file manager's thumbnail) — and the cover is saved next to the
-  master as a picture for uploading it by hand: <name>-cover.jpg (out/x-master.mp4 -> out/x-cover.jpg). One file goes
-  out, the master; there is no separate "-final.mp4". Without --cover the master is made as before, with a warning:
-  messengers show its first frame and file managers a random one.
+The cover (--cover edit/<id>/cover.jpg, picked with poster.py pick): the sound mastered, the cover embedded as cover
+  art (poster.py attach, a stream copy: the file manager's thumbnail), and the cover saved next to the master as a
+  picture for uploading it by hand: <name>-cover.jpg (out/x-master.mp4 -> out/x-cover.jpg). The video itself is not
+  touched, frame 0 included: putting the cover into frame 0 re-encoded the whole video (since 1.22 it is not done; by
+  hand: poster.py bake). There is no separate "-final.mp4". Without --cover the master is made as before, with a
+  warning: file managers pick a random frame and there is no cover picture to upload.
 At the end, the acceptance check from the checklist (SKILL.md): −14 ±0.7 LUFS, true peak ≤ −1 dBFS, audio = video track
 (and video = input). Exit code: 0, the check succeeded; 1, it failed, a measurement failed or ffmpeg failed.
 No voice and no music (the "scenes only" format): a few scene sounds over silence are not a −14 LUFS track, so the
@@ -203,8 +203,8 @@ def main():
     ap.add_argument("--edit", help="edit/<id>: the video's folder, where sfx.json is looked for (default: the folder of --cover)")
     ap.add_argument("--duck", action="append", default=[], metavar="A-B[:dB]",
                     help="duck the music under a main line: seconds of the render, dB down (default 14), repeatable")
-    ap.add_argument("--cover", help="edit/<id>/cover.jpg (poster.py pick): frame 0, the embedded cover art and "
-                                    "<name>-cover.jpg next to the master, in this run")
+    ap.add_argument("--cover", help="edit/<id>/cover.jpg (poster.py pick): the embedded cover art and "
+                                    "<name>-cover.jpg next to the master, in this run (the video is not re-encoded)")
     a = ap.parse_args()
     if a.find_drops:
         find_drops(a.input)
@@ -226,9 +226,9 @@ def main():
     if a.cover and Path(a.output).resolve() == Path(a.input).resolve():
         sys.exit("-o must differ from the input")
     if not a.cover:
-        print("⚠ no cover (--cover): the master's frame 0 is the render's first frame (what messengers show) and a file "
-              "manager picks a random frame; poster.py pick edit/<id> --render <render> -o edit/<id>/cover.jpg, then "
-              "master again with --cover edit/<id>/cover.jpg")
+        print("⚠ no cover (--cover): a file manager picks a random frame as the thumbnail and there is no cover picture "
+              "to upload; poster.py pick edit/<id> --render <render> -o edit/<id>/cover.jpg, then master again with "
+              "--cover edit/<id>/cover.jpg")
 
     a.ducks = parse_ducks(a.duck)
     if a.ducks and not a.music:
@@ -242,7 +242,7 @@ def main():
 
 
 def poster(*args):
-    """poster.py bake / attach in a child process: their own checks decide (exit code 1 = do not deliver)."""
+    """poster.py attach in a child process: its own checks decide (exit code 1 = do not deliver)."""
     r = subprocess.run([sys.executable, str(Path(__file__).resolve().parent / "poster.py"), *map(str, args)],
                        capture_output=True, text=True, encoding="utf-8", errors="replace")
     out = (r.stdout + r.stderr).strip()
@@ -269,14 +269,10 @@ def cover_jpg_of(output):
 
 
 def with_cover(a, tmp):
-    """The master with its cover in one run: bake frame 0 -> master the sound -> attach the cover art -> the jpg."""
+    """The master with its cover in one run: master the sound -> attach the cover art -> the jpg next to it. Frame 0
+    stays the render's: replacing it re-encoded the whole video (since 1.22; poster.py bake does it by hand)."""
     out, cover = Path(a.output), Path(a.cover)
-    baked = os.path.join(tmp, "cover.mp4")
-    print(f"cover: frame 0 <- {cover.name} (poster.py bake)")
-    if poster("bake", a.input, "--cover", cover, "-o", baked):
-        print("the cover could not be put into frame 0: no master was made; check the cover and the render")
-        return 1
-    a.input, a.output = baked, os.path.join(tmp, "master.mp4")
+    a.output = os.path.join(tmp, "master.mp4")
     code = master(a, tmp)
     out.parent.mkdir(parents=True, exist_ok=True)
     print(f"cover: embedded as cover art (poster.py attach) -> {out}")

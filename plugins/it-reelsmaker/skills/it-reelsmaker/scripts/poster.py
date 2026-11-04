@@ -11,8 +11,8 @@ one, otherwise a frame of its own choosing (a B-roll frame from the middle, say)
     python scripts/poster.py attach out/x-master.mp4 --cover edit/<id>/cover.jpg -o out/y.mp4
 
 The usual way: pick the cover here, then master_audio.py out/x.mp4 -o out/x-master.mp4 --cover edit/<id>/cover.jpg runs
-bake and attach itself and puts out/x-cover.jpg next to the master; bake and attach by hand are for a file made some
-other way.
+attach itself and puts out/x-cover.jpg next to the master. bake is by hand only: it re-encodes the whole video to put
+the cover into frame 0, so the master no longer does it (since 1.22).
 
 pick  — a "settled" frame from the render: --t; otherwise from the visual plan, the hook scene's settled window
         (after its entrance and before its exit, by the scene tone, references/scenes.md), otherwise the cover scene's,
@@ -30,9 +30,9 @@ pick  — a "settled" frame from the render: --t; otherwise from the visual plan
         A cover with text over the frame is drawn by the ReelCover composition (`kit.py still edit/<id> --comp ReelCover --frame 0`).
 bake  — replaces ONLY frame 0 with the cover image (overlay enable='eq(n,0)'); video libx264 crf 18 preset slow yuv420p,
         audio copied, +faststart. Check: the frame count (ffprobe -count_frames) and the video and audio durations are
-        the same before and after, and frame 0 = the cover; otherwise exit code 1 (do not deliver the file). Order
-        (SKILL.md step 9): render → faces.py audit (on the render) → pick → master_audio.py --cover (bake, mastering
-        that copies the video so frame 0 is kept, attach).
+        the same before and after, and frame 0 = the cover; otherwise exit code 1 (do not deliver the file). Only on
+        request: it encodes the whole video again. Order (SKILL.md step 9): render → faces.py audit (on the render) →
+        pick → master_audio.py --cover (mastering, attach, the jpg next to the master).
 attach — embeds the cover as cover art (an attached picture, mp4 "covr"): what file managers show as the thumbnail.
         Nothing is re-encoded; the last step, after master_audio.py (mastering keeps only the first video stream).
         Check: the video and audio streams and durations are unchanged and the cover is in the file; otherwise exit 1.
@@ -374,7 +374,7 @@ def cmd_pick(a):
         sys.exit(f"the frame was not saved: {out}")
     print(f"cover: frame at {t:.2f} s ({why}) → {out}")
     print(f"next: poster.py guide {out} -o {out.with_name(out.stem + '-guide.png')} to check the grid crop; "
-          f"poster.py bake {render} --cover {out} -o <render>-cover.mp4")
+          f"master_audio.py <render> -o <name>-master.mp4 --cover {out}")
 
 
 # ─── bake ───────────────────────────────────────────────────────────────────────────────────────────

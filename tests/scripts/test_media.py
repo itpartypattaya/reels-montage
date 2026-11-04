@@ -145,7 +145,8 @@ def test_master_audio_hits_the_loudness_target(project):
 @needs_pillow
 def test_master_with_cover_is_one_file_with_its_cover_next_to_it(project):
     # The cover used to be four optional steps after the master and a second "-final.mp4", and it was forgotten:
-    # --cover builds the master with frame 0 = the cover and the cover art inside, and puts the jpg next to it
+    # --cover builds the master with the cover art inside and puts the jpg next to it. Since 1.22 frame 0 stays the
+    # render's: putting the cover there re-encoded the whole video (Anton: "it reruns the whole render")
     import subprocess
     from PIL import Image
     make_video(project / "render.mp4", 360, 640, 3.0)
@@ -166,8 +167,10 @@ def test_master_with_cover_is_one_file_with_its_cover_next_to_it(project):
         ffmpeg("-i", master, "-map", "0:v:0", "-vf", rf"select='eq(n\,{n})'", "-fps_mode", "passthrough", "-frames:v", "1",
                project / f"f{n}.png")
     red = lambda n: Image.open(project / f"f{n}.png").convert("RGB").resize((1, 1)).getpixel((0, 0))
-    assert red(0)[0] > 150 and red(0)[1] < 90  # frame 0 is the red cover
-    assert not (red(1)[0] > 150 and red(1)[1] < 90)  # frame 1 is the render
+    assert not (red(0)[0] > 150 and red(0)[1] < 90)  # frame 0 is the render's, not the red cover
+    md5 = lambda f: subprocess.run(["ffmpeg", "-v", "error", "-i", str(f), "-map", "0:v:0", "-c", "copy", "-f", "md5", "-"],
+                                   capture_output=True, text=True, check=True).stdout.strip()
+    assert md5(master) == md5(project / "render.mp4")  # the video is copied, not encoded again
     r = run_script("master_audio.py", str(master), "--check", cwd=project, check=False)
     assert r.returncode == 0 and "cover art: embedded" in r.stdout, r.stdout + r.stderr
     # remastering from the sidecar itself (PR review: ffmpeg refused to write its own input)
