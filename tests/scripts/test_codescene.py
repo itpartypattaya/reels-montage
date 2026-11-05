@@ -43,8 +43,8 @@ def test_scaffold_goes_into_the_users_project_not_the_plugin(project):
     (rem / "src" / "Root.tsx").write_text("export const RemotionRoot = () => null;\n", encoding="utf-8")
     write_json(rem / "package.json", {"name": "reels"})
     r = run_script("codescene.py", "scaffold", "edit/4821", code_id, "--remotion", rem, cwd=project, check=False)
-    assert r.returncode != 0 and "brand.py export" in r.stdout + r.stderr  # the brand comes first
-    run_script("brand.py", "export", "acme", "--remotion", rem, cwd=project)
+    assert r.returncode != 0 and "brand.py stage" in r.stdout + r.stderr  # the brand comes first
+    run_script("brand.py", "stage", "acme", "--remotion", rem, cwd=project)
     run_script("codescene.py", "scaffold", "edit/4821", code_id, "--remotion", rem, cwd=project)
     assert list((rem / "src" / "gen").glob("*.tsx"))
     r = run_script("codescene.py", "scaffold", "edit/4821", code_id, "--remotion", CORE.parent, cwd=project, check=False)

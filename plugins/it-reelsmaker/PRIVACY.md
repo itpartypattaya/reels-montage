@@ -14,9 +14,9 @@ The editing programs (ffmpeg, Remotion, Python scripts) run on your computer. Cl
 
 | Destination | What is sent | When |
 |---|---|---|
-| Anthropic (Claude) | The conversation, including transcript text, file excerpts and video frames that Claude reads | Always, as in any Claude Code session. [Anthropic's privacy policy](https://www.anthropic.com/legal/privacy) applies |
+| Anthropic (Claude) | The conversation, including transcript text, file excerpts and video frames that Claude reads | Always, as in any use of Claude Code. [Anthropic's privacy policy](https://www.anthropic.com/legal/privacy) applies |
 | A cloud transcription service | The audio of your video | Only if you choose a cloud transcriber instead of the default local `faster-whisper`. That service's privacy policy applies |
-| npm, PyPI, browser distribution hosts, Google Fonts, Hugging Face, GitHub | Standard download requests, which include your IP address | When you install Remotion and Python packages, when Remotion downloads its own headless browser on the first render, when fonts load at render time, and when the models for the features you use download (faster-whisper, YuNet, rembg) |
+| npm, PyPI, the headless browser's download site, Google Fonts, Hugging Face, GitHub | Standard download requests, which include your IP address | When you install Remotion and Python packages, when Remotion downloads its own headless browser on the first render, when fonts load at render time, and when the models for the features you use download (faster-whisper, YuNet, rembg) |
 
 ## People in your videos
 

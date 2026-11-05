@@ -2,8 +2,8 @@
 """Shared helpers for the skill's scripts: project paths, brands, video settings, ffmpeg, word search.
 
 Imported by the other scripts (brand.py, reelcfg.py, visual_plan.py, footage.py, memes.py, ...). Standard library
-only. No network access and no credentials here: online sources live in the it-reelsmaker-online add-on, which this
-module loads only when it is installed (see online()).
+only, no network access: online sources live in the it-reelsmaker-online add-on, which this module loads only when it
+is installed (see online()).
 """
 import contextlib, importlib, json, math, os, re, shutil, subprocess, sys, tempfile, time, unicodedata, uuid
 from pathlib import Path
@@ -14,7 +14,7 @@ DEFAULTS_FILE = SKILL / "assets" / "reel-defaults.json"
 # the published plugin has no such file.
 DEFAULTS_LOCAL = SKILL / "assets" / "reel-defaults.local.json"
 SETTINGS_FILE = "it-reelsmaker.json"
-# Your own defaults for a project: <project>/reel-defaults.json, the same format, only the keys you change. It lives
+# Your own defaults for a project: <project>/reel-defaults.json, the same format, only the settings you change. It lives
 # in the project, never in the plugin folder (an update replaces that folder).
 PROJECT_DEFAULTS = "reel-defaults.json"
 
@@ -83,7 +83,7 @@ _HELD = {}
 
 @contextlib.contextmanager
 def locked(p, timeout=30.0, stale=120.0):
-    """Lock a read-modify-write cycle between sessions: a <name>.lock file next to it, created exclusively.
+    """Lock a read-modify-write cycle between runs: a <name>.lock file next to it, created exclusively.
     Re-entry in the same process doesn't wait. A lock older than `stale` seconds counts as abandoned (its process
     died) and is removed, so keep only quick work inside: no downloads, no renders."""
     key = os.path.normcase(os.path.abspath(p))
@@ -112,8 +112,8 @@ def locked(p, timeout=30.0, stale=120.0):
             except OSError:
                 pass
             if time.time() - t0 > timeout:
-                sys.exit(f"the file has been busy in another session for over {timeout:.0f} s: {lk}; try again later "
-                         f"(if no other session is running, delete this .lock)")
+                sys.exit(f"the file has been busy in another run for over {timeout:.0f} s: {lk}; try again later "
+                         f"(if no other run is going, delete this .lock)")
             time.sleep(0.1)
     _HELD[key] = 1
     try:
@@ -137,7 +137,7 @@ def editing_json(p, default=None):
 
 
 def _merge(base, over):
-    """Deep merge of dicts: `over` wins (nested dicts are merged key by key)."""
+    """Deep merge of dicts: `over` wins (nested dicts are merged field by field)."""
     out = json.loads(json.dumps(base))
     for k, v in (over or {}).items():
         if isinstance(v, dict) and isinstance(out.get(k), dict):
@@ -150,15 +150,14 @@ def _merge(base, over):
 def defaults_layers(project=None):
     """The defaults as (label, doc) layers, left to right: the skill's assets/reel-defaults.json; the online add-on's
     DEFAULTS if it is installed; a personal copy's assets/reel-defaults.local.json; the project's own
-    <project>/reel-defaults.json ("project"); the file named in REELS_DEFAULTS_OVERLAY ("overlay")."""
+    <project>/reel-defaults.json ("project"). The plugin reads no environment variables (since 1.22)."""
     layers = [("defaults", load_json(DEFAULTS_FILE, {}) or {})]
     ext = online()
     if ext and isinstance(getattr(ext, "DEFAULTS", None), dict):
         layers.append(("defaults", ext.DEFAULTS))
     project = Path(project or project_root())
-    for label, f in (("defaults", DEFAULTS_LOCAL), ("project", project / PROJECT_DEFAULTS),
-                     ("overlay", os.environ.get("REELS_DEFAULTS_OVERLAY"))):
-        if f and Path(f).is_file():
+    for label, f in (("defaults", DEFAULTS_LOCAL), ("project", project / PROJECT_DEFAULTS)):
+        if Path(f).is_file():
             doc = load_json(f, {})
             if not isinstance(doc, dict):
                 warn(f"{f}: expected a JSON object like assets/reel-defaults.json; ignored")
@@ -185,11 +184,8 @@ def _settings_file(start):
 
 
 def project_root(start=None):
-    """The editing project folder: REELS_PROJECT; else project_root from it-reelsmaker.json in the current folder or
-    above; else the nearest folder upwards with edit/ or brands/; else the current folder."""
-    env = os.environ.get("REELS_PROJECT")
-    if env:
-        return Path(env).resolve()
+    """The editing project folder: project_root from it-reelsmaker.json in the current folder or above; else the
+    nearest folder upwards with edit/ or brands/; else the current folder."""
     p = Path(start or os.getcwd()).resolve()
     f = _settings_file(p)
     if f:
@@ -251,8 +247,7 @@ def inside(root, p, what="path"):
 
 def is_project(project):
     project = Path(project)
-    return bool(os.environ.get("REELS_PROJECT") or (project / "edit").is_dir() or (project / "brands").is_dir()
-                or (project / SETTINGS_FILE).is_file())
+    return bool((project / "edit").is_dir() or (project / "brands").is_dir() or (project / SETTINGS_FILE).is_file())
 
 
 def edit_dir(arg, project=None, create=False):
@@ -274,7 +269,7 @@ def edit_dir(arg, project=None, create=False):
         safe_slug(rid, "video id", dots=True)
         if not is_project(project):
             sys.exit(f"no video folder: {arg}, and no editing project was found (no edit/, brands/ or "
-                     f"{SETTINGS_FILE} above {project}); run from the project folder or set REELS_PROJECT")
+                     f"{SETTINGS_FILE} above {project}); run from the project folder or set project_root in it-reelsmaker.json")
         q = project / "edit" / rid
         q.mkdir(parents=True, exist_ok=True)
         print(f"created the video folder: {q}")
@@ -296,12 +291,12 @@ _ONLINE = None
 
 def online():
     """The it-reelsmaker-online add-on module (reels_online), or None when it is not installed. Its scripts folder
-    comes from REELS_ONLINE_SCRIPTS (the add-on's instructions tell Claude to set it) or from it-reelsmaker.json ->
-    online_scripts. Without it, online sources and generation are simply off."""
+    comes from it-reelsmaker.json -> online_scripts, which the add-on's link command writes. Without it, online sources
+    and generation are simply off."""
     global _ONLINE
     if _ONLINE is None:
         _ONLINE = False
-        d = os.environ.get("REELS_ONLINE_SCRIPTS") or project_settings().get("online_scripts")
+        d = project_settings().get("online_scripts")
         if d and str(d).startswith("${"):  # an unexpanded plugin setting counts as not set
             d = None
         if d:  # ~ is the home folder; a relative path is relative to the project folder
@@ -375,7 +370,7 @@ def brand_file(value, brand_dir, project=None):
 
 SETTING_KEYS_BOOL = ["use_broll", "use_project_footage", "use_local_footage", "use_code_scenes",
                      "use_scenes", "use_memes", "use_local_memes"]
-# Renamed setting keys, old -> new (references/migrations.md): the old name is still read in every layer, and the new
+# Renamed settings, old -> new (references/migrations.md): the old name is still read in every layer, and the new
 # one wins when a layer has both. 1.15: the setting turns on code scenes drawn in Remotion, which the old name
 # use_generated_footage did not say (review 2026-10-17).
 RENAMED = {"use_generated_footage": "use_code_scenes"}
@@ -390,7 +385,7 @@ def renamed(d):
 
 def to_new_names(d):
     """Puts the old names of RENAMED in d under their new ones, in place (the new one wins when both are there), so a
-    file written by reelcfg keeps the new name whatever key the call set (review 2026-10-18)."""
+    file written by reelcfg keeps the new name whatever name the call set (review 2026-10-18)."""
     for old, new in RENAMED.items():
         if old in d:
             v = d.pop(old)
@@ -416,7 +411,7 @@ def parse_sets(items):
     out = {}
     for it in items or []:
         if "=" not in it:
-            sys.exit(f"--set expects key=value, got: {it}")
+            sys.exit(f"--set expects field=value, got: {it}")
         k, v = it.split("=", 1)
         k = k.strip()
         if k in RENAMED:
@@ -432,15 +427,49 @@ BRAND_SCHEMA = 2  # 1 -> 2: brand tone (references/migrations.md)
 MEME_SIZES = ["s", "m", "l"]
 # The subtitle band, y in the 1080x1920 frame, one value for every script: cards, memes and scenes keep out of it
 # (visual_plan.py validate, meme_layout.py), faces.py checks faces against it (reel-defaults.json ->
-# meme_layout.subtitles_band overrides it). export puts the subtitles' top at the measured chin + 30 px within
+# meme_layout.subtitles_band overrides it). stage puts the subtitles' top at the measured chin + 30 px within
 # SUB_BAND[0]..SUB_MAX_TOP (below are 420 px of UI); with no face measurement the kit's own top, SUB_TOP_KIT
 # (ReelKit.tsx). faces.py once had its own band (1290-1400): zones offered a chest down to 1270, where validate
 # rejected a card, and audit checked a band the render did not have.
 SUB_BAND = (1250, 1430)
 SUB_MAX_TOP = 1390
 SUB_TOP_KIT = 1290
+# The tolerance of the checks on finished frames (faces.py audit, textcheck.py): an overlap with a face counts from
+# 30 px; the 60 px rule (faces.MARGIN) is enforced when planning. Measured 2026-10-17 on 6 finished videos: the full
+# 60 px flagged 4 moments in 3 of them, one a card just under a chin and the rest single 0.25 s samples with the text
+# far from the face on the still (detector jitter). Here, not in faces.py, so textcheck reads it without OpenCV
+CHECK_MARGIN = 30
+FACE_MARGIN = 60      # the rule: graphics keep this far from a face (faces.MARGIN; memes: meme_layout.face_margin)
+LINE_FACE_MARGIN = 20  # a callout's leader line, thinner than a label, keeps this far from a face (references/callouts.md)
+# The app's UI zone, px from each edge of the 1080x1920 frame: Reels, Shorts and TikTok draw their buttons and caption
+# there. One setting for every check and layout: reel-defaults.json -> meme_layout.safe (a project raises its bottom
+# for TikTok, say); this is its fallback. Before 1.22 only the memes read the setting, while textcheck, B-roll windows,
+# callouts, faces.py and matte.py kept these numbers of their own (review 2026-10-30).
+UI_SAFE = {"top": 220, "bottom": 420, "right": 120, "left": 40}
+_UI_SAFE_SEEN = {}
+
+
+def ui_safe(project=None):
+    """{top, bottom, right, left}: the UI zone of this project, every defaults layer read (defaults_layers), a side the
+    layers leave out from UI_SAFE. Kept per project and per state of its files, so a check that asks for every frame
+    reads them once."""
+    root = Path(project or project_root())
+    files = (DEFAULTS_LOCAL, root / PROJECT_DEFAULTS)
+    state = (str(root), tuple((str(f), Path(f).stat().st_mtime_ns) if Path(f).is_file() else None for f in files))
+    if state not in _UI_SAFE_SEEN:
+        safe = (load_defaults(root).get("meme_layout") or {}).get("safe") or {}
+        _UI_SAFE_SEEN[state] = {k: int(safe.get(k, v)) for k, v in UI_SAFE.items()}
+    return dict(_UI_SAFE_SEEN[state])
+
+
+def ui_zone(left=None, project=None):
+    """(x0, y0, x1, y1) of the frame outside the UI zone; left: another left edge (a B-roll window may touch it)."""
+    s = ui_safe(project)
+    return (s["left"] if left is None else left, s["top"], 1080 - s["right"], 1920 - s["bottom"])
+
+
 # The height of the kit's subtitle block at its most, two lines (Subtitles.tsx GEO: "Typewriter" 2 x 56 x 1.22; "Bar"
-# 2 plates of 60 x 1.15 + 13 with a 6 px gap; "Accent" 2 x 66 x 1.15 + 16): export records the band the render has as
+# 2 plates of 60 x 1.15 + 13 with a 6 px gap; "Accent" 2 x 66 x 1.15 + 16): stage records the band the render has as
 # [top, top + this], below the UI line. The kit never draws a third line (T4: a 56-character phrase wrapped into three
 # lines reached y 1455 while the recorded band ended at 1430).
 SUB_BLOCK_H = {"typewriter": 137, "plate": 170, "accent": 168}
@@ -449,7 +478,7 @@ SUB_BLOCK_H = {"typewriter": 137, "plate": 170, "accent": 168}
 # optional caps label above it. edit/<id>/reel.json -> "format": "framed", "window": [x, y, w, h] (optional, FRAMED_WINDOW
 # by default), "label": "..." (optional), "subtitles_at": "below" (optional: the subtitle band on the field under the
 # window, not inside it). One window for every script and the kit: faces.py maps its measurement into
-# it, visual_plan.py clamps the camera to it and keeps text inside it, export hands it to ReelKit (props.framed), which
+# it, visual_plan.py clamps the camera to it and keeps text inside it, stage hands it to ReelKit (props.framed), which
 # draws the window, the label and the video inside it (no per-video composition).
 FORMATS = ("full", "framed")
 FRAMED_WINDOW = (25, 340, 1030, 1240)
@@ -483,7 +512,7 @@ def framed_at(e):
 
 
 def framed_issues(s):
-    """Problems of the format keys (format, window, label) in a video's settings: [] when they are fine."""
+    """Problems of the format fields (format, window, label) in a video's settings: [] when they are fine."""
     s = s or {}
     out, fmt, win = [], s.get("format"), s.get("window")
     if fmt is not None and fmt not in FORMATS:
@@ -575,7 +604,7 @@ def speaker_of(w):
 
 
 # --- Numbers and line breaks in speech: structure.py signs, visual_plan.py hints, subs.py lines ---
-# A number is a token of its own: digits with separators, a sign, a currency, %, an ordinal ending ("3rd", Russian
+# A number is a word of its own: digits with separators, a sign, a currency, %, an ordinal ending ("3rd", Russian
 # "5-ti"); digits inside a word ("ACME24", "B2B", "COVID-19") are a name, not a number (T3: a brand name with digits was
 # taken for a number: a stat-scene hint, "a number -> a card" and the "number" sign on lines without one).
 NUMBER_RE = re.compile(r"(?<![\w\-])[+\-\u2212~\u2248]?[$\u20ac\u00a3\u20bd\u00a5\u20b8]?\d+(?:[.,:/'\u2009\u00a0]\d+)*"
@@ -648,15 +677,15 @@ AFTER_WORDS = set("\u043b\u0438 \u0436\u0435 \u0431\u044b \u043b\u044c \u0436 \u
 _EDGE = "\"'()[]{}<>,.;:!?\u2026\u00ab\u00bb\u201c\u201d\u201e\u2018\u2019"
 
 
-def bare(token):
-    """A token without the punctuation around it, lowercase, Russian yo as ye (the word lists hold the ye spelling)."""
-    return str(token).strip(_EDGE + " ").lower().replace("\u0451", "\u0435")
+def bare(term):
+    """A word without the punctuation around it, lowercase, Russian yo as ye (the word lists hold the ye spelling)."""
+    return str(term).strip(_EDGE + " ").lower().replace("\u0451", "\u0435")
 
 
-def is_number(token):
+def is_number(term):
     """A number of its own: digits ("12", "60%", "$100", "3rd", "5+") or a number word ("five", Russian "pyati")."""
-    t = str(token).strip(_EDGE + " ")
-    b = bare(token)
+    t = str(term).strip(_EDGE + " ")
+    b = bare(term)
     return bool(NUMBER_RE.fullmatch(t)) or b in NUMBER_WORDS or bool(NUMBER_STEM.match(b))
 
 
@@ -672,7 +701,7 @@ def no_break(prev, nxt):
 
 
 def migrate_brand(b):
-    """Bring a profile up to the current schema: only add keys, never delete. -> list of "what changed" lines.
+    """Bring a profile up to the current schema: only add fields, never delete. -> list of "what changed" lines.
     Schema 1 (no schema, or 1) -> 2: tone, if missing, becomes expert."""
     notes = []
     if int(b.get("schema") or 1) < 2:
@@ -810,7 +839,7 @@ INTENSITY_ORDER = ["minimal", "moderate", "active"]
 def profile_settings(prof, rules, doc, tone_override=False):
     """The profile's defaults under the brand tone's ceiling -> (settings, notes). A louder intensity than the tone's
     is held at the tone's (tone_override lifts it); scene_tone may be a list: the first tone the brand allows, none
-    allowed -> the key is left to the tone."""
+    allowed -> the setting is left to the tone."""
     out, notes = {}, []
     for k, v in (prof.get("settings") or {}).items():
         if k == "intensity":
@@ -833,14 +862,14 @@ def profile_settings(prof, rules, doc, tone_override=False):
 def load_config(edit=None, overrides=None, project=None):
     """Layers, in the order of references/brands.md ("Layers"): skill defaults (+ reel-defaults.local.json, the add-on's)
     <- brand tone preset defaults (brand.json -> tone; never inserts) <- the project's reel-defaults.json <-
-    REELS_DEFAULTS_OVERLAY <- the video's profile (profile_rules, capped by the brand tone) <- brand profile (inserts) <-
+    the video's profile (profile_rules, capped by the brand tone) <- brand profile (inserts) <-
     edit/<id>/reel.json <- overrides (words from the prompt). settings["profile_rules"] is the resolved profile or None. settings["brand_tone"] is the resolved brand tone (the
     ceilings for visual_plan.py validate); it comes only from the profile, reel.json can't change it (going louder
     takes tone_override). Returns (settings, provenance, defaults_doc, brand_dir, brand)."""
     project = project or project_root()
     doc, prov = {}, {}
     for label, layer in defaults_layers(project):
-        if isinstance(layer.get("settings"), dict):  # an old key name in a project's or the add-on's defaults
+        if isinstance(layer.get("settings"), dict):  # an old setting name in a project's or the add-on's defaults
             layer = {**layer, "settings": renamed(layer["settings"])}
         doc = _merge(doc, layer)
         for k in (layer.get("settings") or {}):
@@ -1054,7 +1083,7 @@ STOP = set("the a an of to in on and or for with is are be at by from as it this
 _YO, _YE = chr(0x451), chr(0x435)
 
 
-def tokens(s):
+def terms(s):
     s = re.sub(r"(?<=[a-z])(?=[A-Z])", " ", s or "")  # split camelCase file names before lowercasing
     s = s.lower().replace(_YO, _YE)  # Russian yo -> ye: both spellings match
     return [t for t in re.split(r"[\W_]+", s) if t and t not in STOP and len(t) > 1]
@@ -1069,7 +1098,7 @@ def _match(a, b):
 
 def score(query, text):
     """Share of the query's words found in the text (a word matches by its stem: a common prefix of 4+ letters)."""
-    q, t = tokens(query), set(tokens(text))
+    q, t = terms(query), set(terms(text))
     if not q:
         return 0.0
     hit = sum(1 for a in q if any(_match(a, b) for b in t))
@@ -1079,10 +1108,10 @@ def score(query, text):
 def forbidden_hits(brand, text):
     """Which imagery the brand forbids (forbidden_imagery / _en) resembles the text. Words match allowing for
     endings (globe/globes), without false hits like hands ~ handshake."""
-    tt = set(tokens(text))
+    tt = set(terms(text))
     hits = []
     for f in (brand or {}).get("forbidden_imagery", []) + (brand or {}).get("forbidden_imagery_en", []):
-        ft = tokens(f)
+        ft = terms(f)
 
         def near(t):
             for t2 in tt:
@@ -1172,11 +1201,11 @@ def take_stems(text):
     return [stem(w) for w in take_words(text) if significant(w)]
 
 
-def restart_at(ws):
+def restart_at(wlist):
     """The restart phrase (RESTART_WORDS) in a list of take_words, or None."""
-    for k in range(len(ws)):
+    for k in range(len(wlist)):
         for p in RESTART_WORDS:
-            if tuple(ws[k:k + len(p)]) == p:
+            if tuple(wlist[k:k + len(p)]) == p:
                 return " ".join(p)
     return None
 
@@ -1333,14 +1362,16 @@ def stage_public(rem, props, dest):
 
 @contextlib.contextmanager
 def remotion_tmp(rem=None, props=None, comp=None, quiet=False):
-    """with remotion_tmp(rem, props, comp) as (env, args): subprocess.run(cmd + args, cwd=rem, env=env)
-    A run folder <temp>/it-reelsmaker/r-<pid>-<n>/ as the run's TEMP, TMP and TMPDIR, removed when the block ends
+    """with remotion_tmp(rem, props, comp) as (run_dir, args): subprocess.run(cmd + args, cwd=rem)
+    A run folder <temp>/it-reelsmaker/r-<pid>-<n>/ as TEMP, TMP and TMPDIR of the processes started inside the block
+    (set for them with os.putenv and set back to the system temp folder after it), removed when the block ends
     (success, error, Ctrl+C), waiting up to TMP_WAIT_S for Windows to release the files; what is still held goes to
     pending.json and the next run removes it. A ReelKit / ReelCover run with props also gets args =
     ["--public-dir=<run folder>/public"] with only that video's files. props: the dict, or a path to the props file.
-    "temp_cleanup": false in it-reelsmaker.json -> the old behavior: no run folder, the project's public/."""
+    "temp_cleanup": false in it-reelsmaker.json -> the old behavior: no run folder (run_dir None), the project's
+    public/."""
     if not temp_cleanup_on():
-        yield dict(os.environ), []
+        yield None, []
         return
     try:
         freed = sweep_tmp()
@@ -1350,15 +1381,17 @@ def remotion_tmp(rem=None, props=None, comp=None, quiet=False):
     root.mkdir(parents=True, exist_ok=True)
     d = root / f"r-{os.getpid()}-{uuid.uuid4().hex[:6]}"
     d.mkdir()
-    env = {**os.environ, "TEMP": str(d), "TMP": str(d), "TMPDIR": str(d)}
     args = []
     if rem and comp in KIT_COMPS and props:
         doc = props if isinstance(props, dict) else load_json(props, None)
         if stage_public(rem, doc, d / "public"):
-            args = [f"--public-dir={d / 'public'}"]
+            args = ["--public-dir=" + str(d / "public")]
+    base = tempfile.gettempdir()  # this process's own temp folder, which os.putenv does not change
+    temp_for_children(d)
     try:
-        yield env, args
+        yield d, args
     finally:
+        temp_for_children(base)
         n = dir_size(d)
         if remove_tree(d):
             freed += n
@@ -1372,6 +1405,13 @@ def remotion_tmp(rem=None, props=None, comp=None, quiet=False):
             warn(f"Remotion still holds files in {d}: the next run removes them")
         if freed >= 1 << 20 and not quiet:
             print(f"temp files of Remotion removed: {freed / (1 << 20):.0f} MB", file=sys.stderr)
+
+
+def temp_for_children(folder):
+    """TEMP, TMP and TMPDIR of the processes this one starts from now on: os.putenv sets them in the environment the
+    children inherit, without reading or copying this process's variables."""
+    for name in ("TEMP", "TMP", "TMPDIR"):
+        os.putenv(name, str(folder))
 
 
 def remotion_leftovers(hours=24.0, now=None, measure=True):

@@ -6,7 +6,7 @@ import { GEN } from "./gen/registry";
 export const RemotionRoot: React.FC = () => {
   return (
     <>
-      {/* The template for any brand: the data comes as props (visual_plan.py export --props):
+      {/* The template for any brand: the data comes as props (visual_plan.py stage --props):
           npx remotion render ReelKit out/<name>.mp4 --props=edit/<id>/reelkit-props.json */}
       <Composition
         id="ReelKit"

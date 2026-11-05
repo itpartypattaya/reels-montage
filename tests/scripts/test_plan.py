@@ -122,7 +122,7 @@ def test_export_refuses_a_folder_that_is_not_a_remotion_project(project):
     write_json(e / "visual_plan.json", {"id": "4821", "brand": "acme", "duration": 10, "inserts": []})
     wrong = project / "not-remotion"
     wrong.mkdir()
-    r = run_script("visual_plan.py", "export", "edit/4821", "--remotion", wrong, "--force", cwd=project, check=False)
+    r = run_script("visual_plan.py", "stage", "edit/4821", "--remotion", wrong, "--force", cwd=project, check=False)
     assert r.returncode != 0 and "not a Remotion project" in (r.stdout + r.stderr)
     assert not (wrong / "src").exists() and not (wrong / "public").exists()
 
@@ -253,9 +253,9 @@ def test_a_list_over_the_video_exports_its_box_and_the_subtitle_gap(project):
     rem = project / "reels"
     (rem / "src").mkdir(parents=True)
     write_json(rem / "package.json", {"name": "reels"})
-    run_script("brand.py", "export", "acme", "--remotion", rem, cwd=project)
+    run_script("brand.py", "stage", "acme", "--remotion", rem, cwd=project)
     (e / "final.mp4").write_bytes(b"a rough cut")  # export only copies it
-    run_script("visual_plan.py", "export", "edit/4821", "--remotion", rem, "--props", rem / "props.json", cwd=project)
+    run_script("visual_plan.py", "stage", "edit/4821", "--remotion", rem, "--props", rem / "props.json", cwd=project)
     props = json.loads((rem / "props.json").read_text(encoding="utf-8"))
     sp = props["scenes"][0]
     assert sp["type"] == "list" and sp["mode"] == "overlay" and sp["hide_subtitles"] is True
@@ -289,9 +289,9 @@ def test_one_subtitle_band_for_faces_validate_and_the_render(project):
     rem = project / "reels"
     (rem / "src").mkdir(parents=True)
     write_json(rem / "package.json", {"name": "reels"})
-    run_script("brand.py", "export", "acme", "--remotion", rem, cwd=project)
+    run_script("brand.py", "stage", "acme", "--remotion", rem, cwd=project)
     (e / "final.mp4").write_bytes(b"a rough cut")
-    run_script("visual_plan.py", "export", "edit/4821", "--remotion", rem, "--props", rem / "props.json",
+    run_script("visual_plan.py", "stage", "edit/4821", "--remotion", rem, "--props", rem / "props.json",
                "--force", cwd=project)
     props = json.loads((rem / "props.json").read_text(encoding="utf-8"))
     top = props["subtitlesTop"]
@@ -392,9 +392,9 @@ def test_hide_subs_reach_the_props_and_the_audit(project):
     rem = project / "reels"
     (rem / "src").mkdir(parents=True)
     write_json(rem / "package.json", {"name": "reels"})
-    run_script("brand.py", "export", "acme", "--remotion", rem, cwd=project)
+    run_script("brand.py", "stage", "acme", "--remotion", rem, cwd=project)
     (e / "final.mp4").write_bytes(b"a rough cut")
-    run_script("visual_plan.py", "export", "edit/4821", "--remotion", rem, "--props", rem / "props.json", cwd=project)
+    run_script("visual_plan.py", "stage", "edit/4821", "--remotion", rem, "--props", rem / "props.json", cwd=project)
     assert json.loads((rem / "props.json").read_text(encoding="utf-8"))["hideSubtitles"] == [[23.4, 26.7]]
     run_script("visual_plan.py", "hide-subs", "edit/4821", "--remove", "1", cwd=project)
     assert load_plan(e)["hide_subtitles"] == []
@@ -430,7 +430,7 @@ def test_a_presenter_layer_counts_in_the_coverage_and_its_face_is_its_own(projec
     rem = project / "reels"
     (rem / "src").mkdir(parents=True)
     write_json(rem / "package.json", {"name": "reels"})
-    run_script("visual_plan.py", "export", "edit/4821", "--remotion", rem, cwd=project)
+    run_script("visual_plan.py", "stage", "edit/4821", "--remotion", rem, cwd=project)
     assert (rem / "public" / "4821" / "host.webm").read_bytes() == b"a cut-out"
 
 
@@ -501,7 +501,7 @@ def test_reelcfg_knows_every_default_key(project):
     assert set(defaults["settings"]) <= reelcfg.KNOWN
     plan_project(project)
     r = run_script("reelcfg.py", "save", "edit/4821", "--set", "subtitles_shade=0.4", cwd=project)
-    assert "unknown key" not in r.stderr
+    assert "unknown setting" not in r.stderr
 
 
 def test_init_counts_designed_scenes_as_inserts(project):
@@ -699,12 +699,12 @@ def test_the_last_two_seconds_count_from_the_end_card(project):
     rem = project / "reels"
     (rem / "src").mkdir(parents=True)
     write_json(rem / "package.json", {"name": "reels"})
-    run_script("visual_plan.py", "export", "edit/4821", "--remotion", rem, "--sting", cwd=project)
+    run_script("visual_plan.py", "stage", "edit/4821", "--remotion", rem, "--sting", cwd=project)
     assert load_plan(e)["end_card"] == {"kind": "sting", "seconds": 2.6}
     assert rule not in run_script("visual_plan.py", "validate", "edit/4821", cwd=project, check=False).stdout
-    run_script("visual_plan.py", "export", "edit/4821", "--remotion", rem, "--force", cwd=project)  # the sting stays
+    run_script("visual_plan.py", "stage", "edit/4821", "--remotion", rem, "--force", cwd=project)  # the sting stays
     assert load_plan(e)["end_card"] == {"kind": "sting", "seconds": 2.6}
-    run_script("visual_plan.py", "export", "edit/4821", "--remotion", rem, "--no-end", "--force", cwd=project)
+    run_script("visual_plan.py", "stage", "edit/4821", "--remotion", rem, "--no-end", "--force", cwd=project)
     assert "end_card" not in load_plan(e)
     assert rule in run_script("visual_plan.py", "validate", "edit/4821", cwd=project, check=False).stdout
 
@@ -844,7 +844,7 @@ def test_a_failed_export_records_no_end_card(project):
     # failed export a plain validate counted a sting that was never exported
     e = plan_project(project)
     run_script("visual_plan.py", "init", "edit/4821", cwd=project)
-    r = run_script("visual_plan.py", "export", "edit/4821", "--remotion", project / "nope", "--sting", "--force",
+    r = run_script("visual_plan.py", "stage", "edit/4821", "--remotion", project / "nope", "--sting", "--force",
                    cwd=project, check=False)
     assert r.returncode != 0 and "not a Remotion project" in (r.stdout + r.stderr)
     assert "end_card" not in load_plan(e)
@@ -860,9 +860,9 @@ def test_a_plain_edit_needs_no_init(project):
     rem = project / "reels"
     (rem / "src").mkdir(parents=True)
     write_json(rem / "package.json", {"name": "reels"})
-    run_script("brand.py", "export", "acme", "--remotion", rem, cwd=project)
+    run_script("brand.py", "stage", "acme", "--remotion", rem, cwd=project)
     (e / "final.mp4").write_bytes(b"a rough cut")
-    run_script("visual_plan.py", "export", "edit/4821", "--remotion", rem, "--props", rem / "props.json", cwd=project)
+    run_script("visual_plan.py", "stage", "edit/4821", "--remotion", rem, "--props", rem / "props.json", cwd=project)
     assert (rem / "props.json").is_file()
 
 
@@ -876,7 +876,7 @@ def _export_project(project, e):
     rem = project / "reels"
     (rem / "src").mkdir(parents=True, exist_ok=True)
     write_json(rem / "package.json", {"name": "reels"})
-    run_script("brand.py", "export", "acme", "--remotion", rem, cwd=project)
+    run_script("brand.py", "stage", "acme", "--remotion", rem, cwd=project)
     (e / "final.mp4").write_bytes(b"a rough cut")
     return rem
 
@@ -887,17 +887,17 @@ def test_a_re_export_keeps_the_hook_corner_and_end_card(project):
     e = plan_project(project, {"use_broll": False, "use_scenes": False, "use_memes": False})
     rem = _export_project(project, e)
     props = rem / "props.json"
-    run_script("visual_plan.py", "export", "edit/4821", "--remotion", rem, "--props", props, "--hook", "Hire in 12 days",
+    run_script("visual_plan.py", "stage", "edit/4821", "--remotion", rem, "--props", props, "--hook", "Hire in 12 days",
                "--card", "Message us", "a free shortlist", "--corner", cwd=project)
     first = json.loads(props.read_text(encoding="utf-8"))
     assert first["hook"]["text"] == "Hire in 12 days" and first["corner"] is True
     assert first["endCard"]["line1"] == "Message us" and first["endCard"]["line2"] == "a free shortlist"
-    r = run_script("visual_plan.py", "export", "edit/4821", "--remotion", rem, "--props", props, cwd=project)
-    assert "kept from the last export: hook, corner logo, end (card)" in r.stdout
+    r = run_script("visual_plan.py", "stage", "edit/4821", "--remotion", rem, "--props", props, cwd=project)
+    assert "kept from the last stage: hook, corner logo, end (card)" in r.stdout
     again = json.loads(props.read_text(encoding="utf-8"))
     assert (again["hook"], again["corner"], again["endCard"]) == (first["hook"], first["corner"], first["endCard"])
     assert load_plan(e)["end_card"] == {"kind": "card", "seconds": 2.6}
-    run_script("visual_plan.py", "export", "edit/4821", "--remotion", rem, "--props", props, "--no-hook", cwd=project)
+    run_script("visual_plan.py", "stage", "edit/4821", "--remotion", rem, "--props", props, "--no-hook", cwd=project)
     off = json.loads(props.read_text(encoding="utf-8"))
     assert off["hook"] is None and off["endCard"] == first["endCard"] and "hook" not in load_plan(e)
 
@@ -911,34 +911,57 @@ def test_a_plan_exported_before_1_13_asks_for_the_texts_again(project):
     plan.update({"hook": True, "corner": True, "end_card": {"kind": "card", "seconds": 2.6}})
     write_json(e / "visual_plan.json", plan)
     rem = _export_project(project, e)
-    r = run_script("visual_plan.py", "export", "edit/4821", "--remotion", rem, "--props", rem / "props.json", cwd=project,
+    r = run_script("visual_plan.py", "stage", "edit/4821", "--remotion", rem, "--props", rem / "props.json", cwd=project,
                    check=False)
     out = r.stdout + r.stderr
-    assert r.returncode != 0 and "pass --hook again" in out and "pass --card again" in out
+    assert r.returncode != 0 and "give --hook again" in out and "give --card again" in out
     assert not (rem / "props.json").exists()
     kept = load_plan(e)
-    assert kept["end_card"] == {"kind": "card", "seconds": 2.6} and kept["hook"] is True and "export" not in kept
+    assert kept["end_card"] == {"kind": "card", "seconds": 2.6} and kept["hook"] is True and "finish" not in kept
     assert "the video is 32.60 s" in run_script("visual_plan.py", "validate", "edit/4821", cwd=project, check=False).stdout
-    run_script("visual_plan.py", "export", "edit/4821", "--remotion", rem, "--props", rem / "props.json",
+    run_script("visual_plan.py", "stage", "edit/4821", "--remotion", rem, "--props", rem / "props.json",
                "--card", "Message us", "--no-hook", cwd=project)
     props = json.loads((rem / "props.json").read_text(encoding="utf-8"))
     assert props["corner"] is True and props["hook"] is None and props["endCard"]["line1"] == "Message us"
+
+
+def test_a_plan_staged_by_1_21_keeps_its_ending_or_asks_for_it(project):
+    # 1.22 renamed the plan's record of the ending ("export" -> "finish", the directory's scan read the word as a
+    # shell command). A video planned and staged by 1.21 must not lose its ending silently: the corner logo stays,
+    # and the next stage stops until the hook and the card's lines come back or are taken off
+    e = plan_project(project, {"use_broll": False, "use_scenes": False, "use_memes": False})
+    run_script("visual_plan.py", "validate", "edit/4821", cwd=project)
+    plan = load_plan(e)
+    plan.update({"export": {"hook": "Hi there", "corner": True, "end": {"kind": "card", "lines": ["Message us"]}},
+                 "hook": True, "corner": True, "end_card": {"kind": "card", "seconds": 2.6}})
+    write_json(e / "visual_plan.json", plan)
+    rem = _export_project(project, e)
+    r = run_script("visual_plan.py", "stage", "edit/4821", "--remotion", rem, "--props", rem / "props.json", cwd=project,
+                   check=False)
+    out = r.stdout + r.stderr
+    assert r.returncode != 0 and "give --hook again" in out and "give --card again" in out
+    assert not (rem / "props.json").exists()
+    run_script("visual_plan.py", "stage", "edit/4821", "--remotion", rem, "--props", rem / "props.json",
+               "--card", "Message us", "--hook", "Hi there", cwd=project)
+    props = json.loads((rem / "props.json").read_text(encoding="utf-8"))
+    assert props["corner"] is True and props["hook"]["text"] == "Hi there" and props["endCard"]["line1"] == "Message us"
+    assert load_plan(e)["finish"]["end"] == {"kind": "card", "lines": ["Message us"]}
 
 
 def test_init_keeps_the_last_exports_choices(project):
     # review 2026-10-18 (Fable P2): init after an export lost the hook and the end card
     e = plan_project(project, {"use_broll": False, "use_scenes": False, "use_memes": False})
     rem = _export_project(project, e)
-    run_script("visual_plan.py", "export", "edit/4821", "--remotion", rem, "--card", "Message us", "--corner", cwd=project)
+    run_script("visual_plan.py", "stage", "edit/4821", "--remotion", rem, "--card", "Message us", "--corner", cwd=project)
     run_script("reelcfg.py", "save", "edit/4821", "--set", "use_scenes=true", cwd=project)
     r = run_script("visual_plan.py", "validate", "edit/4821", cwd=project, check=False)
     assert r.returncode != 0 and "run visual_plan.py init" in (r.stdout + r.stderr)  # the auto plan asks for init
     run_script("visual_plan.py", "init", "edit/4821", cwd=project)
     plan = load_plan(e)
-    assert plan["export"]["end"] == {"kind": "card", "lines": ["Message us"]} and plan["corner"] is True
+    assert plan["finish"]["end"] == {"kind": "card", "lines": ["Message us"]} and plan["corner"] is True
     assert "auto" not in plan
-    r = run_script("visual_plan.py", "export", "edit/4821", "--remotion", rem, "--props", rem / "p.json", cwd=project)
-    assert "kept from the last export" in r.stdout
+    r = run_script("visual_plan.py", "stage", "edit/4821", "--remotion", rem, "--props", rem / "p.json", cwd=project)
+    assert "kept from the last stage" in r.stdout
 
 
 def test_a_plain_plan_needs_the_rough_cut(project):
@@ -964,7 +987,7 @@ def test_workflow_values_and_a_series_preset(project):
     run_script("reelcfg.py", "save", "edit/4821", "--set", "workflow=quick", "subtitles_shade=0.4", cwd=project)
     assert "workflow: quick" in run_script("reelcfg.py", "show", "edit/4821", cwd=project).stdout
     rem = _export_project(project, e)
-    run_script("visual_plan.py", "export", "edit/4821", "--remotion", rem, "--card", "Message us", "a free shortlist",
+    run_script("visual_plan.py", "stage", "edit/4821", "--remotion", rem, "--card", "Message us", "a free shortlist",
                "--corner", cwd=project)
     run_script("reelcfg.py", "preset", "save", "weekly", "--from", "edit/4821", cwd=project)
     doc = json.loads((project / "presets" / "weekly.json").read_text(encoding="utf-8"))
@@ -978,7 +1001,7 @@ def test_workflow_values_and_a_series_preset(project):
     reel = json.loads((e2 / "reel.json").read_text(encoding="utf-8"))
     assert reel["style"] == "brand" and reel["finish"]["corner"] is True
     (e2 / "final.mp4").write_bytes(b"a rough cut")
-    r = run_script("visual_plan.py", "export", "edit/4822", "--remotion", rem, "--props", rem / "p2.json", cwd=project)
+    r = run_script("visual_plan.py", "stage", "edit/4822", "--remotion", rem, "--props", rem / "p2.json", cwd=project)
     assert "kept from the series preset" in r.stdout
     props = json.loads((rem / "p2.json").read_text(encoding="utf-8"))
     assert props["corner"] is True and props["endCard"]["line1"] == "Message us" and props["hook"] is None
@@ -1054,9 +1077,9 @@ def test_a_preset_does_not_hide_an_old_plans_texts(project):
     plan.update({"hook": True, "end_card": {"kind": "card", "seconds": 2.6}})
     write_json(e / "visual_plan.json", plan)
     rem = _export_project(project, e)
-    r = run_script("visual_plan.py", "export", "edit/4821", "--remotion", rem, "--props", rem / "p.json", cwd=project,
+    r = run_script("visual_plan.py", "stage", "edit/4821", "--remotion", rem, "--props", rem / "p.json", cwd=project,
                    check=False)
-    assert r.returncode != 0 and "pass --card again" in (r.stdout + r.stderr)
+    assert r.returncode != 0 and "give --card again" in (r.stdout + r.stderr)
 
 
 def test_doctor_forgets_a_pass_after_a_failure(project):

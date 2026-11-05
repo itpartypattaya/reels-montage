@@ -32,7 +32,7 @@ The model sometimes sees a face where there is none: in knees, folded hands, clo
   - **size unlike the faces around it** — width outside 0.35–1.8 of the median of confident faces in a ±2 s window (a shot change or B-roll does not break the comparison);
   - **appeared in a single sample** with confidence < 0.7 — the time-adjacent samples (no more than 1.5 steps away) have nothing at this spot. For several widely spaced frames (checking a meme on three frames) this rule is off.
 
-A second real person in the frame (a two-person sketch, someone lower down at the side) passes: they are not under someone else's face, and their box has face proportions and a similar size.
+A second real person in the frame (a two-person sketch, someone lower down at the side) is fine: they are not under someone else's face, and their box has face proportions and a similar size.
 
 Do not lose discarded boxes: store them separately (`samples[].rejected` with a reason), and in the measurement and audit reports add a line “discarded false ‘faces’: N (reason — count), interval”. A “no filter” mode is for debugging. If the filter threw out a real face (the person lay down or tilted their head strongly), the report shows it: “no face” where there is one — then check the frames by eye.
 
@@ -40,7 +40,7 @@ Do not lose discarded boxes: store them separately (`samples[].rejected` with a 
 
 ## 1. Measurement on the rough cut (after `cut.py`)
 
-1. Extract frames of `final.mp4` every 0.25 s in one ffmpeg pass: `fps=4,scale=540:960:force_original_aspect_ratio=increase,crop=540:960`. Half size: faster, and faces are found just as well.
+1. Extract frames of `final.mp4` every 0.25 s in one ffmpeg run: `fps=4,scale=540:960:force_original_aspect_ratio=increase,crop=540:960`. Half size: faster, and faces are found just as well.
 2. Run YuNet on every frame, boxes ×2 → 1080×1920 coordinates.
 3. Save to `edit/<id>/faces.json`: `{step, samples: [{t, faces: [[x,y,w,h,score], …]}]}`.
 
@@ -81,10 +81,10 @@ Every card, hook or CTA card over the video is entered in the plan as a `keep_cl
 
 **When.** Before showing the video to the person.
 
-**Tolerance.** The 60 px margin is the rule and is enforced when planning (zones, `keep_clear`, `validate`). The checks on finished frames (this audit and `textcheck.py`) count an overlap from 30 px (`faces.py` `CHECK_MARGIN`, half the rule; the subtitles also sit 30 px under the chin). Measured on 6 finished videos: the full 60 px flagged 4 moments in 3 of them, one a card just under a chin and the rest single 0.25 s samples with the text far from the face on the still (detector jitter). A card closer than 60 px that the audit lets through is still a planning error: `validate` catches it before the render.
+**Tolerance.** The 60 px margin is the rule and is enforced when planning (zones, `keep_clear`, `validate`). The checks on finished frames (this audit and `textcheck.py`) count an overlap from 30 px (`reels_common.py` `CHECK_MARGIN`, half the rule; the subtitles also sit 30 px under the chin). Measured on 6 finished videos: the full 60 px flagged 4 moments in 3 of them, one a card just under a chin and the rest single 0.25 s samples with the text far from the face on the still (detector jitter). A card closer than 60 px that the audit lets through is still a planning error: `validate` catches it before the render.
 
 **How.** The same measurement, but on the **render**: the camera, B-roll and graphics are already applied, so the faces are where the viewer sees them. Samples every 0.25 s are checked:
-- **against the subtitle band** — wherever speech is heard and the subtitles are on: scenes that hide them and the plan's `hide-subs` windows (subtitles hidden by a per-video composition, `visual_plan.py hide-subs`) are left out. Pass the actual band: the top and bottom of the subtitle card;
+- **against the subtitle band** — wherever speech is heard and the subtitles are on: scenes that hide them and the plan's `hide-subs` windows (subtitles hidden by a per-video composition, `visual_plan.py hide-subs`) are left out. Give it the actual band: the top and bottom of the subtitle card;
 - **against the `keep_clear` zones** — cards, hook, CTA; a presenter layer's own face (`keep-clear --own-face`) is not an overlap with its own zone;
 - **against meme boxes**;
 - **against the frame edge** — whether the top of the head is cut off.

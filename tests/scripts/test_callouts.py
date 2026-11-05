@@ -443,9 +443,9 @@ def export(project, e, *extra):
     rem = project / "reels"
     (rem / "src").mkdir(parents=True, exist_ok=True)
     write_json(rem / "package.json", {"name": "reels"})
-    run_script("brand.py", "export", "acme", "--remotion", rem, cwd=project)
+    run_script("brand.py", "stage", "acme", "--remotion", rem, cwd=project)
     (e / "final.mp4").write_bytes(b"a rough cut")  # export only copies it
-    r = run_script("visual_plan.py", "export", "edit/4821", "--remotion", rem, "--props", rem / "props.json", *extra,
+    r = run_script("visual_plan.py", "stage", "edit/4821", "--remotion", rem, "--props", rem / "props.json", *extra,
                    cwd=project, check=False)
     return r, (json.loads((rem / "props.json").read_text(encoding="utf-8")) if (rem / "props.json").exists() else None)
 

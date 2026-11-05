@@ -45,7 +45,7 @@ const SENTENCE_END = /[.!?\u2026]["\u00bb\u201d)]*$/;
 // keeps together (a short function word or a number with its word), rather not leaving a one-word chunk, at the longest
 // pause or after a comma nearest the middle — and each half again if needed. T3: a greedy 52-character cut gave
 // "...vacancies in different | fields:" and tails of one or two words.
-const wordsLen = (ws: Word[]) => ws.reduce((n, w) => n + w.text.length + 1, 0);
+const wordsLen = (wlist: Word[]) => wlist.reduce((n, w) => n + w.text.length + 1, 0);
 // two neighboring words of one "keep" group: a block never ends between them
 export const inKeep = (a?: Word, b?: Word) => !!a?.keep && a.keep === b?.keep;
 
@@ -53,16 +53,16 @@ export const inKeep = (a?: Word, b?: Word) => !!a?.keep && a.keep === b?.keep;
 // rather not leaving a one-word part, then at the longest pause or after a dash, colon or comma nearest the middle.
 // Returns the index of the second part's first word; it falls inside a keep group only when every split does (the run
 // is one group).
-export const bestSplit = (ws: Word[]): number => {
+export const bestSplit = (wlist: Word[]): number => {
   let best = 1;
   let bestScore: number[] | null = null;
-  for (let k = 1; k < ws.length; k++) {
-    const a = ws.slice(0, k);
-    const b = ws.slice(k);
-    const gap = Math.min(PAUSE, Math.max(0, ws[k].start - ws[k - 1].end));
-    const strong = /[;:—–]$/.test(ws[k - 1].text) ? 0.6 : /,$/.test(ws[k - 1].text) ? 0.3 : 0;
-    const score = [inKeep(ws[k - 1], ws[k]) ? 1 : 0, noBreak(ws[k - 1].text, ws[k].text) ? 1 : 0,
-      a.length === 1 || b.length === 1 ? 1 : 0, Math.abs(wordsLen(a) - wordsLen(b)) / wordsLen(ws) - 2 * gap - strong];
+  for (let k = 1; k < wlist.length; k++) {
+    const a = wlist.slice(0, k);
+    const b = wlist.slice(k);
+    const gap = Math.min(PAUSE, Math.max(0, wlist[k].start - wlist[k - 1].end));
+    const strong = /[;:—–]$/.test(wlist[k - 1].text) ? 0.6 : /,$/.test(wlist[k - 1].text) ? 0.3 : 0;
+    const score = [inKeep(wlist[k - 1], wlist[k]) ? 1 : 0, noBreak(wlist[k - 1].text, wlist[k].text) ? 1 : 0,
+      a.length === 1 || b.length === 1 ? 1 : 0, Math.abs(wordsLen(a) - wordsLen(b)) / wordsLen(wlist) - 2 * gap - strong];
     const j = bestScore ? score.findIndex((v, i) => v !== (bestScore as number[])[i]) : -1;
     if (!bestScore || (j >= 0 && score[j] < bestScore[j])) {
       bestScore = score;
@@ -75,7 +75,7 @@ export const bestSplit = (ws: Word[]): number => {
 export const buildChunks = (words: Word[], maxWords = 3, maxChars = 20): Chunk[] => {
   const len = wordsLen;
   // maxChars is a guide ("up to ~52 characters"): a whole phrase up to 10 % longer stays one chunk, the lines are measured anyway
-  const fits = (ws: Word[]) => ws.length <= maxWords && len(ws) - 1 <= maxChars * 1.1;
+  const fits = (wlist: Word[]) => wlist.length <= maxWords && len(wlist) - 1 <= maxChars * 1.1;
   const phrases: Word[][] = [];
   let cur: Word[] = [];
   words.forEach((w, k) => {
@@ -93,13 +93,13 @@ export const buildChunks = (words: Word[], maxWords = 3, maxChars = 20): Chunk[]
     }
   });
   if (cur.length) phrases.push(cur);
-  const split = (ws: Word[]): Word[][] => {
-    if (ws.length < 2 || fits(ws)) return [ws];
-    const best = bestSplit(ws);
-    if (inKeep(ws[best - 1], ws[best])) return [ws]; // one keep group: one chunk past the limits (fit() measures it)
-    return [...split(ws.slice(0, best)), ...split(ws.slice(best))];
+  const split = (wlist: Word[]): Word[][] => {
+    if (wlist.length < 2 || fits(wlist)) return [wlist];
+    const best = bestSplit(wlist);
+    if (inKeep(wlist[best - 1], wlist[best])) return [wlist]; // one keep group: one chunk past the limits (fit() measures it)
+    return [...split(wlist.slice(0, best)), ...split(wlist.slice(best))];
   };
-  const out: Chunk[] = phrases.flatMap(split).map((ws) => ({ words: ws, start: ws[0].start, end: ws[ws.length - 1].end }));
+  const out: Chunk[] = phrases.flatMap(split).map((wlist) => ({ words: wlist, start: wlist[0].start, end: wlist[wlist.length - 1].end }));
   out.forEach((c, k) => {
     const next = out[k + 1];
     c.end = next ? Math.min(next.start, c.end + 0.4) : c.end + 0.5;
@@ -121,7 +121,7 @@ const GEO = {
 type Geo = (typeof GEO)["plate"];
 type Block = Chunk & { lines: Word[][]; size: number; top: number };
 
-const text = (ws: Word[]) => ws.map((w, k) => (k && !w.glue ? " " : "") + w.text).join("");
+const text = (wlist: Word[]) => wlist.map((w, k) => (k && !w.glue ? " " : "") + w.text).join("");
 
 // windows without subtitles, overlapping or touching ones merged
 const mergeWindows = (hide: [number, number][]): [number, number][] => {
@@ -163,13 +163,13 @@ const Caret: React.FC<{ on: boolean; color: string }> = ({ on, color }) => (
 const height = (g: Geo, size: number, n: number) =>
   g === GEO.plate ? n *(size * g.lh + g.padT + g.padB) + (n - 1) * g.gap : n * size * g.lh + g.padT + g.padB;
 
-const toLines = (ws: Word[], g: Geo, font: string, ready: boolean, maxW: number = MAX_W): Word[][] => {
-  if (!ready) return [ws]; // do not measure before the font loads: measureText would cache the fallback font's width
+const toLines = (wlist: Word[], g: Geo, font: string, ready: boolean, maxW: number = MAX_W): Word[][] => {
+  if (!ready) return [wlist]; // do not measure before the font loads: measureText would cache the fallback font's width
   const width = (l: Word[]) =>
     measureText({ text: text(l), fontFamily: font, fontSize: g.size, fontWeight: g.weight, letterSpacing: `${TRACK}px` }).width + 2 * g.padH;
   const lines: Word[][] = [];
   let cur: Word[] = [];
-  ws.forEach((w) => {
+  wlist.forEach((w) => {
     if (cur.length && width([...cur, w]) > maxW) {
       // a short function word or a number never ends a line: it moves down with its word
       const keep = cur.length > 1 && noBreak(cur[cur.length - 1].text, w.text) ? [cur.pop() as Word] : [];
@@ -184,16 +184,16 @@ const toLines = (ws: Word[], g: Geo, font: string, ready: boolean, maxW: number 
   // that sales | left"), still never after a short function word or a number
   let best = -1;
   let bestW = Infinity;
-  for (let k = 1; k < ws.length; k++) {
-    if (noBreak(ws[k - 1].text, ws[k].text)) continue;
-    const w1 = width(ws.slice(0, k));
-    const w2 = width(ws.slice(k));
+  for (let k = 1; k < wlist.length; k++) {
+    if (noBreak(wlist[k - 1].text, wlist[k].text)) continue;
+    const w1 = width(wlist.slice(0, k));
+    const w2 = width(wlist.slice(k));
     if (w1 <= maxW && w2 <= maxW && Math.max(w1, w2) < bestW) {
       bestW = Math.max(w1, w2);
       best = k;
     }
   }
-  return best > 0 ? [ws.slice(0, best), ws.slice(best)] : lines;
+  return best > 0 ? [wlist.slice(0, best), wlist.slice(best)] : lines;
 };
 
 const MAX_LINES = 2; // a subtitle block is one or two lines: the band export records (reels_common.SUB_BLOCK_H) holds two
@@ -292,21 +292,21 @@ export const KitSubtitles: React.FC<{
     // a chunk that measures more than two lines is split again where it reads as two (bestSplit), each part on its own;
     // a keep group too wide for two lines is split as if it had no mark (the mode's limits), with a warning (seen in
     // the Remotion log with --log=verbose; cut.py --dry-run names a long group before)
-    const fit = (ws: Word[]): Word[][] => {
-      if (ws.length < 2 || toLines(ws, g, font, ready, maxW).length <= MAX_LINES) return [ws];
-      const k = bestSplit(ws);
-      if (inKeep(ws[k - 1], ws[k])) {
-        console.warn(`kit subtitles: the keep phrase ${ws[0].keep} "${text(ws)}" does not fit two lines: split as usual`);
-        return buildChunks(ws.map(({ keep: _k, ...w }) => w), maxWords, maxChars).flatMap((c) => fit(c.words));
+    const fit = (wlist: Word[]): Word[][] => {
+      if (wlist.length < 2 || toLines(wlist, g, font, ready, maxW).length <= MAX_LINES) return [wlist];
+      const k = bestSplit(wlist);
+      if (inKeep(wlist[k - 1], wlist[k])) {
+        console.warn(`kit subtitles: the keep phrase ${wlist[0].keep} "${text(wlist)}" does not fit two lines: split as usual`);
+        return buildChunks(wlist.map(({ keep: _k, ...w }) => w), maxWords, maxChars).flatMap((c) => fit(c.words));
       }
-      return [...fit(ws.slice(0, k)), ...fit(ws.slice(k))];
+      return [...fit(wlist.slice(0, k)), ...fit(wlist.slice(k))];
     };
     const out: Block[] = [];
     buildChunks(words, maxWords, maxChars).forEach((c0) => {
       const pieces = fit(c0.words);
-      pieces.forEach((ws, i) => {
-        const c = { start: i ? ws[0].start : c0.start, end: i + 1 < pieces.length ? pieces[i + 1][0].start : c0.end };
-        const lines = toLines(ws, g, font, ready, maxW);
+      pieces.forEach((wlist, i) => {
+        const c = { start: i ? wlist[0].start : c0.start, end: i + 1 < pieces.length ? pieces[i + 1][0].start : c0.end };
+        const lines = toLines(wlist, g, font, ready, maxW);
         // a single long word wider than the frame shrinks the font size (fitSize) instead of running past the edge
         const size = Math.min(g.size, ...lines.map((l) => fitSize({ text: text(l), size: g.size, font, weight: g.weight,
           maxWidth: maxW, padEm: g.padH / g.size, ready })));

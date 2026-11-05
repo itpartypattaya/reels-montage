@@ -11,8 +11,8 @@ one, otherwise a frame of its own choosing (a B-roll frame from the middle, say)
     python scripts/poster.py attach out/x-master.mp4 --cover edit/<id>/cover.jpg -o out/y.mp4
 
 The usual way: pick the cover here, then master_audio.py out/x.mp4 -o out/x-master.mp4 --cover edit/<id>/cover.jpg runs
-bake and attach itself and puts out/x-cover.jpg next to the master; bake and attach by hand are for a file made some
-other way.
+attach itself and puts out/x-cover.jpg next to the master. bake is by hand only: it re-encodes the whole video to put
+the cover into frame 0, so the master no longer does it (since 1.22).
 
 pick  — a "settled" frame from the render: --t; otherwise from the visual plan, the hook scene's settled window
         (after its entrance and before its exit, by the scene tone, references/scenes.md), otherwise the cover scene's,
@@ -30,26 +30,26 @@ pick  — a "settled" frame from the render: --t; otherwise from the visual plan
         A cover with text over the frame is drawn by the ReelCover composition (`kit.py still edit/<id> --comp ReelCover --frame 0`).
 bake  — replaces ONLY frame 0 with the cover image (overlay enable='eq(n,0)'); video libx264 crf 18 preset slow yuv420p,
         audio copied, +faststart. Check: the frame count (ffprobe -count_frames) and the video and audio durations are
-        the same before and after, and frame 0 = the cover; otherwise exit code 1 (do not deliver the file). Order
-        (SKILL.md step 9): render → faces.py audit (on the render) → pick → master_audio.py --cover (bake, mastering
-        that copies the video so frame 0 is kept, attach).
+        the same before and after, and frame 0 = the cover; otherwise exit code 1 (do not deliver the file). Only on
+        request: it encodes the whole video again. Order (SKILL.md step 9): render → faces.py audit (on the render) →
+        pick → master_audio.py --cover (mastering, attach, the jpg next to the master).
 attach — embeds the cover as cover art (an attached picture, mp4 "covr"): what file managers show as the thumbnail.
         Nothing is re-encoded; the last step, after master_audio.py (mastering keeps only the first video stream).
         Check: the video and audio streams and durations are unchanged and the cover is in the file; otherwise exit 1.
 guide — the same image with frames: the profile grid crop 3:4 (center 1080×1440, NOT CONFIRMED, check in the app)
-        and 1:1 (center 1080×1080), in red the UI zones (top 0–220, bottom 1500–1920, right x > 960). The cover's
+        and 1:1 (center 1080×1080), in red the UI zones (by default top 0–220, bottom 1500–1920, right x > 960; the project's
+        own zone when it sets one, reels_common.ui_safe). The cover's
         hook must fit entirely inside 1:1 and stay out of the red.
 """
 import argparse, json, re, shutil, subprocess, sys, tempfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from reels_common import local_media_args, edit_dir, load_config, load_json, utf8_stdio, warn
+from reels_common import local_media_args, edit_dir, load_config, load_json, ui_safe, utf8_stdio, warn
 
 W, H = 1080, 1920
 GRID_34 = (0, 240, 1080, 1440)   # 3:4 centered in the 9:16 frame, NOT CONFIRMED (Instagram profile grid)
 GRID_11 = (0, 420, 1080, 1080)   # 1:1 centered
-UI = [(0, 0, 1080, 220), (0, 1500, 1080, 420), (960, 220, 120, 1280)]  # UI: top, bottom, right column
 PSNR_COVER = 25.0   # frame 0 vs. the cover: below this, the frame was not replaced
 PSNR_KEEP = 35.0    # frame 1 vs. the source: below this, re-encoding visibly damaged the picture
 
@@ -115,7 +115,7 @@ def has_audio(render):
 
 
 def speech_of(render, t0, t1):
-    """The speech mask (speech_mask.py) of the render's sound around [t0, t1] → (mask, env, base): 10 ms windows
+    """The speech mask (speech_mask.py) of the render's sound around [t0, t1] → (mask, envelope, base): 10 ms windows
     from base = t0 - CONTEXT; None without sound (no audio track: T6, every "scenes only" render, crashed here)."""
     import speech_mask as sm
     if not has_audio(render):
@@ -126,15 +126,15 @@ def speech_of(render, t0, t1):
         wav = tmp / "a.wav"
         sh(["ffmpeg", "-v", "error", "-y", "-ss", f"{base:.3f}", "-to", f"{t1 + CONTEXT:.3f}", "-i", render, "-vn",
             "-ac", "1", "-ar", "16000", "-c:a", "pcm_s16le", wav], "ffmpeg (cover audio)")
-        env, hf = sm.load_envs(str(wav))
+        envelope, hf = sm.load_envs(str(wav))
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
-    if not env:
+    if not envelope:
         return None
-    sdb = sm.smax(env)
+    sdb = sm.smax(envelope)
     srt = sorted(x for x in sdb if x > -90)
     thr = min(-30.0, srt[int(len(srt) * 0.95)] - 20) if srt else -45.0
-    return sm.speech_mask(sdb, thr, vl=sm.voiceless(hf)), env, base
+    return sm.speech_mask(sdb, thr, vl=sm.voiceless(hf)), envelope, base
 
 
 def pauses(render, t0, t1, sp=None):
@@ -143,7 +143,7 @@ def pauses(render, t0, t1, sp=None):
     sp = sp or speech_of(render, t0, t1)
     if sp is None:
         return [], None
-    mask, env, base = sp
+    mask, envelope, base = sp
     i0, i1 = max(0, int(round((t0 - base) / 0.01))), min(len(mask), int(round((t1 - base) / 0.01)))
     out, k = [], i0
     while k < i1:
@@ -161,7 +161,7 @@ def pauses(render, t0, t1, sp=None):
             k += 1
     if i1 <= i0:
         return out, None
-    sm_ = [sum(env[max(0, i - 2):i + 3]) / len(env[max(0, i - 2):i + 3]) for i in range(i0, i1)]
+    sm_ = [sum(envelope[max(0, i - 2):i + 3]) / len(envelope[max(0, i - 2):i + 3]) for i in range(i0, i1)]
     quiet = base + (i0 + min(range(len(sm_)), key=lambda i: sm_[i])) * 0.01 + 0.005
     return out, quiet
 
@@ -305,7 +305,7 @@ def cmd_pick(a):
     render = Path(a.render) if a.render else last_render(e)
     if render is None:
         sys.exit(f"no --render and no successful kit.py render recorded in {e / 'render.json'}: "
-                 f"pass --render out/<file>.mp4")
+                 "give --render out/<file>.mp4")
     if not a.render:
         print(f"render: {render} (the last kit.py render, render.json)")
     if not render.is_file():
@@ -374,7 +374,7 @@ def cmd_pick(a):
         sys.exit(f"the frame was not saved: {out}")
     print(f"cover: frame at {t:.2f} s ({why}) → {out}")
     print(f"next: poster.py guide {out} -o {out.with_name(out.stem + '-guide.png')} to check the grid crop; "
-          f"poster.py bake {render} --cover {out} -o <render>-cover.mp4")
+          f"master_audio.py <render> -o <name>-master.mp4 --cover {out}")
 
 
 # ─── bake ───────────────────────────────────────────────────────────────────────────────────────────
@@ -463,13 +463,16 @@ def cmd_guide(a):
     kx, ky = w / W, h / H
     box = lambda b: f"x={round(b[0] * kx)}:y={round(b[1] * ky)}:w={round(b[2] * kx)}:h={round(b[3] * ky)}"
     t = max(2, round(6 * kx))
-    vf = ",".join([f"drawbox={box(z)}:color=red@0.35:t=fill" for z in UI]
+    s = ui_safe()  # top, bottom, right column
+    ui = [(0, 0, W, s["top"]), (0, H - s["bottom"], W, s["bottom"]), (W - s["right"], s["top"], s["right"], H - s["top"] - s["bottom"])]
+    vf = ",".join([f"drawbox={box(z)}:color=red@0.35:t=fill" for z in ui]
                   + [f"drawbox={box(GRID_34)}:color=yellow@0.95:t={t}", f"drawbox={box(GRID_11)}:color=cyan@0.95:t={t}"])
     out.parent.mkdir(parents=True, exist_ok=True)
     sh(["ffmpeg", "-v", "error", "-y", "-i", src, "-vf", vf, "-frames:v", "1", out], "ffmpeg (guide)")
     print(f"{out}: yellow frame, the 3:4 profile grid (1080×1440 centered, y 240–1680), NOT CONFIRMED, check it in the "
-          f"Instagram app; cyan, 1:1 (1080×1080, y 420–1500); red, the UI zones (top 0–220, "
-          f"bottom 1500–1920, right x > 960). The cover's hook goes entirely inside 1:1 and outside the red.")
+          f"Instagram app; cyan, 1:1 (1080×1080, y 420–1500); red, the UI zones (top 0–{s['top']}, "
+          f"bottom {H - s['bottom']}–{H}, right x > {W - s['right']}). The cover's hook goes entirely inside 1:1 and "
+          f"outside the red.")
 
 
 def cmd_attach(a):

@@ -109,7 +109,7 @@ A scene is an entry in `edit/<id>/visual_plan.json` with `kind: "scene"` (ids `c
 
 Check of this example: 8 words need 2.4 s settled; 3.6 s minus the entrance and exit of `calm` (14 + 9 frames ≈ 0.77 s) and minus the layout change of `split` before the text (fade, ≈ 0.27 s) leaves ≈ 2.57 s ✓; the scene leaves at 15.9 s, well after the last spoken word (14.1 s) plus the 0.4 s hold ✓.
 
-Fields: `type`, `mode`, `at` or `start`, `dur`, `tone`, `text` (`lines`, `accent`, `label`), `items` (`text`, `at` or `t`, `from`), `value` (`from`, `to`, `prefix`, `suffix`, `decimals`), `media`, `interaction` (`kind`: tap / type / cursor / swipe, `target`, `text`, `at`), `box`, `source` (`kind`: speech / brief / brand / client / agent, `ref`; `client` is what the client or the person handed over for this video, `agent` is what the agent found or worded itself, including text read from the client's own site or a local copy of it, with the file and line in `ref`), `what`, `why`, `transition_in`, `transition_out`, `sound`, `hide_subtitles`, `status` (planned → ready once the fields pass the check; skipped). A scene needs no file: it is drawn at render time from its fields.
+Fields: `type`, `mode`, `at` or `start`, `dur`, `tone`, `text` (`lines`, `accent`, `label`), `items` (`text`, `at` or `t`, `from`), `value` (`from`, `to`, `prefix`, `suffix`, `decimals`), `media`, `interaction` (`kind`: tap / type / cursor / swipe, `target`, `text`, `at`), `box`, `source` (`kind`: speech / brief / brand / client / agent, `ref`; `client` is what the client or the person handed over for this video, `agent` is what the agent found or worded itself, including text read from the client's own site or a local copy of it, with the file and line in `ref`), `what`, `why`, `transition_in`, `transition_out`, `sound`, `hide_subtitles`, `status` (planned → ready once the check accepts the fields; skipped). A scene needs no file: it is drawn at render time from its fields.
 
 Scene texts, like card texts, are **shown to the person before rendering** in the visual plan table.
 
@@ -122,7 +122,7 @@ Scene texts, like card texts, are **shown to the person before rendering** in th
 6. budget: `full`, `split`, `panel`, `window` count toward intensity coverage together with B-roll; `overlay` counts like a card, through `keep_clear`; the number of `full` scenes and “not in a row”;
 7. the brand tone's ceilings: memes, transitions, light flashes, whips, full-frame scenes;
 8. `overlay`, `window`, `split` with a box get the same checks as a B-roll window: safe zone, face, `keep_clear`;
-9. one scene at a time, a scene doesn't overlap a meme, only `cta` or a logo sting in the last 2 s **of the whole video**: when an end card or a logo sting follows the cut (`export --card` / `--sting`, 2.6 s), those 2 s are the card's own, so a scene ending just before the cut's end is fine. Before the export tell validate what follows: `visual_plan.py validate edit/<id> --sting` (or `--card`); the export records it in the plan (`end_card`), and later checks count from there (T5: a stat scene 1.95 s before the end of a 25.0 s cut was flagged while the video with the sting was 27.6 s). A meme in the last 2 s is a warning by the same count. Two CTA lines at the end of a voice-over: `references/cta.md`, item 7.
+9. one scene at a time, a scene doesn't overlap a meme, only `cta` or a logo sting in the last 2 s **of the whole video**: when an end card or a logo sting follows the cut (`stage --card` / `--sting`, 2.6 s), those 2 s are the card's own, so a scene ending just before the cut's end is fine. Before the stage tell validate what follows: `visual_plan.py validate edit/<id> --sting` (or `--card`); the stage records it in the plan (`end_card`), and later checks count from there (T5: a stat scene 1.95 s before the end of a 25.0 s cut was flagged while the video with the sting was 27.6 s). A meme in the last 2 s is a warning by the same count. Two CTA lines at the end of a voice-over: `references/cta.md`, item 7.
 
 ## Scene rules
 
@@ -158,7 +158,7 @@ Sounds come from your own library `{{ASSETS_DIR}}`; CC0 packs are the easiest (n
 |---|---|---|
 | hook, reveal, change of section | soft low impact | `hit` |
 | card, item, message | card, paper, soft “drop” | `card`, `paper` |
-| typing | individual key presses, a different file for neighboring characters, quiet | `type` |
+| typing | individual keystrokes, a different file for neighboring characters, quiet | `type` |
 | tap, cursor, toggle | short click | `tap` |
 | payoff, number lands, logo | bell or glass, once | `bell` |
 
@@ -179,12 +179,12 @@ A video with no talking head: the brand's texts, numbers and pictures, in scenes
 5. Sound: effects on events + music only with a commercial license. Mastering (`master_audio.py`) has one exception here: with no voice and no music, a few effects over silence are not a −14 LUFS track, so the loudness is not required, only the true peak and the durations (the master carries a tag and `--check` applies the same rule); with a licensed track the music is mastered to −14 LUFS. No effects at all: the file is copied without sound.
 6. Cover: the render has no sound track, so `poster.py pick` takes the middle of the hook's settled window (else the first scene's); `ReelCover` without video draws the hook on the style's field (`brand.json → looks.<style>.field`, else the primary color), as the scenes are, with only the accent on a plate.
 
-## Cover and frame 0
+## Cover
 
-The preview of a video in messengers and most players is frame 0; social networks let you pick a cover on upload, but frame 0 still shows when the video is forwarded.
+Social networks let you pick a cover on upload (the `…-cover.jpg` next to the master); a file manager shows the cover art embedded in the file; messengers and most players show frame 0, which stays the render's own (putting the cover there re-encoded the whole video, so the master does not; `poster.py bake` does it by hand when asked).
 1. A `cover` scene or the strongest **settled** frame (the hook fully on screen, not mid-transition) → `edit/<id>/cover.jpg`. **Not mid-word:** a face caught while speaking is distorted (an open mouth, a half-said vowel), so the frame comes from a pause in the speech (`poster.py pick` measures the pauses on the render's sound). A pause alone is not enough either, since people blink and look down between phrases: `poster.py pick --sheet` puts up to 6 pause candidates side by side; take the one with open eyes and the mouth at rest (`--t <second>`). With no hook or cover scene it looks in 0.5–3.0 s and widens to 0.5–8.0 s when there is no pause there (`--window A-B` sets it); with no face in the frames (a voice-over) it does not warn about one.
 2. Check the cover text against the profile-grid crop (centered in the frame) and the UI zones.
-3. Master with it: `master_audio.py out/<render>.mp4 -o out/<name>-master.mp4 --cover edit/<id>/cover.jpg` replaces **only frame 0** (`poster.py bake`: the frame count and the video and audio durations checked before and after), masters the sound (the video copied, frame 0 kept), embeds the cover as cover art (`poster.py attach`: file managers show it as the thumbnail instead of a random frame) and saves `out/<name>-cover.jpg` next to the master. One file goes out; `poster.py bake` and `attach` remain for a file made some other way.
+3. Master with it: `master_audio.py out/<render>.mp4 -o out/<name>-master.mp4 --cover edit/<id>/cover.jpg` masters the sound (the video copied, not encoded again), embeds the cover as cover art (`poster.py attach`: file managers show it as the thumbnail instead of a random frame) and saves `out/<name>-cover.jpg` next to the master.
 4. Deliver `<name>-cover.jpg` with the master, for uploading the cover by hand.
 
 ## Post caption: `caption.txt`

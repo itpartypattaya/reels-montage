@@ -40,7 +40,7 @@ It writes `online_scripts` into the project's `it-reelsmaker.json` (`unlink` rem
 
 ## Reel settings
 
-Online sources are off until turned on for a video (`reelcfg.py save edit/<id> --set use_online_footage=true`) or for the whole project. Keys live in `edit/<id>/reel.json`, with the same layers as the core, each overriding the previous: the core's defaults with this add-on's → the brand tone preset → the project's `reel-defaults.json` → the file named in `REELS_DEFAULTS_OVERLAY` → `brand.json → inserts` → `reel.json` → words in the prompt:
+Online sources are off until turned on for a video (`reelcfg.py save edit/<id> --set use_online_footage=true`) or for the whole project. Keys live in `edit/<id>/reel.json`, with the same layers as the core, each overriding the previous: the core's defaults with this add-on's → the brand tone preset → the project's `reel-defaults.json` → `brand.json → inserts` → `reel.json` → words in the prompt:
 
 ```json
 {

@@ -6,9 +6,9 @@ Rules (assets/reel-defaults.json → meme_layout; the size comes from the meme_s
     460: a meme must not take half the screen; full-frame only in cutaway mode (0.6–1.2 s, at most one per video);
   • position: one of the slots at the frame edge: top left/right/center, middle left/right, above the subtitles;
   • not allowed: on the face (+60 px around it), on the subtitle band (y 1250–1430), in the UI zones (top 220,
-    bottom 420, right 120 px), on the video's active graphics (keep_clear in the plan: cards, hook, CTA).
+    bottom 420, right 120 px by default; meme_layout.safe, the same for every check), on the video's active graphics (keep_clear in the plan: cards, hook, CTA).
 Face: found automatically with the YuNet model (faces.py: a measurement of the whole rough cut in faces.json, or three
-frames of the meme); without the model, the agent looks at frames with a grid (inserts/<id>-grid.jpg) and passes
+frames of the meme); without the model, the agent looks at frames with a grid (inserts/<id>-grid.jpg) and gives
 --face x,y,w,h. No face in the frame: --no-face.
 
 A library for memes.py and visual_plan.py; it has no command line of its own.
@@ -17,7 +17,7 @@ import json, subprocess, sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from reels_common import SUB_BAND, load_defaults, probe, run, warn
+from reels_common import FACE_MARGIN, SUB_BAND, UI_SAFE, load_defaults, probe, run, warn
 
 W, H = 1080, 1920
 
@@ -27,9 +27,9 @@ def layout(settings=None, doc=None):
     L = dict(doc.get("meme_layout") or {})
     L.setdefault("sizes", {"s": 300, "m": 380, "l": 460})
     L.setdefault("max_side", 460)
-    L.setdefault("safe", {"top": 220, "bottom": 420, "right": 120, "left": 40})
+    L["safe"] = {**UI_SAFE, **(L.get("safe") or {})}  # the app's UI zone, shared by every check (reels_common.ui_safe)
     L.setdefault("subtitles_band", list(SUB_BAND))
-    L.setdefault("face_margin", 60)
+    L.setdefault("face_margin", FACE_MARGIN)
     L.setdefault("edge_margin", 60)
     L.setdefault("slots", ["top-left", "top-right", "top-center", "mid-left", "mid-right", "low-left", "low-right"])
     L["size"] = (settings or {}).get("meme_size") or (doc.get("settings") or {}).get("meme_size") or "m"

@@ -21,9 +21,14 @@ def test_defaults_have_every_tone_and_no_private_or_online_keys(project):
         assert key not in s, key
 
 
-def test_overlay_file_wins_over_defaults(project, monkeypatch, tmp_path):
+def test_settings_come_from_files_not_the_environment(project, monkeypatch, tmp_path):
+    # 1.22: the plugin reads no environment variables (the directory held every version that did); the overlay layer
+    # named by REELS_DEFAULTS_OVERLAY is gone, the project's own reel-defaults.json is where a project changes them
     over = write_json(tmp_path / "overlay.json", {"settings": {"intensity": "active", "brand": "acme"}})
     monkeypatch.setenv("REELS_DEFAULTS_OVERLAY", str(over))
+    s = rc.load_defaults()["settings"]
+    assert s.get("brand") != "acme"
+    write_json(project / rc.PROJECT_DEFAULTS, {"settings": {"intensity": "active", "brand": "acme"}})
     s = rc.load_defaults()["settings"]
     assert s["intensity"] == "active" and s["brand"] == "acme"
     assert "use_broll" in s  # deep merge keeps the rest
@@ -38,7 +43,7 @@ def test_project_root_order(project, monkeypatch, tmp_path):
     write_json(other / rc.SETTINGS_FILE, {"project_root": "../proj"})
     assert rc.project_root(other) == project.resolve()  # it-reelsmaker.json -> project_root
     monkeypatch.setenv("REELS_PROJECT", str(other))
-    assert rc.project_root(sub) == other.resolve()  # the env variable wins
+    assert rc.project_root(sub) == project  # an environment variable is not read (1.22)
 
 
 @pytest.mark.parametrize("bad", ["../x", "a/b", "", ".hidden", "x" * 70, "a b"])
@@ -139,7 +144,7 @@ def test_reelcfg_writes_the_new_name_of_code_scenes(project):
     e = project / "edit" / "4821"
     write_json(e / "reel.json", {"use_broll": True, "use_generated_footage": False})
     r = run_script("reelcfg.py", "save", "edit/4821", "--set", "use_generated_footage=true", cwd=project)
-    assert "is now use_code_scenes" in (r.stdout + r.stderr) and "unknown key" not in (r.stdout + r.stderr)
+    assert "is now use_code_scenes" in (r.stdout + r.stderr) and "unknown setting" not in (r.stdout + r.stderr)
     reel = json.loads((e / "reel.json").read_text(encoding="utf-8"))
     assert reel["use_code_scenes"] is True and "use_generated_footage" not in reel
     write_json(e / "reel.json", {"use_broll": True, "use_generated_footage": False})  # review 2026-10-18 (Codex)
@@ -169,9 +174,17 @@ def test_word_search_matches_stems():
 
 
 def test_missing_add_on_path_warns_and_stays_offline(project, monkeypatch, capsys, tmp_path):
-    monkeypatch.setenv("REELS_ONLINE_SCRIPTS", str(tmp_path / "gone"))
+    write_json(project / rc.SETTINGS_FILE, {"online_scripts": str(tmp_path / "gone")})  # what the add-on's link wrote
     assert rc.online() is None
     assert "not found" in capsys.readouterr().err
+
+
+def test_core_reads_no_environment_variables():
+    # the plugin directory holds a plugin whose files read the environment and send data out ("Uses a credential from
+    # the user's machine"); the core takes every setting from it-reelsmaker.json or an argument
+    bad = re.compile(r"os\.environ|os\.getenv|getenv\(|process\.env")
+    for f in [*CORE.glob("*.py"), *(CORE.parent / "assets").rglob("*.ts*")]:
+        assert not bad.search(f.read_text(encoding="utf-8")), f.name
 
 
 def test_core_scripts_have_no_network_imports():

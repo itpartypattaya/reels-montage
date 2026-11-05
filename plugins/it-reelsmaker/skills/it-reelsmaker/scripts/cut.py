@@ -51,7 +51,7 @@ fix, fix_at transcription fixes: every occurrence of a word, or one occurrence n
             "fix_at": [{"text": "you", "at": 46.4, "to": ""}]; the sound is not touched. "text" is the word as the
             transcript has it and "at" its start AFTER retime: for a retimed word, its new "start". "fix" may also
             be a list of ["word", "replacement"] pairs.
-retime      exact timings of key words measured on the waveform: (word, transcript start) -> (start, end).
+retime      exact timings of main words measured on the waveform: (word, transcript start) -> (start, end).
             fix_at and retime entries may name a "source": then only that source's words (the pieces of one long
             recording, longform.py extract, each start at 0 s, so "at" alone can match a word of another piece).
 keep        phrases the subtitles never split: {"text": first word as the transcript has it, "at": its start (after
@@ -101,7 +101,7 @@ FADE = 0.03
 MIN_WORD = 0.08  # s: the shortest word on the subtitle timeline
 LUT_MIX = 0.6
 REPLAY = 0.2     # s: two pieces of one source overlapping by more than this replay the same speech (a teaser, a restart)
-GAP_MAX = 1.0    # s: a gap this short between two pieces of one pass is a removed pause, not a dropped line
+GAP_MAX = 1.0    # s: a gap this short between two pieces of one run is a removed pause, not a dropped line
 KEEP_CHARS = 48  # characters: a keep phrase longer than this may not fit two subtitle lines (Plate, Accent): named
 JOIN_REPEAT = 3  # words: an identical run this long in two adjacent pieces is a take said twice (repeats_at_joins)
 
@@ -222,7 +222,7 @@ def fix_map(v):
 
 def word_fixes(v, name, fields, sources=None):
     """cut.json "fix_at" / "retime" / "keep": a list of {"text", "at", ...} entries, checked (a dict or an entry without "at"
-    crashed the cut with an AttributeError or a KeyError). An optional "source" (a key of "sources") limits the entry to
+    crashed the cut with an AttributeError or a KeyError). An optional "source" (a name in "sources") limits the entry to
     that source: the pieces of a long recording each start at 0 s, so the same word at the same second of two pieces
     would otherwise both get the fix."""
     if not v:
@@ -369,7 +369,7 @@ def fixed(w, c, src=None):
 
 
 def same_pass(a, b):
-    """Two pieces of one source are parts of one pass through it, so a word between them is shown once: they don't
+    """Two pieces of one source are parts of one run through it, so a word between them is shown once: they don't
     replay the same speech. A piece inside the other, or an overlap over REPLAY, replays it (a teaser shown again in
     its place, a restart): each keeps its own copy of the words. The order of the pieces in the list does not matter
     (T3: a question moved to the start lost nothing, but its last word, which the transcript stretched over the pause
@@ -385,7 +385,7 @@ EDGE_TOUCH = 0.05  # s: a word left out of the subtitles that a piece holds this
 
 
 def owner(w, group):
-    """The piece of one pass that shows a word: the one holding most of it (a tie: the earlier in the list), when the
+    """The piece of one run that shows a word: the one holding most of it (a tie: the earlier in the list), when the
     word is heard in the cut: the pieces hold most of it or its center, or it starts inside a piece and runs on in it
     for HEARD (recognizers stretch a word's END over the pause after it: T7's "inache?" 50.52-51.96 is spoken by 51.06,
     where the piece ends), or, the mirror, it ends inside a piece after HEARD in it (its START stretched back over the
@@ -423,14 +423,14 @@ def speaker_in(w, r):
 
 
 def punct_only(text):
-    """A token of punctuation alone (faster-whisper returns a dash as a word): it is not a word of its own."""
+    """A punctuation mark alone (faster-whisper returns a dash as a word): it is not a word of its own."""
     t = str(text).strip()
     return bool(t) and all(unicodedata.category(ch).startswith("P") for ch in t)
 
 
 def timeline(c, words, said=None):
-    """Words on the new timeline: each word once per pass through its source (a replay shows it again), punctuation
-    tokens joined to their word. said: a list that gets each caption word's transcript text, in caption order
+    """Words on the new timeline: each word once per run through its source (a replay shows it again), punctuation
+    words joined to their word. said: a list that gets each caption word's transcript text, in caption order
     (mark_keep matches on it: two transcript words may share a start time)."""
     fps, segments, captions, offset = c["fps"], [], [], 0.0
     frames = 0
@@ -449,9 +449,9 @@ def timeline(c, words, said=None):
         for w in words[r["source"]]:
             if owner(w, group) != i:
                 continue
-            ws, we = min(max(w["start"], s), e), min(max(w["end"], s), e)
+            w_from, w_to = min(max(w["start"], s), e), min(max(w["end"], s), e)
             text = str(fixed(w, c, r["source"]))
-            if we - ws <= 0 or not text.strip():  # "to": "" removes the word from the subtitles (T2: a stray "you")
+            if w_to - w_from <= 0 or not text.strip():  # "to": "" removes the word from the subtitles (T2: a stray "you")
                 continue
             if punct_only(text):
                 # T3: a dash the recognizer returned as a word got its own time, and "Typewriter" lit it up like a word
@@ -462,8 +462,8 @@ def timeline(c, words, said=None):
                     mine[-1]["text"] += (" " if unicodedata.category(t[0]) == "Pd" else "") + t
                 continue
             who = speaker_in(w, r)
-            mine.append({"text": prefix + text, "src": round(w["start"], 3), "start": round((ws - s) / speed + offset, 3),
-                         "end": round((we - s) / speed + offset, 3), "seg": i, **({"speaker": who} if who else {})})
+            mine.append({"text": prefix + text, "src": round(w["start"], 3), "start": round((w_from - s) / speed + offset, 3),
+                         "end": round((w_to - s) / speed + offset, 3), "seg": i, **({"speaker": who} if who else {})})
             texts.append(w["text"])
             prefix = ""
         captions += mine
@@ -479,7 +479,7 @@ def mark_keep(c, said, captions):
     the phrase between two subtitle blocks (finding 8 of an English test: "it was just admin admin" on two plates read
     as a joke in two beats). The first word is matched as fix_at matches it: its transcript text, its start (after
     retime) within 0.02 s, the entry's source if it names one; the group is that word and the next words-1 caption
-    words (the words as the subtitles show them: a punctuation token is part of its word, a word removed with fix_at
+    words (the words as the subtitles show them: a punctuation mark is part of its word, a word removed with fix_at
     -> "" is not counted). A phrase the cut shows twice (a teaser) is marked at each place: "k1", "k1-2". -> ([(id,
     text, out start, words)], [problem]): a mark that matches no word, runs past the last word or overlaps another.
     said: the transcript text of each caption word (timeline(..., said)), so a word is matched as itself, not by its
@@ -494,19 +494,19 @@ def mark_keep(c, said, captions):
             problems.append(f"{label}: no such word in the subtitles of the cut (the word as the transcript has it, its "
                             f"start after retime; a word outside every range or removed with fix_at is not there)")
         for m, i in enumerate(hits):
-            ws = captions[i:i + r["words"]]
+            wlist = captions[i:i + r["words"]]
             gid = f"k{n + 1}" + (f"-{m + 1}" if m else "")
-            if len(ws) < r["words"]:
-                problems.append(f"{label}: only {len(ws)} of {r['words']} words left after it in the cut: {gid} keeps those")
-            other = next((w["keep"] for w in ws if w.get("keep")), None)
+            if len(wlist) < r["words"]:
+                problems.append(f"{label}: only {len(wlist)} of {r['words']} words left after it in the cut: {gid} keeps those")
+            other = next((w["keep"] for w in wlist if w.get("keep")), None)
             if other:
                 problems.append(f"{label}: overlaps the phrase {other}: not marked")
                 continue
-            if len(ws) < 2:
+            if len(wlist) < 2:
                 continue
-            for w in ws:
+            for w in wlist:
                 w["keep"] = gid
-            groups.append((gid, " ".join(str(w["text"]) for w in ws), ws[0]["start"], len(ws)))
+            groups.append((gid, " ".join(str(w["text"]) for w in wlist), wlist[0]["start"], len(wlist)))
     return groups, problems
 
 
@@ -517,13 +517,13 @@ def speakers_of(captions):
 
 def dropped_in_gaps(c, words, captions):
     """Transcript words in no range that sit mostly (half their length or more) inside a short gap (<= GAP_MAX)
-    removed between two pieces of one pass through a source -> [(word, source, word start, word end, gap start,
+    removed between two pieces of one run through a source -> [(word, source, word start, word end, gap start,
     gap end)]. Such a gap is a pause the speech mask compressed: a quiet syllable below its threshold reads as a pause
     there, and the cut drops it from the sound and the subtitles without a word (T4). A word removed on purpose
-    ("to": "") and a punctuation token are not named; a line dropped on purpose leaves a longer gap."""
+    ("to": "") and a punctuation mark are not named; a line dropped on purpose leaves a longer gap."""
     shown = {(c["ranges"][w["seg"]]["source"], w["src"]) for w in captions}
     out = []
-    for src, ws in words.items():
+    for src, wlist in words.items():
         rs = sorted((r for r in c["ranges"] if r["source"] == src), key=lambda r: (r["start"], r["end"]))
         # a replay (a teaser shown again in its place) lies inside another piece: it is no edge of a removed gap (review:
         # a teaser at 3-4 s inside 0-10 s split the pair 0-10 / 10.5-20, and the quiet syllable at 10.1 went unnamed)
@@ -533,7 +533,7 @@ def dropped_in_gaps(c, words, captions):
         gaps = [(a["end"], b["start"]) for a, b in zip(rs, rs[1:])
                 if 0 < b["start"] - a["end"] <= GAP_MAX and same_pass(a, b)
                 and not any(x["start"] < b["start"] and x["end"] > a["end"] for x in rs if x is not a and x is not b)]
-        for w in ws:
+        for w in wlist:
             if (src, round(w["start"], 3)) in shown or punct_only(w["text"]) or not str(fixed(w, c, src)).strip():
                 continue
             d = max(w["end"] - w["start"], 1e-3)
@@ -549,7 +549,7 @@ def estimated_words(c, words, captions):
     transcript heard them and the local recognizer did not, so no timing came with them) -> [(word, source, start)].
     The cloud model may also have heard a word that is not said (1094: "Prichyom" 33.12 and a one-letter "k" 1.46)."""
     shown = {(c["ranges"][w["seg"]]["source"], w["src"]) for w in captions}
-    return [(str(w["text"]), src, w["start"]) for src, ws in words.items() for w in ws
+    return [(str(w["text"]), src, w["start"]) for src, wlist in words.items() for w in wlist
             if w.get("est") and (src, round(w["start"], 3)) in shown]
 
 
@@ -590,9 +590,9 @@ def hidden_at_edges(c, words, captions, skip=()):
     end, range index, seconds inside)]; skip: (source, start) already named by dropped_in_gaps."""
     shown = {(c["ranges"][w["seg"]]["source"], w["src"]) for w in captions}
     out = []
-    for src, ws in words.items():
+    for src, wlist in words.items():
         rs = [(k, r) for k, r in enumerate(c["ranges"]) if r["source"] == src]
-        for w in ws:
+        for w in wlist:
             key = (src, round(w["start"], 3))
             if key in shown or key in skip or punct_only(w["text"]) or not str(fixed(w, c, src)).strip():
                 continue
@@ -763,18 +763,18 @@ def main():
     print(f"segments {len(segments)}, words {len(captions)} of {nall}, total {round(total, 3)} s"
           + ("; words per speaker: " + ", ".join(f"{x} {n}" for x, n in count.items()) if count else ""))
     gap_words = dropped_in_gaps(c, words, captions)
-    for text, src, ws, we, g0, g1 in gap_words:
-        warn(f"the word \"{text}\" ({src} {ws:.2f}-{we:.2f}) falls in the {g0:.2f}-{g1:.2f} gap the cut removes between two "
+    for text, src, w_from, w_to, g0, g1 in gap_words:
+        warn(f"the word \"{text}\" ({src} {w_from:.2f}-{w_to:.2f}) falls in the {g0:.2f}-{g1:.2f} gap the cut removes between two "
              f"ranges: it is in neither, so the cut drops it from the sound and the subtitles. A quiet syllable below the "
              f"speech threshold is cut as a pause: check by ear; lower speech_mask.py --thr or extend the range over it")
-    for text, src, ws, we, k, o in hidden_at_edges(c, words, captions, {(s, round(x, 3)) for _, s, x, _, _, _ in gap_words}):
-        warn(f"the word \"{text}\" ({src} {ws:.2f}-{we:.2f}) is {o:.2f} s inside range {k} but mostly outside it: left out of "
+    for text, src, w_from, w_to, k, o in hidden_at_edges(c, words, captions, {(s, round(x, 3)) for _, s, x, _, _, _ in gap_words}):
+        warn(f"the word \"{text}\" ({src} {w_from:.2f}-{w_to:.2f}) is {o:.2f} s inside range {k} but mostly outside it: left out of "
              f"the subtitles. Right for the tail of a removed line; if it is heard in the cut (the recognizer stretched its "
              f"time past the edge), give its real times in cut.json \"retime\"")
-    for text, src, ws in estimated_words(c, words, captions):
-        warn(f"the word «{text}» ({src} {ws:.2f}) was heard only by the cloud transcript and its time is "
+    for text, src, w_from in estimated_words(c, words, captions):
+        warn(f"the word «{text}» ({src} {w_from:.2f}) was heard only by the cloud transcript and its time is "
              f"estimated: listen; remove it with fix_at -> \"\" if it is not said "
-             f"({json.dumps({'text': text, 'at': round(ws, 2), 'to': ''}, ensure_ascii=False)})")
+             f"({json.dumps({'text': text, 'at': round(w_from, 2), 'to': ''}, ensure_ascii=False)})")
     for gid, text, at, n in keeps:
         print(f"  keep {gid}: «{text}» ({n} words at {at:.2f} s): one subtitle block, never split")
         if len(text) > KEEP_CHARS:

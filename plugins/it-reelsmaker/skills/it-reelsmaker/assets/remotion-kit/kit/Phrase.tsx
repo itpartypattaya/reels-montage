@@ -76,21 +76,21 @@ const NUM_WORDS = new Set([
 const NUM_STEM = /^(?:[\u0430-\u044f]+\u043d\u0430\u0434\u0446\u0430\u0442[\u044c\u0438\u044e]|\u0442\u044b\u0441\u044f\u0447[\u0430-\u044f]*|\u043c\u0438\u043b\u043b\u0438(?:\u043e\u043d|\u0430\u0440\u0434)[\u0430-\u044f]*)$/;
 // a number of its own: digits with separators, a sign, a currency, %, an ordinal ending ("3rd", Russian "5-ti"); not
 // the digits inside a name ("B2B", "MP3")
-const NUM_TOKEN = /^[+\-\u2212~\u2248]?[$\u20ac\u00a3\u20bd\u00a5\u20b8]?\d+(?:[.,:/'\u2009]\d+)*(?:%|\u2030|[$\u20ac\u00a3\u20bd\u00a5\u20b8]|\+|[x\u00d7]|[kmb]|st|nd|rd|th|-?[\u0430-\u044f\u0451]{1,3})?$/i;
+const NUM_RE = /^[+\-\u2212~\u2248]?[$\u20ac\u00a3\u20bd\u00a5\u20b8]?\d+(?:[.,:/'\u2009]\d+)*(?:%|\u2030|[$\u20ac\u00a3\u20bd\u00a5\u20b8]|\+|[x\u00d7]|[kmb]|st|nd|rd|th|-?[\u0430-\u044f\u0451]{1,3})?$/i;
 
-/** A number of its own (a token): digits ("12", "60%", "$100", "3rd") or a number word ("five", Russian "pyati"). A
- *  token ending in a comma or a period is the end of a clause, not a number glued to its word. */
-export const isNumber = (token: string): boolean => {
-  const t = token.replace(/^[\u00ab"(\u201c\u201e]+/, "");
+/** A number of its own (a word): digits ("12", "60%", "$100", "3rd") or a number word ("five", Russian "pyati"). A
+ *  word ending in a comma or a period is the end of a clause, not a number glued to its word. */
+export const isNumber = (word: string): boolean => {
+  const t = word.replace(/^[\u00ab"(\u201c\u201e]+/, "");
   const w = t.toLowerCase().replace(/\u0451/g, "\u0435");
-  return NUM_TOKEN.test(t) || NUM_WORDS.has(w) || NUM_STEM.test(w);
+  return NUM_RE.test(t) || NUM_WORDS.has(w) || NUM_STEM.test(w);
 };
 
 /** True: a line (or a subtitle chunk) must not end between these two words — after a short function word or a number
  *  (it goes with its unit or word: "12 days", "five years"), before a dash, a percent sign or a particle that leans
  *  back. glue() puts a no-break space there; the subtitles never split a chunk or a line there. */
 export const noBreak = (prev: string, next: string): boolean => {
-  const prevLast = prev.split(NB).pop() ?? prev; // in a glued token, the last word is what matters
+  const prevLast = prev.split(NB).pop() ?? prev; // in a glued word, the last word is what matters
   // a word ending in punctuation (a comma, a period) always allows the break, as reels_common.no_break does
   if (/[,.;:!?\u2026)\u00bb\u201d]$/.test(prevLast.trim())) return false;
   // without the punctuation around it, Russian yo as ye (the list holds the ye spelling), as reels_common.bare
@@ -114,14 +114,14 @@ const glueLine = (line: string): string => {
 };
 
 /** No-break spaces by the rules of Russian typography (and English short words). Manual line breaks (\n) and existing
- *  NBSPs are kept. The result is no longer split by " ": a glued pair is ONE token with a no-break space inside
+ *  NBSPs are kept. The result is no longer split by " ": a glued pair is ONE word with a no-break space inside
  *  ("v\u00a0rabote"). A per-video composition that takes words out of a glued line with text.split(" ") (to color the
  *  accent word or time each word to the speech) silently loses that accent and that timing — the word is not found.
  *  Split the raw text into words first and glue only what you draw, or split on /[ \u00a0]/ (typography.md). */
 export const glue = (text: string): string => text.split("\n").map(glueLine).join("\n");
 
 /** Lines of up to maxChars characters; what glue() joined is never split, \n forces a break.
- *  A token longer than maxChars stays whole on its own line — fitSize() takes care of the width. */
+ *  A word longer than maxChars stays whole on its own line — fitSize() takes care of the width. */
 export const breakLines = (text: string, maxChars: number): string[] => {
   const lines: string[] = [];
   glue(text)
@@ -167,9 +167,9 @@ const allFaces = (): number => {
 };
 
 export const useFontsLoaded = (families: string[] = []): boolean => {
-  const key = Array.from(new Set(families.filter(Boolean))).sort().join("|") || "*";
-  const [ready, setReady] = useState(() => fontsOk.has(key));
-  const [handle] = useState(() => (fontsOk.has(key) ? null : delayRender(`kit: fonts ${key} for text width measurement`)));
+  const fontSet = Array.from(new Set(families.filter(Boolean))).sort().join("|") || "*";
+  const [ready, setReady] = useState(() => fontsOk.has(fontSet));
+  const [handle] = useState(() => (fontsOk.has(fontSet) ? null : delayRender(`kit: fonts ${fontSet} for text width measurement`)));
   const cleared = useRef(false);
   useEffect(() => {
     if (handle === null || cleared.current) return;
@@ -177,7 +177,7 @@ export const useFontsLoaded = (families: string[] = []): boolean => {
     let last = -1;
     let stable = 0;
     const t0 = Date.now();
-    const fams = key === "*" ? [] : key.split("|");
+    const fams = fontSet === "*" ? [] : fontSet.split("|");
     const tick = () => {
       if (!alive) return;
       const counts = fams.length ? fams.map(familyFaces) : [allFaces()];
@@ -186,8 +186,8 @@ export const useFontsLoaded = (families: string[] = []): boolean => {
       last = n;
       const timeout = Date.now() - t0 > 5000;
       if (stable >= 3 || timeout) {
-        if (timeout) console.warn(`kit: fonts ${key} did not appear within 5 s — measuring as is`);
-        fontsOk.add(key);
+        if (timeout) console.warn(`kit: fonts ${fontSet} did not appear within 5 s — measuring as is`);
+        fontsOk.add(fontSet);
         setReady(true);
         if (!cleared.current) continueRender(handle);
         cleared.current = true;
@@ -199,7 +199,7 @@ export const useFontsLoaded = (families: string[] = []): boolean => {
     return () => {
       alive = false;
     };
-  }, [handle, key]);
+  }, [handle, fontSet]);
   // unmounted before the fonts were ready — do not hold the render
   useEffect(() => () => {
     if (handle !== null && !cleared.current) {
@@ -210,7 +210,7 @@ export const useFontsLoaded = (families: string[] = []): boolean => {
   return ready;
 };
 
-/** Former name: fonts are ready for measurement. Pass the families you measure with, so exactly those are awaited. */
+/** Former name: fonts are ready for measurement. Give the families you measure with, so exactly those are awaited. */
 export const useFontsReady = (families?: string[]): boolean => useFontsLoaded(families ?? []);
 
 /** Font size at which the line fits maxWidth (including the plate's side padding), but no larger than size. */

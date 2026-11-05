@@ -26,13 +26,13 @@ Profiles live in the project, not in the plugin: a plugin update doesn't touch t
 | `{{BRAND}}`, `{{VOICE}}`, `{{TAGLINE}}` | `name`, `voice`, `tagline` |
 | `{{DARK}}`, `{{ACCENT}}`, `{{LIGHT}}` | `colors.primary`, `colors.accent`, `colors.light` |
 | `{{MUTED}}`, `{{MARKER}}`, `{{INK}}` | `colors.extra.muted`; `colors.extra.marker` (the marker color); `colors.extra.ink`, alias `on_marker` (text on the marker). If the brand doesn't set a marker, `{{MARKER}}` = `colors.accent` and `{{INK}}` = `colors.text_on_accent`; its own marker without `ink` gets near-black `#111111` text |
-| `{{FONT_HEADING}}`, `{{FONT_TEXT}}`, `{{FONT_SERIF}}` | `fonts.heading`, `fonts.body`, `fonts.serif` (optional: the serif of “Editorial”; the kit takes it for that style's headings when `looks.editorial.heading` is not set: `brand.py set <slug> fonts.serif.family="Playfair Display" fonts.serif.weights=[600,700] fonts.serif.source=google`). The general way to give any style its fonts is `looks.<style>.heading` / `.body`. The kit loads the upright faces of a Google font only: an italic (Editorial's “serif italic”) is loaded in the per-video composition (`loadFont("italic", { weights, subsets })` from the same `@remotion/google-fonts` module), otherwise the browser slants the upright face; a local font's italic files (`fonts.<role>.italic`) are loaded |
+| `{{FONT_HEADING}}`, `{{FONT_TEXT}}`, `{{FONT_SERIF}}` | `fonts.heading`, `fonts.body`, `fonts.serif` (optional: the serif of “Editorial”; the kit takes it for that style's headings when `looks.editorial.heading` is not set: `brand.py change <slug> fonts.serif.family="Playfair Display" fonts.serif.weights=[600,700] fonts.serif.source=google`). The general way to give any style its fonts is `looks.<style>.heading` / `.body`. The kit loads the upright faces of a Google font only: an italic (Editorial's “serif italic”) is loaded in the per-video composition (`loadFont("italic", { weights, subsets })` from the same `@remotion/google-fonts` module), otherwise the browser slants the upright face; a local font's italic files (`fonts.<role>.italic`) are loaded |
 | `{{LOGO_DARK_BG}}`, `{{LOGO_LIGHT_BG}}`, `{{LOGO_MARK}}` | `logos.on_dark`, `logos.on_light`, `logos.mark_on_dark` |
 | `{{FORBIDDEN_IMAGES}}`, `{{FORBIDDEN_WORDS}}` | `forbidden_imagery` (+ `_en`, for English-language searches and prompts), `forbidden_words` |
 | `{{SITE}}`, `{{HANDLE}}`, `{{CODE_WORD}}` | `cta.site`, `cta.handle`, `cta.code_word` |
 | `{{APPROVER}}`, `{{ACCOUNT_TYPE}}` | `approver`, `account` |
 
-**Subtitle colors per speaker** (a two-person video): `colors.speakers`, an optional list in the order of the sorted speaker labels (`brand.py set <slug> colors.speakers='["#F7F9FB","#8FDCDD"]'`). Without it the first speaker keeps the subtitle mode's own colors and the second takes `colors.accent`; a dark accent over the “Typewriter” darkening needs a lighter tint here (measure: `visual_plan.py shade edit/<id> --color <hex>`).
+**Subtitle colors per speaker** (a two-person video): `colors.speakers`, an optional list in the order of the sorted speaker labels (`brand.py change <slug> colors.speakers='["#F7F9FB","#8FDCDD"]'`). Without it the first speaker keeps the subtitle mode's own colors and the second takes `colors.accent`; a dark accent over the “Typewriter” darkening needs a lighter tint here (measure: `visual_plan.py shade edit/<id> --color <hex>`).
 
 ## Your settings in the project
 
@@ -44,7 +44,7 @@ The plugin folder is replaced on every update, so nothing personal is written th
 | everything about one brand: profile, rules, video guide, CTA library, other documents | `{{PROJECT_ROOT}}/brands/<slug>/` | `brand.py`, the files themselves |
 | project-wide notes: folder layout, which Python to run, servers, lessons from past videos, the person's ready prompts | the project's `CLAUDE.md` | by hand; Claude Code reads it by itself |
 
-**Project defaults.** `reel-defaults.json` has the same format as the plugin's `assets/reel-defaults.json`, but holds only the keys you change. It is deep-merged over the plugin's file: nested objects key by key, lists replaced whole. For example:
+**Project defaults.** `reel-defaults.json` has the same format as the plugin's `assets/reel-defaults.json`, but holds only the settings you change. It is deep-merged over the plugin's file: nested objects field by field, lists replaced whole. For example:
 
 ```json
 {"settings": {"brand": "acme", "use_scenes": true, "library_dirs": ["library"]},
@@ -53,12 +53,12 @@ The plugin folder is replaced on every update, so nothing personal is written th
 ```
 
 - `reelcfg.py defaults`: print the project defaults file (or say there is none yet);
-- `reelcfg.py defaults --set brand=acme use_scenes=true`: write `settings` keys (the file is created if needed);
-- `reelcfg.py defaults --unset use_scenes`: remove keys, so the plugin's default applies again;
-- `--set` and `--unset` touch only the `settings` keys; labels and other sections are edited in the file by hand;
-- `reelcfg.py show edit/<id>` marks the keys that come from this file as `project`.
+- `reelcfg.py defaults --set brand=acme use_scenes=true`: write `settings` fields (the file is created if needed);
+- `reelcfg.py defaults --unset use_scenes`: remove settings, so the plugin's default applies again;
+- `--set` and `--unset` touch only the `settings` fields; labels and other sections are edited in the file by hand;
+- `reelcfg.py show edit/<id>` marks the settings that come from this file as `project`.
 
-**Layers** (the one list; the right one overrides the left): plugin defaults (with `assets/reel-defaults.local.json` of a personal copy, if any) ← online add-on defaults (if installed) ← the brand tone preset's defaults (`intensity`, meme size, `scene_tone`; never inserts) ← the project's `reel-defaults.json` ← the file named in `REELS_DEFAULTS_OVERLAY` ← the video's profile (`references/profiles.md`; under the brand tone's ceiling) ← brand profile `inserts` ← `edit/<id>/reel.json` (a series preset writes here) ← words in the prompt. Your project defaults beat the preset's guesses, but not its ceilings: `meme_size` stays capped by the tone, and `visual_plan.py validate` still enforces the tone's limits (number of memes, transitions, full-frame scenes).
+**Layers** (the one list; the right one overrides the left): plugin defaults (with `assets/reel-defaults.local.json` of a personal copy, if any) ← online add-on defaults (if installed) ← the brand tone preset's defaults (`intensity`, meme size, `scene_tone`; never inserts) ← the project's `reel-defaults.json` ← the video's profile (`references/profiles.md`; under the brand tone's ceiling) ← brand profile `inserts` ← `edit/<id>/reel.json` (a series preset writes here) ← words in the prompt. Your project defaults beat the preset's guesses, but not its ceilings: `meme_size` stays capped by the tone, and `visual_plan.py validate` still enforces the tone's limits (number of memes, transitions, full-frame scenes).
 
 ## Step 0: choose the brand
 
@@ -138,7 +138,7 @@ The presets in full (exact values, for the plan check):
 
 How it works:
 - **A ceiling, not a target.** The preset sets the defaults (intensity, meme size, scene tone; it never turns B-roll, memes or scenes on: those are the person's choice in step 0) and the ceilings the visual plan check enforces: number and size of memes, a full-frame meme, allowed transitions, number of light flashes and whips, number of full-frame scenes, scene tone. A violation is an error.
-- **Settings layers:** skill defaults (with the add-on's) ← tone preset defaults ← the project's `reel-defaults.json` (section “Your settings in the project”) ← the file named in `REELS_DEFAULTS_OVERLAY` ← the video profile's defaults (`references/profiles.md`) ← the profile's `inserts` ← the video's `reel.json` ← words from the prompt. Ceilings: the preset plus `tone.overrides`, whatever the layers say; a video profile asking for more (an entertaining video's `active` intensity at an `expert` brand) is held at the tone's, and `reelcfg.py show` says so.
+- **Settings layers:** skill defaults (with the add-on's) ← tone preset defaults ← the project's `reel-defaults.json` (section “Your settings in the project”) ← the video profile's defaults (`references/profiles.md`) ← the profile's `inserts` ← the video's `reel.json` ← words from the prompt. Ceilings: the preset plus `tone.overrides`, whatever the layers say; a video profile asking for more (an entertaining video's `active` intensity at an `expert` brand) is held at the tone's, and `reelcfg.py show` says so.
 - **The brand's own tone for a video profile:** a brand that makes louder (or quieter) videos of one kind on purpose records it once, as the owner's decision: `brand.py tone <slug> drive --profile entertaining` writes `brand.json → tone.by_profile`, keeps the main tone for every other video, and the profile's videos take that preset as their ceiling with no per-video override (the main tone's `overrides` don't apply to it). The main tone's preset removes the entry; changing the main tone keeps it. Offer it when the person asks twice for a louder video of the same profile; the brand owner confirms.
 - **Louder than the brand tone** only on the person's explicit request for this video: `reel.json → "tone_override": true`; violations become warnings and go into the report.
 - **A custom tone** (“Other” in the question, described in words): the nearest preset plus field changes in `tone.overrides`.
@@ -152,7 +152,7 @@ How it works:
 On request (“change the brand tone”, in any language):
 1. Show the eight presets in a short text table: what each one changes (memes, cutaways, how loud the techniques are), the current one marked.
 2. One question: the current tone, marked “current”, and the 3 that fit the brand's field best, labels in the person's language; any other preset by name in “Other”.
-3. After the choice: copy `brand.json` to `brand.json.bak`, write the new `tone.preset` and keep `tone.overrides` and every other key. Confirm in one line, for example “Acme: tone changed from expert to friendly; the next videos follow it.” If `tone.overrides`, `motion` or `meme_size` set explicitly in the profile contradict the new tone, name them and offer to clear them (set them to `null`, as in the template), so the tone decides.
+3. After the choice: copy `brand.json` to `brand.json.bak`, write the new `tone.preset` and keep `tone.overrides` and every other setting. Confirm in one line, for example “Acme: tone changed from expert to friendly; the next videos follow it.” If `tone.overrides`, `motion` or `meme_size` set explicitly in the profile contradict the new tone, name them and offer to clear them (set them to `null`, as in the template), so the tone decides.
 
 Plans of videos already edited stay as they are; a plan that breaks the new ceilings shows errors at its next check. This is not `tone_override`: that one is for a single video and leaves the profile as it is.
 
@@ -223,4 +223,4 @@ HEX codes and font names are never written into the video's code.
 - **Memes:** `memes_policy`. With `strict`, only memes with known rights are used. Meme size is `meme_size` (no larger than the tone's ceiling): for a calm brand, `s`.
 - **Icon library verdicts.** A “no” for rights reasons (film stills, celebrities, stock people; `rights_block` in the catalog) always applies. A “no” for style reasons applies only to a brand that adopts the catalog's verdicts: `"asset_verdicts": "verdict"` in its `brand.json` (`references/library.md`).
 - **Forbidden imagery:** `forbidden_imagery` / `_en`. It applies to B-roll, code scenes and memes (and to the online sources of the online-sources add-on `it-reelsmaker-online`).
-- **Insert defaults:** `inserts`. For example, `{"use_online_footage": false}` (a key of the online-sources add-on `it-reelsmaker-online`) for a brand whose guidelines forbid stock footage.
+- **Insert defaults:** `inserts`. For example, `{"use_online_footage": false}` (a setting of the online-sources add-on `it-reelsmaker-online`) for a brand whose guidelines forbid stock footage.

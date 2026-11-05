@@ -18,13 +18,13 @@ once more by itself (says so; both attempts stay in render.log and in render.jso
 not retried. "temp_cleanup": false in it-reelsmaker.json keeps Remotion's own ways.
 
 What the kit is: src/ReelKit.tsx (the ReelKit and ReelCover compositions: the rough cut, subtitles, brand, inserts,
-designed scenes, all from props written by `visual_plan.py export --props`) and src/kit/ (its components). The
-starter project adds package.json with pinned versions (all @remotion/* packages at the same version as remotion),
+designed scenes, all from props written by `visual_plan.py stage --props`) and src/kit/ (its components). The
+starter project adds package.json with pinned versions (all @remotion packages at the same version as remotion),
 tsconfig.json, remotion.config.ts, src/index.ts, src/Root.tsx (ReelKit, ReelCover and the code scenes from
 src/gen/registry.ts), and empty src/brands/, src/plans/, public/.
 
 The script never runs npm and never touches the network: after `new` it prints the install command. `update`
-replaces only the kit's own files (src/ReelKit.tsx, src/kit/**); Root.tsx, src/gen/, brands, plans and public/ stay
+replaces only the kit's own files (src/ReelKit.tsx and everything in src/kit/); Root.tsx, src/gen/, brands, plans and public/ stay
 yours. Files it replaces are copied to .kit-backup/<time>/ first. With a project folder (edit/, brands/ or
 it-reelsmaker.json), `new` writes remotion_dir into it-reelsmaker.json unless it is already set.
 """
@@ -248,12 +248,12 @@ def npx():
     return shutil.which("npx") or shutil.which("npx.cmd") or "npx"
 
 
-def run_logged(cmd, rem, env, log, mode="w"):
+def run_logged(cmd, rem, log, mode="w"):
     """Run a Remotion command: every line into the log, on the screen only errors, warnings and the progress in steps
     of 20 %. mode "a" adds to the log (a second attempt). -> the exit code."""
     shown = {}
     with open(log, mode, encoding="utf-8", errors="replace") as f:
-        p = subprocess.Popen(cmd, cwd=rem, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
+        p = subprocess.Popen(cmd, cwd=rem, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
                              encoding="utf-8", errors="replace")
         for line in p.stdout:  # universal newlines: a "\r" progress update counts as a line too
             f.write(line if line.endswith("\n") else line + "\n")
@@ -286,7 +286,7 @@ ATTEMPT_MARK = "===== kit.py: attempt"  # the line render.log gets before each f
 
 def retry_reason(log):
     """The line of the last attempt in the log that names RETRY_ON, or None: a render that failed with it is run once
-    more by itself. Seen once on an 8 GB laptop (2026-10-20, a 34-min talk's clip): the same command passed when run
+    more by itself. Seen once on an 8 GB laptop (2026-10-20, a 34-min talk's clip): the same command worked when run
     again by hand; the cause is not known. Any other failure is not retried."""
     try:
         txt = Path(log).read_text(encoding="utf-8", errors="replace")
@@ -326,15 +326,15 @@ def cmd_render(a, still=False):
     while True:
         t1 = time.time()
         try:
-            with remotion_tmp(rem, props, a.comp) as (env, extra):
-                code = run_logged(cmd + extra, rem, env, log, "a" if attempts else "w")
+            with remotion_tmp(rem, props, a.comp) as (_run_dir, extra):
+                code = run_logged(cmd + extra, rem, log, "a" if attempts else "w")
         except OSError as x:
             sys.exit(f"cannot run npx ({x}): Node.js with Remotion is needed (doctor.py)")
         why = retry_reason(log) if code != 0 and not still else None
         attempts.append({"code": code, "seconds": round(time.time() - t1, 1), **({"error": why} if why else {})})
         if not why or len(attempts) > RETRIES:
             break
-        print(f"  the render failed with Remotion's \"{RETRY_ON}\" ({why}): a rerun of the same command passed before, "
+        print(f"  the render failed with Remotion's \"{RETRY_ON}\" ({why}): a rerun of the same command worked before, "
               f"so it runs once more by itself (both attempts stay in {log.name})", flush=True)
         with open(log, "a", encoding="utf-8") as f:
             f.write(f"\n{ATTEMPT_MARK} {len(attempts) + 1} (the one before failed with Remotion's frame error) =====\n")

@@ -4,7 +4,7 @@
 import React from "react";
 import { interpolate } from "remotion";
 import { fitSize, glue } from "../Phrase";
-import { LABEL_SIZE, Label, tokens, useFontsLoaded, wordTimes } from "./parts";
+import { LABEL_SIZE, Label, wordsOf, useFontsLoaded, wordTimes } from "./parts";
 import { both, easeOut } from "./tones";
 import type { SceneCtx } from "./types";
 
@@ -24,8 +24,8 @@ export const Contrast: React.FC<{ c: SceneCtx }> = ({ c }) => {
   const size = Math.min(want, byH, ...[was, now].map((t) => fitSize({ text: t, size: want, font: fonts.heading, weight: 800, maxWidth: c.inner.w,
     padEm: 0.2, tracking: -0.01, ready })));
   // frame of the second line: its first word in the speech → else items[1].t → else after reading the first
-  const tw = tokens(was);
-  const own = wordTimes(tw.concat(tokens(now)), c.words, spec.start, spec.start + spec.dur)[tw.length];
+  const tw = wordsOf(was);
+  const own = wordTimes(tw.concat(wordsOf(now)), c.words, spec.start, spec.start + spec.dur)[tw.length];
   const t2 = typeof own === "number" ? own : spec.items?.[1]?.t ?? null;
   const read = Math.max(Math.round(0.6 * c.fps), Math.round(0.35 * (tl.settleTo - tl.lead - tl.inF)));
   const f2 = Math.max(tl.lead + tl.inF + 6, t2 !== null ? Math.round((t2 - spec.start) * c.fps) : tl.lead + tl.inF + read);

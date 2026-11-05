@@ -39,7 +39,7 @@ const SHOTS = [ { src: 0, cam: M, drift: 0.05 }, { src: 17.6, cam: P, whip: true
 
 ## In the ReelKit template: `camera.json`
 
-The kit draws these shots itself (kit 1.4.5): list them in `edit/<id>/camera.json`, and `visual_plan.py export --props`
+The kit draws these shots itself (kit 1.4.5): list them in `edit/<id>/camera.json`, and `visual_plan.py stage --props`
 turns them into `props.camera` (seconds of the finished video) and computes the subtitle top from the face measurement
 with each shot's camera.
 ```json

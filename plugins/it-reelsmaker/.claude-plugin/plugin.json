@@ -1,7 +1,7 @@
 {
   "name": "it-reelsmaker",
   "displayName": "IT Reelsmaker",
-  "version": "1.21.0",
+  "version": "1.22.0",
   "description": "Edit vertical short videos (Reels, Shorts, TikTok) from talking-head footage in Claude Code, or cut a long podcast, webinar or interview into a series of clips: cut pauses and retakes by audio, virtual camera and on-brand motion graphics in Remotion, designed scenes for hooks, quotes, numbers and calls to action, word-timed subtitles, face-aware layout, loudness mastering and a 1080×1920 render. Brand profiles with a brand tone. Runs locally with ffmpeg, Node.js and Python.",
   "author": {
     "name": "IT Party Pattaya",
@@ -10,10 +10,6 @@
   },
   "homepage": "https://github.com/itpartypattaya/reels-montage/tree/main/plugins/it-reelsmaker",
   "repository": "https://github.com/itpartypattaya/reels-montage",
-  "documentationUrl": "https://github.com/itpartypattaya/reels-montage/blob/main/plugins/it-reelsmaker/README.md",
-  "privacyPolicyUrl": "https://github.com/itpartypattaya/reels-montage/blob/main/plugins/it-reelsmaker/PRIVACY.md",
-  "supportUrl": "https://github.com/itpartypattaya/reels-montage/issues",
-  "termsOfServiceUrl": "https://github.com/itpartypattaya/reels-montage/blob/main/plugins/it-reelsmaker/LICENSE",
   "license": "MIT",
   "keywords": [
     "video",
@@ -31,12 +27,12 @@
     "project_root": {
       "type": "directory",
       "title": "Editing project folder",
-      "description": "Folder where edits live: edit/<id>/ per video, brands/<slug>/ brand profiles. Leave empty to set it in the first session."
+      "description": "Folder where edits live: edit/<id>/ per video, brands/<slug>/ brand profiles. Leave empty to set it on the first run."
     },
     "remotion_dir": {
       "type": "directory",
       "title": "Remotion project",
-      "description": "Remotion project used for camera, graphics, subtitles and render, for example <project>/reels. Leave empty to create or pick it in the first session."
+      "description": "Remotion project used for camera, graphics, subtitles and render, for example <project>/reels. Leave empty to create or pick it on the first run."
     },
     "assets_dir": {
       "type": "directory",

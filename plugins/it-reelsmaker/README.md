@@ -29,11 +29,11 @@ Each video can have a **profile**: educational, entertaining, expert clip, promo
 
 ## A long recording → a series of clips
 
-A podcast, webinar or interview of 10–90 minutes becomes a series of vertical clips. The whole recording is transcribed once on your computer (or the subtitles you already have are imported), the agent reads it part by part and writes one card per clip: its pieces named by their first and last words, the hook, the ending and why it stands alone. A clip can join two or three places of the recording and drop the host's interjections. There is no virality score and no fixed number of clips: the script finds every piece in the transcript, flags a piece found twice, a start or end mid-sentence, a clip that leans on what came before, two clips about the same thing, and anything inside a stretch you excluded. You approve the list once; each approved card becomes an ordinary video folder, finished by the steps above, one clip at a time.
+A podcast, webinar or interview of 10–90 minutes becomes a series of vertical clips. The whole recording is transcribed once on your computer (or the subtitles you already have are imported), the agent reads it part by part and writes one card per clip: its pieces named by their first and last words, the hook, the ending and why it stands alone. A clip can join two or three places of the recording and drop the interviewer's interjections. There is no virality score and no fixed number of clips: the script finds every piece in the transcript, flags a piece found twice, a start or end mid-sentence, a clip that leans on what came before, two clips about the same thing, and anything inside a stretch you excluded. You approve the list once; each approved card becomes an ordinary video folder, finished by the steps above, one clip at a time.
 
 ## Designed scenes
 
-A hook set large, a quote taken verbatim from the speech, the main thought as a punch, a number with a counter and its source, a list item by item, “before → after”, the call to action as an action, a cover in frame 0. Claude draws them in code in your brand's colors and fonts and places each one on its spoken word. By default the speaker's face stays in the frame: the scene sits in a free zone of the shot. The plan check counts reading time (0.8 s for a short line, 0.3 s per word in a phrase), compares quotes with the transcript and asks for a source for every number. A promo without footage uses the same scenes on their own, 15–25 s. The scene planning method is adapted from [brag](https://github.com/latent-spaces/brag) (MIT).
+A hook set large, a quote taken verbatim from the speech, the main thought as a punch, a number with a counter and its source, a list item by item, “before → after”, the call to action as an action, a cover picture. Claude draws them in code in your brand's colors and fonts and places each one on its spoken word. By default the speaker's face stays in the frame: the scene sits in a free zone of the shot. The plan check counts reading time (0.8 s for a short line, 0.3 s per word in a phrase), compares quotes with the transcript and asks for a source for every number. A promo without footage uses the same scenes on their own, 15–25 s. The scene planning method is adapted from [brag](https://github.com/latent-spaces/brag) (MIT).
 
 ## Experimental
 
@@ -43,7 +43,7 @@ A few more things are in the kit and the references but not yet checked in a fin
 - layouts where the speaker moves aside for a scene: split, slide panel, a window in the corner;
 - the cut-out figure: text behind the person, a presenter over a scene (needs `rembg`, below);
 - a phone mockup on the call to action;
-- callouts on objects: a dot on a thing in the frame, a leader line drawn from it and a label wiping in, as in tour and review videos (“sofa”, “the view from the balcony”); also a price in a circle, a ring around one object among others, a measuring line with its size, and the host's name on their shoulder. Offered when the speaker names something you can see. On a still shot the dot stays put; on a pan or a walk-through filmed by hand `track.py` follows the object, and keys set by hand work for a slow pan. The plan check measures that the dot stays on the object (a track that slips is refused), follows the virtual camera, and keeps the label off faces, the subtitles and the app's buttons; text with no plate must read over the picture.
+- callouts on objects: a dot on a thing in the frame, a leader line drawn from it and a label wiping in, as in tour and review videos (“sofa”, “the view from the balcony”); also a price in a circle, a ring around one object among others, a measuring line with its size, and the presenter's name on their shoulder. Offered when the speaker names something you can see. On a still shot the dot stays put; on a pan or a walk-through filmed by hand `track.py` follows the object, and positions set by hand work for a slow pan. The plan check measures that the dot stays on the object (a track that slips is refused), follows the virtual camera, and keeps the label off faces, the subtitles and the app's buttons; text with no plate must read over the picture.
 
 ## Requirements
 
@@ -69,7 +69,7 @@ claude plugin marketplace add https://github.com/itpartypattaya/reels-montage.gi
 claude plugin install it-reelsmaker@itparty
 ```
 
-Without plugins, copy the folder `skills/it-reelsmaker/` to `~/.claude/skills/it-reelsmaker/`. The skill then asks for its settings in the first session.
+Without plugins, copy the folder `skills/it-reelsmaker/` to `~/.claude/skills/it-reelsmaker/`. The skill then asks for its settings on the first run.
 
 ## Configure
 
@@ -86,7 +86,7 @@ Brand profiles live in your project, not in the plugin, so updates never touch t
 
 ## Updates
 
-- **Installed from the Claude directory** (Customize → Plugins): updates arrive by themselves. Claude Code syncs the plugin in the background, shows “Plugins changed. Run /reload-plugins to activate.”, and loads the new version in your next session.
+- **Installed from the Claude directory** (Customize → Plugins): updates arrive by themselves. Claude Code syncs the plugin in the background, shows “Plugins changed. Run /reload-plugins to activate.”, and loads the new version the next time you start it.
 - **Installed from this repository's marketplace:** auto-update is off by default for marketplaces outside Anthropic's own. Turn it on once: `/plugin` → **Marketplaces** → `itparty` → **Enable auto-update**. Or add the marketplace to your `~/.claude/settings.json` with auto-update on:
 
 ```json
@@ -100,7 +100,7 @@ Brand profiles live in your project, not in the plugin, so updates never touch t
 }
 ```
 
-  To update by hand, run these in your shell, then `/reload-plugins` in the session (or start a new one):
+  To update by hand, run these in your shell, then `/reload-plugins` in Claude Code (or restart it):
 
 ```bash
 claude plugin marketplace update itparty
@@ -118,7 +118,7 @@ What changed in each version is in [CHANGELOG.md](CHANGELOG.md). After an update
 - “New brand: Northwind Coffee, colors #2E1F17 and #E8B04B, logo in brand/logo.svg.”
 - “Change the brand tone for Acme: it feels too strict, make it livelier.”
 - “Video 4821 jumps back around 0:18 — find the missed retake and fix the cut.”
-- “Add a hook headline, two cards with the key points and an end card with a DM call to action to video 4821.”
+- “Add a hook headline, two cards with the main points and an end card with a DM call to action to video 4821.”
 - “Run the face audit on the final render and move anything that covers the speaker's face.”
 - “Add designed scenes to video 4821: a big hook in the first 1.5 s, the quote about testing how people think, verbatim, and the three signs as a list. Keep the face visible. Show me the plan and texts first.”
 - “Make a 20-second promo for Acme without footage: hook, what we do, three numbers from our site with sources, the end card with our site. Then a cover and a post caption.”
@@ -127,7 +127,7 @@ What changed in each version is in [CHANGELOG.md](CHANGELOG.md). After an update
 
 The plugin collects nothing and has no server or telemetry. Your videos, transcripts and brand profiles stay in your project folder. Data leaves your computer only in these cases:
 
-- **Claude.** Like any Claude Code session, the conversation goes to Anthropic. That includes transcripts, file excerpts and the frames Claude looks at, under your Claude account terms.
+- **Claude.** As with any use of Claude Code, the conversation goes to Anthropic. That includes transcripts, file excerpts and the frames Claude looks at, under your Claude account terms.
 - **A cloud transcriber.** Only if you choose one instead of local `faster-whisper`. Its own terms apply.
 - **Dependency and model downloads.** npm packages for Remotion and its own headless browser downloaded on the first render; Python packages such as faster-whisper, OpenCV and rembg (PyPI); Google Fonts loaded by `@remotion/google-fonts` at render time; and the models for the features you use — faster-whisper (Hugging Face), the YuNet face model (GitHub) and the rembg segmentation model (downloaded by rembg on first use).
 
@@ -146,7 +146,7 @@ More online sources are available through the online-sources add-on `it-reelsmak
 ## Troubleshooting
 
 - **The skill doesn't start.** Call it directly with `/it-reelsmaker:it-reelsmaker`, or describe the task with words like “edit a reel”.
-- **The settings are empty.** Set them in `/config`. Or answer the first-session question, and the skill writes `it-reelsmaker.json` into your project.
+- **The settings are empty.** Set them in `/config`. Or answer the first-run question, and the skill writes `it-reelsmaker.json` into your project.
 - **Remotion fails with “No frame found at position …”.** The rough cut's video doesn't start at 0. Rebuild it with video and audio concatenated separately, as step 6 of the skill describes.
 - **The text lands on a face.** Install the YuNet model for measured layout, or ask for the face audit on the render.
 - **A cut-out shows furniture next to the person.** Check the check frame the skill renders, then use the “window” layout or reshoot against a wall.

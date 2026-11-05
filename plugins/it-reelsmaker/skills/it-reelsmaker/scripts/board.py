@@ -6,10 +6,10 @@ per minute of video on a laptop) runs once the sheet is approved.
     python scripts/board.py edit/4821 [--props edit/4821/reelkit-props.json] [--remotion reels] [--comp ReelKit]
         [--shots] [--transitions] [--defects] [--cols 5] [--per-page 20] [--scale 0.3334]
 
-When: after `visual_plan.py export … --props` (step 8), before the full render (`kit.py render`). Again after fixes: it is cheap.
+When: after `visual_plan.py stage … --props` (step 8), before the full render (`kit.py render`). Again after fixes: it is cheap.
 
 How:
-  1. Panels from the props the render will use (scene times, tones and transitions as exported) and the plan (what
+  1. Panels from the props the render will use (scene times, tones and transitions as staged) and the plan (what
      each insert and card is): a scene at the moment its whole text is on screen + 0.3 s (the timing validate uses,
      kit/scenes/tones.ts), never past its settled window; B-roll, a meme, a graphics card (keep_clear) at their middle;
      the hook headline and the end card once settled. --shots adds a frame per camera shot, --transitions the middle of
@@ -53,7 +53,7 @@ def remotion_dir(given):
     """--remotion, else it-reelsmaker.json -> remotion_dir (relative to the project folder)."""
     rem = given or project_settings().get("remotion_dir")
     if not rem or str(rem).startswith("${"):
-        sys.exit("no Remotion project: pass --remotion <folder> (or set remotion_dir in it-reelsmaker.json)")
+        sys.exit("no Remotion project: give --remotion <folder> (or set remotion_dir in it-reelsmaker.json)")
     p = Path(rem)
     p = (p if p.is_absolute() else project_root() / p).resolve()
     if not ((p / "package.json").is_file() and (p / "src").is_dir()):
@@ -64,7 +64,7 @@ def remotion_dir(given):
 def props_path(e, given):
     p = Path(given) if given else e / "reelkit-props.json"
     if not p.is_file():
-        sys.exit(f"no props: {p} (visual_plan.py export {e.name} --remotion … --props {p})")
+        sys.exit(f"no props: {p} (visual_plan.py stage {e.name} --remotion … --props {p})")
     return p.resolve()
 
 
@@ -92,8 +92,8 @@ def render_frames(rem, comp, props_file, n, outdir, scale, fmt="jpeg", log="erro
     cmd = [npx(), "--no", "remotion", "render", comp, str(outdir), "--sequence", f"--frames=0-{n - 1}",
            f"--image-format={fmt}", f"--scale={scale}", "--muted", f"--log={log}", f"--props={Path(props_file).resolve()}"]
     try:
-        with remotion_tmp(rem, props_file, comp, quiet=True) as (env, extra):  # its temp files go when it ends
-            r = subprocess.run(cmd + extra, cwd=rem, env=env, capture_output=True, text=True, encoding="utf-8",
+        with remotion_tmp(rem, props_file, comp, quiet=True) as (_run_dir, extra):  # its temp files go when it ends
+            r = subprocess.run(cmd + extra, cwd=rem, capture_output=True, text=True, encoding="utf-8",
                                errors="replace")
     except OSError as x:
         sys.exit(f"cannot run npx ({x}): Node.js with Remotion is needed (doctor.py)")
@@ -251,7 +251,7 @@ def board_md(e, pans, pages, fps):
     (e / "board" / "board.md").write_text(head + "\n".join(rows) + "\n", encoding="utf-8")
 
 
-NOTHING = "nothing to put on the sheet"  # check.py reads this line: the step passes, there is nothing to show
+NOTHING = "nothing to put on the sheet"  # check.py reads this line: the step succeeds, there is nothing to show
 
 
 def main():
@@ -286,7 +286,7 @@ def main():
         _e, _w, state = vp.defect_issues(e, plan, _s, doc, load_json(e / "captions.json", {}) or {})
         found = [(d, state.get(d["id"], "open")) for d in d_all]
     pans = panels(props, plan, doc, fps, a.shots, a.transitions, found)
-    if not pans:  # a clip with no graphics passes (English test talk: check.py failed its board step on one)
+    if not pans:  # a clip with no graphics succeeds (English test talk: check.py failed its board step on one)
         print(f"{NOTHING}: no hook, scenes, inserts, cards or end card in the props, so no sheet "
               "(--shots adds the camera shots)")
         return

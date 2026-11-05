@@ -12,7 +12,7 @@
 
 Voice chain (the render's audio, together with the sound effects):
   measure the noise floor → noise reduction ONLY if the floor is louder than −50 dBFS (on a clean recording it causes
-  artifacts) → highpass 80 Hz → two-pass loudnorm to −14 LUFS, TP −1.5, headroom for AAC (single-pass drifts off target).
+  artifacts) → highpass 80 Hz → two-stage loudnorm to −14 LUFS, TP −1.5, headroom for AAC (single-stage drifts off target).
 Scene sounds (--sfx, if any): the kit does not play them (types.ts: "sound is chosen at mixing"); they are mixed into the
   render's audio before the voice chain, each placed by the start of its sound, not of the file, with its peak
   `below_voice_db` (15) under the voice peak unless `gain_db` is set:
@@ -23,19 +23,19 @@ Music (if any): the bed is normalized to an absolute target (gap 15 dB → −24
   17 → −26), ducks under the voice with a sidechain (ratio 3, threshold 0.10, attack 20, release 380),
   and the final mix is brought to −14 LUFS again. The track is cut by meaning: the track's drop (its sharpest rise,
   --find-drops) lands on the final phrase (--drop-at, --drop-in-track).
-Ducking under a key line (--duck A-B[:dB], repeatable, seconds of the render): the music goes down by dB (−14 by
+Ducking under a main line (--duck A-B[:dB], repeatable, seconds of the render): the music goes down by dB (−14 by
   default) for that window, with 0.2 s fades on both sides, so the line is heard in near silence; it is applied to
   the music after the sidechain, before the mix, and the voice is not touched. Two different things: "duck the music
-  under the key line" (--duck) and "the track's drop" (a loud moment of the track itself, placed with --drop-at).
+  under the main line" (--duck) and "the track's drop" (a loud moment of the track itself, placed with --drop-at).
 The video is not re-encoded: the audio goes into the finished render (-c:v copy), +faststart.
-The cover (--cover edit/<id>/cover.jpg, picked with poster.py pick): the master is built with it in one run — frame 0
-  replaced by the cover (poster.py bake: the only re-encode, frame count and durations checked), the sound mastered, the
-  cover embedded as cover art (poster.py attach: the file manager's thumbnail) — and the cover is saved next to the
-  master as a picture for uploading it by hand: <name>-cover.jpg (out/x-master.mp4 -> out/x-cover.jpg). One file goes
-  out, the master; there is no separate "-final.mp4". Without --cover the master is made as before, with a warning:
-  messengers show its first frame and file managers a random one.
+The cover (--cover edit/<id>/cover.jpg, picked with poster.py pick): the sound mastered, the cover embedded as cover
+  art (poster.py attach, a stream copy: the file manager's thumbnail), and the cover saved next to the master as a
+  picture for uploading it by hand: <name>-cover.jpg (out/x-master.mp4 -> out/x-cover.jpg). The video itself is not
+  touched, frame 0 included: putting the cover into frame 0 re-encoded the whole video (since 1.22 it is not done; by
+  hand: poster.py bake). There is no separate "-final.mp4". Without --cover the master is made as before, with a
+  warning: file managers pick a random frame and there is no cover picture to upload.
 At the end, the acceptance check from the checklist (SKILL.md): −14 ±0.7 LUFS, true peak ≤ −1 dBFS, audio = video track
-(and video = input). Exit code: 0, the check passed; 1, it failed, a measurement failed or ffmpeg failed.
+(and video = input). Exit code: 0, the check succeeded; 1, it failed, a measurement failed or ffmpeg failed.
 No voice and no music (the "scenes only" format): a few scene sounds over silence are not a −14 LUFS track, so the
 loudness is not required, the true peak and the durations are; a render with no sound and no --sfx is copied as is
 (no audio track, only the durations count). Such a master carries the mp4 comment tag "it-reelsmaker master: …" and
@@ -52,7 +52,7 @@ TARGET, TP = -14.0, -1.0
 TP_PROC = -1.5   # loudnorm target with headroom for AAC: the encoder adds ~0.2 dB or more to the true peak
                  # (measured: −1.0 dBFS in PCM → −0.8 after aac 256k), and the acceptance check runs on the finished file
 LUFS_TOL = 0.7    # −14 ±0.7 LUFS
-TP_EPS = 0.05     # ebur128 prints the peak to 0.1: "−1.0" with a −1 target passes, "−0.9" does not
+TP_EPS = 0.05     # ebur128 prints the peak to 0.1: "−1.0" with a −1 target is accepted, "−0.9" is not
 DUR_TOL = 0.1     # audio vs. video track and video vs. input, s
 TAG = "it-reelsmaker master: "  # mp4 comment of a master the −14 LUFS rule does not apply to (--check reads it back)
 TAG_NO_VOICE = TAG + "no voice, scene sounds only (no -14 LUFS target)"
@@ -91,7 +91,7 @@ def noise_floor(p):
 
 
 def loudnorm_2pass(inp, out, pre, target):
-    """Two-pass loudnorm in linear mode; pre: the filters before normalization."""
+    """Two-stage loudnorm in linear mode; pre: the filters before normalization."""
     f1 = (pre + "," if pre else "") + f"loudnorm=I={target}:TP={TP_PROC}:LRA=11:print_format=json"
     r = run(["ffmpeg", "-hide_banner", "-nostats", "-i", inp, "-vn", "-af", f1, "-f", "null", "-"])
     m = json.loads(r.stderr[r.stderr.rfind("{"): r.stderr.rfind("}") + 1])
@@ -202,9 +202,9 @@ def main():
     ap.add_argument("--no-sfx", action="store_true", help="master without the scene sounds even when sfx.json is there")
     ap.add_argument("--edit", help="edit/<id>: the video's folder, where sfx.json is looked for (default: the folder of --cover)")
     ap.add_argument("--duck", action="append", default=[], metavar="A-B[:dB]",
-                    help="duck the music under a key line: seconds of the render, dB down (default 14), repeatable")
-    ap.add_argument("--cover", help="edit/<id>/cover.jpg (poster.py pick): frame 0, the embedded cover art and "
-                                    "<name>-cover.jpg next to the master, in this run")
+                    help="duck the music under a main line: seconds of the render, dB down (default 14), repeatable")
+    ap.add_argument("--cover", help="edit/<id>/cover.jpg (poster.py pick): the embedded cover art and "
+                                    "<name>-cover.jpg next to the master, in this run (the video is not re-encoded)")
     a = ap.parse_args()
     if a.find_drops:
         find_drops(a.input)
@@ -226,9 +226,9 @@ def main():
     if a.cover and Path(a.output).resolve() == Path(a.input).resolve():
         sys.exit("-o must differ from the input")
     if not a.cover:
-        print("⚠ no cover (--cover): the master's frame 0 is the render's first frame (what messengers show) and a file "
-              "manager picks a random frame; poster.py pick edit/<id> --render <render> -o edit/<id>/cover.jpg, then "
-              "master again with --cover edit/<id>/cover.jpg")
+        print("⚠ no cover (--cover): a file manager picks a random frame as the thumbnail and there is no cover picture "
+              "to upload; poster.py pick edit/<id> --render <render> -o edit/<id>/cover.jpg, then master again with "
+              "--cover edit/<id>/cover.jpg")
 
     a.ducks = parse_ducks(a.duck)
     if a.ducks and not a.music:
@@ -242,7 +242,7 @@ def main():
 
 
 def poster(*args):
-    """poster.py bake / attach in a child process: their own checks decide (exit code 1 = do not deliver)."""
+    """poster.py attach in a child process: its own checks decide (exit code 1 = do not deliver)."""
     r = subprocess.run([sys.executable, str(Path(__file__).resolve().parent / "poster.py"), *map(str, args)],
                        capture_output=True, text=True, encoding="utf-8", errors="replace")
     out = (r.stdout + r.stderr).strip()
@@ -269,14 +269,10 @@ def cover_jpg_of(output):
 
 
 def with_cover(a, tmp):
-    """The master with its cover in one run: bake frame 0 -> master the sound -> attach the cover art -> the jpg."""
+    """The master with its cover in one run: master the sound -> attach the cover art -> the jpg next to it. Frame 0
+    stays the render's: replacing it re-encoded the whole video (since 1.22; poster.py bake does it by hand)."""
     out, cover = Path(a.output), Path(a.cover)
-    baked = os.path.join(tmp, "cover.mp4")
-    print(f"cover: frame 0 <- {cover.name} (poster.py bake)")
-    if poster("bake", a.input, "--cover", cover, "-o", baked):
-        print("the cover could not be put into frame 0: no master was made; check the cover and the render")
-        return 1
-    a.input, a.output = baked, os.path.join(tmp, "master.mp4")
+    a.output = os.path.join(tmp, "master.mp4")
     code = master(a, tmp)
     out.parent.mkdir(parents=True, exist_ok=True)
     print(f"cover: embedded as cover art (poster.py attach) -> {out}")
@@ -292,7 +288,7 @@ def with_cover(a, tmp):
     return code
 
 
-DUCK_DB = -14.0   # dB: the music under a key line, against the bed around it ("near silence", references/library.md)
+DUCK_DB = -14.0   # dB: the music under a main line, against the bed around it ("near silence", references/library.md)
 DUCK_FADE = 0.2   # s: the fade down before the window and back up after it
 
 
@@ -319,7 +315,7 @@ def duck_filter(ducks, D):
         g, f, b0 = 10 ** (db / 20), DUCK_FADE, min(b0, D)
         k = f"min(clip((t-{a0 - f:.3f})/{f},0,1),clip(({b0 + f:.3f}-t)/{f},0,1))"
         terms.append(f"(1-{1 - g:.6f}*{k})")
-        print(f"music ducked under a key line: {a0:.2f}-{b0:.2f} s by {db:.0f} dB (fades {f:g} s)")
+        print(f"music ducked under a main line: {a0:.2f}-{b0:.2f} s by {db:.0f} dB (fades {f:g} s)")
     return f"volume='{'*'.join(terms)}':eval=frame" if terms else ""
 
 
@@ -501,7 +497,7 @@ def master(a, tmp):
         loudnorm_2pass(mcut, mus, "", mtarget)
         mix = os.path.join(tmp, "mix.wav")
         # sidechaincompress outputs about a second less than it receives → apad on both inputs, atrim on the output;
-        # the key-line duck (--duck) goes after the sidechain, so the window is exactly that much below the bed
+        # the main-line duck (--duck) goes after the sidechain, so the window is exactly that much below the bed
         duck = duck_filter(a.ducks, D)
         fc = (f"[0:a]apad=pad_dur=2,asplit=2[v][sc];"
               f"[1:a]apad=pad_dur=2,afade=t=in:d=0.5,afade=t=out:st={max(0, D - 1.2):.3f}:d=1.2[m];"

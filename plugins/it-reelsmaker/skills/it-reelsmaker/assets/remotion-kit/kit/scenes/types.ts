@@ -1,5 +1,5 @@
 // Designed scenes (references/scenes.md): scene types from the visual plan. The plan is edit/<id>/visual_plan.json →
-// inserts[] with kind "scene" (ids c01, c02…); into the video via `visual_plan.py export … --props` → props.scenes (timing
+// inserts[] with kind "scene" (ids c01, c02…); into the video via `visual_plan.py stage … --props` → props.scenes (timing
 // already resolved: start/dur, items[].t, interaction.t are seconds of the output timeline).
 import type { Brand, Look } from "../brand";
 import type { Word } from "../Subtitles";

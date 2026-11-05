@@ -86,7 +86,7 @@ unless marked “real case” (🟢 verified, `references/playbook.md`); the per
 
 ### Every profile
 
-- **ALL-1** (auto) the video starts on speech or a hook within the first second (a scene, or the `export --hook`
+- **ALL-1** (auto) the video starts on speech or a hook within the first second (a scene, or the `stage --hook`
   headline: `validate --hook`): no logo intro, no greeting, no slow lead-in. [platform] Meta, TikTok and YouTube Shorts all ask for the point within ~3 s; [data] a logo-only opening cut
   6-second views by 14 % (Vidmob × TikTok).
 - **ALL-2** (auto) the length is within the format's (or the ad's) range.
@@ -108,7 +108,7 @@ unless marked “real case” (🟢 verified, `references/playbook.md`); the per
 - **EDU-2** (agent) the promise (what the viewer will learn) is said or on screen in the first 3 s. [platform]
 - **EDU-3** (agent) one point on screen at a time; in a list, the step number is visible (“2/5”). [practice; the
   segmenting principle of multimedia learning]
-- **EDU-4** (agent) the key term is highlighted: an accent word or an accent title on its word. [signaling principle]
+- **EDU-4** (agent) the main term is highlighted: an accent word or an accent title on its word. [signaling principle]
 - **EDU-5** (agent) a diagram or list scene does not repeat the subtitles word for word next to itself: the subtitles
   are hidden or shortened under it (the kit hides them under list scenes by default). [redundancy principle]
 - **EDU-6** (validate) text on screen stays long enough to read (the reading-time floor of `references/scenes.md`).
@@ -120,7 +120,7 @@ unless marked “real case” (🟢 verified, `references/playbook.md`); the per
   Shorts guidance; [data] a direct look into the camera raised 2-second views by 14 % (Vidmob × TikTok).
 - **FUN-2** (agent) a teaser variant was among the structures offered, and it does not give the punchline away
   (`references/structure.md`). [ours; real case: the strongest structures of the skits came from teasers]
-- **FUN-3** (agent) no dead air: the speech mask and the cut edges pass; a beat only before a punchline. [practice]
+- **FUN-3** (agent) no dead air: the speech mask and the cut edges are accepted; a beat only before a punchline. [practice]
 - **FUN-4** (agent) the ending is a payoff with a hold or a loop back to the start; no CTA card after the punchline
   unless the brief chose one. [practice; the loop's effect is not measured anywhere]
 - **FUN-5** (validate) memes and reused clips have known rights and fit the brand tone.
@@ -145,7 +145,7 @@ unless marked “real case” (🟢 verified, `references/playbook.md`); the per
 ### Promo
 
 - **PROMO-1** (auto) the brand is heard or seen within 5 s: its name spoken or in a scene, or the corner logo
-  (`export --corner`). [platform] Google ABCD “brand early”; [data] the brand with the main message in the first 5 s
+  (`stage --corner`). [platform] Google ABCD “brand early”; [data] the brand with the main message in the first 5 s
   raised the odds of high purchase intent 1.7× (Meta × Toluna, 2026).
 - **PROMO-2** (agent) the brand appears more than once, not only on the end card. [data] repeated branding worked 1.8×
   better than one logo at the end (Meta × Toluna).
@@ -164,7 +164,7 @@ unless marked “real case” (🟢 verified, `references/playbook.md`); the per
 ### Paid ad
 
 - **AD-1** (auto, error) all text, logos, CTAs, memes and the subtitles stay inside the ad safe zone (x 65–1015,
-  y 269–1248): `export` lifts the subtitles and moves the corner logo down into it (kit 1.8.0); in the framed format
+  y 269–1248): `stage` lifts the subtitles and moves the corner logo down into it (kit 1.8.0); in the framed format
   the label and the corner logo above the window need the window low enough; full-frame scenes are checked on stills.
   [platform] Meta.
 - **AD-2** (auto) the brand or the product within 3 s. [platform] Meta, TikTok.
@@ -175,7 +175,7 @@ unless marked “real case” (🟢 verified, `references/playbook.md`); the per
   [platform] Meta advertising standards, TikTok ad policies.
 - **AD-6** (auto for memes, error; agent for the rest) memes and reused clips only with known rights (own, licensed,
   CC); music only from a licensed or commercial library. `validate` sees only the memes' rights, so the item is never
-  marked passed: B-roll and music are confirmed by the agent. [platform] TikTok, Meta.
+  marked done: B-roll and music are confirmed by the agent. [platform] TikTok, Meta.
 - **AD-7** (agent) 3–5 hook variants are offered for testing (other opening lines or teaser starts); made on request.
   [platform] TikTok: 3–5 creatives per ad group.
 - **AD-8** (agent) native, not low quality: a source of 720p or more, clear sound. [platform] TikTok.

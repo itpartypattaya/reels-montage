@@ -13,7 +13,7 @@ def test_report_lists_every_check_and_reads_the_remotion_project(project):
     names = {c["name"]: c for c in doc["checks"]}
     for n in ("Python 3.9+", "ffmpeg", "Pillow", "Node.js 18+", "Remotion project", "YuNet face model", "rembg (matte.py)"):
         assert n in names, n
-    pinned = names["@remotion/* = remotion version"]
+    pinned = names["@remotion packages = remotion version"]
     assert not pinned["ok"] and "@remotion/cli" in pinned["found"]  # a caret range and a different version
     assert (r.returncode == 0) == doc["ok"] == HAS_FFMPEG
 

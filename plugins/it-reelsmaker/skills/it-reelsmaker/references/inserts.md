@@ -30,11 +30,11 @@ Inserts are off in the skill defaults (`use_broll`, `use_memes`, `use_scenes` ar
 }
 ```
 
-The online-sources add-on `it-reelsmaker-online` adds its own keys (`use_online_footage`, `use_online_memes`, `generation_engines`, `generate_now`, providers) and plugs online sources into these priorities. Without the add-on, these keys are ignored.
+The online-sources add-on `it-reelsmaker-online` adds its own settings (`use_online_footage`, `use_online_memes`, `generation_engines`, `generate_now`, providers) and plugs online sources into these priorities. Without the add-on, these settings are ignored.
 
 What each setting does:
 
-| Key | Meaning |
+| Setting | Meaning |
 |---|---|
 | `use_broll` | B-roll at all |
 | `use_project_footage` / `use_local_footage` | B-roll sources: project, library |
@@ -46,7 +46,7 @@ What each setting does:
 
 **Turn everything off** (as without inserts): `use_broll=false`, `use_scenes=false`, `use_memes=false`.
 
-**Code scenes only, no footage**: `use_broll=true`, `use_project_footage=false`, `use_local_footage=false`, `use_code_scenes=true`. Designed scenes are a separate key, `use_scenes`.
+**Code scenes only, no footage**: `use_broll=true`, `use_project_footage=false`, `use_local_footage=false`, `use_code_scenes=true`. Designed scenes are a separate setting, `use_scenes`.
 
 **What actually turns on.** Before the plan, the agent checks what is really available: an enabled source that isn't there (empty folders, no library catalog, the Remotion project doesn't build) turns itself off, and the reason goes into the report. This is not an error: the edit proceeds with what is available.
 
@@ -101,7 +101,7 @@ Spans shorter than 1.2 s merge with their neighbors.
 - segment join → B-roll will hide the cut;
 - segment longer than 6 s without a cut;
 - number → a card, not B-roll;
-- pointing at an object (“here”, “look”, or the same in the speaker's language) → B-roll of the object, or, when the object is in the frame and the dot can stay on it (a still shot, keys, or `track.py` on a handheld one), a callout (`references/callouts.md`, “Offering it”);
+- pointing at an object (“here”, “look”, or the same in the speaker's language) → B-roll of the object, or, when the object is in the frame and the dot can stay on it (a still shot, points, or `track.py` on a handheld one), a callout (`references/callouts.md`, “Offering it”);
 - emotion or irony (“!”, “imagine”, “nightmare”, or the same in the speaker's language);
 - hook;
 - ending or CTA.
@@ -160,7 +160,7 @@ it. Not found: a blink (not a defect anyway), eyes looking down at notes with th
 
 **Timing:** the insert is on screen from 0.25 s before the defect to 0.25 s after it, and has finished entering by
 then and still there: enter and leave by a cut (a fade or a slide shows the defect through it for 7–14
-frames); leave in a pause or at a word boundary. Only a ready insert counts as covering (the export takes only ready
+frames); leave in a pause or at a word boundary. Only a ready insert counts as covering (the stage takes only ready
 ones); an acceptance holds for its stretch only, and a re-cut that moves the defect asks again. Mark it in the plan: `visual_plan.py add … --covers d03`; `validate` fails an insert that says it covers a
 defect and does not (wrong mode, too short, entering over it), and warns about a defect nothing covers. A defect left on
 purpose: `visual_plan.py accept edit/<id> d03 --why "a natural glance"` (into the report). `board.py --defects` puts a
@@ -312,4 +312,4 @@ Two insert layers, from the plan data:
 
 Each insert is a `<Sequence from={start·fps} durationInFrames={dur·fps}>`; video uses `OffthreadVideo muted`, images use `Img`.
 
-The kit's `ReelKit` composition is that universal template: it is assembled from props (`visual_plan.py export … --props <file>`, then `--props=<absolute path>` for Remotion) without code of its own: the rough cut, inserts, scenes, subtitles in brand colors and, optionally, a hook, a corner mark and an end card. Video-specific graphics go into a per-video composition that reuses the kit's components.
+The kit's `ReelKit` composition is that universal template: it is assembled from props (`visual_plan.py stage … --props <file>`, then `--props=<absolute path>` for Remotion) without code of its own: the rough cut, inserts, scenes, subtitles in brand colors and, optionally, a hook, a corner mark and an end card. Video-specific graphics go into a per-video composition that reuses the kit's components.

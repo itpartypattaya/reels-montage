@@ -9,7 +9,7 @@ When: step 6, after the rough cut and `faces.py scan`; again after a re-cut. The
 edit/<id>/faces_defects.json: an insert that covers a defect says so (`visual_plan.py add … --covers d03`).
 
 How:
-  1. Frames every --step (0.1 s) in one ffmpeg pass, the same YuNet model as faces.py, which also gives five points of
+  1. Frames every --step (0.1 s) in one ffmpeg run, the same YuNet model as faces.py, which also gives five points of
      each face (eyes, nose tip, mouth corners) and, here, the sharpness of the face (variance of the Laplacian of the
      face resized to 96 px wide). False faces (knees, hands) are dropped by faces.py's filter.
   2. The speaker's face is the one nearest the speaker's usual place (per source of the cut); the speaker's own norm,

@@ -61,7 +61,7 @@ export const List: React.FC<{ c: SceneCtx }> = ({ c }) => {
         {items.map((it, k) => {
           const m = row(k);
           const on = k === active;
-          const num = k < 9 ? `0${k + 1}` : String(k + 1);
+          const num = String(k + 1).padStart(2, "0"); // 01..09, then 10, 11...
           if (plates) {
             // over the video every line needs its plate: the spoken item on the marker, the past ones on light plates
             return (

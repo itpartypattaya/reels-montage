@@ -24,7 +24,7 @@ def framed_project(project, **reel):
 def test_reelcfg_saves_the_framed_format_and_refuses_a_bad_window(project):
     e = plan_project(project)
     r = run_script("reelcfg.py", "save", "edit/4821", "--set", "format=framed", "label=Candidate interview", cwd=project)
-    assert "unknown key" not in r.stderr, r.stderr  # T7: "unknown key format, saving it as is"
+    assert "unknown setting" not in r.stderr, r.stderr  # T7: "unknown key format, saving it as is" (now "unknown setting")
     reel = json.loads((e / "reel.json").read_text(encoding="utf-8"))
     assert reel["format"] == "framed" and reel["label"] == "Candidate interview"
     shown = run_script("reelcfg.py", "show", "edit/4821", cwd=project).stdout
@@ -141,9 +141,9 @@ def test_export_writes_the_framed_layout_for_the_kit(project):
     rem = project / "reels"
     (rem / "src").mkdir(parents=True)
     write_json(rem / "package.json", {"name": "reels"})
-    run_script("brand.py", "export", "acme", "--remotion", rem, cwd=project)
+    run_script("brand.py", "stage", "acme", "--remotion", rem, cwd=project)
     (e / "final.mp4").write_bytes(b"a rough cut")  # export only copies it; the size comes from faces.json
-    r = run_script("visual_plan.py", "export", "edit/4821", "--remotion", rem, "--props", rem / "props.json",
+    r = run_script("visual_plan.py", "stage", "edit/4821", "--remotion", rem, "--props", rem / "props.json",
                    "--subtitles", "plate", cwd=project)
     assert "framed: window [25, 340, 1030, 1240], source 1080x608" in r.stdout, r.stdout
     props = json.loads((rem / "props.json").read_text(encoding="utf-8"))
@@ -158,7 +158,7 @@ def test_export_writes_the_framed_layout_for_the_kit(project):
     reel = json.loads((e / "reel.json").read_text(encoding="utf-8"))
     reel.pop("format")
     write_json(e / "reel.json", reel)
-    run_script("visual_plan.py", "export", "edit/4821", "--remotion", rem, "--props", rem / "props.json", "--force",
+    run_script("visual_plan.py", "stage", "edit/4821", "--remotion", rem, "--props", rem / "props.json", "--force",
                cwd=project)
     assert "framed" not in json.loads((rem / "props.json").read_text(encoding="utf-8"))
 
@@ -237,9 +237,9 @@ def test_export_puts_the_subtitles_under_the_window(project):
     rem = project / "reels"
     (rem / "src").mkdir(parents=True)
     write_json(rem / "package.json", {"name": "reels"})
-    run_script("brand.py", "export", "acme", "--remotion", rem, cwd=project)
+    run_script("brand.py", "stage", "acme", "--remotion", rem, cwd=project)
     (e / "final.mp4").write_bytes(b"a rough cut")
-    r = run_script("visual_plan.py", "export", "edit/4821", "--remotion", rem, "--props", rem / "props.json",
+    r = run_script("visual_plan.py", "stage", "edit/4821", "--remotion", rem, "--props", rem / "props.json",
                    "--subtitles", "typewriter", cwd=project)
     assert "subtitles below the window" in r.stdout, r.stdout
     props = json.loads((rem / "props.json").read_text(encoding="utf-8"))
@@ -252,7 +252,7 @@ def test_export_puts_the_subtitles_under_the_window(project):
     # and the window is asked to move up
     reel = json.loads((e / "reel.json").read_text(encoding="utf-8"))
     write_json(e / "reel.json", {**reel, "profile": "ad"})
-    r = run_script("visual_plan.py", "export", "edit/4821", "--remotion", rem, "--props", rem / "props.json", "--force",
+    r = run_script("visual_plan.py", "stage", "edit/4821", "--remotion", rem, "--props", rem / "props.json", "--force",
                    "--subtitles", "typewriter", cwd=project)
     assert json.loads((rem / "props.json").read_text(encoding="utf-8"))["subtitlesTop"] == 1250
     assert "lifting it would put it over the picture" in r.stderr, r.stderr

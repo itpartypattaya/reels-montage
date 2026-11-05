@@ -10,7 +10,7 @@ The skill's rule "no text on a face, chin above the subtitles" is checked here:
   check  - whether a given card / hook / end card (x,y,w,h) covers a face in a given interval;
   audit  - the finished render (after camera and graphics): faces against the subtitle band (where speech is heard and
            no scene hides the subtitles), the keep_clear zones (cards, hook, CTA, registered by visual_plan.py
-           keep-clear; designed scenes overlay/split/window by visual_plan.py export, and ready scenes are also read
+           keep-clear; designed scenes overlay/split/window by visual_plan.py stage, and ready scenes are also read
            straight from the plan) and memes; the top of the head cut off by the frame edge; a face cut at the left or
            right edge (in the render, and from faces.json through camera.json, where a half face is not detected).
 
@@ -27,8 +27,8 @@ memes. --raw shows them without the filter.
 
 Model: face_detection_yunet_2023mar.onnx from the opencv_zoo project on GitHub (opencv/opencv_zoo,
 models/face_detection_yunet/, 232,589 bytes). The plugin does not download it: download it yourself, keep it outside
-the plugin folder and pass its path with --model, the REELS_FACE_MODEL environment variable or "face_model" in
-it-reelsmaker.json (a relative path there is relative to the project folder).
+the plugin folder and give its path with --model or "face_model" in it-reelsmaker.json (a relative path there is
+relative to the project folder).
 OpenCV 4.8 or newer in the Python that runs this script: pip install opencv-python-headless.
 No model or no OpenCV: the commands say so and exit with code 0; faces are then checked by eye on frames.
 Remotion camera: screen = (x - cx)*z + 540, (y - cy)*z + 960 (references/faces.md, section 2).
@@ -47,23 +47,20 @@ import argparse, importlib.util, json, os, shutil, subprocess, sys, tempfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from reels_common import (SUB_BAND, SUB_MAX_TOP, edit_dir, framed_at, framed_view, load_json, probe, project_root,
-                          project_settings, run, save_json, utf8_stdio, warn)
+from reels_common import (CHECK_MARGIN, FACE_MARGIN, SUB_BAND, SUB_MAX_TOP, edit_dir, framed_at, framed_view,
+                          load_json, probe, project_root, project_settings, run, save_json, ui_safe, utf8_stdio, warn)
 
 W, H = 1080, 1920
-MODEL = None         # --model; otherwise REELS_FACE_MODEL; otherwise it-reelsmaker.json -> face_model (model_path())
+MODEL = None         # --model; otherwise it-reelsmaker.json -> face_model (model_path())
 MODEL_FILE = "face_detection_yunet_2023mar.onnx"
+# no download link here: references/faces.md, section 1 "Model", has it (a file that reads the environment and names a web
+# address is held by the plugin directory's scan as handling sign-in data)
 MODEL_HELP = (f"download {MODEL_FILE} yourself from the opencv_zoo project on GitHub (opencv/opencv_zoo, folder "
-              f"models/face_detection_yunet/; direct file: https://media.githubusercontent.com/media/opencv/opencv_zoo/"
-              f"main/models/face_detection_yunet/{MODEL_FILE}), keep it outside the plugin folder and pass its path: "
-              f"--model <file>, the REELS_FACE_MODEL environment variable or \"face_model\" in it-reelsmaker.json")
-MARGIN = 60          # margin around a face for any graphics: the rule, enforced when planning (zones, keep_clear, validate)
-# The tolerance of the checks on finished frames (render audit, textcheck): an overlap counts from 30 px. Measured
-# 2026-10-17 on 6 finished videos: the full 60 px flagged 4 moments in 3 of them, one a card just under a chin and the
-# rest single 0.25 s samples with the text far from the face on the still (detector jitter)
-CHECK_MARGIN = 30
+              f"models/face_detection_yunet/; the direct link is in references/faces.md, \"Model\"), keep it outside the "
+              f"plugin folder and give its path: --model <file> or \"face_model\" in it-reelsmaker.json")
+MARGIN = FACE_MARGIN  # margin around a face for any graphics: the rule, enforced when planning (zones, keep_clear, validate)
+#                      the checks on finished frames use CHECK_MARGIN (reels_common: 30 px, and why)
 SUB_FACE_GAP = 30    # the subtitles' top sits this far under the measured chin (a design choice, not the check above)
-UI_TOP, UI_BOTTOM, UI_RIGHT = 220, 420, 120
 SUB = SUB_BAND       # the subtitle band graphics keep out of (reels_common: the same as validate); --sub top,bottom
 FRAME = (25, 340, 1030, 1240)  # the "framed" window for a horizontal source (references/techniques.md), x, y, w, h
 SRC_LONG = 960       # measuring in source geometry: the long side of the frame for YuNet (like 540x960 for vertical)
@@ -98,11 +95,10 @@ print(json.dumps(out))
 
 
 def model_path():
-    """The YuNet model file: --model, else REELS_FACE_MODEL, else it-reelsmaker.json -> face_model (relative to the
-    project folder). None: not set. An unexpanded ${...} value (a plugin setting left empty) counts as not set."""
-    for v in (MODEL, os.environ.get("REELS_FACE_MODEL")):
-        if v and not str(v).startswith("${"):
-            return Path(v).expanduser().resolve()
+    """The YuNet model file: --model, else it-reelsmaker.json -> face_model (relative to the project folder). None: not
+    set. An unexpanded ${...} value (a plugin setting left empty) counts as not set."""
+    if MODEL and not str(MODEL).startswith("${"):
+        return Path(MODEL).expanduser().resolve()
     v = project_settings().get("face_model")
     if v and not str(v).startswith("${"):
         p = Path(v).expanduser()
@@ -155,7 +151,7 @@ def grab(video, times, outdir, width=540):
 
 
 def grab_all(video, step, outdir, width=540, size=None):
-    """Frames of the whole video every `step` seconds in one ffmpeg pass (fast). size=(w, h): the source geometry
+    """Frames of the whole video every `step` seconds in one ffmpeg run (fast). size=(w, h): the source geometry
     without a crop (horizontal "framed"), otherwise a 9:16 vertical cover `width` wide."""
     outdir.mkdir(parents=True, exist_ok=True)
     if size:
@@ -231,7 +227,7 @@ def false_reason(f, strong, med, near, width=W):
         signs.append("size unlike the faces around it")
     if sc < 0.8 and near is not None and not any(iou(f, n) > 0.3 for n in near):  # 0.72: a sofa cushion, one sample
         signs.append("appeared in a single sample")
-    # 1789: 12 weak boxes (0.60-0.77) on a shoulder and an arm cut by the left edge had one sign each and passed; the
+    # 1789: 12 weak boxes (0.60-0.77) on a shoulder and an arm cut by the left edge had one sign each and got through; the
     # lowest "chin" (1939) pushed the subtitles down to the limit. A strong box at the edge stays: the other person
     # of a two-person skit after a push-in.
     if width and (x <= EDGE or x + w >= width - EDGE):
@@ -248,11 +244,11 @@ def clean_frames(frames, times=None, step=None, width=W):
     n = len(frames)
     strong_w = [[f[2] for f in fr if f[4] >= STRONG] for fr in frames]
 
-    def median(ws):
-        ws = sorted(ws)
-        return ws[len(ws) // 2] if ws else None
+    def median(wlist):
+        wlist = sorted(wlist)
+        return wlist[len(wlist) // 2] if wlist else None
 
-    glob = median([w for ws in strong_w for w in ws])
+    glob = median([w for wlist in strong_w for w in wlist])
     keep, rej = [], []
     for k, fr in enumerate(frames):
         strong = [f for f in fr if f[4] >= STRONG]
@@ -487,20 +483,23 @@ def segments_of(e):
 def zone_report(f, sub, fr=None):
     """Free zones of the frame for face f (camera already applied). fr: the "framed" window; the headroom and the sides
     are computed inside it."""
+    ui = ui_safe()  # the app's UI zone of this project (reels_common)
+    top = max(ui["top"] + 30, fr[1]) if fr else ui["top"] + 30
+    low = H - ui["bottom"]  # a bottom UI taller than the defaults may start above the subtitles (Codex review)
     if not f:
-        top = max(UI_TOP + 30, fr[1]) if fr else UI_TOP + 30
-        return {"face": None, "ceiling": [top, sub[0] - 40], "chest": None, "left": 960, "right": 960, "sub_ok": True}
-    top = max(UI_TOP + 30, fr[1]) if fr else UI_TOP + 30
-    lft, rgt = (fr[0], min(W - UI_RIGHT, fr[0] + fr[2])) if fr else (40, W - UI_RIGHT)
+        return {"face": None, "ceiling": [top, min(sub[0] - 40, low)], "chest": None, "left": 960, "right": 960,
+                "sub_ok": True}
+    lft, rgt = (fr[0], min(W - ui["right"], fr[0] + fr[2])) if fr else (ui["left"], W - ui["right"])
     fx0, fy0, fx1, fy1 = f[0] - MARGIN, f[1] - MARGIN, f[0] + f[2] + MARGIN, f[1] + f[3] + MARGIN
     ceil = [top, fy0] if fy0 - top >= 120 else None
-    chest = [fy1, sub[0] - 20] if sub[0] - 20 - fy1 >= 120 else None
+    chest_end = min(sub[0] - 20, low)
+    chest = [fy1, chest_end] if chest_end - fy1 >= 120 else None
     return {"face": f, "ceiling": ceil, "chest": chest, "left": max(0, fx0 - lft), "right": max(0, rgt - fx1),
             "sub_ok": f[1] + f[3] + SUB_FACE_GAP <= sub[0], "cut_top": f[1] < (fr[1] if fr else 0)}
 
 
 def sub_band(e, given=None, rendered=False):
-    """(top, bottom) of the subtitles: --sub; for the audit of a render, the band visual_plan.py export gave it (the
+    """(top, bottom) of the subtitles: --sub; for the audit of a render, the band visual_plan.py stage gave it (the
     plan's subtitles_band: the top below the measured chin); otherwise the band graphics keep out of, as validate
     checks it (reel-defaults.json -> meme_layout.subtitles_band, reels_common.SUB_BAND)."""
     if given:
@@ -586,7 +585,7 @@ def cmd_check(a):
 
 def audit_zones(plan):
     """What the audit checks against faces from the plan: keep_clear (cards + overlay/split/window scenes, written by
-    visual_plan.py export; if export has not run yet, ready scenes are taken from the plan) and the windows where the
+    visual_plan.py stage; if stage has not run yet, ready scenes are taken from the plan) and the windows where the
     subtitles are hidden - by scenes (split/full/slogan/hide_subtitles) and by the plan's hide-subs windows (a per-video
     composition: a presenter, an accent title; T2 flagged "a face in the subtitle band" under a presenter whose
     composition had hidden them) - where "a face in the subtitle band" is not an error. -> (keep, hidden)."""
@@ -667,7 +666,7 @@ def side_cuts(e, plan):
 
 def cmd_audit(a):
     """The finished render: faces after the camera against subtitles, cards and scenes (keep_clear) and memes."""
-    if Path(a.render).is_dir():  # a session passed the video folder first ("audit edit/<id>") and got lost
+    if Path(a.render).is_dir():  # an agent gave the video folder first ("audit edit/<id>") and got lost
         sys.exit(f"audit takes the rendered video first: faces.py audit out/<render>.mp4 --edit edit/<id> "
                  f"({a.render} is a folder)")
     e = edit_dir(a.edit)
@@ -759,8 +758,8 @@ def main():
     p.set_defaults(fn=cmd_audit)
     for name, sp in sub.choices.items():
         sp.add_argument("--raw", action="store_true", help="without the false-face filter (debugging)")
-        sp.add_argument("--model", help=f"the YuNet model file ({MODEL_FILE}); default: REELS_FACE_MODEL, "
-                                        f"then face_model in it-reelsmaker.json")
+        sp.add_argument("--model", help=f"the YuNet model file ({MODEL_FILE}); default: face_model in "
+                                        f"it-reelsmaker.json")
     a = ap.parse_args()
     MODEL = a.model or None
     a.fn(a)

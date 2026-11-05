@@ -115,9 +115,9 @@ def analyze(path):
     return rms, peaks(path, len(rms))
 
 
-def speech_threshold(env):
+def speech_threshold(envelope):
     """The speech threshold of an envelope (the windows of one source)."""
-    srt = sorted(env)
+    srt = sorted(envelope)
     p95 = srt[int(len(srt) * 0.95)] if srt else -20
     return max(QUIETEST, min(-30.0, p95 - 20))
 
@@ -132,33 +132,33 @@ def _windows(segs, n):
     return out
 
 
-def thresholds(env, wins):
+def thresholds(envelope, wins):
     """{source: speech threshold} from the windows of each source's pieces."""
     by = {}
     for src, a, b in wins:
-        by.setdefault(src, []).extend(env[a:b])
+        by.setdefault(src, []).extend(envelope[a:b])
     return {k: speech_threshold(v) for k, v in by.items()}
 
 
-def speech_flags(env, wins, thr):
+def speech_flags(envelope, wins, thr):
     """True for a speech window: at or above the threshold of the source whose piece holds it."""
-    sp = [False] * len(env)
+    sp = [False] * len(envelope)
     for src, a, b in wins:
         t = thr[src]
         for i in range(a, b):
-            sp[i] = env[i] >= t
+            sp[i] = envelope[i] >= t
     return sp
 
 
-def gain_curve(env, segs, peak=None):
-    """Gain in dB per 10 ms window + a report. env: dB per window; segs: [(source, out_start, out_dur)] in seconds."""
-    n = len(env)
+def gain_curve(envelope, segs, peak=None):
+    """Gain in dB per 10 ms window + a report. envelope: dB per window; segs: [(source, out_start, out_dur)] in seconds."""
+    n = len(envelope)
     wins = _windows(segs, n)
-    thr = thresholds(env, wins)
-    sp = speech_flags(env, wins, thr)
+    thr = thresholds(envelope, wins)
+    sp = speech_flags(envelope, wins, thr)
     by_src = {}
     for src, a, b in wins:
-        by_src.setdefault(src, []).extend(env[i] for i in range(a, b) if sp[i])
+        by_src.setdefault(src, []).extend(envelope[i] for i in range(a, b) if sp[i])
     src_level = {k: pmean(v) for k, v in by_src.items()}
     # the target: the sources' levels in dB weighted by their speech time. A power mean of all the speech would lean to
     # the loudest take (a −20 and a −41 dB take give −23: the loud one barely moves, the quiet one hits the limit)
@@ -170,7 +170,7 @@ def gain_curve(env, segs, peak=None):
               "sources": {}}
     if target is None:
         return g, report
-    lin = [10 ** (x / 10) if s else 0.0 for x, s in zip(env, sp)]
+    lin = [10 ** (x / 10) if s else 0.0 for x, s in zip(envelope, sp)]
     cs, cn = [0.0], [0]
     for v, s in zip(lin, sp):
         cs.append(cs[-1] + v)
@@ -224,7 +224,7 @@ def gain_curve(env, segs, peak=None):
             report["peak_trim_db"] = round(over, 2)
     for src, lv in src_level.items():
         idx = [i for s, a, b in wins if s == src for i in range(a, b) if sp[i]]
-        after = pmean([env[i] + g[i] for i in idx])
+        after = pmean([envelope[i] + g[i] for i in idx])
         report["sources"][src] = {"before_db": None if lv is None else round(lv, 2),
                                   "after_db": None if after is None else round(after, 2)}
     report["max_gain_db"] = round(max((abs(x) for x in g), default=0.0), 2)
@@ -283,8 +283,8 @@ def apply(audio_in, audio_out, g):
 
 def level_audio(audio_in, audio_out, segs):
     """Measure, plan and apply; returns the report. segs: [(source, out_start, out_dur)]."""
-    env, peak = analyze(audio_in)
-    g, rep = gain_curve(env, segs, peak)
+    envelope, peak = analyze(audio_in)
+    g, rep = gain_curve(envelope, segs, peak)
     apply(audio_in, audio_out, g)
     return rep
 
@@ -303,12 +303,12 @@ def describe(rep):
 
 def measure(path, segs):
     """Speech level per source and per piece of a file, no change: {source: dB}, [piece dB]."""
-    env, _ = analyze(path)
-    wins = _windows(segs, len(env))
-    thr = thresholds(env, wins)
+    envelope, _ = analyze(path)
+    wins = _windows(segs, len(envelope))
+    thr = thresholds(envelope, wins)
     per_src, pieces = {}, []
     for src, a, b in wins:
-        v = [env[i] for i in range(a, b) if env[i] >= thr[src]]
+        v = [envelope[i] for i in range(a, b) if envelope[i] >= thr[src]]
         per_src.setdefault(src, []).extend(v)
         pieces.append(None if len(v) * HOP < MIN_SPEECH else round(pmean(v), 2))
     return {k: (None if not v else round(pmean(v), 2)) for k, v in per_src.items()}, pieces

@@ -1,6 +1,7 @@
 """longform.py (a long recording -> a series of clips) and the Remotion run folders of reels_common / kit.py."""
 import json
 import os
+import subprocess
 import sys
 import time
 from pathlib import Path
@@ -24,9 +25,9 @@ def test_seconds_and_timecodes():
 
 
 def test_tokens_fold_case_and_yo():
-    assert lf.tokens_of("Hello, World! 80 %") == ["hello", "world", "80"]
-    assert lf.tokens_of("\u0412\u0441\u0451") == ["\u0432\u0441\u0435"]  # a capital and the letter yo
-    assert lf.same_token("recruiting", "recruiter") and not lf.same_token("sale", "sales")
+    assert lf.terms_of("Hello, World! 80 %") == ["hello", "world", "80"]
+    assert lf.terms_of("\u0412\u0441\u0451") == ["\u0432\u0441\u0435"]  # a capital and the letter yo
+    assert lf.same_term("recruiting", "recruiter") and not lf.same_term("sale", "sales")
 
 
 SRT = """1
@@ -297,7 +298,7 @@ def test_reextract_rewrites_the_cut_and_makes_later_stages_stale(series):
     for f, age in (("cut.json", 200), ("final.mp4", 100), ("reelkit-props.json", 50)):
         os.utime(ce / f, (t - age, t - age))
     s = run_script("longform.py", "status", "edit/talk", cwd=project)
-    assert "cut ok, export ok" in s.stdout
+    assert "cut ok, stage ok" in s.stdout
     doc = json.loads((project / "edit" / "talk" / "clips.json").read_text(encoding="utf-8"))
     doc["clips"][0]["parts"][1]["to_words"] = "the whole method"  # a shorter second piece
     write_json(project / "edit" / "talk" / "clips.json", doc)
@@ -311,7 +312,7 @@ def test_reextract_rewrites_the_cut_and_makes_later_stages_stale(series):
     assert new["speed"] == 1.1 and "fix_at" not in new  # not seconds: kept; seconds of the old pieces: dropped
     assert new["ranges"][1]["end"] < cut["ranges"][1]["end"] - 1
     s = run_script("longform.py", "status", "edit/talk", cwd=project)
-    assert "cut stale, export stale" in s.stdout
+    assert "cut stale, stage stale" in s.stdout
     r = run_script("longform.py", "extract", "edit/talk", "01", "--pad", "1", cwd=project)  # nothing changed now
     assert "cut.json kept as it was" in r.stdout and len(list(ce.glob("cut.prev-*.json"))) == 1
 
@@ -342,24 +343,34 @@ def test_fix_at_with_a_source_touches_only_that_source():
 
 @pytest.fixture
 def tmpbase(tmp_path, monkeypatch, project):
+    real = rc.tempfile.gettempdir()
     base = tmp_path / "systemp"
     base.mkdir()
     monkeypatch.setattr(rc.tempfile, "gettempdir", lambda: str(base))
-    return base
+    yield base
+    rc.temp_for_children(real)  # remotion_tmp() set the children's temp folder back to the patched one
+
+
+def child_temp():
+    """TEMP, TMP and TMPDIR as a process started now sees them."""
+    out = subprocess.run([sys.executable, "-c", "import json, os; print(json.dumps([os.environ.get(n) for n in "
+                          "('TEMP', 'TMP', 'TMPDIR')]))"], capture_output=True, text=True, check=True).stdout
+    return json.loads(out)
 
 
 def test_run_folder_is_the_runs_temp_and_goes_away(tmpbase):
-    with rc.remotion_tmp() as (env, args):
-        d = Path(env["TEMP"])
-        assert d.parent == tmpbase / "it-reelsmaker" and env["TMP"] == env["TMPDIR"] == str(d) and args == []
+    # 1.22: the run folder reaches Remotion through the environment its process inherits (no copy of this one's)
+    with rc.remotion_tmp() as (d, args):
+        assert d.parent == tmpbase / "it-reelsmaker" and args == []
+        assert child_temp() == [str(d)] * 3  # a process started inside the block: TEMP, TMP, TMPDIR
         (d / "remotion-webpack-bundle-x").mkdir()
         (d / "remotion-webpack-bundle-x" / "big.bin").write_bytes(b"0" * 1000)
     assert not d.exists()
+    assert child_temp() == [str(tmpbase)] * 3  # after it: the temp folder again, not the removed run folder
     with pytest.raises(RuntimeError):
-        with rc.remotion_tmp() as (env, _):
-            d2 = Path(env["TEMP"])
+        with rc.remotion_tmp() as (d2, _):
             raise RuntimeError("the render failed")
-    assert not d2.exists()
+    assert not d2.exists() and child_temp() == [str(tmpbase)] * 3
 
 
 def test_public_of_only_this_videos_files(tmpbase, tmp_path):
@@ -371,19 +382,20 @@ def test_public_of_only_this_videos_files(tmpbase, tmp_path):
         p.write_bytes(b"x" * 10)
     props = {"video": "clip-01/video.mp4", "brand": {"logo": "brands/acme/logo.png"}, "url": "https://a/b",
              "abs": "C:/x/y.mp4", "up": "../secret"}
-    with rc.remotion_tmp(rem, props, "ReelKit") as (env, args):
-        pub = Path(env["TEMP"]) / "public"
+    with rc.remotion_tmp(rem, props, "ReelKit") as (d, args):
+        pub = d / "public"
         assert args == [f"--public-dir={pub}"]
         got = sorted(p.relative_to(pub).as_posix() for p in pub.rglob("*") if p.is_file())
         assert got == ["brands/acme/logo.png", "clip-01/inserts/b1.mp4", "clip-01/video.mp4"]
-    with rc.remotion_tmp(rem, props, "Reel4821") as (env, args):  # a per-video composition reads what it likes
+    with rc.remotion_tmp(rem, props, "Reel4821") as (_, args):  # a per-video composition reads what it likes
         assert args == []
 
 
 def test_cleanup_off_keeps_remotions_ways(tmpbase, project):
     write_json(project / "it-reelsmaker.json", {"temp_cleanup": False})
-    with rc.remotion_tmp(None, None, None) as (env, args):
-        assert env.get("TEMP") == os.environ.get("TEMP") and args == []
+    before = child_temp()
+    with rc.remotion_tmp(None, None, None) as (d, args):
+        assert d is None and args == [] and child_temp() == before  # no run folder, the children's temp untouched
     assert not (tmpbase / "it-reelsmaker").exists()
 
 
@@ -424,7 +436,7 @@ def test_run_logged_keeps_everything_and_shows_progress(tmp_path, capsys):
     code = ("import sys\nfor k in range(0, 101, 5):\n    print(f'Rendered {k}/100')\n"
             "print('Error: something broke', file=sys.stderr)\nprint('plain line')\n")
     log = tmp_path / "render.log"
-    rc_ = kit.run_logged([sys.executable, "-c", code], tmp_path, dict(os.environ), log)
+    rc_ = kit.run_logged([sys.executable, "-c", code], tmp_path, log)
     out = capsys.readouterr().out
     assert rc_ == 0 and log.read_text(encoding="utf-8").count("Rendered") == 21
     assert out.count("rendered") == 6 and "Error: something broke" in out and "plain line" not in out

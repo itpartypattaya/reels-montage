@@ -1,4 +1,4 @@
-// Options: https://remotion.dev/docs/config (each one is also a CLI flag).
+// Options: Remotion's documentation, "Configuration file" (each one is also a CLI flag).
 import { Config } from "@remotion/cli/config";
 
 Config.setVideoImageFormat("jpeg");

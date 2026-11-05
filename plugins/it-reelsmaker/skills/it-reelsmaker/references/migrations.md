@@ -7,7 +7,7 @@ Brand profiles and project settings live in your project, so a plugin update doe
 **When:** in step 0, whenever a `brand.json` or the project's `it-reelsmaker.json` is read and its `schema` is lower than the current one. This also covers a profile copied in from another project.
 
 **Rules:**
-- only add keys and rename them; never delete anything, and keep keys you don't know;
+- only add fields and rename them; never delete anything, and keep fields you don't know;
 - before writing, copy the file next to it as `<name>.bak` (`brand.json.bak`), replacing an older copy;
 - apply the steps one schema at a time, in order, then write the new `schema`;
 - say what changed in one line per file; nothing to change → only the `schema` is written, silently;
@@ -23,8 +23,11 @@ Brand profiles and project settings live in your project, so a plugin update doe
 
 **Changes with no schema step** (no file is rewritten; the scripts say what to do the first time they meet an older edit):
 - 1.13: a brand tone or a video profile no longer turns B-roll or memes on. A video planned before, with inserts that came from the tone, fails `visual_plan.py validate` with the line that keeps them (`reelcfg.py save edit/<id> --set use_broll=true`) or the advice to remove them.
-- 1.13: `visual_plan.py export` stores the hook, the corner logo and the end card in the plan and keeps them on a later export. A plan exported before stored no texts: the next export keeps the corner logo and a logo sting, and stops, the plan unchanged, until `--hook` and `--card` are given again (or `--no-hook`, `--no-end`).
+- 1.13: `visual_plan.py stage` stores the hook, the corner logo and the end card in the plan and keeps them on a later stage. A plan staged before stored no texts: the next stage keeps the corner logo and a logo sting, and stops, the plan unchanged, until `--hook` and `--card` are given again (or `--no-hook`, `--no-end`).
 - 1.15: `use_generated_footage` is now `use_code_scenes` (it turns on code scenes drawn in Remotion, which the old name did not say). The old name is still read in every layer (the plugin's, the project's and the add-on's defaults, the brand, `reel.json`, `--set`), the new one wins when a file has both, and `reelcfg.py save`, `defaults` and `preset use` write the new one into the file they change; nothing else is rewritten.
 - 1.15: a video profile is opt-in: the skill saves one only when the person asks for it, or `ad` for a paid ad. A video saved before with a `profile` or a `content_format` keeps it; remove it with `reelcfg.py save edit/<id> --set profile=null content_format=null`.
+- 1.22: the plugin reads no environment variables. `REELS_PROJECT` → `project_root` in `it-reelsmaker.json` (or run from the project folder); `REELS_FACE_MODEL` → `face_model` there or `--model`; `REELS_MATTE_REMBG` → `matte.rembg` or `--rembg`; rembg's models outside `~/.u2net` → `matte.models`; `REELS_ONLINE_SCRIPTS` → the add-on's `link` command (`online_scripts`); the `REELS_DEFAULTS_OVERLAY` layer is gone, put those settings in the project's `reel-defaults.json`. A variable that is still set is simply not read.
+- 1.22: `visual_plan.py export` / `brand.py export` → `visual_plan.py stage` / `brand.py stage` (same arguments). The plan's record of the chosen ending moved to `finish`: a video staged before keeps its corner logo and sting, and the next `stage` asks once for `--hook` and `--card` again (or `--no-hook` / `--no-end`).
+- 1.22: `brand.py set` / `memes.py set` → `brand.py change` / `memes.py change` (same arguments); `brand.py tone … --set` → `--field`. A clip card's field for the other voice (`cut`/`keep`) is now `other_voice`: rename it in `clips.json`; `longform.py check` warns about a piece with the other voice in it until the card says `other_voice: keep` (or the voice is cut).
 
-**Adding a step** (for the maintainers): a new key with a default or a renamed key of `brand.json` or `it-reelsmaker.json` goes in a new row with the next schema number (a renamed video setting is read under both names instead: `reels_common.RENAMED`); `assets/brand-template/brand.json` gets that number, and the CHANGELOG mentions it.
+**Adding a step** (for the maintainers): a new field with a default or a renamed field of `brand.json` or `it-reelsmaker.json` goes in a new row with the next schema number (a renamed video setting is read under both names instead: `reels_common.RENAMED`); `assets/brand-template/brand.json` gets that number, and the CHANGELOG mentions it.

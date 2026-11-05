@@ -184,7 +184,7 @@ def test_t3_kit_fixes_are_in_the_source():
     # the caret was a "|" character that read as the letter l
     assert "<Caret on={caret}" in code and ">|<" not in code
     # chunks were cut greedily at 52 characters, not by phrases and pauses
-    assert "PAUSE = 0.25" in code and "noBreak(ws[k - 1].text, ws[k].text)" in code and "SHORT" not in code
+    assert "PAUSE = 0.25" in code and "noBreak(wlist[k - 1].text, wlist[k].text)" in code and "SHORT" not in code
     # a translated phrase mostly under a scene showed its random tail after it
     assert "covered.has(w.phrase)" in code
     phrase = (KIT / "kit" / "Phrase.tsx").read_text(encoding="utf-8")
@@ -210,7 +210,7 @@ def test_t4_kit_fixes_are_in_the_source():
     brand = (KIT / "kit" / "brand.ts").read_text(encoding="utf-8")
     assert "speakers?: string[]" in brand
     # a 56-character phrase wrapped into three lines (bottom 1455 under a band recorded as 1250-1430)
-    assert "const MAX_LINES = 2" in code and "toLines(ws, g, font, ready, maxW).length <= MAX_LINES" in code
+    assert "const MAX_LINES = 2" in code and "toLines(wlist, g, font, ready, maxW).length <= MAX_LINES" in code
     # the band export records is the kit's own two-line block in each mode
     geo = {m: dict((k, float(v)) for k, v in re.findall(r"(\w+): ([\d.]+)", body))
            for m, body in re.findall(r"(plate|accent|typewriter): \{([^}]*)\}", code)}
@@ -377,7 +377,7 @@ def _render_setup(project, monkeypatch, outcomes):
     write_json(project / "edit" / "t" / "reelkit-props.json", {"video": "", "captions": {"duration": 1, "segments": [], "words": []}})
     calls = []
 
-    def fake(cmd, rem_, env, log, mode="w"):
+    def fake(cmd, rem_, log, mode="w"):
         code, lines = outcomes[len(calls)]
         calls.append((cmd, mode))
         with open(log, mode, encoding="utf-8") as f:

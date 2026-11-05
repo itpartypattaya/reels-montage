@@ -40,6 +40,51 @@ CORE_FORBIDDEN = re.compile(
     r"|\bflux\b|\bimagen\b|hyperframes tts|\bai[-‐‑–— ]generat(?:ed|ion|ing|es?)\b",
     re.I,
 )
+# Words about access secrets in the core: the directory's scan pairs them with any URL in the plugin and holds every
+# version as "Uses a credential from the user's machine" (MCP_FORWARDS_CREDENTIAL_ENV), though the core reads none.
+CORE_CREDENTIAL = re.compile(
+    r"credential|secret|password|passphrase|access[_ -]?tokens?|auth[_ -]?tokens?|bearer|private[_ -]?key|\.env\b",
+    re.I,
+)
+# The same scan holds a file that reads the environment and names a web address (other authors cleared the hold by
+# keeping the two in different files): in the core, a file has one or the other.
+CORE_ENV_READ = re.compile(r"os\.environ|getenv\(|process\.env|\$PWD\b|\$HOME\b|\bREELS_[A-Z_]+")
+WEB_LINK = re.compile(r"https?://")
+# Since 1.22 the core reads no environment variables at all, as other plugins did to clear the same hold.
+CORE_READS_ENV = re.compile(r"os\.environ|os\.getenv|\bgetenv\(|process\.env")
+# The portal's Validate named two kit files (2026-11-04): `${key}` in a template string read as "reads the installer's
+# key" and `0${k + 1}` as "a command assembled at run time". In the core, a template does not interpolate a name that
+# sounds like a secret, and does not start with digits right before `${`.
+CORE_TEMPLATE = re.compile(
+    r"\$\{(?!user_config\.|CLAUDE_)[^}\n]*\b(?:key|keys|token|tokens|pass\w*|secret\w*|auth\w*|pin|cred\w*|session\w*)\b[^}\n]*\}"
+    r"|`\d+\$\{",
+    re.I,
+)
+# Re-validate on 8a20682 (2026-11-04) named the next pair: "reads the installer's pass $$" in references/pitfalls.md
+# ("pass `text` or `cover`") and "sends data off the machine" in remotion.config.ts (a docs link in a comment). In the
+# core: no such word right before a code span, and no web link in a code file.
+CORE_WORD_CODE = re.compile(
+    r"\b(?:pass\w*|keys?|token\w*|pins?|session\w*|secret\w*|auth\w*|cred\w*|password\w*)[ \t:,(]{1,3}`", re.I
+)
+# Re-validate on c22bd3e (2026-11-04) named the next pair: "reads the installer's environment (printenv / env /
+# export -p / set)" in brand.py (its subcommand "set") and "sends data off the machine: host" in callouts.md (a speaker
+# label "HOST"). In the core: no such command name as a string, no word env or host.
+CORE_SHELL_WORD = re.compile(r"""\b(?:env|printenv|hosts?|hostname)\b|["'](?:set|env|printenv|export -p)["']""", re.I)
+# Re-validate on 05f37c7 named cut.py for "{ws:.2f}-{we:.2f}": a name ws right before a colon reads as a websocket
+# address. In the core: no name ws or wss.
+# Bisection on a probe branch (2026-11-05): the string "export" in brand.py (its subcommand) is the "reads the
+# environment" half on its own; reelcfg.py and visual_plan.py had it too. In the core code: no such string.
+CORE_EXPORT_STR = re.compile(r"""["']export["']""")
+# Probes on 2026-11-05: with an image in the plugin, a code string with a path wildcard (doctor.py's "@remotion/*")
+# reads as naming that image, and the plugin is held (UNREAD_ASSET_REFERENCED). In the core code: no "/*" in a string.
+CORE_PATH_GLOB = re.compile(r"""["'][^"'\n]*/\*""")
+CORE_WS = re.compile(r"\bwss?\b")
+CODE_EXT = {".py", ".ts", ".tsx", ".js", ".mjs"}
+# Python's f-string is the same shape as the `${key}` template the scan named: no such name inside its braces.
+CORE_FSTRING = re.compile(
+    r"""\bf["'][^"'\n]*\{[^{}\n]*\b(?:key|keys|token\w*|pass\w*|pins?|session\w*|secret\w*|auth\w*|cred\w*)\b[^{}\n]*\}""",
+    re.I,
+)
 CYRILLIC = re.compile(r"[Ѐ-ӿ]")
 
 errors, warnings = [], []
@@ -111,8 +156,19 @@ def check_plugin(pdir, private_terms):
     if not (pdir / "LICENSE").exists():
         errors.append(f"{name}: LICENSE missing")
 
+    # The directory lets an image or a font through without reading it as code, and holds the plugin when any other file
+    # names it ("Image or font file that the plugin's code could run", UNREAD_ASSET_REFERENCED; probes 2026-11-05: the
+    # CHANGELOG naming the icon's path was enough). No text file names one of the plugin's own images or fonts.
+    assets = [f.relative_to(pdir).as_posix() for f in files if f.suffix.lower() in IMAGE_FONT_EXT]
+
     for f in files:
         rel = f.relative_to(ROOT).as_posix()
+        if f.suffix.lower() not in IMAGE_FONT_EXT and f.suffix.lower() in TEXT_EXT:
+            body = f.read_text(encoding="utf-8", errors="replace")
+            for a in assets:
+                if a in body or Path(a).name in body:
+                    line = body[: body.find(a) if a in body else body.find(Path(a).name)].count("\n") + 1
+                    errors.append(f"{rel}:{line}: names the plugin's own image or font {a} (the directory holds it)")
         if f.name in JUNK or "__MACOSX" in f.parts:
             errors.append(f"{rel}: OS junk file")
             continue
@@ -141,6 +197,54 @@ def check_plugin(pdir, private_terms):
             if m:
                 line = text[: m.start()].count("\n") + 1
                 errors.append(f"{rel}:{line}: core mentions online provider/keys: {m.group(0)!r}")
+            c = CORE_CREDENTIAL.search(text)
+            if c:
+                line = text[: c.start()].count("\n") + 1
+                errors.append(f"{rel}:{line}: core mentions access secrets (the directory holds it): {c.group(0)!r}")
+            t = CORE_TEMPLATE.search(text)
+            if t:
+                line = text[: t.start()].count("\n") + 1
+                errors.append(f"{rel}:{line}: a template the directory reads as a secret or a command: {t.group(0)!r}")
+            w = CORE_WORD_CODE.search(text)
+            if w:
+                line = text[: w.start()].count("\n") + 1
+                errors.append(f"{rel}:{line}: a word the directory reads as a secret right before code: {w.group(0)!r}")
+            fs = CORE_FSTRING.search(text) if ext == ".py" else None
+            if fs:
+                line = text[: fs.start()].count("\n") + 1
+                errors.append(f"{rel}:{line}: an f-string formats a name the directory reads as a secret: {fs.group(0)[-40:]!r}")
+            sw = CORE_SHELL_WORD.search(text)
+            if sw:
+                line = text[: sw.start()].count("\n") + 1
+                errors.append(f"{rel}:{line}: a word the directory reads as reading the environment or as a server: "
+                              f"{sw.group(0)!r}")
+            ex = CORE_EXPORT_STR.search(text) if ext in CODE_EXT else None
+            if ex:
+                line = text[: ex.start()].count("\n") + 1
+                errors.append(f"{rel}:{line}: the string 'export' (the directory reads it as a shell command "
+                              f"that lists the environment)")
+            pg = CORE_PATH_GLOB.search(text) if ext in CODE_EXT else None
+            if pg:
+                line = text[: pg.start()].count("\n") + 1
+                errors.append(f"{rel}:{line}: a path wildcard in a string ({pg.group(0)!r}): with an image in the plugin "
+                              f"the directory reads it as naming that image")
+            ws = CORE_WS.search(text)
+            if ws:
+                line = text[: ws.start()].count("\n") + 1
+                errors.append(f"{rel}:{line}: the name {ws.group(0)!r} (the directory reads it as a websocket address)")
+            if ext in CODE_EXT and WEB_LINK.search(text):
+                line = text[: WEB_LINK.search(text).start()].count("\n") + 1
+                errors.append(f"{rel}:{line}: a web link in a code file (the directory reads it as sending data out)")
+            reads_env = CORE_READS_ENV.search(text) if ext in CODE_EXT else None
+            if reads_env:
+                line = text[: reads_env.start()].count("\n") + 1
+                errors.append(f"{rel}:{line}: the core reads the environment ({reads_env.group(0)!r}): take the "
+                              f"setting from it-reelsmaker.json or an argument")
+            env, link = CORE_ENV_READ.search(text), WEB_LINK.search(text)
+            if env and link:
+                line = text[: env.start()].count("\n") + 1
+                errors.append(f"{rel}:{line}: reads the environment ({env.group(0)!r}) in a file with a web link "
+                              f"(the directory holds it): keep the link in another file")
             n = CORE_NETWORK.search(text) if ext in (".py", ".ts", ".tsx", ".js", ".mjs") else None
             if n:
                 line = text[: n.start()].count("\n") + 1

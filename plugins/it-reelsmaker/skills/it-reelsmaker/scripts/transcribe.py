@@ -36,7 +36,7 @@ Whisper in any mode: only speech_mask.py --edl catches it.
 
 splice: the snip's words replace the main transcript's words inside a window (default: the snip's own from/to;
 --from/--to narrow it). A word belongs to the window by its middle. The main transcript is the one cut.json names
-for the snip's source ("transcript"), else edit/<id>/transcripts/<source stem>.json; the doc's other keys stay, a
+for the snip's source ("transcript"), else edit/<id>/transcripts/<source stem>.json; the doc's other fields stay, a
 "splices" list records each splice, and the state before it is kept as <stem>.presplice.json (-2, -3, ... when an
 earlier, different backup is there: a backup is never overwritten). The result goes through `check` before it is
 saved. Then rebuild the cut (cut.py): its words come from the transcript.
@@ -160,9 +160,9 @@ HYPHENS = "-‐‑"  # hyphen-minus, hyphen, non-breaking hyphen (not the dashes
 
 
 def join_hyphen_parts(words):
-    """Whisper splits a hyphenated word into tokens, the later ones starting with a hyphen ("no" "-no" "-no." for
+    """Whisper splits a hyphenated word into pieces, the later ones starting with a hyphen ("no" "-no" "-no." for
     "no-no-no", "someone" in Russian as "kto" "-to"): joined back into one word spanning their times, so the subtitles
-    don't show "no -no -no." and a cloud text with the whole word lays onto it. A lone hyphen stays a token."""
+    don't show "no -no -no." and a cloud text with the whole word lays onto it. A lone hyphen stays a piece of its own."""
     out = []
     for w in words:
         t = str(w.get("text", ""))
@@ -296,7 +296,7 @@ def cmd_snip(a):
     lang, text, words = words_of(model, wav, language, snip=True, offset=a.start, prompt=prompt)
     save_json(e / "snip" / f"{name}.json", {"language_code": lang, "text": text, "words": words, "source": src.name,
                                            "from": a.start, "to": a.end, "prompt": prompt})
-    how = (f"language {language}" if language else "language detected on the piece (pass --language)") + (
+    how = (f"language {language}" if language else "language detected on the piece (set it with --language)") + (
         f", a {language} prompt with fillers" if prompt else ", no prompt")
     print(f"{a.start:.2f}-{a.end:.2f} ({how}): {text}")
     for w in words:
@@ -400,12 +400,12 @@ def cmd_splice(a):
             {"snip": sp.name, "from": round(t0, 3), "to": round(t1, 3), "removed": len(removed), "added": len(added)}]}
         problems = [p for p in check_doc(new) if not p.startswith("note:")]
         if problems:
-            sys.exit(f"the spliced transcript does not pass check, nothing saved: {'; '.join(problems)}")
+            sys.exit(f"the spliced transcript fails the check, nothing saved: {'; '.join(problems)}")
         b = backup_path(f, doc)
         if b:
             save_json(b, doc)
         save_json(f, new)
-    txt = lambda ws: " ".join(str(w.get("text", "")) for w in ws if w.get("type", "word") == "word") or "-"
+    txt = lambda wlist: " ".join(str(w.get("text", "")) for w in wlist if w.get("type", "word") == "word") or "-"
     print(f"{f}: {t0:.2f}-{t1:.2f} s from {sp.name}: removed {len(removed)} ({txt(removed)}), added {len(added)} "
           f"({txt(added)})" + (f"; before: {b.name}" if b else "; the backup of this state is already there"))
     for n in check_doc(new):
@@ -448,8 +448,8 @@ def cmd_rate(a):
     cap = load_json(e / "captions.json")
     if not cap or not (e / "final.mp4").exists():
         sys.exit(f"{e}: no captions.json or final.mp4: build the rough cut first (cut.py)")
-    env, hf = sm.load_envs(str(e / "final.mp4"))
-    sdb = sm.smax(env)
+    envelope, hf = sm.load_envs(str(e / "final.mp4"))
+    sdb = sm.smax(envelope)
     srt = sorted(x for x in sdb if x > -90)
     thr = min(-30.0, (srt[int(len(srt) * 0.95)] if srt else -20) - 20)
     mask = sm.speech_mask(sdb, thr, vl=sm.voiceless(hf))
@@ -460,13 +460,13 @@ def cmd_rate(a):
     for g in segs:
         g0, g1 = g["out_start"], g["out_start"] + g["out_dur"]
         lo, hi = int(round(g0 / sm.HOP)), int(round(g1 / sm.HOP))
-        ws = [w for w in cap.get("words", []) if w.get("seg") == g["i"]]
-        nums = [w for w in ws if is_number(w["text"])]
+        wlist = [w for w in cap.get("words", []) if w.get("seg") == g["i"]]
+        nums = [w for w in wlist if is_number(w["text"])]
         # a number in digits: its vowels are not in the text, so its time is left out too
         cut = masked(mask, sm.HOP, [(max(g0, float(w["start"])), min(g1, float(w["end"]))) for w in nums
                                     if min(g1, float(w["end"])) > max(g0, float(w["start"]))])
         speech = max(0.0, sum(mask[lo:hi]) * sm.HOP - cut)
-        v = sum(vowels(w["text"]) for w in ws if not is_number(w["text"]))
+        v = sum(vowels(w["text"]) for w in wlist if not is_number(w["text"]))
         rows.append((g, v, speech, [str(w["text"]) for w in nums], cut))
         t = total.setdefault(g.get("source"), [0, 0.0, 0, 0, 0.0])
         t[0] += v; t[1] += speech; t[2] += 1; t[3] += len(nums); t[4] += cut
@@ -535,7 +535,7 @@ def main():
     p = sub.add_parser("check", help="is a transcript (yours or this script's) in the right format")
     p.add_argument("file"); p.set_defaults(fn=cmd_check)
     p = sub.add_parser("rate", help="syllables per second of the rough cut, per source and segment (step 5)")
-    p.add_argument("edit"); p.add_argument("--source", help="only this cut.json source key")
+    p.add_argument("edit"); p.add_argument("--source", help="only this cut.json source name")
     p.add_argument("--json", action="store_true"); p.set_defaults(fn=cmd_rate)
     a = ap.parse_args(argv)
     a.fn(a)

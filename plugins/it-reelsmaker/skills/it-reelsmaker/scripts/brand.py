@@ -14,10 +14,10 @@ to its scripts folder):
                        [--motion calm|lively|energetic]
     python scripts/brand.py logo acme logo-white.png [--role on_dark]    # logo -> brands/<slug>/assets/ + role in brand.json
     python scripts/brand.py rule acme "Cards only on the left, likes on the right"   # append a design rule to rules.md
-    python scripts/brand.py set acme colors.accent=#19B8BB inserts.use_broll=false
-    python scripts/brand.py tone acme friendly [--set memes.max=1 flash_max=1] [--reset]   # brand tone: preset + field overrides
+    python scripts/brand.py change acme colors.accent=#19B8BB inserts.use_broll=false
+    python scripts/brand.py tone acme friendly [--field memes.max=1 flash_max=1] [--reset]   # brand tone: preset + field overrides
     python scripts/brand.py use acme --edit edit/4821              # brand into edit/<id>/reel.json + mark as used
-    python scripts/brand.py export acme --remotion reels           # src/brands/<slug>.json + logos in public/brands/<slug>/
+    python scripts/brand.py stage acme --remotion reels           # src/brands/<slug>.json + logos in public/brands/<slug>/
 
 Logos, fonts and LUTs live inside the brand: brands/<slug>/assets/ (new and logo copy them there), so a brand moves
 between projects as one folder. Logo roles: on_dark - light (for a dark background and over video), on_light - dark,
@@ -267,13 +267,13 @@ def cmd_show(a):
         print("  brand insert defaults: " + ", ".join(f"{k}={v}" for k, v in b["inserts"].items()))
     if b.get("forbidden_imagery"):
         print("  not allowed in the frame: " + ", ".join(b["forbidden_imagery"]))
-    shown = set()
+    shown = {}
     for k, label in (("rules", "rules"), ("guide", "video guide"), ("cta_library", "CTA library")):
         if b.get(k):
             p = brand_file(b[k], d)
             print(f"  {label}: {p or b[k] + ' ✗'}")
             if p:
-                shown.add(Path(p).resolve())
+                shown[Path(p).resolve()] = True
     others = sorted(p for p in Path(d).glob("*.md") if p.resolve() not in shown)
     if others:
         print("  other brand documents: " + ", ".join(p.name for p in others) + " (linked from rules.md)")
@@ -421,7 +421,7 @@ def logo_role(p, taken=None, role=None):
 
 @contextlib.contextmanager
 def editing_brand(slug):
-    """The brand profile under a lock: read it again, change it, write it atomically (parallel sessions)."""
+    """The brand profile under a lock: read it again, change it, write it atomically (parallel runs)."""
     d, b = find_brand(slug)
     if not b:
         sys.exit(f"no brand {slug}; available: {', '.join(s for s, _, _ in list_brands())}")
@@ -446,7 +446,7 @@ def cmd_logo(a):
                 warn(f"{a.slug}: logo {role} replaced (was {logos[role]}, the file stays in assets/)")
             logos[role] = store(d, p)
             print(f"{a.slug}: logos.{role} = {logos[role]}")
-    print("for Remotion: brand.py export " + a.slug + " --remotion <Remotion project>")
+    print("for Remotion: brand.py stage " + a.slug + " --remotion <Remotion project>")
 
 
 def cmd_new(a):
@@ -509,7 +509,7 @@ def cmd_new(a):
                                                    for k, v in fams.items())
                      + f"; headings {fonts['heading']['family']}, body text and subtitles {fonts['body']['family']}."
                      + (" Italic is in fonts.<role>.italic." if any(v["italic"] for v in fams.values()) else "")
-                     + (f" To change: brand.py set {slug} fonts.heading.family=... fonts.heading.files=[...] (all families are in fonts_found)." if len(fams) > 1 else ""))
+                     + (f" To change: brand.py change {slug} fonts.heading.family=... fonts.heading.files=[...] (all families are in fonts_found)." if len(fams) > 1 else ""))
     else:
         font_note = " No brand fonts found: using Manrope + Inter (they cover Latin and Cyrillic)."
     lut = None
@@ -565,7 +565,7 @@ def cmd_new(a):
 
 
 def cmd_rule(a):
-    with editing_brand(a.slug) as (d, b):  # the profile lock also covers rules.md: two sessions won't overwrite each other's rules
+    with editing_brand(a.slug) as (d, b):  # the profile lock also covers rules.md: two runs won't overwrite each other's rules
         p = inside(d, d / (b.get("rules") or "rules.md"), "rules file")
         text = p.read_text(encoding="utf-8") if p.exists() else f"# Brand design rules: {b.get('name')}\n"
         # an owner decision with its reason and scope (references/playbook.md): a disliked result is traced to it later
@@ -584,12 +584,12 @@ def set_path(obj, path, value):
     obj[keys[-1]] = value
 
 
-def cmd_set(a):
+def cmd_change(a):
     for it in a.pairs:
         if "=" not in it:
-            sys.exit(f"expected key=value, got: {it}")
+            sys.exit(f"expected field=value, got: {it}")
         if it.split("=", 1)[0].strip() == "slug":
-            sys.exit("slug can't be changed with set: it is the name of the brand folder")
+            sys.exit("slug can't be changed with change: it is the name of the brand folder")
     with editing_brand(a.slug) as (d, b):
         for it in a.pairs:
             k, v = it.split("=", 1)
@@ -605,10 +605,10 @@ def cmd_tone(a):
     from reels_common import load_defaults
     tones = (load_defaults() or {}).get("brand_tones") or {}
     base = tones.get(a.preset) or {}
-    sets = {}
-    for it in a.set or []:
+    fields_given = {}
+    for it in a.field or []:
         if "=" not in it:
-            sys.exit(f"--set expects key=value, got: {it}")
+            sys.exit(f"--field expects field=value, got: {it}")
         k, v = (x.strip() for x in it.split("=", 1))
         head = k.split(".")[0]
         if head not in base or head in ("label", "for"):
@@ -618,30 +618,30 @@ def cmd_tone(a):
             ref = ref.get(part) if isinstance(ref, dict) else None
         if isinstance(ref, (int, float)) and not isinstance(ref, bool):
             try:
-                sets[k] = int(v) if re.fullmatch(r"-?\d+", v) else float(v)
+                fields_given[k] = int(v) if re.fullmatch(r"-?\d+", v) else float(v)
             except ValueError:
                 sys.exit(f"{k}: a number is needed, got {v!r}")
         else:
-            sets[k] = parse_value(v)
+            fields_given[k] = parse_value(v)
     if a.profile:
         return tone_for_profile(a)
     with editing_brand(a.slug) as (d, b):
         t = b.get("tone") if isinstance(b.get("tone"), dict) else {}
         old = t.get("preset")
         over = {} if a.reset else dict(t.get("overrides") or {})
-        for k, v in sets.items():
+        for k, v in fields_given.items():
             set_path(over, k, v)
         b["tone"] = {"preset": a.preset, **({"overrides": over} if over else {}),
                      **({"by_profile": t["by_profile"]} if t.get("by_profile") else {})}  # the profile tones stay
         rules, _ = tone_rules(b, slug=a.slug)
     print(f"{a.slug}: tone {old or '-'} -> {a.preset}" + (f"; overridden: {json.dumps(over, ensure_ascii=False)}" if over else ""))
-    if over and not sets and old != a.preset:
+    if over and not fields_given and old != a.preset:
         print("  the previous tone's overrides are kept (--reset removes them)")
     print(f"  {tone_summary(rules)}")
     if b.get("motion") and b["motion"] != base.get("motion"):
         print(f"  motion is set explicitly in the profile: {b['motion']} (overrides the preset's {base.get('motion')}; "
-              f"to remove: brand.py set {a.slug} motion=null)")
-    print(f"for Remotion: brand.py export {a.slug} --remotion <Remotion project>")
+              f"to remove: brand.py change {a.slug} motion=null)")
+    print(f"for Remotion: brand.py stage {a.slug} --remotion <Remotion project>")
 
 
 def tone_for_profile(a):
@@ -652,8 +652,8 @@ def tone_for_profile(a):
     pr, _ = profiles_of(load_defaults() or {})
     if a.profile not in pr:
         sys.exit(f"no profile {a.profile!r}; available: {', '.join(pr)}")
-    if a.set or a.reset:
-        sys.exit("--set/--reset change the main tone; a profile's tone is a preset as is")
+    if a.field or a.reset:
+        sys.exit("--field/--reset change the main tone; a profile's tone is a preset as is")
     with editing_brand(a.slug) as (d, b):
         t = b.get("tone") if isinstance(b.get("tone"), dict) else {}
         if not t.get("preset"):
@@ -688,7 +688,7 @@ def cmd_use(a):
         print("the settings snapshot in visual_plan.json is updated")
 
 
-def cmd_export(a):
+def cmd_stage(a):
     d, b = find_brand(a.slug)
     if not b:
         sys.exit(f"no brand {a.slug}")
@@ -763,16 +763,16 @@ def main():
     p.add_argument("--why", help="the reason, so a later disliked result can be traced to this rule")
     p.add_argument("--scope", help="which videos it applies to (a format, a style, a scene type)")
     p.set_defaults(fn=cmd_rule)
-    p = sub.add_parser("set"); p.add_argument("slug"); p.add_argument("pairs", nargs="+"); p.set_defaults(fn=cmd_set)
+    p = sub.add_parser("change"); p.add_argument("slug"); p.add_argument("pairs", nargs="+"); p.set_defaults(fn=cmd_change)
     p = sub.add_parser("tone", help="brand tone: preset + field overrides")
     p.add_argument("slug"); p.add_argument("preset", choices=TONE_PRESETS)
-    p.add_argument("--set", nargs="*", metavar="KEY=VALUE", help="preset fields: memes.max=1 flash_max=1 scene_tone=calm ...")
+    p.add_argument("--field", nargs="*", metavar="NAME=VALUE", help="preset fields: memes.max=1 flash_max=1 scene_tone=calm ...")
     p.add_argument("--reset", action="store_true", help="remove the previous overrides")
     p.add_argument("--profile", help="the brand's own tone for this video profile (educational, entertaining, "
                                      "expert-clip, promo, ad); the main tone's preset removes it")
     p.set_defaults(fn=cmd_tone)
     p = sub.add_parser("use"); p.add_argument("slug"); p.add_argument("--edit", required=True); p.set_defaults(fn=cmd_use)
-    p = sub.add_parser("export"); p.add_argument("slug"); p.add_argument("--remotion", required=True); p.set_defaults(fn=cmd_export)
+    p = sub.add_parser("stage"); p.add_argument("slug"); p.add_argument("--remotion", required=True); p.set_defaults(fn=cmd_stage)
     a = ap.parse_args()
     a.fn(a)
 

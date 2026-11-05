@@ -98,7 +98,7 @@ def scene_text(g, seconds, style, accents=""):
         f"Setting & light: {g['setting'] + ', ' if g.get('setting') else ''}{g['lighting']}.",
         f"Mood & style: {g['mood']}{accents}, {style}.",
         "Clean frame: no on-screen text, no captions, no logos, no watermarks, no brand names; "
-        "keep the key subject in the middle third (top and bottom are covered by app interface).",
+        "keep the main subject in the middle third (top and bottom are covered by app interface).",
     ]
     return "\n".join(lines)
 
@@ -298,7 +298,7 @@ def cmd_scaffold(a):
         sys.exit(f"{a.insert}: no such insert with source=generated")
     rem = outside_plugin(Path(a.remotion).resolve())
     if not (rem / "src" / "brands" / f"{plan['brand']}.json").exists():
-        sys.exit(f"no src/brands/{plan['brand']}.json; first run python scripts/brand.py export {plan['brand']} "
+        sys.exit(f"no src/brands/{plan['brand']}.json; first run python scripts/brand.py stage {plan['brand']} "
                  f"--remotion {a.remotion}")
     g = i.setdefault("gen", {})
     g["engine"] = "code"
@@ -370,8 +370,8 @@ def cmd_render(a):
     # --no: use the project's own Remotion, never install packages on the fly
     cmd = [npx, "--no", "remotion", "render", comp, str(raw), "--codec=h264", "--muted", "--log=error"]
     try:
-        with remotion_tmp(rem) as (env, _):  # its temp files go when it ends; a code scene keeps the whole public/
-            r = subprocess.run(cmd, cwd=rem, env=env, capture_output=True, text=True, encoding="utf-8", errors="replace")
+        with remotion_tmp(rem):  # its temp files go when it ends; a code scene keeps the whole public/
+            r = subprocess.run(cmd, cwd=rem, capture_output=True, text=True, encoding="utf-8", errors="replace")
         code, out, err = r.returncode, r.stdout, r.stderr
     except OSError as ex:  # npx is not installed or not on PATH
         code, out, err = 1, "", f"{npx}: {ex}"

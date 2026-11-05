@@ -5,6 +5,40 @@ import json
 from conftest import ADDON, ffmpeg, make_video, needs_ffmpeg, needs_pillow, run_script, write_json
 
 
+def test_rembg_looks_for_its_models_where_the_check_found_them(project, monkeypatch, tmp_path):
+    # Codex review of 1.22: matte.models moved the pre-check to that folder, while rembg itself still looked in its
+    # default one (it reads U2NET_HOME), so a model kept only there passed the check and then was not found
+    import os
+    import subprocess
+    import sys
+    from types import SimpleNamespace
+    import matte
+    models = tmp_path / "rembg-models"
+    models.mkdir()
+    write_json(project / "it-reelsmaker.json", {"matte": {"models": str(models)}})
+    (project / "edit" / "4821").mkdir(parents=True)
+    src = tmp_path / "cut" / "frames"
+    src.mkdir(parents=True)
+    seen = {}
+    real_run = subprocess.run
+
+    def first_call(cmd, *args, **kw):  # the rembg call: what a process started now sees, then stop the cut
+        seen["home"] = real_run([sys.executable, "-c", "import os; print(os.environ.get('U2NET_HOME') or '')"],
+                                capture_output=True, text=True, check=True).stdout.strip()
+        raise matte.Fail("stopped by the test")
+
+    monkeypatch.setattr(matte.subprocess, "run", first_call)
+    monkeypatch.setattr(matte, "free_mb", lambda: None)  # this machine's free memory is not what is tested
+    eng = matte.Local(SimpleNamespace(model="u2net_human_seg", edit="edit/4821", rembg=sys.executable))
+    try:
+        eng.run(src, 30, 60, 5, tmp_path / "cut" / "out.webm")
+    except matte.Fail:
+        pass
+    finally:
+        os.unsetenv("U2NET_HOME")
+    assert seen.get("home") == str(models)
+
+
 def rough_cut(project):
     make_video(project / "edit" / "4821" / "final.mp4", 1080, 1920, 3.0)
 
@@ -27,7 +61,8 @@ def test_local_cut_needs_rembg(project):
 @needs_ffmpeg
 def test_server_cut_needs_a_host(project, tmp_path):
     rough_cut(project)
-    env = {"REELS_ONLINE_SCRIPTS": str(ADDON), "REELS_OFFLINE": "1", "REELS_KEYS_FILE": str(tmp_path / "none.env")}
+    write_json(project / "it-reelsmaker.json", {"online_scripts": str(ADDON)})  # the add-on's link command writes this
+    env = {"REELS_OFFLINE": "1", "REELS_KEYS_FILE": str(tmp_path / "none.env")}  # the add-on's own switches
     r = run_script("addon.py", "matte", "cut", "edit/4821", "--from", "0.5", "--to", "2.0", cwd=project, env=env, check=False)
     assert r.returncode == 1 and "no server for the cut-out" in (r.stdout + r.stderr)
 
