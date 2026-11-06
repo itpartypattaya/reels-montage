@@ -1082,6 +1082,42 @@ def test_a_preset_does_not_hide_an_old_plans_texts(project):
     assert r.returncode != 0 and "give --card again" in (r.stdout + r.stderr)
 
 
+def test_a_video_staged_by_1_21_with_its_ending_off_does_not_get_the_presets(project):
+    # Codex review of 1.22 (P1): a series video whose ending was switched off in 1.21 (--no-end --no-corner) kept
+    # that choice under the old key only; 1.22 does not read it, found no ending of its own and drew the preset's
+    # card and logo, 2.6 s longer, without a word. Now a video staged before stops and asks for its ending
+    e = plan_project(project, {"use_broll": False, "use_scenes": False, "use_memes": False,
+                               "finish": {"corner": True, "end": {"kind": "card", "lines": ["Message us"]}}})
+    run_script("visual_plan.py", "validate", "edit/4821", cwd=project)
+    plan = load_plan(e)
+    plan["export"] = {"hook": None, "corner": False, "end": None}  # what 1.21 stored, no markers
+    write_json(e / "visual_plan.json", plan)
+    rem = _export_project(project, e)
+    write_json(rem / "src" / "plans" / f"{plan['id']}.json", {"id": plan["id"], "inserts": []})  # 1.21 staged it
+    r = run_script("visual_plan.py", "stage", "edit/4821", "--remotion", rem, "--props", rem / "p.json", cwd=project,
+                   check=False)
+    out = r.stdout + r.stderr
+    assert r.returncode != 0 and "--no-end" in out and "--no-corner" in out, out
+    assert not (rem / "p.json").exists()
+    run_script("visual_plan.py", "stage", "edit/4821", "--remotion", rem, "--props", rem / "p.json",
+               "--no-end", "--no-corner", cwd=project)
+    props = json.loads((rem / "p.json").read_text(encoding="utf-8"))
+    assert props["corner"] is False and props["endCard"] is None
+    assert load_plan(e)["finish"] == {"hook": None, "corner": False, "end": None}
+
+
+def test_a_series_preset_still_gives_a_new_video_its_ending(project):
+    # the fix above must not stop a video staged for the first time: it takes the preset's ending as before
+    e = plan_project(project, {"use_broll": False, "use_scenes": False, "use_memes": False,
+                               "finish": {"corner": True, "end": {"kind": "sting"}}})
+    run_script("visual_plan.py", "validate", "edit/4821", cwd=project)
+    rem = _export_project(project, e)
+    r = run_script("visual_plan.py", "stage", "edit/4821", "--remotion", rem, "--props", rem / "p.json", cwd=project)
+    assert "kept from the series preset" in r.stdout
+    props = json.loads((rem / "p.json").read_text(encoding="utf-8"))
+    assert props["corner"] is True
+
+
 def test_doctor_forgets_a_pass_after_a_failure(project):
     import doctor
     write_json(project / "it-reelsmaker.json", {"doctor_ok": {"version": "1.0.0"}, "remotion_dir": "reels"})

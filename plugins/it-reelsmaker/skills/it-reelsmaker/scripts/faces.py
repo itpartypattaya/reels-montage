@@ -491,7 +491,8 @@ def zone_report(f, sub, fr=None):
                 "sub_ok": True}
     lft, rgt = (fr[0], min(W - ui["right"], fr[0] + fr[2])) if fr else (ui["left"], W - ui["right"])
     fx0, fy0, fx1, fy1 = f[0] - MARGIN, f[1] - MARGIN, f[0] + f[2] + MARGIN, f[1] + f[3] + MARGIN
-    ceil = [top, fy0] if fy0 - top >= 120 else None
+    ceil_end = min(fy0, low)  # a bottom UI may start above a low face (Codex review of 1.22)
+    ceil = [top, ceil_end] if ceil_end - top >= 120 else None
     chest_end = min(sub[0] - 20, low)
     chest = [fy1, chest_end] if chest_end - fy1 >= 120 else None
     return {"face": f, "ceiling": ceil, "chest": chest, "left": max(0, fx0 - lft), "right": max(0, rgt - fx1),
