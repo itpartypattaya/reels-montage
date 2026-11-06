@@ -39,6 +39,40 @@ def test_rembg_looks_for_its_models_where_the_check_found_them(project, monkeypa
     assert seen.get("home") == str(models)
 
 
+def test_rembg_looks_in_the_default_folder_the_check_used(project, monkeypatch, tmp_path):
+    # PR #35 review (P2): with no matte.models the pre-check looks in ~/.u2net, while rembg inherited a U2NET_HOME
+    # from the launching environment and looked elsewhere: a model in ~/.u2net passed the check, and rembg did not
+    # find it (a download, or a failure offline)
+    import os
+    import subprocess
+    import sys
+    from types import SimpleNamespace
+    import matte
+    elsewhere = tmp_path / "another-tool-models"
+    elsewhere.mkdir()
+    monkeypatch.setenv("U2NET_HOME", str(elsewhere))  # set by another tool in the user's shell
+    (project / "edit" / "4821").mkdir(parents=True)
+    src = tmp_path / "cut" / "frames"
+    src.mkdir(parents=True)
+    seen = {}
+    real_run = subprocess.run
+
+    def first_call(cmd, *args, **kw):
+        seen["home"] = real_run([sys.executable, "-c", "import os; print(os.environ.get('U2NET_HOME') or '')"],
+                                capture_output=True, text=True, check=True).stdout.strip()
+        raise matte.Fail("stopped by the test")
+
+    monkeypatch.setattr(matte.subprocess, "run", first_call)
+    monkeypatch.setattr(matte, "free_mb", lambda: None)
+    eng = matte.Local(SimpleNamespace(model="u2net_human_seg", edit="edit/4821", rembg=sys.executable))
+    try:
+        eng.run(src, 30, 60, 5, tmp_path / "cut" / "out.webm")
+    except matte.Fail:
+        pass
+    assert seen.get("home") == str(matte.model_file("u2net_human_seg").parent)
+    assert seen.get("home") != str(elsewhere)
+
+
 def rough_cut(project):
     make_video(project / "edit" / "4821" / "final.mp4", 1080, 1920, 3.0)
 

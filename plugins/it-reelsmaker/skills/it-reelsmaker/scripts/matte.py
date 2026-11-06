@@ -264,8 +264,9 @@ class Local:
             if mem is not None and mem < need:
                 raise Fail(f"not enough memory under the lock (free {mem} MB, needed {need}): wait and try again")
             print(f"rembg on this computer (up to {limit / 60:.0f} min)...", flush=True)
-            if models_dir():  # rembg finds its models through U2NET_HOME: the folder the pre-check found it in
-                os.putenv("U2NET_HOME", str(models_dir()))
+            # rembg finds its models through U2NET_HOME: always the folder the pre-check looked in, the default one too
+            # (PR #35 review: a U2NET_HOME left in the shell sent rembg elsewhere while the check passed on ~/.u2net)
+            os.putenv("U2NET_HOME", str(model_file(self.model).parent))
             try:
                 r = subprocess.run(local_media_args([*nice, self.rembg, *rembg_args(self.model, src, res)]), capture_output=True,
                                    text=True, encoding="utf-8", errors="replace", timeout=limit)

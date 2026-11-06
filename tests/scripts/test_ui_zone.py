@@ -90,3 +90,23 @@ def test_a_project_without_its_own_zone_keeps_the_platform_one(project):
     assert ui_safe() == {"top": 220, "bottom": 420, "right": 120, "left": 40}
     write_json(project / "reel-defaults.json", {"meme_layout": {"safe": {"bottom": 520}}})  # one side only
     assert ui_safe() == {"top": 220, "bottom": 520, "right": 120, "left": 40}
+
+
+def test_a_callout_dot_in_the_projects_left_ui_zone_is_reported(project):
+    # Codex review of 1.22: the dot was checked against the top, the bottom and the right UI, never the left side
+    e = callout_project(project)
+    add(project, "--at", "word:resume#1", "--dur", "2.4", "--anchor", "120,1100", *LAPTOP)
+    assert "UI zone" not in validate(project).stdout  # the default 40 px left side: the dot is clear of it
+    write_json(project / "reel-defaults.json", {"meme_layout": {"safe": {"left": 200}}})
+    r = validate(project)
+    assert "is in the app's UI zone" in r.stdout, r.stdout
+
+
+def test_the_space_above_a_low_face_ends_above_the_projects_bottom_ui(project):
+    # Codex review of 1.22: the chest zone stopped at the bottom UI, the space above the face did not: with the UI
+    # from y 1020 and a face from y 1300 the offered ceiling ran down to y 1240, under the app's buttons
+    pytest.importorskip("cv2")
+    import faces as fc
+    write_json(project / "reel-defaults.json", {"meme_layout": {"safe": {"bottom": 900}}})  # UI from y 1020
+    z = fc.zone_report([380, 1300, 260, 300], [1250, 1430])
+    assert z["ceiling"] is None or z["ceiling"][1] <= 1020, z

@@ -1150,7 +1150,18 @@ def finish_of(a, plan):
     notes = []
     preset = (plan.get("settings") or {}).get("finish")  # a series preset's finish (reelcfg.py preset use)
     legacy = plan.get("corner") or plan.get("end_card") or plan.get("hook")  # markers of a stage before 1.13
-    if not last and not legacy and isinstance(preset, dict) and preset:  # only a video with no ending of its own
+    rem, name = getattr(a, "remotion", None), getattr(a, "name", None) or plan.get("id")
+    staged = bool(rem and name and (Path(rem) / "src" / "plans" / f"{name}.json").is_file())  # stage writes it each run
+    if not last and not legacy and isinstance(preset, dict) and preset and staged:
+        # staged before 1.22, which keeps the ending under another name: an ending switched off then left no marker, and
+        # the preset would come back without a word (Codex review of 1.22, P1). This run's flags decide it, once
+        if not (getattr(a, "corner", False) or getattr(a, "no_corner", False)):
+            notes.append("this video was staged by an older version and its corner logo choice is not read: give "
+                         "--corner or --no-corner")
+        if not (getattr(a, "card", None) or getattr(a, "sting", False) or getattr(a, "no_end", False)):
+            notes.append("this video was staged by an older version and its ending is not read: give --card, --sting "
+                         "or --no-end")
+    elif not last and not legacy and isinstance(preset, dict) and preset:  # only a video with no ending of its own
         last = {"hook": None, "corner": bool(preset.get("corner")), "end": preset.get("end")}
     elif not last:  # a plan staged before 1.13 kept only markers: the corner and a sting come back, texts cannot
         if plan.get("corner"):
@@ -1799,7 +1810,8 @@ def check_callouts(e, plan, s, doc, fdata, callouts, brolls, memes, scenes, corn
             what = {"ring": "ring", "dimension": "dimension"}.get(vr, "dot")
             if any(not (0 <= x_ <= 1080 and 0 <= y_ <= 1920) for x_, y_ in ends):
                 found.setdefault("frame", (t, f"the {what} ({px:.0f}, {py:.0f}) leaves the frame"))
-            elif any(y_ < ui["top"] or y_ > fc.H - ui["bottom"] or x_ > fc.W - ui["right"] for x_, y_ in ends):
+            elif any(y_ < ui["top"] or y_ > fc.H - ui["bottom"] or x_ > fc.W - ui["right"] or x_ < ui["left"]
+                     for x_, y_ in ends):  # the left side too (Codex review of 1.22)
                 found.setdefault("ui-dot", (t, f"the {what} ({px:.0f}, {py:.0f}) is in the app's UI zone"))
             x, y, pw, ph = plate
             if x < zx0 or y < zy0 or x + pw > zx1 or y + ph > zy1:

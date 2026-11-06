@@ -2,6 +2,20 @@
 
 What changed in IT Reelsmaker, written for the people who use it. The newest version is on top. The skill shows a short “What's new” note from this file once, on the first edit after an update.
 
+## 1.22.1
+
+- **The figure cut-out finds its model where the check found it.** With no `matte.models` setting, `matte.py` checked
+  for the model in the default folder, while rembg could look in another one left set in your shell by some other
+  tool: the check passed, and rembg did not find the model. rembg now always looks in the folder the check used.
+- **A series video whose ending you switched off keeps it off.** A video from a series preset, staged by 1.21 with
+  its end card and corner logo taken off, got the preset's ending back on the next `stage` in 1.22, 2.6 s longer
+  and without a word. Now such a video stops once and asks: `--card`, `--sting` or `--no-end`, and `--corner` or
+  `--no-corner`. A video staged for the first time takes the preset's ending as before.
+- **Your own left UI zone counts for callouts too.** A callout's dot inside a left app zone set in the project's
+  `reel-defaults.json` is now reported, as the top, bottom and right sides were.
+- **The space above a face ends above the app's buttons.** With a tall bottom UI and a face low in the frame,
+  `faces.py` offered free space above the face that ran under the buttons.
+
 ## 1.22.0
 
 - **The plugin reads no environment variables.** Every setting comes from `it-reelsmaker.json`, the project's
