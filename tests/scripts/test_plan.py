@@ -925,10 +925,12 @@ def test_a_plan_exported_before_1_13_asks_for_the_texts_again(project):
     assert props["corner"] is True and props["hook"] is None and props["endCard"]["line1"] == "Message us"
 
 
-def test_a_plan_staged_by_1_21_keeps_its_ending_or_asks_for_it(project):
+def test_a_plan_staged_by_1_21_asks_once_for_its_hook_and_card_and_says_why(project):
     # 1.22 renamed the plan's record of the ending ("export" -> "finish", the directory's scan read the word as a
-    # shell command). A video planned and staged by 1.21 must not lose its ending silently: the corner logo stays,
-    # and the next stage stops until the hook and the card's lines come back or are taken off
+    # shell command) and does not read the old one. A video planned and staged by 1.21 must not lose its ending
+    # silently: the corner logo stays, and the next stage stops until the hook and the card's lines come back or are
+    # taken off. Review of 1.22 (Fable): the message said the texts were "not stored", while they are in the file
+    # under the old name; it says now that an older version kept them and they are not read
     e = plan_project(project, {"use_broll": False, "use_scenes": False, "use_memes": False})
     run_script("visual_plan.py", "validate", "edit/4821", cwd=project)
     plan = load_plan(e)
@@ -940,6 +942,7 @@ def test_a_plan_staged_by_1_21_keeps_its_ending_or_asks_for_it(project):
                    check=False)
     out = r.stdout + r.stderr
     assert r.returncode != 0 and "give --hook again" in out and "give --card again" in out
+    assert "not stored" not in out and "staged before 1.22" in out, out
     assert not (rem / "props.json").exists()
     run_script("visual_plan.py", "stage", "edit/4821", "--remotion", rem, "--props", rem / "props.json",
                "--card", "Message us", "--hook", "Hi there", cwd=project)
@@ -1056,7 +1059,7 @@ def test_a_series_preset_keeps_only_the_series_answers(project):
     plan.update({"corner": True, "end_card": {"kind": "card", "seconds": 2.6}})
     write_json(e / "visual_plan.json", plan)
     r = run_script("reelcfg.py", "preset", "save", "legacy", "--from", "edit/4821", cwd=project)
-    assert "not carried: tone_override" in r.stdout and "lines were not stored" in r.stdout
+    assert "not carried: tone_override" in r.stdout and "lines are not read" in r.stdout
     doc = json.loads((project / "presets" / "legacy.json").read_text(encoding="utf-8"))
     assert "tone_override" not in doc["settings"] and "subtitles_shade" not in doc["settings"]
     assert doc["finish"] == {"corner": True, "end": None}
