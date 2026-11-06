@@ -1140,6 +1140,9 @@ def end_tail(a, plan):
     return float((plan.get("end_card") or {}).get("seconds") or 0.0)
 
 
+WHY_OLD_FINISH = "a plan staged before 1.22 keeps it under an older name that this version does not read, one staged before 1.13 not at all"
+
+
 def finish_of(a, plan):
     """What stage draws around the cut: the hook headline, the corner logo, the end card or the logo sting. A flag sets
     it, --no-hook/--no-corner/--no-end take it off, and with neither the last stage's choice stays (review 2026-10-17:
@@ -1163,17 +1166,20 @@ def finish_of(a, plan):
                          "or --no-end")
     elif not last and not legacy and isinstance(preset, dict) and preset:  # only a video with no ending of its own
         last = {"hook": None, "corner": bool(preset.get("corner")), "end": preset.get("end")}
-    elif not last:  # a plan staged before 1.13 kept only markers: the corner and a sting come back, texts cannot
+    elif not last:  # a plan staged before 1.22 (texts under an older name, not read) or before 1.13 (only markers):
+        # the corner and a sting come back from the markers, texts cannot (review of 1.22: say why, not "not stored")
         if plan.get("corner"):
             last["corner"] = True
         kind = (plan.get("end_card") or {}).get("kind")
         if kind == "sting":
             last["end"] = {"kind": "sting"}
         elif kind == "card" and not (getattr(a, "card", None) or getattr(a, "sting", False) or getattr(a, "no_end", False)):
-            notes.append("the last stage had an end card, but its lines are not stored: give --card again (or --no-end)")
+            notes.append("the last stage had an end card, but its lines are not read (" + WHY_OLD_FINISH + "): give --card "
+                         "again (or --no-end)")
             last["end"] = {"kind": "card", "lines": None}  # still on: validate and this stage count its 2.6 s
         if plan.get("hook") and not (getattr(a, "hook", None) or getattr(a, "no_hook", False)):
-            notes.append("the last stage had a hook headline, but its text is not stored: give --hook again (or --no-hook)")
+            notes.append("the last stage had a hook headline, but its text is not read (" + WHY_OLD_FINISH + "): give --hook "
+                         "again (or --no-hook)")
             last["hook"] = True
     kept = []
     if getattr(a, "no_hook", False):

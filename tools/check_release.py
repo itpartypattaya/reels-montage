@@ -178,8 +178,9 @@ def check_plugin(pdir, private_terms):
         if ext not in TEXT_EXT and f.name != "LICENSE":
             warnings.append(f"{rel}: not a text/image/font file (held for review)")
             continue
-        if f.stat().st_size > MAX_TEXT:
-            warnings.append(f"{rel}: {f.stat().st_size} bytes > 256 KiB (held for review)")
+        size = len(f.read_bytes().replace(b"\r\n", b"\n"))  # as the repository stores it: a Windows checkout adds CRs
+        if size > MAX_TEXT:
+            warnings.append(f"{rel}: {size} bytes > 256 KiB (held for review)")
         text = f.read_text(encoding="utf-8")
         if ext == ".json":
             try:

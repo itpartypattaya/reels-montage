@@ -2,6 +2,18 @@
 
 What changed in IT Reelsmaker, written for the people who use it. The newest version is on top. The skill shows a short “What's new” note from this file once, on the first edit after an update.
 
+## 1.22.2
+
+- **A video staged by 1.21 says why it asks for its hook and card.** 1.22 keeps the chosen ending under a new
+  name and does not read the old one, so such a video asks once for `--hook` and `--card` again. The message said
+  their texts were "not stored"; it says now that an older version kept them and this one does not read them.
+  The same for a series preset saved from such a video.
+- **Kit 1.14.1** (`kit.py update`): the kit files 1.22.0 reworded for the directory's scan, under a version of
+  their own, so `doctor.py` and `kit.py check` agree. It draws exactly as before.
+- Docs: `references/scripts.md` names `balance.py`'s `[SOURCE:]` and says the master runs attach, not bake;
+  `references/migrations.md` tells Linux users with rembg's models in the `XDG_DATA_HOME` data folder to set
+  `matte.models`.
+
 ## 1.22.1
 
 - **The figure cut-out finds its model where the check found it.** With no `matte.models` setting, `matte.py` checked
@@ -46,8 +58,8 @@ What changed in IT Reelsmaker, written for the people who use it. The newest ver
   The face model's download link moved from `faces.py`'s message to `references/faces.md`, "Model", where the
   message now points.
   Three kit files renamed a variable or rewrote a number format the scan misread (the font list in `Phrase.tsx`,
-  the entrance progress in `SceneLayer.tsx`, the item number in `List.tsx`); they draw exactly as before, so there
-  is no kit update to run.
+  the entrance progress in `SceneLayer.tsx`, the item number in `List.tsx`); they draw exactly as before. (This
+  said there was no kit update to run; `kit.py check` did list the changed files: kit 1.14.1 since 1.22.2.)
 - **Catalog housekeeping.** The plugin has an icon for the directory; `doctor.py` names the Remotion
   packages without a `*` in its check label; `plugin.json` drops four listing links that Claude Code never read
   (the directory listing keeps the documentation, support, privacy and terms links it took at submission; they are

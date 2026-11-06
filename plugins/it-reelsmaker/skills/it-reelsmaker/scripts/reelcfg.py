@@ -160,8 +160,8 @@ def preset_path(name):
 
 
 def finish_from(e, own):
-    """The video's ending for a preset: its last stage; a plan staged before 1.13 gives the corner logo and a sting
-    back from its markers (a card's lines were not stored); else the finish its reel.json got from a preset.
+    """The video's ending for a preset: its last stage; a plan staged before 1.22 or 1.13 gives the corner logo and a
+    sting back from its markers (a card's lines are not read); else the finish its reel.json got from a preset.
     -> (finish, note or None)."""
     plan = load_json(e / "visual_plan.json", {}) or {}
     if plan.get("finish"):
@@ -169,8 +169,9 @@ def finish_from(e, own):
         return {"corner": bool(exp.get("corner")), "end": exp.get("end")}, None
     kind = (plan.get("end_card") or {}).get("kind")
     if plan.get("corner") or kind:
-        note = ("its end card's lines were not stored (staged before 1.13): the series gets no card; give it with "
-                "--card at the next video's stage") if kind == "card" else None
+        note = ("its end card's lines are not read (staged before 1.22: they are under an older name this version "
+                "does not read; before 1.13: not kept): the series gets no card; give it with --card at the next "
+                "video's stage") if kind == "card" else None
         return {"corner": bool(plan.get("corner")), "end": {"kind": "sting"} if kind == "sting" else None}, note
     fin = own.get("finish") if isinstance(own.get("finish"), dict) else {}
     return {"corner": bool(fin.get("corner")), "end": fin.get("end")}, (None if fin else "that video has no stage yet: "
