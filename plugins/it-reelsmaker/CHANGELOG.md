@@ -2,6 +2,13 @@
 
 What changed in IT Reelsmaker, written for the people who use it. The newest version is on top. The skill shows a short “What's new” note from this file once, on the first edit after an update.
 
+## 1.22.3
+
+- **Housekeeping, nothing changes in use.** The visual plan's code is split into smaller files (`vp_core`,
+  `vp_camera`, `vp_scenes`, `vp_defects`, `vp_callouts`, `vp_validate`, `vp_stage`, `vp_shade`); `visual_plan.py`
+  keeps its commands, messages and file formats exactly as they were, so nothing needs updating and no plan is
+  staged again. The one file had grown close to the size the plugin directory reviews by hand.
+
 ## 1.22.2
 
 - **A video staged by 1.21 says why it asks for its hook and card.** 1.22 keeps the chosen ending under a new

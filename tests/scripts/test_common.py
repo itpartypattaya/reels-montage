@@ -1,4 +1,5 @@
 """reels_common: defaults and overlays, project folder, safe names, brand tone, settings layers, fallback logic."""
+import ast
 import json
 import re
 from pathlib import Path
@@ -185,6 +186,32 @@ def test_core_reads_no_environment_variables():
     bad = re.compile(r"os\.environ|os\.getenv|getenv\(|process\.env")
     for f in [*CORE.glob("*.py"), *(CORE.parent / "assets").rglob("*.ts*")]:
         assert not bad.search(f.read_text(encoding="utf-8")), f.name
+
+
+def _defined(path):
+    """The names a module defines at its top level (functions, classes, assigned constants)."""
+    for n in ast.parse(path.read_text(encoding="utf-8")).body:
+        if isinstance(n, (ast.FunctionDef, ast.ClassDef)):
+            yield n.name
+        elif isinstance(n, ast.Assign):
+            for t in n.targets:
+                yield from ([t.id] if isinstance(t, ast.Name) else [e.id for e in t.elts if isinstance(e, ast.Name)])
+
+
+def test_visual_plan_keeps_every_name_of_its_modules():
+    # faces.py, board.py, track.py, textcheck.py and the tests take the plan's functions and constants from
+    # visual_plan; its code lives in the vp_* modules, so none of their names may be missing there or be another
+    # object, and no name may be defined in two modules (two copies of a constant drift apart)
+    import importlib
+    import visual_plan
+    owner = {}
+    for f in sorted(CORE.glob("vp_*.py")):
+        m = importlib.import_module(f.stem)
+        for name in _defined(f):
+            assert name not in owner, f"{name} is defined in {owner[name]} and {f.stem}"
+            owner[name] = f.stem
+            assert getattr(visual_plan, name, None) is getattr(m, name), f"visual_plan.{name} is not {f.stem}.{name}"
+    assert len(owner) > 150  # the modules are there
 
 
 def test_core_scripts_have_no_network_imports():
