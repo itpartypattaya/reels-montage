@@ -222,5 +222,6 @@ HEX codes and font names are never written into the video's code.
 - **Brand tone:** `tone`: memes, cutaways, how loud the techniques are, scene tones (section “Brand tone”).
 - **Memes:** `memes_policy`. With `strict`, only memes with known rights are used. Meme size is `meme_size` (no larger than the tone's ceiling): for a calm brand, `s`.
 - **Icon library verdicts.** A “no” for rights reasons (film stills, celebrities, stock people; `rights_block` in the catalog) always applies. A “no” for style reasons applies only to a brand that adopts the catalog's verdicts: `"asset_verdicts": "verdict"` in its `brand.json` (`references/library.md`).
+- **Generic template look:** the template's `rules.md` starts a new brand with a short list of what makes videos look like everyone else's (dark field with glows, three identical cards in a row, one entrance for everything, filler words); read it to the person in one line when creating the brand and keep what they agree with.
 - **Forbidden imagery:** `forbidden_imagery` / `_en`. It applies to B-roll, code scenes and memes (and to the online sources of the online-sources add-on `it-reelsmaker-online`).
 - **Insert defaults:** `inserts`. For example, `{"use_online_footage": false}` (a setting of the online-sources add-on `it-reelsmaker-online`) for a brand whose guidelines forbid stock footage.

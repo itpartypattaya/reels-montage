@@ -36,6 +36,17 @@ Two messages as the person should see them: the cut plan of step 5 and the repor
 >
 > Cut it like this? A “yes” starts the cut; anything else, tell me what to change.
 
+## Self-review before the preview (step 9)
+
+Before the person sees a render, review it as a stranger would and fix what you find. The protocol follows the review rules of [HyperFrames](https://github.com/heygen-com/hyperframes) (Apache-2.0), retold for this pipeline.
+
+- **What to look at.** The storyboard sheet and the 12-frame contact sheet, plus two views they miss: every join at ±0.2 s (`kit.py still` on the frames on both sides of a cut and of a scene's entrance and exit), and the whole video scaled to a phone screen 360 px wide (`ffmpeg -i out/<render>.mp4 -vf scale=360:-2 edit/<id>/verify/phone.mp4`): what does not read there will not read on a phone. Where subagents are available, one with no context of the edit watches the same frames and answers two questions: what is this video about, and where did it stop making sense.
+- **One line per note:** `time · where · problem → fix`, for example `0:12.4 · hook, line 2 · ends on “to”, the word dangles → glue “to” to the next word`. No “looks good” and no score out of 10: a note without a fix is not finished.
+- **Priority.** P0 blocks the preview and always comes with a ready fix: text on a face or in a UI zone, a leftover take, a word cut in half, a fact with no source, a brand ban broken. P1 is fixed when it is cheap: a join that jumps, a hold too short to read, a scene that repeats its neighbor. P2 goes into “open items” of the report.
+- **Two rounds at most** of fix → check again. What still fails after the second round goes into the report as “passed with warnings”, with its note lines, instead of a third quiet round.
+
+These notes are the agent's own. The person's revisions still go through the defect table (SKILL.md step 9).
+
 ## Delivery report (step 10)
 
 > **Ready: `edit/4821/out/acme-hiring-master.mp4`** (41.8 s, 1080×1920, 30 fps).

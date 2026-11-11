@@ -17,6 +17,7 @@
 - Tone: ⟨…⟩
 - Not allowed in the frame: ⟨imagery⟩
 - Not allowed in the text: ⟨words and promises⟩
+- Generic template look to avoid ⟨keep, drop or add⟩: a dark empty field with glows; three identical cards side by side; every element entering with the same fade and slide-up; filler words such as “unlock”, “seamless”, “next level”.
 
 ## Inserts
 - B-roll: ⟨whether stock footage is allowed; what may be shown; what may not⟩.

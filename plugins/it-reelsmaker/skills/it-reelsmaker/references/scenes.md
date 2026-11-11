@@ -26,6 +26,8 @@ When the plan is built, spans get `scene:*` hints. A hint is a prompt to think, 
 
 A scene is **not needed** when the face and intonation matter more (a personal story, a punchline), when other graphics are already on screen, or when a card is enough.
 
+**Phrase → picture** for `word` and per-video scenes (ideas, not rules; after [skill-multik](https://github.com/artemiimillier/skill-multik), MIT): “don't do X” → X struck through twice and pushed to a corner; “it does it by itself” → a checklist that ticks 0/3 → 3/3 on the spoken items; “it checks” → a magnifier passing over the item, then a stamp; a number → a counter (`stat`); the call to action → the action itself (`cta`). Only when the speech names it, and within the brand tone.
+
 ## Scene catalog
 
 | type | On screen | Required | Modes |
@@ -144,7 +146,11 @@ Scene texts, like card texts, are **shown to the person before rendering** in th
 
 **Transitions.** Don't crossfade two busy layouts: you get a muddy double exposure. The old one leaves, then the new one enters, or the transition goes through the brand's background color. A transition over a pause is a hard cut; in “scenes only” every join is one (above), and no join shows more than a frame or two of bare field: validate warns at more than 4 frames. Stills both settled and **mid-transition**.
 
+**Transition craft** for a per-video transition (the kit's `whip`, `slide` and `fade` have their own numbers; starting values after HyperFrames, Apache-2.0, not yet checked on our videos): a push moves 200–250 px with a strong ease-in on the way out and a strong ease-out on the way in, and the incoming layout starts from about 35 % opacity, not from 0; a zoom-through goes 1 → 1.2 on the outgoing side and 0.75 → 1 on the incoming one, so the scale keeps one direction across the join (a zoom-in that turns into a zoom-out reads as a stutter); motion blur about 10 px on text and 18–20 px on a full frame, never on settled text; words in a stagger 60–120 ms apart.
+
 **Every still is postable.** If a settled frame of the scene wouldn't work as a picture for a post, the scene isn't ready. `board.py` puts the settled frame of every scene on one numbered sheet before the full render (`--transitions` adds the mid-entrance frames), and `textcheck.py` measures what the eye misses: text past the frame or its box, two texts touching (the numbered sheet and the per-frame text check follow the [animate](https://github.com/cth9191/animate) skill, MIT).
+
+**The swap test.** Put a headline from another topic in place of this one. If the video would still work unchanged, it is a template, not this brand's video: bring in its real product, numbers or material.
 
 **Data on screen.** Other people's names, emails, phone numbers and amounts in interface screenshots are replaced with fictional ones, and the plan says so.
 
@@ -173,6 +179,7 @@ The sound goes on the **start** of the motion (0–0.1 s before the first visibl
 A video with no talking head: the brand's texts, numbers and pictures, in scenes only. The brand profile, the CTA library, sounds, mastering and the cover all work as usual, with the exceptions below (mastering without a voice, the cover without a video).
 1. **Material.** The brand profile, the texts, numbers and screenshots the person provides (from their site, deck or product). First answer 6 questions: what it is, in one sentence; who it is for and what it does for them; what sets it apart; the strongest line or number (verbatim from a source); what real material to show; which tone. Then the step 7 brief as usual: the **CTA** (the agent never picks it alone: up to 3 from the brand's library, the person chooses), the **logo** (asked every time: a typeset name in the scenes, a logo sting, an end card) and the **sound**; techniques for a speaker are not asked.
 2. **Storyboard:** hook 2–3 s → reveal 2–4 s → 2–3 strong moments → ending / CTA 2–4 s. 15–25 s in total, 18–22 is the sweet spot. Number of scenes by tone: `calm` and `deadpan` 3–4 with long holds, `cinematic` 4–6 (its 16/10-frame entrance and exit take reading time, so a scene is 3–4.5 s; T6 fit 6 into 22 s), `feature` 4–6, `punchy` 4–5, `hype` 6–8. Add up the durations.
+   **No slideshow** (here and in any video with four or more scenes): no one scene type makes up more than 70 % of the scenes and text-only scenes (`hook`, `slogan`, `quote`) not more than 60 %; never three scenes of the same type, mode and layout in a row; one hero moment, usually the reveal or the strongest number, differs clearly from its neighbors in scale, motion or field color. Starting values, after the slideshow-risk idea of OpenMontage.
 3. A plan without speech spans, started with `visual_plan.py init edit/promo-<brand> --scenes-only --duration 20 --brand <slug>` (the length in seconds, 15–25, best 18–22; `--force` rebuilds a plan that already has scenes): scenes at absolute times (`--at 3.0`), back to back, covering ≥ 95 % of the video; the first scene is the `hook`, from 0 s. All scenes are `full` (there is no speaker), so the rules that protect the face don't apply: the intensity budget and spacing, the `full` ceiling, “not two `full` in a row” and the 1.5 s limit on a `full` hook. Everything else does: the reading-time floor, facts from a source, transitions, the brand tone's scene tones and its transition, light flash and whip ceilings.
    Steps 1–6 (source analysis, transcript, takes, rough cut) are skipped: the video id is a short name such as `promo-<brand>`, and the work goes from the brand and the 6 answers to the step 7 brief (CTA, logo, sound) and the storyboard (step 7a), then render, sound, cover.
 4. Render with the same template, without video and without subtitles.
