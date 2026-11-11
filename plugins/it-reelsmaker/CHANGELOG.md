@@ -2,6 +2,20 @@
 
 What changed in IT Reelsmaker, written for the people who use it. The newest version is on top. The skill shows a short “What's new” note from this file once, on the first edit after an update.
 
+## 1.23.0
+
+- **The agent reviews its own render before you see it.** Notes come as “time · where · problem → fix” with
+  priorities; every join is looked at up close and the whole video at phone size; after two rounds of fixes
+  anything left is reported as “passed with warnings” instead of fixed quietly again.
+- **Nothing is replaced quietly.** When a program, model or font is missing or a step fails, the agent says what
+  is missing and what it changes in the video before taking a simpler way.
+- **Fewer template-looking videos.** Spans longer than 3.5 s with no change in the picture are found from the
+  plan; promos of scenes only are checked for a slideshow feel (one scene type everywhere, three alike in a
+  row, no hero moment); a “swap test” catches a video that would fit any topic; a new brand's `rules.md` starts
+  with a short list of the generic look to avoid.
+- **More ideas for scenes and transitions:** phrase → picture ideas for `word` scenes and starting numbers for
+  transitions written for one video.
+
 ## 1.22.3
 
 - **Housekeeping, nothing changes in use.** The visual plan's code is split into smaller files (`vp_core`,
