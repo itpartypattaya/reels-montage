@@ -21,7 +21,7 @@ What the kit is: src/ReelKit.tsx (the ReelKit and ReelCover compositions: the ro
 designed scenes, all from props written by `visual_plan.py stage --props`) and src/kit/ (its components). The
 starter project adds package.json with pinned versions (all @remotion packages at the same version as remotion),
 tsconfig.json, remotion.config.ts, src/index.ts, src/Root.tsx (ReelKit, ReelCover and the code scenes from
-src/gen/registry.ts), and empty src/brands/, src/plans/, public/.
+src/gen/registry.ts), src/gen/mascots.ts (the brand mascots drawn in code), and empty src/brands/, src/plans/, public/.
 
 The script never runs npm and never touches the network: after `new` it prints the install command. `update`
 replaces only the kit's own files (src/ReelKit.tsx and everything in src/kit/); Root.tsx, src/gen/, brands, plans and public/ stay
@@ -39,6 +39,9 @@ from reels_common import (REMOTION_LEFTOVERS, SETTINGS_FILE, SKILL, edit_dir, ed
 KIT = SKILL / "assets" / "remotion-kit"
 STARTER = SKILL / "assets" / "remotion-starter"
 KIT_FILES = ("ReelKit.tsx", "kit")  # replaced by update; everything else in the project belongs to the person
+# src/gen/: the person's code scenes (codescene.py) and brand mascots (brand.py stage); the kit's copies are the empty
+# starting files, which new writes and update adds only when missing (ReelKit imports gen/mascots.ts)
+GEN_FILES = ("registry.ts", "mascots.ts")
 VERSION_RE = re.compile(r'KIT_VERSION\s*=\s*"([^"]+)"')
 TEXT = {".ts", ".tsx", ".js", ".jsx", ".mjs", ".json", ".css", ".md", ".txt"}
 HERE = Path(__file__).resolve().parent
@@ -159,7 +162,8 @@ def cmd_new(a):
             else:
                 put(f, d)
     copy_kit(rem / "src", kit_files(KIT))
-    put(KIT / "gen" / "registry.ts", rem / "src" / "gen" / "registry.ts")
+    for name in GEN_FILES:
+        put(KIT / "gen" / name, rem / "src" / "gen" / name)
     for d in ("src/brands", "src/plans", "public"):
         (rem / d).mkdir(parents=True, exist_ok=True)
     print(f"created the Remotion project {rem} (kit {kit_version(KIT)})")
@@ -204,6 +208,14 @@ def cache_hint(rem):
               f"found at position N\". Add: {CACHE_LINE}")
 
 
+def add_gen(rem):
+    """src/gen/ files the project lacks (the person's own: added when missing, never replaced)."""
+    for name in GEN_FILES:
+        if not (rem / "src" / "gen" / name).exists():
+            put(KIT / "gen" / name, rem / "src" / "gen" / name)
+            print(f"  add: src/gen/{name}")
+
+
 def cmd_update(a):
     rem = remotion_project(a.remotion)
     have, ship = kit_version(rem / "src"), kit_version(KIT)
@@ -212,6 +224,8 @@ def cmd_update(a):
                  "--force rolls the kit back (replaced files are backed up first)")
     missing, changed, extra = diff(rem)
     if not missing and not changed:
+        if not a.dry_run:
+            add_gen(rem)
         print(f"the kit in {rem} already matches the plugin ({kit_version(KIT)})")
         return
     for p in missing:
@@ -229,9 +243,7 @@ def cmd_update(a):
             shutil.copyfile(rem / "src" / p, d)
         print(f"backup of the replaced files: {bak}")
     copy_kit(rem / "src", missing + changed)
-    if not (rem / "src" / "gen" / "registry.ts").exists():
-        put(KIT / "gen" / "registry.ts", rem / "src" / "gen" / "registry.ts")
-        print("  add: src/gen/registry.ts")
+    add_gen(rem)
     for p in extra:
         print(f"  left as is (not in the plugin's kit): src/{p.as_posix()}")
     root = rem / "src" / "Root.tsx"

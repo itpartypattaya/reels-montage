@@ -64,7 +64,11 @@ export const TextProbe: React.FC<{ root: React.RefObject<HTMLDivElement | null>;
       obs.disconnect();
       try {
         const el = root.current;
-        if (el) console.log(PROBE + JSON.stringify({ f: frame, b: measure(el).map((b) => [b.gid, b.text, b.x, b.y, b.w, b.h, b.a, b.v]) }));
+        if (el) {
+          const m = measureMascots(el);
+          console.log(PROBE + JSON.stringify({ f: frame, b: measure(el).map((b) => [b.gid, b.text, b.x, b.y, b.w, b.h, b.a, b.v]),
+            ...(m.length ? { m } : {}) }));
+        }
       } finally {
         finish();
       }
@@ -159,6 +163,30 @@ const measure = (el: HTMLElement): Box[] => {
   }
   return out.map((b) => ({ ...b, text: b.text.slice(0, 40), x: Math.round(b.x), y: Math.round(b.y), w: Math.round(b.w), h: Math.round(b.h),
     a: Math.round(b.a * 100) / 100, v: Math.round(b.v * 100) / 100 }));
+};
+
+// The brand mascot's drawn figure (kit/mascot/MascotLayer.tsx, data-rk="mascot"): the union of the shapes and images it
+// draws, not its whole coordinate box, in composition pixels → "m": [[x, y, w, h, alpha], …] (textcheck.py: no text on it).
+const SHAPES = "path, circle, ellipse, rect, line, polyline, polygon, image, img, use, text";
+const measureMascots = (el: HTMLElement): number[][] => {
+  const R = el.getBoundingClientRect();
+  const k = R.width / 1080 || 1;
+  const out: number[][] = [];
+  el.querySelectorAll('[data-rk="mascot"]').forEach((m) => {
+    let l = Infinity, t = Infinity, r = -Infinity, b = -Infinity;
+    const parts = m.querySelectorAll(SHAPES);
+    (parts.length ? Array.from(parts) : [m]).forEach((q) => {
+      const x = q.getBoundingClientRect();
+      if (x.width < 0.5 && x.height < 0.5) return;
+      l = Math.min(l, x.left); t = Math.min(t, x.top); r = Math.max(r, x.right); b = Math.max(b, x.bottom);
+    });
+    if (r <= l || b <= t) return;
+    let a = 1;
+    for (let q: Element | null = m; q && q !== el; q = q.parentElement) a *= parseFloat(getComputedStyle(q).opacity || "1");
+    out.push([Math.round((l - R.left) / k), Math.round((t - R.top) / k), Math.round((r - l) / k), Math.round((b - t) / k),
+      Math.round(a * 100) / 100]);
+  });
+  return out;
 };
 
 const overlap = (a: DOMRect, b: DOMRect) =>

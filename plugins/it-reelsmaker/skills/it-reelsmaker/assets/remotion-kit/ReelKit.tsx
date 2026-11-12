@@ -31,6 +31,9 @@ import { CalloutLayer } from "./kit/Callout";
 import type { CalloutSpec } from "./kit/Callout";
 import { COVER_ZONE, COVER_ZONE_LOW, Cover, CoverText, ResolvedTone, SceneFrameBox, SceneLayer, SceneSpec, contrast, resolveBrandTone, sceneActivity,
   sceneHideIntervals, speakerRectAt, withRollTone } from "./kit/scenes";
+import { MascotLayer } from "./kit/mascot/MascotLayer";
+import type { MascotProps } from "./kit/mascot/MascotLayer";
+import { MASCOTS } from "./gen/mascots"; // the brand mascots drawn in code (brand.py stage registers them; yours)
 
 export const KIT_FPS = 30;
 export const VOICE_SUB_GAP = 40; // px: with the voice off camera a full scene's text ends this far above the subtitles (vp_scenes.VOICE_SUB_GAP)
@@ -70,6 +73,9 @@ export type ReelKitProps = {
   callouts?: CalloutSpec[] | null;
   // board.py / textcheck.py: frame k shows frame frames[k] of the video, frozen; render --frames=0-(n−1) (kit/Sample.tsx)
   sample?: Sample | null;
+  // the brand mascot (visual_plan.py stage → props.mascot, references/mascot.md): a per-frame plan the kit plays,
+  // above the scenes, below callouts, memes and subtitles; absent — none
+  mascot?: MascotProps | null;
 };
 
 // The “framed” format: window — x, y, w, h on the 1080×1920 screen (reel.json → window, default 25, 340, 1030, 1240);
@@ -358,6 +364,7 @@ const ReelKitFrame: React.FC<ReelKitProps> = (p) => {
         framed={g ? sceneBox(g) : null}
         textBottom={offCamera && p.subtitles !== "none" ? (p.subtitlesTop ?? 1290) - VOICE_SUB_GAP : null} />
       {offCamera ? shadeLayer : null}
+      <MascotLayer mascot={p.mascot} modules={MASCOTS} />
       {!g && p.video ? (
         <CalloutLayer callouts={p.callouts} brand={p.brand} look={look} fonts={fonts} bt={bt} camera={p.camera}
           segments={picShots(p.captions)} drift={p.drift} end={p.captions.duration} scenes={p.scenes} words={p.captions.words} />

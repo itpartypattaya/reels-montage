@@ -185,6 +185,8 @@ def follow_rough_cut(e, plan, cap, s, prov, doc, quiet=False):
         for it in [x for x in (i.get("items") or []) if isinstance(x, dict)] + [i.get("interaction") or {}]:
             if str(it.get("at") or "").startswith("word:"):
                 it["t"] = round(resolve_at(str(it["at"]), plan, cap), 3)
+    from mascot_plan import follow as mascot_follow  # the mascot's poses on words (a lost word: validate names it)
+    moved += [f"mascot {at}" for at in mascot_follow(plan, cap)]
     save_json(plan_path(e), plan)
     if not quiet:
         print(f"the rough cut changed ({old:.2f} -> {plan['duration']:.2f} s): spans rebuilt"
@@ -500,6 +502,10 @@ def cmd_validate(a, quiet=False):
                 m = motions.get(x["id"]) if x.get("kind") == "callout" else None
                 if m and [x.get("anchor"), x.get("start"), x.get("dur")] == m["key"][:3]:
                     x["motion"] = m
+    from mascot_plan import issues as mascot_issues  # the brand mascot (references/mascot.md)
+    me, mw = mascot_issues(e, plan, s, doc, brand, bdir, (doc.get("scenes") or {}).get("fps", 30))
+    errs += me
+    warns += mw
     if not only:  # picture defects (defects.py): covered, accepted, or a warning
         de, dw, _ = defect_issues(e, plan, s, doc, load_json(e / "captions.json", {}))
         errs += de

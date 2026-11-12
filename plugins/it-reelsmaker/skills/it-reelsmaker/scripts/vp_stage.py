@@ -247,6 +247,9 @@ def cmd_export(a):
             props["voiceMode"] = voice_mode(s)
         if scenes:
             print(f"scenes: {len(scenes)} in props.scenes; subtitles hidden in {len(hide)} window(s)")
+        if plan.get("mascot"):  # the brand mascot: props.mascot, its box kept clear (references/mascot.md)
+            from mascot_plan import stage_into
+            stage_into(e, props, brand)
         save_json(Path(a.props), props)
         print(f"template props: {a.props}")
     else:  # an agent ran stage without --props and read the plans line as "done": no props, no render

@@ -2,6 +2,20 @@
 
 What changed in IT Reelsmaker, written for the people who use it. The newest version is on top. The skill shows a short “What's new” note from this file once, on the first edit after an update.
 
+## 1.27.0
+
+- **Brand mascot (new, opt-in).** A character drawn in code in the brand's colors stands beside the scenes,
+  blinks, breathes and gestures on the words you choose, its mouth animated to your recorded narration
+  (`mascot.py mouth`, `mascot.py plan`, `references/mascot.md`).
+- **`brand.py mascot <slug> --drawn <component>`** saves the brand's character; `brand.py stage` registers it
+  in the Remotion project (`src/gen/mascots.ts`, added by `kit.py update`).
+- **The brand tone caps it:** off for premium, calm or full for the others; a pose change bounces only on a
+  loud scene in a brand that allows bounces.
+- **The checks keep the mascot clear** of the subtitle band, the app's buttons, scene boxes, callouts and
+  memes, with at most one gesture per 0.8 s and none at a scene's entrance; staging refuses a mouth measured
+  on an older cut, and the text check reports text over the mascot.
+- **Kit 1.16.0** (`kit.py update`): the kit draws the mascot.
+
 ## 1.26.0
 
 - **Scenes over your recorded narration.** Record the voice on a phone (sound only), cut it with the same

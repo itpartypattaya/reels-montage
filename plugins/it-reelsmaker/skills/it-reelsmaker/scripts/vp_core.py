@@ -120,8 +120,8 @@ def load_plan(e):
 
 # what a rebuilt plan (init, init --force) keeps from the old one besides keep_clear: the last stage's hook, corner
 # logo and end (review 2026-10-18: init after a stage lost them, the next stage dropped the card), the subtitle band
-# the render has, the subtitles hidden by a per-video composition
-KEEP_ON_INIT = ("finish", "hook", "corner", "end_card", "subtitles_band", "hide_subtitles")
+# the render has, the subtitles hidden by a per-video composition, the brand mascot (its pose track follows the words)
+KEEP_ON_INIT = ("finish", "hook", "corner", "end_card", "subtitles_band", "hide_subtitles", "mascot")
 # plan formats whose picture is designed scenes only (no footage): "scenes only" (a promo, no speech) and "scenes +
 # voice" (a narration cut by cut.py into voice.wav: reel.json -> voice off_camera, subtitles from its words)
 NO_FOOTAGE = ("scenes-only", "scenes-voice")

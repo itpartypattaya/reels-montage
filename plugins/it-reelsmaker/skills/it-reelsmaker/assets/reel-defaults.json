@@ -132,6 +132,7 @@
    "whip_max": 0,
    "shake": false,
    "overshoot": false,
+   "mascot": "off",
    "full_scenes_max": 1,
    "scene_tones": [
     "calm",
@@ -162,6 +163,7 @@
    "whip_max": 0,
    "shake": false,
    "overshoot": false,
+   "mascot": "calm",
    "full_scenes_max": 1,
    "scene_tones": [
     "calm",
@@ -194,6 +196,7 @@
    "whip_max": 3,
    "shake": false,
    "overshoot": false,
+   "mascot": "calm",
    "full_scenes_max": 2,
    "scene_tones": [
     "calm",
@@ -227,6 +230,7 @@
    "whip_max": 2,
    "shake": false,
    "overshoot": false,
+   "mascot": "calm",
    "full_scenes_max": 3,
    "scene_tones": [
     "cinematic",
@@ -259,6 +263,7 @@
    "whip_max": 4,
    "shake": false,
    "overshoot": false,
+   "mascot": "calm",
    "full_scenes_max": 3,
    "scene_tones": [
     "feature",
@@ -292,6 +297,7 @@
    "whip_max": 4,
    "shake": false,
    "overshoot": true,
+   "mascot": "full",
    "full_scenes_max": 2,
    "scene_tones": [
     "punchy",
@@ -325,6 +331,7 @@
    "whip_max": 5,
    "shake": false,
    "overshoot": true,
+   "mascot": "full",
    "full_scenes_max": 3,
    "scene_tones": [
     "punchy",
@@ -358,6 +365,7 @@
    "whip_max": 6,
    "shake": true,
    "overshoot": true,
+   "mascot": "full",
    "full_scenes_max": 3,
    "scene_tones": [
     "punchy",
