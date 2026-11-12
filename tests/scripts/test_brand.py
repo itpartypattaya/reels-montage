@@ -87,3 +87,47 @@ def test_rule_records_its_reason_and_scope(project):
             "Why: the client found shrinking out of place.") in text
     run_script("brand.py", "rule", "acme", "No red", cwd=project)  # the flags stay optional
     assert "No red\n" in (project / "brands" / "acme" / "rules.md").read_text(encoding="utf-8")
+
+
+def test_mascot_drawn_atlas_and_off_reach_the_remotion_project(project):
+    # references/mascot.md: brand.json -> mascot names the drawn module (its box and poses read from the component,
+    # for the plan checks) or an atlas rig; stage registers the module in src/gen/mascots.ts, or copies the atlas into
+    # public/ like the logos; --off removes it
+    write_json(project / "brands" / "acme" / "brand.json", {"name": "Acme", "slug": "acme", "schema": 2,
+                                                            "colors": {"primary": "#0B3D2E", "accent": "#F2C14E"}})
+    rem = project / "reels"
+    write_json(rem / "package.json", {"name": "reels"})
+    (rem / "src" / "mascot").mkdir(parents=True)
+    (rem / "src" / "mascot" / "Sprout.tsx").write_text(
+        'export const box = { width: 400, height: 520, anchor: [200, 170] };\n'
+        'export const poses = ["neutral", "palm"];\nexport const render = () => null;\n', encoding="utf-8")
+    run_script("brand.py", "mascot", "acme", "--drawn", "src/mascot/Sprout.tsx", "--remotion", rem, cwd=project)
+    m = brand_json(project)["mascot"]
+    assert m == {"kind": "drawn", "component": "src/mascot/Sprout.tsx", "box": [400, 520], "anchor": [200, 170],
+                 "poses": ["neutral", "palm"], "symmetric": False}
+    run_script("brand.py", "stage", "acme", "--remotion", rem, cwd=project)
+    staged = json.loads((rem / "src" / "brands" / "acme.json").read_text(encoding="utf-8"))
+    assert staged["mascot"] == {"kind": "drawn", "module": "acme"}
+    reg = (rem / "src" / "gen" / "mascots.ts").read_text(encoding="utf-8")
+    assert 'import * as M_acme from "../mascot/Sprout"; // mascot acme' in reg and '"acme": { box: M_acme.box' in reg
+    run_script("brand.py", "stage", "acme", "--remotion", rem, cwd=project)  # again: one entry, not two
+    assert (rem / "src" / "gen" / "mascots.ts").read_text(encoding="utf-8").count("M_acme from") == 1
+    # a component without the literal box is refused with the contract named
+    (rem / "src" / "mascot" / "Bad.tsx").write_text("export const render = () => null;\n", encoding="utf-8")
+    r = run_script("brand.py", "mascot", "acme", "--drawn", "src/mascot/Bad.tsx", "--remotion", rem, cwd=project,
+                   check=False)
+    assert r.returncode != 0 and "export const box" in r.stderr
+    # an atlas (mascot.py atlas writes it): stage copies it next to the logos
+    d = project / "brands" / "acme" / "assets" / "mascot"
+    write_json(d / "rig.json", {"atlas": "atlas.png", "width": 10, "height": 10, "symmetric": True, "box": [10, 10],
+                                "anchor": [5, 3], "poses": {"neutral": {"cell": [0, 0, 10, 10]}}})
+    (d / "atlas.png").write_bytes(b"\x89PNG\r\n\x1a\n")
+    run_script("brand.py", "mascot", "acme", "--atlas", "assets/mascot/rig.json", cwd=project)
+    assert brand_json(project)["mascot"] == {"kind": "atlas", "rig": "assets/mascot/rig.json"}
+    run_script("brand.py", "stage", "acme", "--remotion", rem, cwd=project)
+    staged = json.loads((rem / "src" / "brands" / "acme.json").read_text(encoding="utf-8"))
+    assert staged["mascot"] == {"kind": "atlas", "module": "acme", "rig": "brands/acme/mascot/rig.json",
+                                "atlas": "brands/acme/mascot/atlas.png"}
+    assert (rem / "public" / "brands" / "acme" / "mascot" / "atlas.png").is_file()
+    run_script("brand.py", "mascot", "acme", "--off", cwd=project)
+    assert "mascot" not in brand_json(project)

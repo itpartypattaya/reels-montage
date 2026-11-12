@@ -111,6 +111,10 @@ def cmd_show(a):
           + (f"; series finish: {finish_line(s['finish'])}" if s.get("finish") else ""))
     bt = s.get("brand_tone") or {}
     print(f"brand tone: {tone_summary(bt)}" + ("  [tone_override: the tone's ceilings are only warnings]" if s.get("tone_override") else ""))
+    bm = (brand or {}).get("mascot") if isinstance((brand or {}).get("mascot"), dict) else None
+    if bm:  # the brand mascot (references/mascot.md): the plan adds it with mascot.py plan
+        print(f"brand mascot: {bm.get('kind')} {bm.get('component') or bm.get('rig') or ''}; the tone allows "
+              f"{bt.get('mascot') or 'calm'} (off | calm | full)")
     st = s.get("scene_tone")
     if st and st not in (bt.get("scene_tones") or []):
         print(f"  ⚠ the video's scene tone {st} is not one of the brand's tones ({', '.join(bt.get('scene_tones') or [])}): validate won't accept it without tone_override")

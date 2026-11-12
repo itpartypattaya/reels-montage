@@ -156,6 +156,10 @@ On request (“change the brand tone”, in any language):
 
 Plans of videos already edited stay as they are; a plan that breaks the new ceilings shows errors at its next check. This is not `tone_override`: that one is for a single video and leaves the profile as it is.
 
+## Brand mascot
+
+A brand may have one character drawn in code (`brand.json → mascot`): `{"kind": "drawn", "component": "src/mascot/<Name>.tsx", "box", "anchor", "poses", "symmetric"}` (a module in the Remotion project, set with `brand.py mascot <slug> --drawn …`, which reads the box and poses from the file) or `{"kind": "atlas", "rig": "assets/mascot/rig.json"}` (a PNG atlas inside the brand folder); `--off` removes it. `brand.py stage` registers a drawn one in `src/gen/mascots.ts` and copies an atlas into `public/brands/<slug>/mascot/`, like the logos. The brand tone caps it (`brand_tones.<preset>.mascot`: `off` for premium, `calm` for expert, tech, warm and story, `full` for friendly, drive and bold; a bounce on a pose change also needs the tone's `overshoot`). The character itself, its poses and how Claude draws one: `references/mascot.md`.
+
 ## Logos
 
 The file is copied into `assets/`, and its role is written to `logos`. The role is determined from the file:

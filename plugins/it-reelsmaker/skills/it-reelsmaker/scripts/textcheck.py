@@ -25,7 +25,8 @@ How:
                 scene, a replacing B-roll, a cutaway meme, a presenter layer) and not on the end card;
        warning  clipped — less than 98 % of the box is visible inside the boxes that clip it;
        warning  UI zone — above y 220, below y 1500, right of x 960 (the app's caption, buttons and likes column) or
-                left of x 40; the project's own zone when its reel-defaults.json sets meme_layout.safe.
+                left of x 40; the project's own zone when its reel-defaults.json sets meme_layout.safe;
+       error    on the mascot — text over the brand mascot's drawn figure (data-rk="mascot", references/mascot.md).
   3. Report lines `✗ kind a-b s group «text»`, edit/<id>/textcheck.json; exit code 1 on errors, and on an apparent success with
      frames missing from the log (a gap would hide a problem: the check is then incomplete, not a success). Faces come from the
      rough cut's faces.json (faces.py scan); without it the face check is skipped and the report says so.
@@ -207,6 +208,44 @@ def check(per_frame, faces_at, step, fps):
                 step, fps)
 
 
+def parse_mascots(text):
+    """Remotion's verbose output -> {frame: [(x, y, w, h, alpha)…]}: the drawn mascot's box per frame (the probe's "m",
+    kit/mascot/MascotLayer.tsx data-rk="mascot", measured on the shapes it draws, not its whole coordinate box)."""
+    dec = json.JSONDecoder()
+    out = {}
+    for line in text.splitlines():
+        i = line.find(PROBE)
+        if i < 0:
+            continue
+        try:
+            obj, _ = dec.raw_decode(line[i + len(PROBE):])
+        except ValueError:
+            continue
+        if isinstance(obj, dict) and isinstance(obj.get("f"), int) and obj.get("m"):
+            out[obj["f"]] = [tuple(m) for m in obj["m"] if isinstance(m, list) and len(m) >= 5]
+    return out
+
+
+def mascot_frame_issues(boxes, rects):
+    """Text on the mascot (references/mascot.md): an error, on the text's core as overlaps are judged; the mascot's
+    own text, if it draws any, does not count."""
+    out = []
+    for m in rects or []:
+        if m[4] < ALPHA:
+            continue
+        for b in boxes:
+            if b[6] < ALPHA or group(b[0]) == "mascot":
+                continue
+            if hits(m[:4], core(b)):
+                out.append(("error", "on the mascot", ident(b[0]), b[1], f"the mascot's figure {[round(v) for v in m[:4]]}"))
+    return out
+
+
+def check_mascot(per_frame, mascots, step, fps):
+    """{frame: text boxes}, {frame: mascot boxes} -> the lasting "on the mascot" problems (runs)."""
+    return runs({f: mascot_frame_issues(b, mascots.get(f)) for f, b in per_frame.items()}, step, fps)
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("edit")
@@ -240,6 +279,9 @@ def main():
     missing = sorted(set(frames) - set(per_frame))
     faces_at = None if props.get("video") == "" else face_source(e, plan, props, fps)
     issues = check(per_frame, faces_at, step, fps)
+    mascots = parse_mascots(log)
+    if mascots:  # a mascot is drawn (props.mascot): no text on it
+        issues = sorted(issues + check_mascot(per_frame, mascots, step, fps), key=lambda x: (x["level"] != "error", x["start"]))
     errs = [i for i in issues if i["level"] == "error"]
     save_json(e / "textcheck.json", {"props": str(pf), "step": step, "frames": len(frames), "measured": len(per_frame),
                                      "missing": missing, "faces": faces_at is not None, "issues": issues})

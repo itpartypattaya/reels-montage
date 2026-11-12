@@ -14,6 +14,23 @@ def lf(b):
     return b.replace(b"\r\n", b"\n")
 
 
+def test_the_mascot_registry_is_the_persons_and_update_adds_it(project):
+    # ReelKit reads the brand mascots from src/gen/mascots.ts (brand.py stage writes it): new creates it, update adds
+    # it to an older project and never replaces the person's copy
+    run_script("kit.py", "new", "reels", cwd=project)
+    rem = project / "reels"
+    assert (rem / "src" / "gen" / "mascots.ts").read_bytes() == lf((KIT / "gen" / "mascots.ts").read_bytes())
+    assert 'from "./gen/mascots"' in (KIT / "ReelKit.tsx").read_text(encoding="utf-8")
+    (rem / "src" / "gen" / "mascots.ts").unlink()
+    (rem / "src" / "kit" / "brand.ts").write_text("// edited\n", encoding="utf-8")
+    r = run_script("kit.py", "update", "--remotion", rem, cwd=project)
+    assert "add: src/gen/mascots.ts" in r.stdout and (rem / "src" / "gen" / "mascots.ts").is_file()
+    (rem / "src" / "gen" / "mascots.ts").write_text("// mine\n", encoding="utf-8")
+    (rem / "src" / "kit" / "brand.ts").write_text("// edited again\n", encoding="utf-8")
+    run_script("kit.py", "update", "--remotion", rem, cwd=project)
+    assert (rem / "src" / "gen" / "mascots.ts").read_text(encoding="utf-8") == "// mine\n"
+
+
 def test_kit_version_is_not_ahead_of_the_plugin():
     # The kit version changes only when the kit changes (a release without kit changes must not make every project
     # look outdated), so it may lag behind the plugin version, never lead it.
