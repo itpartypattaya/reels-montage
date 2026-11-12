@@ -45,7 +45,7 @@ Loud or game-like sounds (glitch, error, heavy hits, dice, chips) count as “ca
 
 **Craft** (starting values after [HyperFrames](https://github.com/heygen-com/hyperframes), Apache-2.0, and [skill-multik](https://github.com/artemiimillier/skill-multik), MIT; not yet checked on our videos):
 - **only what is seen sounds:** a click on a real tap, a whoosh on a cut or a big fast card, a pop on a badge or a number, a riser into an impact once, on the payoff. A sound with no event on screen is noise;
-- **the sound's attack lands one frame after the picture** (`at` = event second + 1/fps after you have subtracted the sound start): the eye takes in the event first, and a sound even slightly ahead of the picture reads as out of sync;
+- **the sound's attack lands one frame after the picture** (`at` = the event second + 1/fps; the file's sound start stays in `start`, and `master_audio.py` puts that point on `at` by itself, so do not subtract it again): the eye takes in the event first, and a sound even slightly ahead of the picture reads as out of sync;
 - **two or three takes of a repeated sound in turn:** the same whoosh on every cut is the surest sign of a template. Alternate files from the library, or vary a synthesized one (below: ±10–15 % in pitch and length);
 - a low hit below ~150 Hz is lost on a phone speaker: give it a click or a short noise on top, or take a brighter sound.
 

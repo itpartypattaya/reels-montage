@@ -4,6 +4,8 @@ What changed in IT Reelsmaker, written for the people who use it. The newest ver
 
 ## 1.24.0
 
+- **A P0 defect that survives two rounds of fixes now stops the preview** with a blocker report instead of
+  passing “with warnings” (1.23.0 let it through).
 - **Sound effects without a library.** Short pop, thud, click, ding, whoosh, rise and marker sounds are
   synthesized in code with ffmpeg, from recipes in the skill: no files to download, no license to check.
 - **Sound effects sit better:** only events you can see get a sound, the sound lands one frame after the

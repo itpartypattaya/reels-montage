@@ -96,11 +96,13 @@ A big word stands behind the speaker's figure but in front of the background: th
 
 **Check.** Still frames at the start, middle and end of the hook: the contour has no fringe, the text does not “jump” over the figure, the word reads.
 
-**Measure the cover on the mask, over the whole window.** Three stills miss a head that moves: in a case measured in another project the top of the head rose ~130 px within 8 s, and guesses from letter widths were wrong both ways. Take the word's box in the cut-out's pixels (the same camera `<div>`, so the same coordinates; scale them if the cut-out was made at another width) and read the mean alpha inside it on every frame of the word's time:
+**Measure the cover on the mask, over the whole window.** Three stills miss a head that moves: in a case measured in another project the top of the head rose ~130 px within 8 s, and guesses from letter widths were wrong both ways. Measure the letters themselves, not their box: the box also holds the gaps between and inside the letters, so when the figure sits over the letters the box's share comes out lower than the letters' (a test frame: box 38 %, letters 47 %; box 61 %, letters 77 %). Two inputs at the cut-out's size (the same camera `<div>`, so the same coordinates; scale them if the cut-out was made at another width):
+- `glyphs.png` — the word alone, white on black, exactly as placed: a `remotion still` of the composition with only the word layer on a black background, or ffmpeg `drawtext` with the same font file, size and position;
+- the cut-out `person.webm`.
 
 ```bash
-ffmpeg -c:v libvpx-vp9 -ss <from> -t <len> -i person.webm \
-  -vf "alphaextract,crop=<w>:<h>:<x>:<y>,signalstats,metadata=print:key=lavfi.signalstats.YAVG:file=cover.txt" -f null -
+ffmpeg -c:v libvpx-vp9 -ss <from> -t <len> -i person.webm -i glyphs.png -filter_complex   "[0:v]alphaextract[a];[1:v]format=gray[g];[a][g]blend=all_mode=multiply:repeatlast=1,crop=<w>:<h>:<x>:<y>,signalstats,metadata=print:key=lavfi.signalstats.YAVG:file=cover.txt" -f null -
+ffmpeg -i glyphs.png -vf "format=gray,crop=<w>:<h>:<x>:<y>,signalstats,metadata=print:key=lavfi.signalstats.YAVG:file=-" -f null -
 ```
 
-`YAVG / 255` is the share of the box behind the figure on that frame. `-c:v libvpx-vp9` **before** `-i` is required: ffmpeg's own VP9 decoder drops the alpha, and `alphaextract` then stops with “Requested planes not available”. The box is a rectangle, so the share runs a little above the share of the letters themselves: that errs on the safe side. Judge by the **maximum** over the window: up to ~30 % keeps the rule above; more → move or shrink the word, shorten its time, or drop the technique for that video. Other projects aim at 30–55 % and treat 15 % as “floating”: on our videos letters behind the head read worse even at less, so ~30 % stays the ceiling.
+The share of the letters behind the figure on a frame = its `YAVG` in `cover.txt` / the `YAVG` of `glyphs.png` over the same box (the box only narrows the count; any box around the word gives the same share). `-c:v libvpx-vp9` **before** `-i` is required: ffmpeg's own VP9 decoder drops the alpha, and `alphaextract` then stops with “Requested planes not available”. Judge by the **maximum** over the window: up to ~30 % keeps the rule above; more → move or shrink the word, shorten its time, or drop the technique for that video. Other projects aim at 30–55 % and treat 15 % as “floating”: on our videos letters behind the head read worse even at less, so ~30 % stays the ceiling.
