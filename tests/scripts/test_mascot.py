@@ -13,6 +13,7 @@ Requirements (references/mascot.md):
 - poses change at most once per 0.8 s; a brand tone that allows no bounce never overshoots.
 """
 import json
+import re
 
 import pytest
 
@@ -282,3 +283,53 @@ def test_text_over_the_mascot_is_an_error_in_textcheck():
     # a problem that lasts: the runs report it with its time, like any other textcheck problem
     runs = tc.check_mascot({f: per[0] for f in range(0, 30, 3)}, {f: marks[0] for f in range(0, 30, 3)}, 3, 30)
     assert runs and runs[0]["kind"] == "on the mascot" and runs[0]["level"] == "error"
+
+
+# ── Codex review of the branch ──
+
+@needs_ffmpeg
+def test_speech_with_no_pauses_still_opens_the_mouth(project):
+    # a steady narration covered by words from start to end: its quietest tenth is speech, not noise
+    e = project / "edit" / "v4"
+    tone(e / "voice.wav", [(0.0, 3.0)], 3.0)
+    write_json(e / "captions.json", {"duration": 3.0, "segments": [], "words": [
+        {"text": w, "start": round(0.5 * k, 2), "end": round(0.5 * k + 0.5, 2)} for k, w in
+        enumerate(["one", "steady", "line", "with", "no", "pause"])]})
+    m = mouth(project, e)
+    assert sum(1 for o in m["open"] if o > 0.5) > 60, m["speech_frames"]
+
+
+@needs_ffmpeg
+def test_new_words_on_the_same_audio_make_the_mouth_stale(project):
+    import mascot_plan as vm
+    e, rem = mascot_project(project)
+    run_script("mascot.py", "mouth", "edit/4821", cwd=project)
+    assert vm.load_mouth(e)[1] is None
+    cap = captions()
+    for w in cap["words"]:
+        if w["seg"] == 2:
+            w["start"], w["end"] = round(w["start"] + 1.0, 3), round(w["end"] + 1.0, 3)
+    write_json(e / "captions.json", cap)
+    m, problem = vm.load_mouth(e)
+    assert problem and "captions" in problem
+
+
+def test_mascot_off_frees_its_box(project):
+    e = plan_project(project)
+    run_script("visual_plan.py", "validate", "edit/4821", cwd=project, check=False)
+    run_script("mascot.py", "plan", "edit/4821", "--speaks", "none", cwd=project)
+    plan = load_plan(e)
+    plan["keep_clear"] = [{"start": 0, "end": 30, "box": [60, 700, 400, 520], "what": "mascot", "mascot": True}]
+    write_json(e / "visual_plan.json", plan)
+    run_script("mascot.py", "plan", "edit/4821", "--off", cwd=project)
+    assert "mascot" not in load_plan(e) and not any(k.get("mascot") for k in load_plan(e).get("keep_clear", []))
+
+
+def test_two_slugs_alike_get_two_names_in_the_registry(project):
+    import brand
+    rem = project / "reels"
+    for s in ("acme-a", "acme_a"):
+        brand.register_mascot(rem, s, f"src/mascot/{s}.tsx")
+    reg = (rem / "src" / "gen" / "mascots.ts").read_text(encoding="utf-8")
+    names = re.findall(r"^import \* as (\w+) from", reg, re.M)
+    assert len(names) == 2 and len(set(names)) == 2, reg

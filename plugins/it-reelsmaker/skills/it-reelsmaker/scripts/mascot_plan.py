@@ -101,6 +101,19 @@ def file_stamp(p):
     return "sha256:" + h.hexdigest()
 
 
+def speech_words(e):
+    """[(start, end)] of the spoken words in edit/<id>/captions.json (the edit's timeline)."""
+    cap = load_json(Path(e) / "captions.json", {}) or {}
+    return [(float(w["start"]), float(w["end"])) for w in cap.get("words") or []
+            if isinstance(w, dict) and w.get("start") is not None and w.get("end") is not None
+            and str(w.get("text", "")).strip()]
+
+
+def words_stamp(words):
+    """The words' times the mouth was gated by: a new transcript of the same audio makes mouth.json stale too."""
+    return "sha256:" + hashlib.sha256(";".join(f"{a:.3f}-{b:.3f}" for a, b in words).encode()).hexdigest()
+
+
 def load_mouth(e, fps=30):
     """-> (mouth.json or None, problem or None). Stale: its track changed (the stamp), the track is not the one the
     viewer hears now, or another frame rate."""
@@ -116,6 +129,8 @@ def load_mouth(e, fps=30):
         return m, f"mouth.json: its track {src} is gone"
     if m.get("stamp") != file_stamp(src):
         return m, f"mouth.json is stale: {src.name} changed since it was measured"
+    if m.get("words_stamp") and m["words_stamp"] != words_stamp(speech_words(e)):
+        return m, "mouth.json is stale: the words of captions.json changed since it was measured"
     if int(m.get("fps") or 0) != fps:
         return m, f"mouth.json is at {m.get('fps')} fps, the kit at {fps}"
     return m, None

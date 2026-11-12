@@ -767,7 +767,9 @@ def read_component(p):
 
 
 def mascot_ident(slug):
-    return "M_" + re.sub(r"\W", "_", slug)
+    """A TypeScript name for the slug's import; slugs that differ only in - or . get a hash suffix, never the same name."""
+    clean = re.sub(r"\W", "_", slug)
+    return "M_" + clean if clean == slug else f"M_{clean}_{hashlib.sha1(slug.encode()).hexdigest()[:6]}"
 
 
 def register_mascot(rem, slug, component):

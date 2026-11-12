@@ -10,11 +10,12 @@
 mouth: the track the viewer hears, on the edit's timeline: edit/<id>/voice.wav (scenes over a recorded narration),
 else the rough cut's audio (edit/<id>/final.mp4, the file stage copies to public/<id>/video.mp4); --audio names
 another file on the same timeline. Per frame of the kit's grid (frame f takes the samples from round(f*sr/fps) to
-round((f+1)*sr/fps), no drift), the RMS; speech frames are the ones 10 dB above the noise floor (and at least -50
-dBFS), inside a word of captions.json when it has words; the level is normalized by the 98th percentile of the speech
+round((f+1)*sr/fps), no drift), the RMS; speech frames are the ones 10 dB above the noise floor (measured between
+the words of captions.json when it has words, else on the quietest tenth; at least -50 dBFS) and inside a word when
+there are words; the level is normalized by the 98th percentile of the speech
 frames (one click does not squash the rest), smoothed [1,2,1]/4, opened from 0.08 to fully at 0.63, and every
 frame that is not speech is closed. mouth.json keeps the frame rate, the frame count (round half up, as the kit
-rounds) and the track's stamp: once the track changes, stage refuses the old mouth.
+rounds) and stamps of the track and the words: once either changes, stage refuses the old mouth.
 
 plan: the plan's "mascot" field (mascot_plan.py has its format). --pose AT=POSE adds or replaces a pose change at AT
 (a second, a span s03 or a word word:look#1, which then follows the word through a re-cut); poses: neutral, talk,
@@ -34,6 +35,7 @@ THRESHOLD, FULL = 0.08, 0.63
 FLOOR_PCT, PEAK_PCT = 0.10, 0.98
 GATE_DB, MIN_DB = 10.0, -50.0
 WORD_PAD = 0.1  # s around a word: recognizers end words early
+MIN_PAUSE_FRAMES = 10  # frames between the words needed to measure the noise floor on them
 
 
 def kit_fps():
@@ -79,14 +81,19 @@ def envelope(a, sr, fps, words=None):
         seg = a[i0:i1]
         rms.append(math.sqrt(sum(x * x for x in seg) / len(seg)) / 32768.0 if len(seg) else 0.0)
     db = [20 * math.log10(max(v, 1e-9)) for v in rms]
-    floor = pct(db, FLOOR_PCT)
-    gate = max(MIN_DB, floor + GATE_DB)
-    speech = [d >= gate for d in db]
+    inw = None
     if words:
         inw = [False] * n
         for s0, s1 in words:
             for f in range(max(0, int((s0 - WORD_PAD) * fps)), min(n, int(math.ceil((s1 + WORD_PAD) * fps)))):
                 inw[f] = True
+    # the noise floor: with words, the frames between them (a recording with no pauses has none: only the absolute
+    # floor then, or steady speech would gate itself out); without words, the quietest tenth of the track
+    out_db = [d for d, w in zip(db, inw) if not w] if inw else db
+    floor = pct(out_db, 0.5 if inw else FLOOR_PCT) if len(out_db) >= MIN_PAUSE_FRAMES else None
+    gate = max(MIN_DB, floor + GATE_DB) if floor is not None else MIN_DB
+    speech = [d >= gate for d in db]
+    if inw:
         speech = [a_ and b_ for a_, b_ in zip(speech, inw)]
     sp = [rms[f] for f in range(n) if speech[f]]
     peak = pct(sp, PEAK_PCT) if sp else 0.0
@@ -96,7 +103,7 @@ def envelope(a, sr, fps, words=None):
         sm = ((amp[f - 1] if f > 0 else 0.0) + 2 * amp[f] + (amp[f + 1] if f + 1 < n else 0.0)) / 4
         o = min(1.0, max(0.0, (sm - THRESHOLD) / (FULL - THRESHOLD))) if speech[f] else 0.0
         out.append(round(o, 3))
-    return out, {"floor_db": round(floor, 1), "gate_db": round(gate, 1), "peak": round(peak, 5),
+    return out, {"floor_db": None if floor is None else round(floor, 1), "gate_db": round(gate, 1), "peak": round(peak, 5),
                  "speech_frames": len(sp), "words": bool(words)}
 
 
@@ -106,10 +113,10 @@ def cmd_mouth(a):
     src = Path(a.audio).resolve() if a.audio else vm.voice_track(e)
     if not src or not src.is_file():
         sys.exit(f"no narration track: {e / 'voice.wav'} or {e / 'final.mp4'} (or give --audio)")
-    cap = load_json(e / "captions.json", {}) or {}
-    words = [(float(w["start"]), float(w["end"])) for w in cap.get("words") or []
-             if isinstance(w, dict) and w.get("start") is not None and w.get("end") is not None
-             and str(w.get("text", "")).strip()]
+    words = vm.speech_words(e)
+    if not a.audio and src.name == "voice.wav" and (e / "final.mp4").is_file():
+        warn("both voice.wav and final.mp4 are here: the mouth follows voice.wav (the recorded narration); if the "
+             "render plays the rough cut's own sound, run again with --audio " + str(e / "final.mp4"))
     samples, sr = read_mono(src)
     if not len(samples):
         sys.exit(f"{src}: the audio track is empty")
@@ -119,7 +126,8 @@ def cmd_mouth(a):
     except ValueError:
         rel = str(src)
     save_json(e / "mouth.json", {"version": 1, "fps": fps, "frames": len(opens), "sample_rate": sr, "source": rel,
-                                 "explicit": bool(a.audio), "stamp": vm.file_stamp(src), **info, "open": opens})
+                                 "explicit": bool(a.audio), "stamp": vm.file_stamp(src),
+                                 "words_stamp": vm.words_stamp(words), **info, "open": opens})
     talk = sum(1 for o in opens if o > vm.TALK_MIN)
     print(f"{e / 'mouth.json'}: {len(opens)} frames at {fps} fps from {src.name} ({sr} Hz); the mouth moves on {talk} "
           f"({talk / max(1, len(opens)) * 100:.0f} %)" + ("; speech inside the words of captions.json" if words else ""))
@@ -157,6 +165,7 @@ def cmd_plan(a):
     with editing_plan(e) as plan:
         if a.off:
             plan.pop("mascot", None)
+            plan["keep_clear"] = [k for k in plan.get("keep_clear", []) if not k.get("mascot")]  # its box frees up
             print("mascot: off (taken out of the plan)")
             return
         m = plan.setdefault("mascot", {"x": None, "y": None, "scale": None, "facing": 1, "from": 0.0, "to": None,
