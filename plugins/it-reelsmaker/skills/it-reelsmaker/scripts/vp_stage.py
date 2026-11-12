@@ -1,6 +1,6 @@
 """The visual plan's stage command: the plan and the brand become the props of the Remotion project. Part of visual_plan.py, with no command line
 of its own: the other scripts take these names from visual_plan."""
-import shutil, sys
+import filecmp, shutil, sys
 from pathlib import Path
 
 from reels_common import (CORNER_BOX, FRAMED_RADIUS, FRAMED_SUB_GAP, SUB_BLOCK_H, UI_SAFE, edit_dir, framed_at,
@@ -19,8 +19,9 @@ def copy_voice(e, rem, name):
     if not src.is_file():
         sys.exit(f"no {src}: cut the narration first (cut.py edit/{e.name})")
     dst = inside(rem / "public", rem / "public" / name / "voice.wav", "voice copy")
-    st, dt = src.stat(), (dst.stat() if dst.exists() else None)
-    if not dt or dt.st_size != st.st_size or abs(dt.st_mtime - st.st_mtime) > 1:
+    dt = dst.exists()
+    # by content (Codex review): a narration cut again to the same length has the same size, maybe the same second
+    if not dt or not filecmp.cmp(src, dst, shallow=False):
         dst.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(src, dst)
         print(f"voice: {src} -> public/{name}/voice.wav" + (" (updated)" if dt else ""))

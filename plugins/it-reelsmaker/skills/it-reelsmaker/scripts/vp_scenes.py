@@ -732,7 +732,9 @@ def check_scenes(e, plan, s, doc, brand, fdata, cap, scenes, brolls, memes, tail
                                             if framed else "the hook rule is 92-120 px: a taller box, or fewer lines"))
         if voice_band and mode == "full" and typ != "cover" and not hides_subtitles(sc, s):
             box = sc.get("box") or voice_stage(voice_band)
-            if fc.inter(box, [0, voice_band[0], 1080, voice_band[1] - voice_band[0]]):
+            # the text ends VOICE_SUB_GAP above the subtitles (Codex review: a box down to 1270 or under the band passed
+            # an overlap test); the kit clips a box to the zone above them
+            if box[1] + box[3] > voice_band[0] - VOICE_SUB_GAP:
                 E(sc, f"box {box} is on the subtitle band (y {voice_band[0]}-{voice_band[1]}): the narration's subtitles "
                       f"stay on over full scenes, so the scene text ends above y {voice_band[0] - VOICE_SUB_GAP} (a lower "
                       f"--box), or set --hide-subtitles when the scene's text repeats the narration")

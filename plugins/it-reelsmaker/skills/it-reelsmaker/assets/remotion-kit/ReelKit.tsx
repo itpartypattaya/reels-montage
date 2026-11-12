@@ -337,6 +337,12 @@ const ReelKitFrame: React.FC<ReelKitProps> = (p) => {
   const g = p.framed && p.video ? framedGeometry(p.framed) : null;
   const subArea = g ? (g.below ? { area: g.sub } : { area: g.area, clip: { ...g.win, r: g.r } }) : {};
   const shade = g?.below ? 0 : p.subtitlesShade ?? 0.35;
+  // the “Typewriter” darkening: under the scenes as before; with the voice off camera the subtitles stay on over full
+  // scenes, so it goes over the scene's field (under the subtitle text), or the field would cover it
+  const shadeLayer = (
+    <KitSubtitles captions={p.subtitleCaptions ?? p.captions} brand={p.brand} font={fonts.body} mode={p.subtitles} hide={hide}
+      top={p.subtitlesTop ?? 1290} look={look} shade={shade} part="shade" tail={tail} {...subArea} />
+  );
   // behind the speaker shrunk by a split/panel/window scene (and around the framed window): the style's field
   // (brand.looks[style].field), the same surface the scene's text is colored for; without it, primary
   return (
@@ -345,13 +351,13 @@ const ReelKitFrame: React.FC<ReelKitProps> = (p) => {
       <Voice p={p} />
       {g ? <FramedLabel p={p} font={fonts.body} /> : null}
       <BrollLayer inserts={p.inserts} brand={p.brand} framed={g ? sceneBox(g) : null} />
-      <KitSubtitles captions={p.subtitleCaptions ?? p.captions} brand={p.brand} font={fonts.body} mode={p.subtitles} hide={hide}
-        top={p.subtitlesTop ?? 1290} look={look} shade={shade} part="shade" tail={tail} {...subArea} />
+      {offCamera ? null : shadeLayer}
       <Hook p={p} look={look} font={fonts.heading} />
       <Corner p={p} />
       <SceneLayer scenes={p.scenes} brand={p.brand} look={look} words={p.captions.words} scenesOnly={!p.video} sceneTone={p.sceneTone}
         framed={g ? sceneBox(g) : null}
         textBottom={offCamera && p.subtitles !== "none" ? (p.subtitlesTop ?? 1290) - VOICE_SUB_GAP : null} />
+      {offCamera ? shadeLayer : null}
       {!g && p.video ? (
         <CalloutLayer callouts={p.callouts} brand={p.brand} look={look} fonts={fonts} bt={bt} camera={p.camera}
           segments={p.captions.segments} drift={p.drift} end={p.captions.duration} scenes={p.scenes} words={p.captions.words} />

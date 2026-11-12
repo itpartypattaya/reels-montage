@@ -244,6 +244,15 @@ def test_stage_puts_the_voice_and_its_subtitles_into_the_props(project):
     assert quote["hide_subtitles"] is True
     assert props["hideSubtitles"] == [[quote["start"], round(quote["start"] + quote["dur"], 3)]]
     assert plan_of(e)["subtitles_band"][0] == props["subtitlesTop"]
+    # Codex review: the copy in public/ followed size and time only; a narration cut again to the same length (same
+    # size) within a second kept the old voice under the new captions
+    old = (e / "voice.wav").stat()
+    ffmpeg("-f", "lavfi", "-i", "sine=f=440:d=12:sample_rate=48000", "-ac", "2", "-c:a", "pcm_s16le", e / "voice2.wav")
+    os.replace(e / "voice2.wav", e / "voice.wav")
+    os.utime(e / "voice.wav", ns=(old.st_atime_ns, old.st_mtime_ns))
+    assert (e / "voice.wav").stat().st_size == old.st_size
+    run_script("visual_plan.py", "stage", "edit/v1", "--remotion", rem, "--props", rem / "props.json", cwd=project)
+    assert (rem / "public" / "v1" / "voice.wav").read_bytes() == (e / "voice.wav").read_bytes()
 
 
 @needs_ffmpeg
@@ -270,7 +279,20 @@ def test_validate_keeps_scene_text_off_the_subtitle_band_and_counts_scenes_as_th
     write_json(e / "visual_plan.json", plan)
     r = run_script("visual_plan.py", "validate", "edit/v1", cwd=project, check=False)
     assert r.returncode == 1 and "c02" in r.stdout and "subtitle band" in r.stdout, r.stdout
+    # Codex review: the text ends 40 px above the subtitles (band from y 1290 before a stage): a box down to y 1270
+    # touches no subtitle but breaks the gap, and a box under the subtitles is outside the scene's zone
+    for box in ([60, 250, 900, 1020], [60, 1460, 900, 30]):
+        plan = plan_of(e)
+        plan["inserts"][1]["box"] = box
+        write_json(e / "visual_plan.json", plan)
+        r = run_script("visual_plan.py", "validate", "edit/v1", cwd=project, check=False)
+        assert r.returncode == 1 and "c02" in r.stdout and "subtitle band" in r.stdout, (box, r.stdout)
     plan = plan_of(e)
+    plan["inserts"][1]["box"] = [60, 250, 900, 1000]  # ends at y 1250: allowed
+    write_json(e / "visual_plan.json", plan)
+    assert "subtitle band" not in run_script("visual_plan.py", "validate", "edit/v1", cwd=project, check=False).stdout
+    plan = plan_of(e)
+    plan["inserts"][1]["box"] = [60, 900, 900, 500]
     plan["inserts"][1]["hide_subtitles"] = True
     write_json(e / "visual_plan.json", plan)
     r = run_script("visual_plan.py", "validate", "edit/v1", cwd=project, check=False)
@@ -293,6 +315,10 @@ def test_the_kit_plays_the_voice_and_keeps_full_scene_text_where_validate_expect
     reel = (kit / "ReelKit.tsx").read_text(encoding="utf-8")
     layer = (kit / "kit" / "scenes" / "SceneLayer.tsx").read_text(encoding="utf-8")
     assert "<Html5Audio src={staticFile(p.voice)}" in reel
+    frame = reel[reel.index("const ReelKitFrame"):reel.index("export const reelKitDefaults")]
+    assert "<Voice p={p} />" in frame  # Codex review: the component alone, never mounted, passed the check
+    # Codex review: with the voice off camera the typewriter darkening goes over the full scene's field, not under it
+    assert "offCamera ? shadeLayer : null" in frame and frame.index("<SceneLayer") < frame.index("offCamera ? shadeLayer : null")
     assert "sceneHideIntervals(p.scenes, offCamera)" in reel
     gap = re.search(r"export const VOICE_SUB_GAP = (\d+);", reel)
     assert gap and int(gap.group(1)) == vp_scenes.VOICE_SUB_GAP
