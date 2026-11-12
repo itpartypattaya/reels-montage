@@ -36,6 +36,10 @@ The cover (--cover edit/<id>/cover.jpg, picked with poster.py pick): the sound m
   warning: file managers pick a random frame and there is no cover picture to upload.
 At the end, the acceptance check from the checklist (SKILL.md): −14 ±0.7 LUFS, true peak ≤ −1 dBFS, audio = video track
 (and video = input). Exit code: 0, the check succeeded; 1, it failed, a measurement failed or ffmpeg failed.
+A "scenes + voice" video (its edit/<id>/visual_plan.json, found by --edit or next to --cover, has format scenes-voice)
+is mastered as any video with a voice; a render of it with no sound, or silence, is refused (exit code 1, nothing
+written): the narration did not reach the render (stage --props: props.voice, public/<id>/voice.wav), and a silent
+master would pass as a promo without sound.
 No voice and no music (the "scenes only" format): a few scene sounds over silence are not a −14 LUFS track, so the
 loudness is not required, the true peak and the durations are; a render with no sound and no --sfx is copied as is
 (no audio track, only the durations count). Such a master carries the mp4 comment tag "it-reelsmaker master: …" and
@@ -274,6 +278,8 @@ def with_cover(a, tmp):
     out, cover = Path(a.output), Path(a.cover)
     a.output = os.path.join(tmp, "master.mp4")
     code = master(a, tmp)
+    if code and not Path(a.output).exists():  # refused before mastering (a "scenes + voice" render without its voice)
+        return code
     out.parent.mkdir(parents=True, exist_ok=True)
     print(f"cover: embedded as cover art (poster.py attach) -> {out}")
     if poster("attach", a.output, "--cover", cover, "-o", out):
@@ -464,13 +470,36 @@ def mix_sfx(a, tmp, D, base=None, ref=None, below=None):
     return out
 
 
+def narration_of(a):
+    """The video's folder (--edit, else the folder of --cover) when its plan is a "scenes + voice" video, else None."""
+    for d in ([Path(a.edit)] if getattr(a, "edit", None) else []) + ([Path(a.cover).parent] if getattr(a, "cover", None) else []):
+        try:
+            plan = json.load(open(d / "visual_plan.json", encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        if isinstance(plan, dict) and plan.get("format") == "scenes-voice":
+            return d
+    return None
+
+
+def no_narration(a, why):
+    """A "scenes + voice" render without its voice: refused, never mastered as a silent promo."""
+    d = narration_of(a)
+    if d is None:
+        return None
+    print(f"{why}, but {d} is a 'scenes + voice' video: its narration did not reach the render. Nothing is written: "
+          f"check props.voice and public/<id>/voice.wav (visual_plan.py stage --props), render again, then master")
+    return 1
+
+
 def master(a, tmp):
     D = dur(a.input)
     if dur(a.input, "a") is None:
-        return master_no_voice(a, tmp, D, "the render has no audio track")
+        return no_narration(a, "the render has no audio track") or master_no_voice(a, tmp, D, "the render has no audio track")
     i0, tp0 = measure(a.input)
     if i0 is not None and (tp0 == float("-inf") or i0 <= -69.5):  # ebur128 gives −70 LUFS and a −inf peak on silence
-        return master_no_voice(a, tmp, D, f"the render's audio is silence ({i0:.0f} LUFS)")
+        return (no_narration(a, f"the render's audio is silence ({i0:.0f} LUFS)")
+                or master_no_voice(a, tmp, D, f"the render's audio is silence ({i0:.0f} LUFS)"))
     if i0 is None:
         sys.exit(f"measuring the input failed (ebur128): is there audio in {a.input}?")
     nf = noise_floor(a.input)

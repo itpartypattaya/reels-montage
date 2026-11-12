@@ -44,6 +44,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import board as bd  # noqa: E402
+from pic_track import source_changes  # noqa: E402
 from reels_common import CHECK_MARGIN, edit_dir, load_json, save_json, ui_safe  # noqa: E402
 
 if hasattr(sys.stdout, "reconfigure"):
@@ -125,17 +126,16 @@ def face_source(e, plan, props, fps):
     win = fc.window(fdata)
     dur = float(props["captions"]["duration"])
     hidden = fc.covered(plan)
-    cuts = sorted(g["out_start"] for p, g in zip(props["captions"].get("segments") or [],
-                                                  (props["captions"].get("segments") or [])[1:])
-                  if g.get("source") != p.get("source"))
+    cuts = source_changes(props["captions"])  # the picture's angle changes (pic_track.py), not the sound's joins
     st = fdata.get("step", 0.25)
 
     def faces_at(t):
         if t >= dur or any(a - 1e-6 <= t <= b + 1e-6 for a, b in hidden):
             return []
-        lo = max([t - st] + [c for c in cuts if c <= t + 1e-6])
-        hi = min([t + st] + [c - 1e-6 for c in cuts if c > t + 1e-6])
-        boxes = [f[:4] for x in fdata["samples"] if lo - 1e-6 <= x["t"] <= hi + 1e-6 for f in x["faces"]]
+        lo = max([t - st] + [c for c in cuts if c <= t + 1e-6])  # a sample at the join is the new shot's: kept
+        nxt = min([c for c in cuts if c > t + 1e-6], default=None)  # the next join: its sample is the next shot's
+        boxes = [f[:4] for x in fdata["samples"] if lo - 1e-6 <= x["t"] <= t + st + 1e-6
+                 and (nxt is None or x["t"] < nxt - 1e-6) for f in x["faces"]]
         cam = vp.camera_at(shots, t, dur, fps, view) if shots else None
         return [fc.grow(b, CHECK_MARGIN) for b in fc.screen_faces(boxes, cam, win)]  # the checks' tolerance
     return faces_at

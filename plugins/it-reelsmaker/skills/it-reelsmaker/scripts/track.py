@@ -10,7 +10,7 @@ phone's exposure changes); corners found in a 120 px circle around the anchor, f
 the dot moves with the common similarity transform (RANSAC: shift, turn and scale; the scale grows a ring) of the half
 of the points nearest to it, so the wall around a small object does not outvote it, or with their median shift when too
 few agree; points that do not move with the dot drop out; new corners are found around the dot when fewer than 60 % are left.
-The track breaks at every joint of the rough cut inside the callout (captions.json segments: the picture jumps there),
+The track breaks at every joint of the rough cut inside the callout (captions.json picture shots: the picture jumps there),
 and where the points are lost (fewer than 4 agree, or the dot leaves the frame): the dot is held 0.3 s, then fades out,
 and stays hidden to the callout's end; at a joint the dot fades out by the joint's frame instead (the picture
 changes whole there). Rows every 2 frames, smoothed over 5 frames, go into the callout as "path"
@@ -29,9 +29,16 @@ import argparse, importlib.util, shutil, subprocess, sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+from pic_track import pic_shots  # noqa: E402
 from reels_common import edit_dir, load_json, utf8_stdio
 
 FPS = 30
+
+
+def breaks_in(cap, t0, t1):
+    """Frames (from t0) where the picture jumps inside t0..t1: the joins of the picture shots (pic_track.py), not of
+    the sound."""
+    return {round((g["out_start"] - t0) * FPS) for g in pic_shots(cap) if t0 + 0.02 < g["out_start"] < t1 - 0.02}
 HALF = 2            # the frames are tracked at 540x960
 ROI = 60            # px at half size: corners within 120 px of the anchor
 MIN_POINTS = 6
@@ -198,7 +205,7 @@ def main():
     if not frames:
         sys.exit(f"{video} did not decode over {t0:.2f}-{t1:.2f} s")
     cap = load_json(e / "captions.json", {}) or {}
-    breaks = {round((g["out_start"] - t0) * FPS) for g in cap.get("segments", []) if t0 + 0.02 < g["out_start"] < t1 - 0.02}
+    breaks = breaks_in(cap, t0, t1)
     ax, ay = c["anchor"]
     track, n = follow(frames, (ax / HALF, ay / HALF), breaks)
     if track is None:

@@ -19,6 +19,17 @@ SETTINGS_FILE = "it-reelsmaker.json"
 PROJECT_DEFAULTS = "reel-defaults.json"
 
 VIDEO_EXT = {".mp4", ".mov", ".m4v", ".webm", ".mkv"}
+# a sound-only source: a narration recorded on a phone (cut.py cuts it into edit/<id>/voice.wav)
+AUDIO_EXT = {".ogg", ".opus", ".m4a", ".wav", ".mp3"}
+# reel.json -> voice: where the voice comes from. on_camera (the default, also when the key is missing): the person
+# speaks in the frame; off_camera: a narration over a picture without the speaker (the "scenes + voice" format: the
+# picture is designed scenes); none: a video without speech (not drawn differently yet)
+VOICE_MODES = ("on_camera", "off_camera", "none")
+
+
+def voice_mode(s):
+    """reel.json -> voice of the settings: on_camera when it is missing."""
+    return (s or {}).get("voice") or "on_camera"
 IMAGE_EXT = {".png", ".jpg", ".jpeg", ".webp"}
 GIF_EXT = {".gif"}
 

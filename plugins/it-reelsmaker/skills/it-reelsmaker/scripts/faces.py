@@ -49,6 +49,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from reels_common import (CHECK_MARGIN, FACE_MARGIN, SUB_BAND, SUB_MAX_TOP, edit_dir, framed_at, framed_view,
                           load_json, probe, project_root, project_settings, run, save_json, ui_safe, utf8_stdio, warn)
+from pic_track import pic_shots, shot_at, source_changes  # noqa: E402
 
 W, H = 1080, 1920
 MODEL = None         # --model; otherwise it-reelsmaker.json -> face_model (model_path())
@@ -371,9 +372,9 @@ def between(data, t0, t1):
 
 
 def source_cuts(e):
-    """Seconds of the rough cut where the source changes (captions.json segments): another camera angle from here on."""
-    segs = sorted((load_json(Path(e) / "captions.json", {}) or {}).get("segments", []), key=lambda g: g["out_start"])
-    return [g["out_start"] for p, g in zip(segs, segs[1:]) if g.get("source") != p.get("source")]
+    """Seconds of the rough cut where the picture's source changes (captions.json picture shots, pic_track.py):
+    another camera angle from here on."""
+    return source_changes(load_json(Path(e) / "captions.json", {}) or {})
 
 
 def pieces(t0, t1, cuts):
@@ -476,8 +477,11 @@ def segments_of(e):
     plan = load_json(e / "visual_plan.json")
     if plan:
         return [(g["id"], g["start"], g["end"], g["text"]) for g in plan["segments"]]
-    cap = load_json(e / "captions.json", {})
-    return [(f"k{g['i']:02d}", g["out_start"], g["out_start"] + g["out_dur"], g.get("beat", "")) for g in cap.get("segments", [])]
+    # no plan: a span per picture shot (pic_track.py), named by the beat of the sound segment it starts in
+    cap = load_json(e / "captions.json", {}) or {}
+    sound = cap.get("segments", [])
+    return [(f"k{g['i']:02d}", g["out_start"], g["out_start"] + g["out_dur"],
+             ((shot_at(sound, g["out_start"]) or {}) if sound else {}).get("beat", "")) for g in pic_shots(cap)]
 
 
 def zone_report(f, sub, fr=None):
@@ -595,7 +599,7 @@ def audit_zones(plan):
     have = {k.get("scene") for k in keep if k.get("scene")}
     keep += [k for k in scene_keep_entries(plan) if k["scene"] not in have]
     hidden = [(i["start"], i["start"] + i["dur"]) for i in plan.get("inserts", [])
-              if i.get("kind") == "scene" and i.get("status") == "ready" and i.get("type") != "cover" and hides_subtitles(i)]
+              if i.get("kind") == "scene" and i.get("status") == "ready" and i.get("type") != "cover" and hides_subtitles(i, plan.get("settings"))]
     return keep, hidden + [tuple(h) for h in hidden_windows(plan)]
 
 

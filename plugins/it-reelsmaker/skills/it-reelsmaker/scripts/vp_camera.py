@@ -6,6 +6,7 @@ from pathlib import Path
 
 from reels_common import (SUB_BAND, SUB_MAX_TOP, SUB_TOP_KIT, cam_fit, framed_at, framed_source, framed_view,
                           load_json)
+from pic_track import maps_source_time, pic_shots
 from vp_core import (resolve_at)
 
 
@@ -37,9 +38,11 @@ def same_source(a, b, files=None):
 
 
 def src_to_out(src, cap, seg=None, source=None, files=None, quiet=False):
-    """A source second -> the second of the finished video (captions.json segments; references/camera.md, at()).
-    source: the shot's file or source name, for a cut from several cameras whose source seconds overlap."""
-    pool = [g for g in cap.get("segments", []) if (seg is None or g["i"] == seg)
+    """A source second -> the second of the finished video (captions.json picture shots, pic_track.py; references/
+    camera.md, at()): the camera points at what is shown, not at what is heard. A photo or a background shot takes no
+    source second (its seconds are conventional). source: the shot's file or source name, for a cut from several
+    cameras whose source seconds overlap."""
+    pool = [g for g in pic_shots(cap) if maps_source_time(g) and (seg is None or g["i"] == seg)
             and (source is None or same_source(source, g.get("source"), files))]
     if source is not None and not pool:
         sys.exit(f"camera.json: no segment of the rough cut comes from {source}")

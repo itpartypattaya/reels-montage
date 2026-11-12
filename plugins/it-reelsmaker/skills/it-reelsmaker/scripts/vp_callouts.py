@@ -7,6 +7,7 @@ from pathlib import Path
 from reels_common import (CORNER_BOX, LINE_FACE_MARGIN, SUB_BAND, edit_dir, framed_at, framed_source, load_config,
                           load_json, ui_safe, ui_zone, warn)
 from vp_core import (NUM_RE, STATUSES, _ru, editing_plan, fmt_t, jround, overlap, read_need, resolve_at, srgb_lum)
+from pic_track import pic_shots
 from vp_camera import (camera_at, plan_camera)
 from vp_scenes import (COVER_MODES, SCENE_SOURCES, default_box, hidden_windows, hides_subtitles, scene_tone)
 
@@ -29,7 +30,7 @@ def check_callouts(e, plan, s, doc, fdata, callouts, brolls, memes, scenes, corn
     def W(c, msg):
         warns.append(f"{c['id']}: {msg}")
 
-    only = plan.get("format") == "scenes-only"
+    only = plan.get("format") in ("scenes-only", "scenes-voice")  # no rough cut on screen (vp_core.NO_FOOTAGE)
     fr = None if only else framed_at(e)
     ctx = callout_context(e, plan, fdata)
     segs, shots, drift, end = ctx[:4]
@@ -50,7 +51,7 @@ def check_callouts(e, plan, s, doc, fdata, callouts, brolls, memes, scenes, corn
     cover += [x for x in brolls + memes if x.get("mode") in ("replace", "cutaway") and x.get("status") == "ready"]
     # where the subtitles are hidden their band is free: hide-subs windows and scenes that hide them
     hidden = [tuple(h) for h in hidden_windows(plan)] + [(x["start"], x["start"] + x["dur"]) for x in scenes
-                                                         if x.get("type") != "cover" and hides_subtitles(x)]
+                                                         if x.get("type") != "cover" and hides_subtitles(x, s)]
     # the hook headline at its own height: its lines of up to 14 characters, ~121 px each (ReelKit Hook, Mark)
     hook_box = [HOOK_BOX[0], HOOK_BOX[1], HOOK_BOX[2], 121 * (hook_lines(hook) if isinstance(hook, str) else 2)]
     # a horizontal rough cut without the framed format: the kit lays it as a band, the anchor is not where it points
@@ -692,14 +693,16 @@ def path_issue(path, dur=None):
 
 
 def track_key(e, c):
-    """What a track was made from (track.py): the anchor, the callout's time, final.mp4 and the joints of the rough cut
-    (captions.json spans: the track breaks there; Antigravity review: spans re-cut over the same file kept an old
-    track valid); another one -> track again."""
+    """What a track was made from (track.py): the anchor, the callout's time, final.mp4 and the joints of the rough cut's
+    picture (captions.json picture shots, pic_track.py: the track breaks there; Antigravity review: spans re-cut over
+    the same file kept an old track valid) with the picture's fingerprint when it has one; another one -> track again."""
     f = Path(e) / "final.mp4"
     st = f.stat() if f.is_file() else None
-    joints = [g.get("out_start") for g in (load_json(Path(e) / "captions.json", {}) or {}).get("segments", [])]
+    cap = load_json(Path(e) / "captions.json", {}) or {}
+    joints = [g.get("out_start") for g in pic_shots(cap)]
+    seen = [joints, cap["picture_id"]] if cap.get("picture_id") else joints  # a copy keeps the old fingerprint
     return [c.get("anchor"), c.get("start"), c.get("dur"), st.st_size if st else None, st.st_mtime_ns if st else None,
-            hashlib.sha1(json.dumps(joints).encode()).hexdigest()[:12]]
+            hashlib.sha1(json.dumps(seen).encode()).hexdigest()[:12]]
 
 
 def picture_motion(e, c, keep=False, fresh=None, ctx=None, color=None):
@@ -856,11 +859,12 @@ def hook_lines(text, n=14):
 
 
 def callout_context(e, plan, fdata=None):
-    """What places a callout on screen: (captions' spans, camera.json shots, drift on, the video's length, a cache of
-    the people's paths with faces.json, read when a callout points at a person)."""
+    """What places a callout on screen: (the rough cut's picture shots for the drift (pic_track.py), camera.json camera
+    shots, drift on, the video's length, a cache of the people's paths with faces.json, read when a callout points at a
+    person)."""
     cap = load_json(Path(e) / "captions.json", {}) or {}
     shots = plan_camera(e, plan)
-    return (cap.get("segments") or [], shots, not shots, plan.get("duration") or cap.get("duration") or 0.0,
+    return (pic_shots(cap), shots, not shots, plan.get("duration") or cap.get("duration") or 0.0,
             {"e": e, "faces": fdata, "paths": {}})
 
 
