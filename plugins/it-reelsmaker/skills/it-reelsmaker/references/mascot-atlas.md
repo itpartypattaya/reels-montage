@@ -18,7 +18,7 @@ not by its silhouette.
 - **One sheet in a grid** (rows x columns of equal cells, the same background in every cell, no grid lines or thin
   ones) or **a folder of PNG files named by pose**: `neutral.png`, `point_up.png`, …
 - **Background**: a transparent PNG is best. One flat color works too: white, a green or blue screen. A gradient, a
-  texture, a floor shadow or a photo behind the character is refused: export it on transparency.
+  texture, a glow, a floor shadow or a photo behind the character is refused: export it on transparency.
 - **Poses** from the dictionary: `neutral` (required: its head sets the size of every pose), `talk`, `point_left`,
   `point_right`, `point_up`, `palm`, `think`, `surprise`, `celebrate`, `shrug`, `wink`. The same character at about
   the same size, facing the same way, the head visible in every pose. A missing pose is replaced by the engine.
@@ -39,23 +39,25 @@ python "${CLAUDE_SKILL_DIR}/scripts/mascot_atlas.py" atlas <brand> poses/       
 ```
 
 `--grid RxC` reads the sheet row by row; `--poses` names every cell in that order, `-` skips one. A single picture
-needs neither (it is `neutral`). The script writes `brands/<brand>/assets/mascot/atlas.png`, `rig.json` and
-`rig-check.png`, prints what it found and the `brand.py mascot <brand> --atlas assets/mascot/rig.json` command that
+needs neither (it is `neutral`). The script writes `brands/<brand>/assets/mascot/atlas.png`, `rig.json`,
+`rig-check.png` and `rig-check.json` (the numbers and warnings, which `check` draws again), prints what it found and the `brand.py mascot <brand> --atlas assets/mascot/rig.json` command that
 turns the mascot on in the profile. It does not edit `brand.json` itself. A run takes a few seconds per pose.
 
 What it does:
 1. **Cells.** A grid that does not divide the sheet evenly is cut inward, with a margin off the lines, so no pixel of
    a neighbor cell gets in. An empty cell stops the run with its number.
-2. **Background.** Transparent: kept as drawn. Flat: removed by a fill from the cell's border, with a soft edge, so
+2. **Background.** A picture with real transparency is kept as drawn, even cut close to the figure. Flat: removed by a fill from the cell's border, with a soft edge, so
    white eyes on a white background stay. Background color **enclosed** by the character (between an arm and the
    body) cannot be told from a white detail (eye whites are enclosed too): every such patch is numbered on the check
    sheet and kept; `--holes 3,7` removes the ones you confirm. On a green or blue screen the character has none of
    that color, so enclosed screen color goes without asking and the spill is held down. A light part of the
    character touching the background (a white glove with no outline) goes with the background: an outline open
-   there is marked with an exclamation mark on the sheet and warned about.
+   there is marked with an exclamation mark on the sheet and warned about. A border of one color around a
+   background that shades inward (a glow, a vignette) is refused like a gradient.
 3. **The head places the poses.** On `neutral` the point between the eyes and the head width are guessed (the center
    of mass of the figure's top, the eye line at ~22 % of its height). Every other pose's head is found by matching
-   neutral's head, and the pose is scaled and moved so its head lands on the same point of the shared box: a raised
+   neutral's head, its scale is taken from its width at the eye line (measured as on neutral), and the pose is
+   scaled and moved so its head lands on the same point of the shared box: a raised
    arm changes the outline, not the head. Talk and blink frames are aligned to their pose's head the same way.
 4. **Starting guesses**: eyes on the eye line, the mouth at ~34 % of the figure's height, its width from the head, the
    skin color from a ring around the mouth, the line color from the darkest lines.

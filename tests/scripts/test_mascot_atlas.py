@@ -150,6 +150,34 @@ def near(c, ref, tol):
     return max(abs(a - b) for a, b in zip(c[:3], ref)) <= tol
 
 
+def white_blobs(im, min_area=50):
+    """Connected patches of opaque white: (area, center x, center y), largest first."""
+    w, h = im.size
+    px = im.load()
+    seen, out = set(), []
+    for j in range(h):
+        for i in range(w):
+            if (i, j) in seen or not white_opaque(px[i, j]):
+                continue
+            stack, pts = [(i, j)], []
+            seen.add((i, j))
+            while stack:
+                x, y = stack.pop()
+                pts.append((x, y))
+                for q in ((x + 1, y), (x - 1, y), (x, y + 1), (x, y - 1)):
+                    if 0 <= q[0] < w and 0 <= q[1] < h and q not in seen and white_opaque(px[q]):
+                        seen.add(q)
+                        stack.append(q)
+            if len(pts) >= min_area:
+                out.append((len(pts), sum(p[0] for p in pts) / len(pts), sum(p[1] for p in pts) / len(pts)))
+    return sorted(out, reverse=True)
+
+
+def orange_marks(path):
+    from PIL import Image
+    return count(Image.open(path).convert("RGBA"), lambda p: near(p, (255, 120, 0), 10))
+
+
 def head_in_box(rig, atlas, pose, frame="cell"):
     """The head as the pixels show it (skin color), in the shared box: the center of its extent and its width. Not the
     centroid: an open mouth takes skin pixels from the lower face and moves a centroid by ~2 px with no misplacement."""
@@ -201,20 +229,25 @@ def test_enclosed_background_is_numbered_and_removed_only_when_confirmed(brand, 
     gap = [h for h in holes if h[1] == "palm" and abs(h[2] - gx) <= 14 and abs(h[3] - gy) <= 14]
     assert len(gap) == 1, r1.stdout
     rig, atlas = outputs(brand)
-    palm = cell_img(atlas, rig["poses"]["palm"]["cell"])
-    kept = count(palm, white_opaque)
-    eyes = count(cell_img(atlas, rig["poses"]["neutral"]["cell"]), white_opaque)
-    assert kept > eyes + 150  # not confirmed: the gap is still opaque white
-    check1 = (brand / "brands" / "acme" / "assets" / "mascot" / "rig-check.png").read_bytes()
+    eye = min(a for a, _, _ in white_blobs(cell_img(atlas, rig["poses"]["neutral"]["cell"])))  # one eye white
+    blobs = white_blobs(cell_img(atlas, rig["poses"]["palm"]["cell"]))
+    assert len(blobs) == 3, blobs  # two eyes and the gap, all kept: nothing is guessed away
+    eye_y = min(y for _, _, y in blobs)
+    assert any(y > eye_y + 50 and a > 150 for a, _, y in blobs)  # the gap, well below the eyes
+    check = brand / "brands" / "acme" / "assets" / "mascot" / "rig-check.png"
+    assert orange_marks(check) > 20  # the first run numbered the holes on its sheet
 
     r2 = run_atlas(brand, src, "--grid", "1x2", "--poses", "neutral,palm", "--holes", str(gap[0][0]))
     assert re.search(rf"hole {gap[0][0]} \(palm\).*removed", r2.stdout)
     rig, atlas = outputs(brand)
-    palm = cell_img(atlas, rig["poses"]["palm"]["cell"])
-    after = count(palm, white_opaque)
-    assert after < kept - 150  # the gap is gone ...
-    assert after >= 0.85 * eyes  # ... and the eyes are not
-    assert check1  # the first run drew its check sheet
+    blobs = white_blobs(cell_img(atlas, rig["poses"]["palm"]["cell"]))
+    assert len(blobs) == 2, blobs  # the gap is gone ...
+    assert all(abs(y - eye_y) <= 6 and a >= 0.85 * eye for a, _, y in blobs), (blobs, eye)  # ... both eyes stay whole
+    marks = orange_marks(check)
+    assert marks > 20
+    # the check after a hand edit draws the sheet again: the hole numbers and warnings must stay on it
+    run_script("mascot_atlas.py", "check", "acme", cwd=brand)
+    assert orange_marks(check) >= 0.9 * marks
 
     bad = run_atlas(brand, src, "--grid", "1x2", "--poses", "neutral,palm", "--holes", "99", check=False)
     assert bad.returncode != 0 and "99" in bad.stderr
@@ -420,3 +453,31 @@ def test_check_places_poses_again_by_edited_eyes(brand, tmp_path):
         cx, cy = p["cell"][:2]
         assert abs(p["offset"][0] + (x1 + x2) / 2 - cx - ax) <= 1 and abs(p["offset"][1] + (y1 + y2) / 2 - cy - ay) <= 1
     assert run_script("mascot_atlas.py", "check", "acme", cwd=brand).returncode == 0
+
+
+def test_tightly_cropped_transparent_picture_keeps_every_pixel(brand, tmp_path):
+    """A transparent drawing cut close to the character (hands and hair touching the canvas edge) is still a
+    transparent drawing: nothing is keyed out of it and no margin trims its edges."""
+    fig = character("neutral", bg=(0, 0, 0, 0))
+    fig = fig.crop((CELL[0] // 2 - 70, 110, CELL[0] // 2 + 70, 330))  # a bust: cut at the sides and the bottom
+    src = tmp_path / "tight.png"
+    fig.save(src)
+    run_atlas(brand, src, "--poses", "neutral")
+    rig, atlas = outputs(brand)
+    solid_in = count(fig, lambda p: p[3] >= 128)
+    solid_out = count(cell_img(atlas, rig["poses"]["neutral"]["cell"]), lambda p: p[3] >= 128)
+    assert abs(solid_out - solid_in) <= 0.01 * solid_in, (solid_out, solid_in)
+
+
+def test_flat_border_with_a_gradient_inside_is_refused(brand, tmp_path):
+    """White at the edges, a gray glow behind the character: the border looks flat, the background is not."""
+    from PIL import Image
+    W, H = CELL
+    cx, cy = W / 2, H / 2
+    glow = Image.new("RGBA", CELL)
+    glow.putdata([(lambda v: (v, v, v, 255))(round(min(255, 175 + 80 * (((x - cx) / cx) ** 2 + ((y - cy) / cy) ** 2))))
+                  for y in range(H) for x in range(W)])
+    src = tmp_path / "glow.png"
+    Image.alpha_composite(glow, character(bg=(0, 0, 0, 0))).convert("RGB").save(src)
+    r = run_atlas(brand, src, check=False)
+    assert r.returncode != 0 and "transparent PNG" in r.stderr

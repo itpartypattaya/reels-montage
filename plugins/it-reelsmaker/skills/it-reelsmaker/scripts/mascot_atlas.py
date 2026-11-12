@@ -42,6 +42,7 @@ GUTTER = 4                  # px of transparency between frames in the atlas
 GRAY = 128                  # the matching works on the picture flattened on this gray
 FLAT_SHARE = 0.6            # this share of the cell's border within FLAT_DIST of its median = a flat background
 FLAT_DIST = 16
+GRADIENT_SHARE = 0.06    # more of the filled background than this at over half the tolerance = not flat
 HOLE_MIN = 0.002            # an enclosed patch of background color is numbered from this share of the figure
 OUTLINE_SHARE = 0.6         # a drawing with a dark outline on this share of its edge is checked for open spots
 OUT_DIR = Path("assets") / "mascot"
@@ -229,8 +230,11 @@ def read_cells(src, grid, poses):
             if name == "-":
                 continue
             r, q = divmod(i, cols)
-            x0, x1 = math.ceil(q * cw) + m, math.floor((q + 1) * cw) - m
-            y0, y1 = math.ceil(r * ch) + m, math.floor((r + 1) * ch) - m
+            # the margin only off the grid lines inside the sheet: its outer edges are the picture's own
+            x0 = math.ceil(q * cw) + (m if q else 0)
+            x1 = math.floor((q + 1) * cw) - (m if q < cols - 1 else 0)
+            y0 = math.ceil(r * ch) + (m if r else 0)
+            y1 = math.floor((r + 1) * ch) - (m if r < rows - 1 else 0)
             if x1 - x0 < 16 or y1 - y0 < 16:
                 die(f"cell {i + 1} is {x1 - x0}x{y1 - y0} px: check --grid")
             pose, var = parse_name(name, i + 1)
@@ -283,7 +287,8 @@ def analyze(c, tol):
     img = c["img"]
     w, h = img.size
     ring = border(img)
-    if sum(1 for p in ring if p[3] < 16) >= 0.5 * len(ring):
+    # a picture with real transparency is a transparent drawing, even cut close with the figure along its edges
+    if sum(img.getchannel("A").histogram()[:16]) >= 0.01 * w * h:
         c["mode"] = "alpha"
         c["holes"] = []
         return
@@ -308,6 +313,14 @@ def analyze(c, tol):
     if outer_n < 0.08 * w * h:
         die(f"{where}: the background around the character was not found (it is not one flat color, or the "
             f"character fills the cell). Export it on a transparent PNG background and run again.")
+    # the border can be flat while the background shades inward (a glow, a vignette, a floor shadow): then much of
+    # the filled region sits far from the border's color, and the rest of the gradient would stay on the character
+    outer_m = mask_img(runs_mask(outer, (w, h)), (w, h))
+    hist = d.histogram(mask=outer_m)
+    if sum(hist[tol // 2 + 1:]) > GRADIENT_SHARE * max(1, sum(hist)):
+        die(f"{where}: the background is not one flat color (it shades toward the character: a glow, a gradient or "
+            f"a shadow): it cannot be cut out cleanly here. Export the character on a transparent PNG background and "
+            f"run again.")
     # a saturated green or blue background: the character has none of that color, so enclosed patches of it are
     # background too, and the spill is held down everywhere
     screen = max(bg) - min(bg) >= 80 and max(range(3), key=lambda j: bg[j]) in (1, 2)
@@ -346,16 +359,17 @@ def cut_out(c, remove, tol):
     a = Image.composite(Image.new("L", (w, h), 0), a, gone_m)
     bg = c["bg"]
     # unmix the background out of the half-transparent edge: color = (seen - (1 - alpha) * background) / alpha
-    rp, gp, bp, ap, bandp = r.load(), g.load(), b.load(), a.load(), band.load()
-    box = band.getbbox()
-    if box:
-        for y in range(box[1], box[3]):
-            for x in range(box[0], box[2]):
-                if bandp[x, y] and 0 < ap[x, y] < 255:
-                    al = ap[x, y] / 255
-                    rp[x, y] = min(255, max(0, round((rp[x, y] - (1 - al) * bg[0]) / al)))
-                    gp[x, y] = min(255, max(0, round((gp[x, y] - (1 - al) * bg[1]) / al)))
-                    bp[x, y] = min(255, max(0, round((bp[x, y] - (1 - al) * bg[2]) / al)))
+    rp, gp, bp, ap = r.load(), g.load(), b.load(), a.load()
+    bb = band.tobytes()
+    i = bb.find(b"\xff")
+    while i >= 0:  # only the band's pixels: a few px around the cut
+        x, y = i % w, i // w
+        if 0 < ap[x, y] < 255:
+            al = ap[x, y] / 255
+            rp[x, y] = min(255, max(0, round((rp[x, y] - (1 - al) * bg[0]) / al)))
+            gp[x, y] = min(255, max(0, round((gp[x, y] - (1 - al) * bg[1]) / al)))
+            bp[x, y] = min(255, max(0, round((bp[x, y] - (1 - al) * bg[2]) / al)))
+        i = bb.find(b"\xff", i + 1)
     if c["screen"]:  # despill: the screen's channel is held to the larger of the other two
         dom = max(range(3), key=lambda j: bg[j])
         zone = m_not(gone_m)
@@ -421,25 +435,40 @@ def guess_head(img):
                 sn += 1
     hx = sx / sn if sn else (left + right) / 2
     ey = top + 0.22 * bh
-    yy = int(ey)
-    runs, start = [], None
-    for x in range(left, right + 1):
-        on = x < right and a[x, yy] > 40
-        if on and start is None:
-            start = x
-        elif not on and start is not None:
-            runs.append((start, x))
-            start = None
-    run = min(runs, key=lambda r: 0 if r[0] <= hx < r[1] else min(abs(r[0] - hx), abs(r[1] - hx))) if runs else None
+    run = row_run(img, hx, ey)
     hw = (run[1] - run[0]) if run else bw * 0.5
     if run and not run[0] <= hx < run[1]:
         hx = (run[0] + run[1]) / 2
     return {"anchor": (hx, ey), "hw": hw, "mouth": (hx, top + 0.34 * bh)}
 
 
+def row_run(img, x, y, thr=40):
+    """The opaque run of row y that holds x (or the nearest one): the head's width at the eye line."""
+    a = img.getchannel("A")
+    yy = min(max(0, int(y)), img.height - 1)
+    row = a.crop((0, yy, img.width, yy + 1)).tobytes()
+    runs, start = [], None
+    for i in range(len(row) + 1):
+        on = i < len(row) and row[i] > thr
+        if on and start is None:
+            start = i
+        elif not on and start is not None:
+            runs.append((start, i))
+            start = None
+    if not runs:
+        return None
+    return min(runs, key=lambda r: 0 if r[0] <= x < r[1] else min(abs(r[0] - x), abs(r[1] - x)))
+
+
 def tpl_box(anchor, hw):
     ax, ay = anchor
     return (ax - 0.6 * hw, ay - 0.6 * hw, ax + 0.6 * hw, ay + 0.45 * hw)
+
+
+def clamp_box(box, size):
+    """The template box inside the picture: a crop past its edge would add black, not the matching gray."""
+    x0, y0, x1, y1 = (round(v) for v in box)
+    return [max(0, x0), max(0, y0), min(size[0], x1), min(size[1], y1)]
 
 
 def _scan(hay, t, xr, yr):
@@ -681,9 +710,10 @@ def cmd_atlas(a):
     hw = head["hw"]
     if hw < 12:
         die("the head of neutral was not found (narrower than 12 px): give it with --head X,Y,W")
-    tb = [round(v) for v in tpl_box(head["anchor"], hw)]
+    tb = clamp_box(tpl_box(head["anchor"], hw), neutral["out"].size)
     ref = flat(neutral["out"]).crop(tuple(tb))
     rel_anchor = (head["anchor"][0] - tb[0], head["anchor"][1] - tb[1])
+    n_run = row_run(neutral["out"], *head["anchor"])
 
     items = []
     for c in cells:
@@ -697,6 +727,19 @@ def cmd_atlas(a):
                 die(f"{c['label']} ({c['name']}): the head of neutral was not found in it")
             _, sx, sy, x, y = m
             s, anchor = (sx + sy) / 2, (x + rel_anchor[0] * sx, y + rel_anchor[1] * sy)
+            # the match finds the head; its scale is noisy by a few %: the head's width at the eye line, measured
+            # as on neutral, gives it exactly (unless an arm joins that row: then the two disagree, the match stays)
+            run = row_run(c["out"], *anchor)
+            if n_run and run:
+                s_run = (run[1] - run[0]) / (n_run[1] - n_run[0])
+                if abs(s_run - s) <= 0.06 * s:
+                    hay = flat(c["out"])
+                    t = ref.resize((max(4, round(ref.width * s_run)), max(4, round(ref.height * s_run))), Image.BOX)
+                    best = _scan(hay, t, (round(x) - 4, round(x) + 4), (round(y) - 4, round(y) + 4))
+                    if best:
+                        sx, sy = t.width / ref.width, t.height / ref.height
+                        s = s_run
+                        anchor = (best[1] + rel_anchor[0] * sx, best[2] + rel_anchor[1] * sy)
         l, t, r, b = c["box"]
         items.append({"cell": c, "name": c["name"], "variant": None, "s": s, "anchor": anchor,
                       "crop": (l - 4, t - 4, r + 4, b + 4)})
@@ -706,7 +749,7 @@ def cmd_atlas(a):
             continue
         base = poses[c["pose"]]
         bs = base["s"]
-        tb = [round(v) for v in tpl_box(base["anchor"], hw * bs)]
+        tb = clamp_box(tpl_box(base["anchor"], hw * bs), base["cell"]["out"].size)
         tpl = flat(base["cell"]["out"]).crop(tuple(tb))
         m = find_head(flat(c["out"]), tpl, 0.92, 1.08)
         if m is None:
@@ -793,6 +836,7 @@ def cmd_atlas(a):
     check = draw_check(atlas, rig, notes)
     save_png(atlas, out_dir / "atlas.png")
     save_png(check, out_dir / "rig-check.png")
+    save_json(out_dir / "rig-check.json", {"notes": notes})  # check draws the numbers and warnings again
     save_json(out_dir / "rig.json", rig)
 
     modes = {c["mode"] for c in cells}
@@ -882,7 +926,8 @@ def cmd_check(a):
         save_json(d / "rig.json", rig)
         print(f"placed again by the eyes: {', '.join(n for n, *_ in off)}; box {rig['box'][0]}x{rig['box'][1]}")
         off = []
-    save_png(draw_check(atlas, rig, []), d / "rig-check.png")
+    notes = (load_json(d / "rig-check.json") or {}).get("notes") or []
+    save_png(draw_check(atlas, rig, notes), d / "rig-check.png")
     for name, rx, ry, dx, dy in off:
         warn(f"{name}: the eyes' midpoint is {math.hypot(dx, dy):.0f} px off the anchor; run check --fix to place "
              f"the pose by its eyes")
