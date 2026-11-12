@@ -19,6 +19,8 @@ From one raw recording, for example a 1–2 minute phone take:
 
 A podcast, webinar or interview of 10–90 minutes becomes **a series of clips** the same way: you approve a list of clip cards once, then each clip is finished like a single video. With no footage at all, the same designed scenes make **a 15–25 s promo**.
 
+**No camera? Just your voice.** Record a voice note on your phone and get **an explainer of scenes drawn in code over your own voice**, with its subtitles. It can be hosted by **your brand's mascot**: a character in your colors that blinks, gestures on chosen words and moves its mouth with your recording. Draw the mascot in code, or bring your own character picture and the plugin cuts its poses and animates it.
+
 ## Quick start
 
 ```bash
@@ -57,7 +59,7 @@ This repository is a Claude Code plugin marketplace, `itparty`, with two plugins
 
 | Plugin | What it does |
 |---|---|
-| [`it-reelsmaker`](plugins/it-reelsmaker/README.md) | The core: edits vertical short videos from talking-head footage, turns long recordings into series of clips, makes promos from designed scenes. Runs locally, no AI generation, no stock services. |
+| [`it-reelsmaker`](plugins/it-reelsmaker/README.md) | The core: edits vertical short videos from talking-head footage, turns long recordings into series of clips, makes promos and voice-led explainers from designed scenes, with an optional brand mascot. Runs locally, no AI generation, no stock services. |
 | [`it-reelsmaker-online`](plugins/it-reelsmaker-online/README.md) | Optional add-on: online stock footage, CC-licensed memes and paid AI video generation for B-roll, each only after you approve the plan. |
 
 ```bash
