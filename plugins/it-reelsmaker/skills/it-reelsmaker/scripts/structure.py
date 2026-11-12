@@ -48,7 +48,7 @@ import argparse, json, re, sys, unicodedata
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from reels_common import (NUMBER_RE, STEM_LEN, VIDEO_EXT, edit_dir, load_json, project_root, restart_at, save_json,
+from reels_common import (AUDIO_EXT, NUMBER_RE, STEM_LEN, VIDEO_EXT,edit_dir, load_json, project_root, restart_at, save_json,
                           significant, speaker_of, stem as stem_of, take_words, utf8_stdio, warn)
 from cut import punct_only
 from transcribe import join_hyphen_parts
@@ -584,7 +584,7 @@ def names_file(text, stem):
     """Whether notes name the source file itself, as a whole word: the stem with a video extension ("sunrise.mp4"),
     or a camera-like stem of letters and digits alone ("IMG_1234"). A plain word stem needs the extension: a brand or
     another file sharing it is not the source (T5: the brand of the same name, "sunrise-promo.mp4" another render)."""
-    exts = "|".join(sorted(x.lstrip(".") for x in VIDEO_EXT))
+    exts = "|".join(sorted(x.lstrip(".") for x in VIDEO_EXT | AUDIO_EXT))  # a narration (voice.m4a) is a source too
     tail = r"(?:\.(?:" + exts + r"))" + ("?" if re.search(r"\d", stem) and re.search(r"[^\W\d_]", stem) else "")
     return bool(re.search(r"(?<![\w.\-])" + re.escape(stem) + tail + r"(?![\w\-]|\.\w)", text, re.I))
 

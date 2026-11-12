@@ -19,6 +19,7 @@ rules and hands the inserts over to Remotion.
         [--media inserts/ui-01.png] [--interaction-json '{"kind":"tap","target":[540,900],"at":"word:...#1"}'] \\
         [--box x,y,w,h] [--side left|right] [--sound card] [--hide-subtitles] --what "..." --why "..."
     python scripts/visual_plan.py init edit/promo1 --scenes-only --duration 22 [--brand acme]   # a promo without footage
+    python scripts/visual_plan.py init edit/v1 --scenes-voice [--brand acme]   # scenes over a narration (cut.py voice.wav)
     python scripts/visual_plan.py keep-clear edit/4821 --from 3.7 --to 9.6 --box 60,400,760,420 --what "price card"
     python scripts/visual_plan.py keep-clear edit/4821 --remove 2      # the 2nd zone as numbered in visual_plan.md
     python scripts/visual_plan.py keep-clear edit/4821 --from 23.4 --to 26.7 --box 404,1038,632,652 --what presenter \
@@ -66,6 +67,11 @@ measured in the source geometry and that the rough cut is horizontal.
 The "scenes only" format (init --scenes-only --duration N): no speech spans, --at in seconds only, every scene is full,
 scene coverage >= 95 %; transitions are cuts (the texts hand over at the join, as the kit draws it) and more than 4 frames
 of empty field at a join is a warning; stage --props: video "", empty captions with the duration, subtitles none.
+The "scenes + voice" format (init --scenes-voice, after cut.py cut a sound-only narration into voice.wav): reel.json ->
+voice off_camera, the plan's spans and length are the narration's (no 15-25 s limit, a warning past VOICE_MAX_S), every
+scene is full and --at may name a spoken word; the subtitles stay on over full scenes unless a scene sets
+--hide-subtitles, and a scene box on the subtitle band is an error; scene coverage under 95 % is a warning. stage
+--props: video "", props.voice (public/<id>/voice.wav), the narration's captions, props.voiceMode off_camera.
 """
 import argparse, contextlib, datetime, filecmp, hashlib, json, math, re, shutil, sys
 from pathlib import Path
@@ -84,14 +90,15 @@ from vp_core import (ABSTRACT_RE, AND_RE, CTA_RE, EMO_RE, END_CARD_S, FILLER_RE,
                      HEADROOM_MIN, KEEP_ON_INIT, KINDS, LIST_RE, NUM_RE, POINT_RE, QUOTE_RE, SCENE_MODES, SLOGAN_RE,
                      SOURCES, STATUSES, TRANSITIONS, UI_RE, WHY_OLD_FINISH, WINDOW_DEFAULT, WINDOW_SLOTS, _LIN,
                      _RU_AZ, _YE, _YO, _ru, auto_plan, build_plan, current_settings, cut_id, editing_plan, end_now,
-                     end_tail, ensure_plan, enumeration, find_spoken, finish_of, fmt_t, is_inside, item_time, jround,
-                     load_plan, near_match, norm_words, overlap, phrases, plan_duration, plan_path, read_need,
-                     refresh_plan, resolve_at, scene_hints, snapshot, srgb_lum)  # noqa: F401
+                     end_tail, ensure_plan, enumeration, find_spoken, finish_of, fmt_t, format_label, is_inside,
+                     item_time, jround, load_plan, near_match, no_footage, norm_words, overlap, phrases, plan_duration,
+                     plan_path, read_need, refresh_plan, resolve_at, scene_hints, snapshot, srgb_lum, NO_FOOTAGE,
+                     VOICE_MAX_S)  # noqa: F401
 from vp_camera import (camera_at, camera_shots, camera_view, chin_on_screen, plan_camera, same_source, source_files,
                        src_to_out, subtitle_top, subtitles_in)  # noqa: F401
 from vp_scenes import (CHAT_FROM, COVER_MODES, EXPERIMENTAL_MODES, EXPERIMENTAL_SCENES, INTERACTIONS, JOIN_EMPTY_MAX,
-                       SCENE_SOUNDS, SCENE_SOURCES, SCENE_TYPES, SPEAKER_WINDOW, SPLIT_BOX, SPLIT_CAM,
-                       WINDOW_SCENE_BOX, add_scene, check_scenes, default_box, experimental, faces_seen,
+                       SCENE_SOUNDS, SCENE_SOURCES, SCENE_TYPES, SPEAKER_WINDOW, SPLIT_BOX, SPLIT_CAM, VOICE_SUB_GAP,
+                       WINDOW_SCENE_BOX, add_scene, subtitle_band_off_camera, voice_stage, check_scenes, default_box, experimental, faces_seen,
                        hidden_windows, hides_subtitles, layout_frames, overlay_slots, scene_box_issues, scene_export,
                        scene_face, scene_keep_entries, scene_text, scene_timeline, scene_tone, scenes_only_cover,
                        text_frames, text_full_on, text_zone, tone_issues, window_issues, without_own, word_times)  # noqa: F401
@@ -113,10 +120,15 @@ from vp_shade import (SHADE_LINES, SHADE_TARGET, SHADE_X, cmd_shade)  # noqa: F4
 def cmd_init(a):
     if a.scenes_only:
         return init_scenes_only(a)
+    if a.scenes_voice:
+        return init_scenes_voice(a)
     e = edit_dir(a.edit)
     cap = load_json(e / "captions.json")
     if not cap:
         sys.exit(f"no {e / 'captions.json'}: the visual plan is built after the rough cut (step 6)")
+    if cap.get("voice") and not (e / "final.mp4").exists():  # cut.py cut a narration: there is no picture to plan over
+        sys.exit(f"{e.name} is a narration cut (voice.wav, no picture): its plan is scenes over the voice: "
+                 f"visual_plan.py init edit/{e.name} --scenes-voice")
     over = parse_sets(a.set)
     if a.brand:
         over["brand"] = safe_slug(a.brand, "--brand")
@@ -187,6 +199,41 @@ def init_scenes_only(a):
         warn(f"length {plan['duration']} s is outside {lo}-{hi} s (best {'-'.join(map(str, so.get('optimum', [18, 22])))} s)")
     print("storyboard: hook 2-3 s -> reveal 2-4 s -> 2-3 strong moments -> punchline/cta 2-4 s; scenes back to back "
           "(coverage >= 95 %), all in full mode, --at in seconds (3.0)")
+
+
+def init_scenes_voice(a):
+    """Scenes over a recorded narration: the plan on the narration's cut (cut.py on a sound-only source: voice.wav and
+    captions.json with its words), the voice off camera, every scene full."""
+    e = edit_dir(a.edit)
+    cap = load_json(e / "captions.json") or {}
+    if not cap.get("voice") or not (e / "voice.wav").is_file():
+        sys.exit(f"no narration cut in {e}: cut the recording first: cut.json with the sound-only file as its source, "
+                 f"then cut.py edit/{e.name} (it writes voice.wav and captions.json)")
+    over = parse_sets(a.set)
+    if a.brand:
+        over["brand"] = safe_slug(a.brand, "--brand")
+    over["voice"] = "off_camera"  # the sound mode of the video (reels_common.VOICE_MODES): the narration is off camera
+    with locked(plan_path(e)):
+        old = load_json(plan_path(e))
+        if old and old.get("inserts") and not a.force:
+            sys.exit(f"the plan already exists: {plan_path(e)} (--force rebuilds it; the inserts are lost)")
+        with editing_json(e / "reel.json", {}) as reel:
+            reel.update(over)
+        print(f"{e / 'reel.json'}: " + ", ".join(f"{k}={v}" for k, v in over.items()))
+        s, prov, doc, bdir, brand = current_settings(e, old)
+        plan = build_plan(e, cap, s, prov, doc)
+        plan.update({k: old[k] for k in KEEP_ON_INIT if k in (old or {})})
+        plan["format"] = "scenes-voice"
+        plan["captions_id"] = cut_id(cap)
+        save_json(plan_path(e), plan)
+    print(f"'scenes + voice' plan: {plan_path(e)}: {len(plan['segments'])} spans of the narration, {fmt_t(plan['duration'])}"
+          f", brand {s['brand']}, scene tone {s.get('scene_tone')}")
+    if plan["duration"] > VOICE_MAX_S:
+        warn(f"the narration is {plan['duration']:.0f} s: past ~{VOICE_MAX_S} s the render may not fit an 8 GB laptop "
+             f"(SKILL.md section 15): cut it shorter or render on a bigger machine")
+    print("storyboard: a hook on the first words, then one scene per idea, back to back; every scene is full, --at may "
+          "name a spoken word (word:...#1); the subtitles stay on over the scenes (--hide-subtitles on a scene whose text "
+          "repeats the narration)")
 
 
 def meme_rights(meme_id):
@@ -266,7 +313,10 @@ def cmd_md(a):
     fb = [f"{k}: {v}" for k, v in why.items() if k in ("online_footage", "generate_now", "online_memes") and v != "off"]
     if fb:
         L += ["Fallback: " + "; ".join(fb), ""]
-    if plan.get("format") == "scenes-only":
+    if plan.get("format") == "scenes-voice":
+        L += ["Format: **scenes + recorded voice** (the narration off camera, voice.wav): spans are its phrases, every "
+              "scene is full, the subtitles of the narration stay on over the scenes unless a scene hides them.", ""]
+    elif plan.get("format") == "scenes-only":
         L += ["Format: **scenes only** (a promo without footage): no speech spans, scenes by time; between scenes the "
               "transition is a cut (one text leaves by its scene's last frame, the next enters from its first).", ""]
     elif framed_at(e):
@@ -307,7 +357,7 @@ def cmd_md(a):
                          f"{scene_tone(i, s)}: {scene_text(i)}. What: {i['what']}. Why: {i['why']}. "
                          + (f"Source: {src.get('kind')}{' (' + src['ref'] + ')' if src.get('ref') else ''}. " if src else "")
                          + f"Transition {i.get('transition_in')}/{i.get('transition_out')}"
-                         + (", subtitles hidden" if hides_subtitles(i) else "") + f". Status: {i['status']}")
+                         + (", subtitles hidden" if hides_subtitles(i, s) else "") + f". Status: {i['status']}")
                 continue
             if i["kind"] == "callout":
                 src = i.get("source") or {}
@@ -486,6 +536,8 @@ def main():
     p = sub.add_parser("init"); p.add_argument("edit"); p.add_argument("--set", nargs="*"); p.add_argument("--force", action="store_true")
     p.add_argument("--scenes-only", action="store_true", help="a promo without footage: a plan without speech, scenes only")
     p.add_argument("--duration", type=float, help="the length of a 'scenes only' video, s (15-25)")
+    p.add_argument("--scenes-voice", action="store_true", help="scenes over a recorded narration (cut.py made voice.wav): "
+                                                               "the plan on its words, the voice off camera")
     p.add_argument("--brand", help="the video's brand (saved to reel.json)")
     p.set_defaults(fn=cmd_init)
     p = sub.add_parser("add"); p.add_argument("edit"); p.add_argument("--kind", choices=list(KINDS), required=True)

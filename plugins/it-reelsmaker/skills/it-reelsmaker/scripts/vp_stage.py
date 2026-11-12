@@ -4,12 +4,26 @@ import shutil, sys
 from pathlib import Path
 
 from reels_common import (CORNER_BOX, FRAMED_RADIUS, FRAMED_SUB_GAP, SUB_BLOCK_H, UI_SAFE, edit_dir, framed_at,
-                          framed_source, framed_sub_area, inside, load_json, safe_slug, save_json, warn)
-from vp_core import (END_CARD_S, editing_plan, finish_of, load_plan)
+                          framed_source, framed_sub_area, inside, load_json, safe_slug, save_json, voice_mode, warn)
+from vp_core import (END_CARD_S, editing_plan, finish_of, load_plan, no_footage)
 from vp_camera import (camera_shots, subtitle_top, subtitles_in)
 from vp_scenes import (hidden_windows, scene_export, scene_keep_entries)
 from vp_callouts import (callout_context, callout_keep_entries, callout_path, callout_width)
 from vp_validate import (cmd_validate)
+
+
+def copy_voice(e, rem, name):
+    """The narration of a "scenes + voice" video -> public/<name>/voice.wav, where props.voice points (refreshed when
+    cut.py rebuilt it: another size or modification time)."""
+    src = e / "voice.wav"
+    if not src.is_file():
+        sys.exit(f"no {src}: cut the narration first (cut.py edit/{e.name})")
+    dst = inside(rem / "public", rem / "public" / name / "voice.wav", "voice copy")
+    st, dt = src.stat(), (dst.stat() if dst.exists() else None)
+    if not dt or dt.st_size != st.st_size or abs(dt.st_mtime - st.st_mtime) > 1:
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(src, dst)
+        print(f"voice: {src} -> public/{name}/voice.wav" + (" (updated)" if dt else ""))
 
 
 def cmd_export(a):
@@ -117,7 +131,8 @@ def cmd_export(a):
         brand = load_json(rem / "src" / "brands" / f"{safe_slug(plan['brand'], 'the plan brand')}.json")
         if not brand:
             sys.exit(f"no src/brands/{plan['brand']}.json: run brand.py stage {plan['brand']} --remotion {a.remotion}")
-        only = plan.get("format") == "scenes-only"
+        only = no_footage(plan)  # no rough cut on screen: "scenes only", "scenes + voice"
+        voice = plan.get("format") == "scenes-voice"  # the narration (voice.wav) is the sound, its words the subtitles
         vid, src_v = rem / "public" / name / "video.mp4", e / "final.mp4"
         if not only and not src_v.exists():
             sys.exit(f"no {src_v}: the rough cut is not built")
@@ -127,12 +142,16 @@ def cmd_export(a):
             vid.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(src_v, vid)
             print(f"video: {src_v} -> public/{name}/video.mp4" + (" (updated)" if dt else ""))
+        if voice:
+            copy_voice(e, rem, name)
         lang = plan["settings"].get("subtitles_lang")
-        subs_cap = None if only or not lang else subtitles_in(e, lang)
+        subs_cap = None if (only and not voice) or not lang else subtitles_in(e, lang)
         # the speech words stay in captions (scenes land on them, the render length is its duration); a translation
         # goes only to the subtitles
         props = {"video": "" if only else f"{name}/video.mp4",
-                 "captions": {"duration": plan["duration"], "segments": [], "words": []} if only else load_json(e / "captions.json"),
+                 "captions": {"duration": plan["duration"], "segments": [], "words": []} if only and not voice
+                 else load_json(e / "captions.json"),
+                 **({"voice": f"{name}/voice.wav"} if voice else {}),
                  **({"subtitleCaptions": subs_cap} if subs_cap else {}),
                  "brand": brand, "inserts": out,
                  "subtitles": a.subtitles or plan["settings"].get("subtitles") or brand.get("subtitles_default") or "accent",
@@ -173,7 +192,7 @@ def cmd_export(a):
             if not mode:
                 warn(f"subtitles '{props['subtitles']}': the kit draws accent, plate and typewriter; accent is used")
             props["subtitles"] = mode or "accent"
-        if not only:  # faces.py audit checks the render against the band it really has
+        if not only or voice:  # faces.py audit checks the render against the band it really has
             # the kit draws at most two lines (Subtitles.tsx): the band is the mode's two-line block from the top, above
             # the UI (T4: the band said 1250-1430 while a three-line phrase reached 1455)
             h = SUB_BLOCK_H.get(props["subtitles"], band[1] - band[0])
@@ -219,8 +238,12 @@ def cmd_export(a):
         props["sceneTone"] = s.get("scene_tone") or (s.get("brand_tone") or {}).get("scene_tone")
         if cover:
             props["cover"] = cover  # the cover is a separate still composition, not in the video's timeline
-        if only:
+        if only and not voice:
             props["subtitles"], props["drift"] = "none", False
+        elif voice:
+            props["drift"] = False
+        if voice_mode(s) != "on_camera":  # the kit keeps the subtitles over full scenes (off_camera); absent: on camera
+            props["voiceMode"] = voice_mode(s)
         if scenes:
             print(f"scenes: {len(scenes)} in props.scenes; subtitles hidden in {len(hide)} window(s)")
         save_json(Path(a.props), props)

@@ -88,6 +88,9 @@ How it is built (checked on real renders):
   - at the end: video and audio start at 0 and have the same duration, otherwise exit code 1.
 Output in edit/<id>/: final.mp4, captions.json (segments src_start/src_end/out_start/out_dur + words on the new
 timeline), edl.json (sources and ranges for speech_mask.py --edl), clips/ (intermediate segments).
+A narration with no picture (every source is sound only: a phone recording, .m4a .wav .mp3 .ogg .opus) is cut by the
+same cut.json into edit/<id>/voice.wav instead of final.mp4 (no look, balance or extract); a second run with nothing
+changed prints "cached" (--force rebuilds). Details: cut_voice.py.
 """
 import argparse, json, math, sys, unicodedata
 from pathlib import Path
@@ -100,6 +103,7 @@ from reels_common import (brand_file, edit_dir, inside, load_config, load_json, 
 FADE = 0.03
 MIN_WORD = 0.08  # s: the shortest word on the subtitle timeline
 LUT_MIX = 0.6
+MIN_VOICE = 1.0  # s: a sound-only source shorter than this is no narration
 REPLAY = 0.2     # s: two pieces of one source overlapping by more than this replay the same speech (a teaser, a restart)
 GAP_MAX = 1.0    # s: a gap this short between two pieces of one run is a removed pause, not a dropped line
 KEEP_CHARS = 48  # characters: a keep phrase longer than this may not fit two subtitle lines (Plate, Accent): named
@@ -148,6 +152,7 @@ def load_cut(e, project, speed_arg=None):
         tr = sv.get("transcript")
         tr = resolve(tr, project, e) if tr else e / "transcripts" / f"{path.stem}.json"
         sources[name] = {"path": path, "speed": sp, "transcript": tr, "info": probe(path)}
+        sound_only_checks(name, path, sources[name]["info"])
     ranges = []
     for k, r in enumerate(cut.get("ranges") or []):
         src = r.get("source") or (next(iter(sources)) if len(sources) == 1 else None)
@@ -158,7 +163,13 @@ def load_cut(e, project, speed_arg=None):
                        "speaker": speaker_of(r), "speakers": speaker_switches(r, k)})
     if not ranges:
         sys.exit("cut.json: no ranges")
-    look = cut.get("look") or {}
+    audio = all(sv["info"].get("w") is None for sv in sources.values())  # a narration: no picture anywhere
+    if not audio and any(sv["info"].get("w") is None for sv in sources.values()):
+        sys.exit("cut.json: the sources mix sound-only files and videos: a narration over footage is not supported yet; "
+                 "cut the narration on its own (its own edit/<id>)")
+    if audio and cut.get("look"):
+        warn("cut.json: look is ignored: the sources are sound only (no picture to color)")
+    look = {} if audio else (cut.get("look") or {})
     grade = (look.get("grade") or "").strip().strip(",")
     correct = (look.get("correct") or "").strip().strip(",")
     for name, chain in (("grade", grade), ("correct", correct)):
@@ -182,16 +193,18 @@ def load_cut(e, project, speed_arg=None):
     for name, sv in sources.items():
         sv["scale"] = scale_filter(sv["info"], scale, name)
     geometry = set()
-    for r in ranges:
+    for r in ([] if audio else ranges):  # a narration has no output geometry
         sv = sources[r["source"]]
         info = sv["info"]
         w, h = (1080, 1920) if sv["scale"] else (info.get("w"), info.get("h"))
         if not w or not h:
             sys.exit("cut.json: cannot determine output geometry")
         geometry.add((w, h, "1:1"))  # video_graph normalizes SAR after scaling
-    if len(geometry) != 1:
+    if not audio and len(geometry) != 1:
         sys.exit("cut.json: mismatched output geometry/SAR across segments")
     extras = cut.get("extract") or {}
+    if audio and extras:
+        sys.exit(f"cut.json: extract {', '.join(extras)}: the sources are sound only, there is no picture to extract")
     for name, x in extras.items():
         extract_path(e, name)
         src = x.get("source") or (next(iter(sources)) if len(sources) == 1 else None)
@@ -203,7 +216,29 @@ def load_cut(e, project, speed_arg=None):
             "fix": fix_map(cut.get("fix")), "fix_at": word_fixes(cut.get("fix_at"), "fix_at", ("to",), sources),
             "retime": word_fixes(cut.get("retime"), "retime", ("start", "end"), sources), "extract": extras,
             "keep": word_fixes(cut.get("keep"), "keep", ("words",), sources),
-            "level": cut.get("level", True) is not False}
+            "level": cut.get("level", True) is not False, "audio_only": audio}
+
+
+def sound_only_checks(name, path, info):
+    """A source with no stream at all (an empty or damaged file) and a sound-only source too short to be a narration
+    stop here with what is wrong with the file (before, a range or geometry error said nothing about it)."""
+    if info.get("w") is None and not info.get("has_audio"):
+        sys.exit(f"cut.json: source {name!r}: {path.name} has no sound and no picture (an empty or damaged file)")
+    if info.get("w") is None and (info.get("dur") or 0) < MIN_VOICE:
+        sys.exit(f"cut.json: source {name!r}: {path.name} is {info.get('dur') or 0:.1f} s long: too short for a video "
+                 f"(a narration of {MIN_VOICE:g} s or more)")
+
+
+def sound_only(e, project):
+    """Every source of cut.json is a file with sound and no picture (a narration): no white balance to measure."""
+    cut = load_json(e / "cut.json")
+    srcs = cut.get("sources") if isinstance(cut, dict) else None
+    if not isinstance(srcs, dict) or not srcs:
+        return False
+    paths = [resolve((sv.get("file") if isinstance(sv, dict) else sv) or "", project, e) for sv in srcs.values()]
+    if not all(p.is_file() for p in paths):
+        return False
+    return all(probe(p).get("w") is None for p in paths)
 
 
 def fix_map(v):
@@ -744,10 +779,12 @@ def main():
     ap.add_argument("--no-level", action="store_true", help="no speech leveling (same as cut.json \"level\": false)")
     ap.add_argument("--no-balance", action="store_true",
                     help="no automatic white balance before the build (same as cut.json \"balance\": false)")
+    ap.add_argument("--force", action="store_true", help="a narration (sound-only sources): rebuild voice.wav even when "
+                                                         "nothing changed")
     a = ap.parse_args()
     project = project_root()
     e = edit_dir(a.edit, project)
-    if not a.dry_run and not a.no_balance:
+    if not a.dry_run and not a.no_balance and not sound_only(e, project):
         auto_balance(e)
     c = load_cut(e, project, a.speed)
     words = load_words(c)
@@ -786,8 +823,15 @@ def main():
         warn(f"ranges {k} and {k + 1} both say «{text}» ({c['ranges'][k]['source']} {ta:.2f} and "
              f"{c['ranges'][k + 1]['source']} {tb:.2f}): an identical run of {JOIN_REPEAT}+ words at adjacent pieces, a "
              f"whole missed take? Keep one take (SKILL.md step 3); a repeat said on purpose stays")
+    if c["audio_only"]:
+        import cut_voice
+        cut_voice.background_warnings(c)
     if a.dry_run:
         return
+    if c["audio_only"]:  # a narration with no picture: edit/<id>/voice.wav instead of final.mp4 (cut_voice.py)
+        sp = speakers_of(captions)
+        return cut_voice.build(c, e, segments, captions, total, {"speakers": sp} if sp else {}, a.speed,
+                               c["level"] and not a.no_level, a.force)
     clips = e / "clips"
     clips.mkdir(exist_ok=True)
     parts = []

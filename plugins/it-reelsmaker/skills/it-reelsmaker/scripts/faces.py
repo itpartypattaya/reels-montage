@@ -595,7 +595,7 @@ def audit_zones(plan):
     have = {k.get("scene") for k in keep if k.get("scene")}
     keep += [k for k in scene_keep_entries(plan) if k["scene"] not in have]
     hidden = [(i["start"], i["start"] + i["dur"]) for i in plan.get("inserts", [])
-              if i.get("kind") == "scene" and i.get("status") == "ready" and i.get("type") != "cover" and hides_subtitles(i)]
+              if i.get("kind") == "scene" and i.get("status") == "ready" and i.get("type") != "cover" and hides_subtitles(i, plan.get("settings"))]
     return keep, hidden + [tuple(h) for h in hidden_windows(plan)]
 
 
