@@ -111,6 +111,23 @@ def test_subtitle_faces_stay_on_their_picture_angle(project):
     assert near(2.15) and all(f == [70, 970, 260, 320] for f in near(2.15))
 
 
+def test_a_face_sample_on_the_join_belongs_to_the_shot_it_starts(project):
+    # a face sample taken exactly at a picture join (2.0 s here; joins land on the 0.25 s sample grid whenever the cut
+    # does) is the next shot's face: before the join it is not on screen, so it must not count there
+    import faces as fc
+    import textcheck as tc
+    from test_board import props
+    e = project / "edit" / "t"
+    samples = [{"t": k * 0.25, "faces": [[400, 400, 280, 360, 0.95] if k * 0.25 < 2.0 else [100, 1000, 200, 260, 0.95]]}
+               for k in range(25)]
+    write_json(e / "faces.json", {"video": "final.mp4", "step": 0.25, "geometry": "cover", "w": 1080, "h": 1920,
+                                  "samples": samples, "filter": {"v": fc.FILTER_V}})
+    near = tc.face_source(e, {}, props(captions=divergent()), FPS)
+    assert near(1.9) and all(f == [370, 370, 340, 420] for f in near(1.9))  # not the 2.0 s sample of the next shot
+    assert near(2.0) and all(f == [70, 970, 260, 320] for f in near(2.0))  # at the join: the new shot's face
+    assert near(1.95) and all(f == [370, 370, 340, 420] for f in near(1.95))
+
+
 def test_picture_defects_are_sorted_by_the_picture_source(project, monkeypatch):
     import defects
     import faces as fc
