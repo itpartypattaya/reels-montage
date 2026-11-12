@@ -2,6 +2,20 @@
 
 What changed in IT Reelsmaker, written for the people who use it. The newest version is on top. The skill shows a short “What's new” note from this file once, on the first edit after an update.
 
+## 1.25.0
+
+- **Scenes over your recorded narration.** Record the voice on a phone (sound only), cut it with the same
+  `cut.json` as a video, and get an explainer of designed scenes with your voice and its subtitles
+  (`visual_plan.py init edit/<id> --scenes-voice`).
+- **A sound-only recording is cut like a video:** pauses, takes, speed, speech leveling and the edge check
+  work on m4a, wav, mp3, ogg and opus; a second run with nothing changed is cached; a file that is too short
+  or empty, and music under the voice, are named instead of failing later.
+- **New setting `reel.json → voice`** (`on_camera` by default, `off_camera` for a narration): with the voice
+  off camera the subtitles stay on over full scenes and the scene text keeps above them.
+- **Kit 1.15.0** (`kit.py update`): the kit plays the narration and keeps the subtitle band free over full
+  scenes.
+- **Mastering refuses a “scenes + voice” render that lost its voice** instead of mastering it as a silent promo.
+
 ## 1.24.0
 
 - **A P0 defect that survives two rounds of fixes now stops the preview** with a blocker report instead of
