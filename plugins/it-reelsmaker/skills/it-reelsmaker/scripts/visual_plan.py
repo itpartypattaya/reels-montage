@@ -112,8 +112,8 @@ from vp_callouts import (CALLOUT, CALLOUT_AT_ONCE, CALLOUT_GAP_S, CALLOUT_INK, C
                          callout_path, callout_side, callout_span, callout_times, callout_width, check_callouts,
                          drift_zoom, hook_lines, label_contrast, motion_note, parse_keys, path_at, path_frames,
                          path_issue, person_path, picture_motion, screen_to_frame, track_key, zoom_at)  # noqa: F401
-from vp_validate import (cmd_validate, follow_rough_cut, profile_issues)  # noqa: F401
-from vp_stage import (cmd_export)  # noqa: F401
+from vp_validate import (cmd_validate, follow_rough_cut, profile_issues, voice_issues)  # noqa: F401
+from vp_stage import (cmd_export, copy_voice)  # noqa: F401
 from vp_shade import (SHADE_LINES, SHADE_TARGET, SHADE_X, cmd_shade)  # noqa: F401
 
 
