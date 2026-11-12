@@ -131,9 +131,10 @@ def face_source(e, plan, props, fps):
     def faces_at(t):
         if t >= dur or any(a - 1e-6 <= t <= b + 1e-6 for a, b in hidden):
             return []
-        lo = max([t - st] + [c for c in cuts if c <= t + 1e-6])
-        hi = min([t + st] + [c - 1e-6 for c in cuts if c > t + 1e-6])
-        boxes = [f[:4] for x in fdata["samples"] if lo - 1e-6 <= x["t"] <= hi + 1e-6 for f in x["faces"]]
+        lo = max([t - st] + [c for c in cuts if c <= t + 1e-6])  # a sample at the join is the new shot's: kept
+        nxt = min([c for c in cuts if c > t + 1e-6], default=None)  # the next join: its sample is the next shot's
+        boxes = [f[:4] for x in fdata["samples"] if lo - 1e-6 <= x["t"] <= t + st + 1e-6
+                 and (nxt is None or x["t"] < nxt - 1e-6) for f in x["faces"]]
         cam = vp.camera_at(shots, t, dur, fps, view) if shots else None
         return [fc.grow(b, CHECK_MARGIN) for b in fc.screen_faces(boxes, cam, win)]  # the checks' tolerance
     return faces_at

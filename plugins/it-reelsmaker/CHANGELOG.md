@@ -2,6 +2,11 @@
 
 What changed in IT Reelsmaker, written for the people who use it. The newest version is on top. The skill shows a short “What's new” note from this file once, on the first edit after an update.
 
+## 1.25.1
+
+- **Subtitles over a change of camera angle are checked against the right face.** A face measured exactly at the
+  change belonged to both angles, so the check could warn about a face that is not on screen yet.
+
 ## 1.25.0
 
 - **The rough cut records its picture apart from its sound.** `captions.json` and `edl.json` get the picture
