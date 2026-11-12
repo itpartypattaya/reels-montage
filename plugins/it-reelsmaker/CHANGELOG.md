@@ -2,6 +2,11 @@
 
 What changed in IT Reelsmaker, written for the people who use it. The newest version is on top. The skill shows a short “What's new” note from this file once, on the first edit after an update.
 
+## 1.28.1
+
+- **Kit 1.17.1** (`kit.py update`): the kit's type check passes again (1.28.0 left an unused import in
+  `AtlasMascot.tsx`, which a strict `tsc` refuses). Nothing changes in your videos.
+
 ## 1.28.0
 
 - **A mascot from your own character picture.** `mascot_atlas.py atlas <brand> <sheet|folder>` cuts a sheet of

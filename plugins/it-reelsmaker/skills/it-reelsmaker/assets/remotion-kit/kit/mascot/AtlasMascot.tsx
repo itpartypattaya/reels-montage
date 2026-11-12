@@ -5,7 +5,6 @@
 // A pose change is a frame switch: a picture has no in-between drawings to interpolate.
 // The kit reads no files itself: the stage puts rig.json's content into the props (props.mascot.rig) and copies
 // atlas.png into public/ (props.mascot.atlas); the layer calls atlasMascot(rig, atlas) once.
-import React from "react";
 import { Img, staticFile } from "remotion";
 
 // The mascot contract: kit/mascot/types.ts (the module made here is a MascotModule the layer places).
