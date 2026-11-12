@@ -2,6 +2,23 @@
 
 What changed in IT Reelsmaker, written for the people who use it. The newest version is on top. The skill shows a short “What's new” note from this file once, on the first edit after an update.
 
+## 1.24.0
+
+- **A P0 defect that survives two rounds of fixes now stops the preview** with a blocker report instead of
+  passing “with warnings” (1.23.0 let it through).
+- **Sound effects without a library.** Short pop, thud, click, ding, whoosh, rise and marker sounds are
+  synthesized in code with ffmpeg, from recipes in the skill: no files to download, no license to check.
+- **Sound effects sit better:** only events you can see get a sound, the sound lands one frame after the
+  picture, and a repeated sound alternates two or three takes instead of the same whoosh on every cut.
+- **Music starts from its fullest part.** With no single moment to land the track on, the agent finds the
+  stretch of the track as long as your video with the most energy and starts there, not on a quiet intro.
+- **Text behind the person is measured on the cut-out itself,** over every frame of the word's time, so a
+  head that moves no longer covers more of the word than the rule allows.
+- **Experimental: big text over video picks its blend from the brightness under it** (light on dark, dark
+  on light, a backing when the picture changes under the word). Subtitles and the marker bar are unchanged.
+- **A series keeps a log of your decisions,** so a choice made on one clip reaches the next ones even when
+  each clip is finished in a fresh conversation.
+
 ## 1.23.0
 
 - **The agent reviews its own render before you see it.** Notes come as “time · where · problem → fix” with
