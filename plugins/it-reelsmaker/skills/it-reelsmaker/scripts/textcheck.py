@@ -43,6 +43,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import board as bd  # noqa: E402
+from pic_track import source_changes  # noqa: E402
 from reels_common import CHECK_MARGIN, edit_dir, load_json, save_json, ui_safe  # noqa: E402
 
 if hasattr(sys.stdout, "reconfigure"):
@@ -124,9 +125,7 @@ def face_source(e, plan, props, fps):
     win = fc.window(fdata)
     dur = float(props["captions"]["duration"])
     hidden = fc.covered(plan)
-    cuts = sorted(g["out_start"] for p, g in zip(props["captions"].get("segments") or [],
-                                                  (props["captions"].get("segments") or [])[1:])
-                  if g.get("source") != p.get("source"))
+    cuts = source_changes(props["captions"])  # the picture's angle changes (pic_track.py), not the sound's joins
     st = fdata.get("step", 0.25)
 
     def faces_at(t):

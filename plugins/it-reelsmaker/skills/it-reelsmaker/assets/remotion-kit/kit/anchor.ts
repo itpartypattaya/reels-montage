@@ -8,8 +8,19 @@ export type Shot = { t: number; z: number; cx: number; cy: number; drift?: numbe
 export type Cam = { z: number; cx: number; cy: number; blur: number };
 // the camera's clamp geometry: the framed window and the video's cover in it; null — the whole 1080×1920 frame
 export type CamView = { win: Box; video: Box } | null;
-// a span of the rough cut (captions.json segments): the drift alternates its direction by i
+// a span of the rough cut's PICTURE (a picture shot; captions.json shots, or segments in a cut made before them):
+// the drift alternates its direction by i
 export type DriftSegment = { i: number; out_start: number; out_dur: number };
+// a picture shot (scripts/pic_track.py): what is on screen, apart from the sound segments; never a camera Shot
+export type PictureShot = DriftSegment & {
+  kind?: "video" | "photo" | "fill"; source?: string | null; src_start?: number; src_end?: number; speed?: number;
+  move?: string; look?: string | null;
+};
+
+/** The rough cut's picture track, as pic_track.pic_shots reads it: captions.shots when the key exists (an empty list
+ *  means no picture), else the segments of a cut made before the picture track. */
+export const picShots = (captions: { segments?: DriftSegment[] | null; shots?: PictureShot[] | null }): PictureShot[] =>
+  "shots" in captions ? [...(captions.shots ?? [])] : (captions.segments ?? []).map((g) => ({ ...g, kind: "video" as const }));
 
 export const WHIP = 7; // frames
 export const WHIP_BLUR = 6; // px on screen at the whip's peak (camera.md), whatever the zoom

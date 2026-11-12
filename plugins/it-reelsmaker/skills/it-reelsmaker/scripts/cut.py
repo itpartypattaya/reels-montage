@@ -87,13 +87,15 @@ How it is built (checked on real renders):
     most; details in level.py. The audio before leveling stays in clips/audio_only.m4a;
   - at the end: video and audio start at 0 and have the same duration, otherwise exit code 1.
 Output in edit/<id>/: final.mp4, captions.json (segments src_start/src_end/out_start/out_dur + words on the new
-timeline), edl.json (sources and ranges for speech_mask.py --edl), clips/ (intermediate segments).
+timeline; shots: the picture track, pic_track.py, a copy of the segments while the picture is the sound's), edl.json
+(sources and ranges for speech_mask.py --edl, the same shots), clips/ (intermediate segments).
 """
 import argparse, json, math, sys, unicodedata
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from level import describe as describe_level, level_audio
+from pic_track import copy_shots
 from reels_common import (brand_file, edit_dir, inside, load_config, load_json, probe, project_root, run, safe_slug, save_json,
                           significant, speaker_of, take_words, utf8_stdio, warn)
 
@@ -803,6 +805,9 @@ def main():
     for g in segments:
         for k in ("_s", "_e", "_n", "_fps"):
             g.pop(k)
+    # the picture track (pic_track.py): the sound segments stay the sound; while no picture of its own is put over the
+    # sound, the picture shots are a copy of them and the rough cut has no picture_id
+    shots = copy_shots(segments)
     speeds = {n: sv["speed"] for n, sv in c["sources"].items()}
     look = ", ".join(filter(None, [c["correct"], f"haldclut {Path(c['lut']).name} {round(c['lut_mix'] * 100)}%" if c["lut"] else "",
                                    c["grade"]]))
@@ -810,8 +815,8 @@ def main():
                                "speed": c["speed"], "speeds": speeds, "grade": look or "none",
                                "ranges": [{"source": g["source"], "start": g["src_start"], "end": g["src_end"],
                                            "speed": g["speed"], "beat": g["beat"]} for g in segments],
-                               "total_duration_s": round(total, 3)})
-    save_json(e / "captions.json", {"duration": round(total, 3), "segments": segments, "words": captions,
+                               "shots": shots, "total_duration_s": round(total, 3)})
+    save_json(e / "captions.json", {"duration": round(total, 3), "segments": segments, "shots": shots, "words": captions,
                                     **({"speakers": speakers_of(captions)} if speakers_of(captions) else {}),
                                     **({"leveling": leveling} if leveling else {})})
     problems = check_final(e / "final.mp4", c["fps"], expected_frames)
