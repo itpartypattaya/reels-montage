@@ -333,3 +333,32 @@ def test_two_slugs_alike_get_two_names_in_the_registry(project):
     reg = (rem / "src" / "gen" / "mascots.ts").read_text(encoding="utf-8")
     names = re.findall(r"^import \* as (\w+) from", reg, re.M)
     assert len(names) == 2 and len(set(names)) == 2, reg
+
+
+@needs_ffmpeg
+def test_an_atlas_mascot_reaches_the_kit_with_its_rig(project):
+    # references/mascot-atlas.md: the kit reads no files while it renders, so stage puts rig.json's content into
+    # props.mascot.rig (the atlas image stays a path inside public/), and the kit's one place for the module
+    # (mascotModule) draws kind "atlas" with the atlas renderer instead of drawing nothing
+    e, rem = mascot_project(project)
+    d = project / "brands" / "acme" / "assets" / "mascot"
+    pose = {"cell": [0, 0, 400, 520], "offset": [0, 0], "eyes": [[170, 160], [230, 160]], "mouth": [200, 230],
+            "mouthW": 40, "skin": "#f2c9a0", "ink": "#222222"}
+    rig = {"atlas": "atlas.png", "width": 800, "height": 520, "symmetric": False, "box": [400, 520],
+           "anchor": [200, 170], "poses": {"neutral": pose, "palm": {**pose, "cell": [400, 0, 400, 520]}}}
+    write_json(d / "rig.json", rig)
+    (d / "atlas.png").write_bytes(b"\x89PNG\r\n\x1a\n")
+    run_script("brand.py", "mascot", "acme", "--atlas", "assets/mascot/rig.json", cwd=project)
+    run_script("mascot.py", "plan", "edit/4821", "--pose", "word:resume#1=palm", cwd=project)
+    run_script("mascot.py", "mouth", "edit/4821", cwd=project)
+    run_script("brand.py", "stage", "acme", "--remotion", rem, cwd=project)
+    (e / "final.mp4").write_bytes(b"a rough cut")
+    run_script("visual_plan.py", "stage", "edit/4821", "--remotion", rem, "--props", rem / "props.json", cwd=project)
+    mp = json.loads((rem / "props.json").read_text(encoding="utf-8"))["mascot"]
+    assert mp["kind"] == "atlas" and mp["atlas"] == "brands/acme/mascot/atlas.png"
+    assert isinstance(mp["rig"], dict) and mp["rig"]["poses"]["palm"]["cell"] == [400, 0, 400, 520]
+    assert mp["rig"]["anchor"] == [200, 170] and mp["rig"]["symmetric"] is False
+    layer = (CORE.parent / "assets" / "remotion-kit" / "kit" / "mascot" / "MascotLayer.tsx").read_text(encoding="utf-8")
+    assert 'from "./AtlasMascot"' in layer and "atlasMascot(" in layer
+    atlas = (CORE.parent / "assets" / "remotion-kit" / "kit" / "mascot" / "AtlasMascot.tsx").read_text(encoding="utf-8")
+    assert 'from "./types"' in atlas and "export type MascotFrame" not in atlas

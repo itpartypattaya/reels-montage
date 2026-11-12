@@ -39,7 +39,7 @@ export const render = (f: MascotFrame) => <svg width={520} height={480}>…</svg
 
 **Poses.** The dictionary: `neutral` (rest, the start of every track), `talk` (a small open gesture while explaining), `point_left` and `point_right` (at something on that side of the screen), `point_up` (at something above), `palm` (presenting), `think`, `surprise`, `celebrate`, `shrug`, `wink`. A mascot needs `neutral`; a pose it lacks is drawn by its stand-in and validate says so: `point_right` ↔ `point_left` mirrored (only with `--symmetric`, else `palm`), `point_up` → `palm`, `palm` → `talk`, `think` → `talk`, `surprise` ↔ `celebrate`, `shrug` → `palm`, `talk` and `wink` → `neutral`, anything else → `neutral`. A mirrored stand-in turns the whole figure at the start of its change (a turn, not a blend): draw the pose itself when the mascot points right often.
 
-**Kinds.** `drawn` (this page) or `atlas` (a PNG atlas of a ready character picture cut by `mascot.py atlas`; `brand.py mascot <slug> --atlas assets/mascot/rig.json`, stage copies the rig and the image into `public/brands/<slug>/mascot/` like the logos; the kit plays it once its atlas renderer is in, `MascotLayer.tsx → mascotModule`).
+**Kinds.** `drawn` (this page) or `atlas` (a PNG atlas of a ready character picture cut by `mascot.py atlas`; `brand.py mascot <slug> --atlas assets/mascot/rig.json`, stage copies the rig and the image into `public/brands/<slug>/mascot/` like the logos; `visual_plan.py stage` puts the rig's content into `props.mascot.rig` and the kit draws it with `kit/mascot/AtlasMascot.tsx` from `MascotLayer.tsx → mascotModule`; `references/mascot-atlas.md`).
 
 ## How Claude draws a brand mascot
 
@@ -57,7 +57,7 @@ export const render = (f: MascotFrame) => <svg width={520} height={480}>…</svg
 
 **The mouth** (`mascot.py mouth`): per frame of the kit's grid the RMS of the samples from `round(f·sr/fps)` to `round((f+1)·sr/fps)` (no drift over a minute); speech frames are 10 dB over the noise floor (measured between the words of `captions.json` when it has words, else on the quietest tenth of the track; with no pauses at all, −50 dBFS) and inside a word when there are words; the level is normalized by the 98th percentile of the speech frames only (silence and one loud click do not squash it), smoothed [1, 2, 1]/4, opened from 0.08 to fully at 0.63; every frame that is not speech is closed. `mouth.json` keeps the frame rate, the frame count (round half up, as the kit counts) and stamps of the track and of the words' times (a new transcript of the same audio makes it stale too).
 
-**`props.mascot`** (stage): `{kind, module, [rig, atlas], x, y, scale, facing, from, to, frames}`; `frames` are entries `{f, pose, prev, k, open, blink, [facing]}`, each holding until the next one, written only where a value changes; the kit's `MascotLayer` finds the entry of the frame and only plays it. The mouth is closed outside `speaks` and after the narration ends.
+**`props.mascot`** (stage): `{kind, module, [rig, atlas], x, y, scale, facing, from, to, frames}` (an atlas: `rig` is the content of `rig.json`, `atlas` the image's path inside `public/`); `frames` are entries `{f, pose, prev, k, open, blink, [facing]}`, each holding until the next one, written only where a value changes; the kit's `MascotLayer` finds the entry of the frame and only plays it. The mouth is closed outside `speaks` and after the narration ends.
 
 ## Motion
 

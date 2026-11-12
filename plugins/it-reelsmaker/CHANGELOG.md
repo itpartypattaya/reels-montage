@@ -2,6 +2,19 @@
 
 What changed in IT Reelsmaker, written for the people who use it. The newest version is on top. The skill shows a short “What's new” note from this file once, on the first edit after an update.
 
+## 1.28.0
+
+- **A mascot from your own character picture.** `mascot_atlas.py atlas <brand> <sheet|folder>` cuts a sheet of
+  poses (a grid, or a folder of `<pose>.png` with optional talk and blink frames) into an atlas, a rig and a
+  check sheet in the brand's folder, and prints the `brand.py mascot` command to save it.
+- **The background goes, the character stays.** A transparent picture is kept as drawn; a flat background is
+  removed from the edges in, so white eyes on a white background survive; background enclosed by the character
+  is numbered on the check sheet and removed only with `--holes`; a gradient or photo background is refused.
+- **The head does not jump between poses:** every pose is scaled and moved so the head lands on one anchor;
+  `check <brand> --fix` places them again after you correct the eyes in the rig.
+- **Kit 1.17.0** (`kit.py update`): the kit draws the atlas mascot, with a drawn talk frame or a mouth over
+  the picture and a blink; a one-sided picture is never shown mirrored.
+
 ## 1.27.0
 
 - **Brand mascot (new, opt-in).** A character drawn in code in the brand's colors stands beside the scenes,

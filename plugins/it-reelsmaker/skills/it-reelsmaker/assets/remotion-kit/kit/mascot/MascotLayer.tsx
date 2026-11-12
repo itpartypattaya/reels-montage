@@ -6,13 +6,14 @@
 import React from "react";
 import { Easing, interpolate, useCurrentFrame, useVideoConfig } from "remotion";
 import type { MascotFrame, MascotModule } from "./types";
+import { atlasMascot, type AtlasRig } from "./AtlasMascot";
 
 /** One entry of the plan: it holds from frame f until the next entry (stage writes an entry only where a value changes). */
 export type MascotPlanFrame = { f: number; pose: string; prev: string; k: number; open: number; blink: boolean; facing?: 1 | -1 };
 export type MascotProps = {
   kind: "drawn" | "atlas";
   module: string; // the brand slug: the key in src/gen/mascots.ts (drawn)
-  rig?: string; // atlas: rig.json inside public/ (brand.py stage copies it)
+  rig?: AtlasRig; // atlas: rig.json's content (visual_plan.py stage reads it; the kit reads no files while rendering)
   atlas?: string; // atlas: the atlas image inside public/
   x: number; // the anchor on screen, px
   y: number;
@@ -28,10 +29,21 @@ const IN_FRAMES = 10;
 const OUT_FRAMES = 8;
 const clamp = { extrapolateLeft: "clamp", extrapolateRight: "clamp" } as const;
 
-/** The module that draws this mascot. kind "atlas" (a PNG atlas cut by mascot.py atlas) plugs in HERE: until its
- *  renderer is part of the kit, an atlas mascot draws nothing. */
-export const mascotModule = (p: MascotProps, modules: Record<string, MascotModule>): MascotModule | null =>
-  p.kind === "drawn" ? modules[p.module] ?? null : null;
+// one atlas module per rig object: the props do not change during a render, the module is made once
+const atlasModules = new WeakMap<AtlasRig, MascotModule>();
+
+/** The module that draws this mascot: a drawn module from src/gen/mascots.ts, or the PNG atlas cut by mascot_atlas.py
+ *  (AtlasMascot.tsx) from the rig's content and the atlas image in public/. */
+export const mascotModule = (p: MascotProps, modules: Record<string, MascotModule>): MascotModule | null => {
+  if (p.kind === "drawn") return modules[p.module] ?? null;
+  if (p.kind !== "atlas" || !p.rig || typeof p.rig !== "object" || !p.rig.poses) return null;
+  let m = atlasModules.get(p.rig);
+  if (!m) {
+    m = atlasMascot(p.rig, p.atlas);
+    atlasModules.set(p.rig, m);
+  }
+  return m;
+};
 
 /** The entry that holds on frame f (the last one with entry.f ≤ f), by binary search. */
 export const planAt = (frames: MascotPlanFrame[], f: number): MascotPlanFrame | null => {

@@ -416,6 +416,13 @@ def issues(e, plan, s, doc, brand, bdir, fps=30):
 
 # ── stage ──
 
+def atlas_rig(brand, bdir):
+    """rig.json of the brand's atlas mascot, its content: the kit reads no files while it renders (AtlasMascot.tsx), so
+    stage hands it the rig itself; the atlas image stays a path inside public/ (brand.py stage copies it)."""
+    m = (brand or {}).get("mascot") or {}
+    return load_json(brand_file(m.get("rig"), bdir), None)
+
+
 def props_of(e, plan, s, doc, brand, bdir, staged, fps=30):
     """props.mascot for the kit, or (None, why) when it cannot be staged."""
     m = plan.get("mascot")
@@ -438,6 +445,7 @@ def props_of(e, plan, s, doc, brand, bdir, staged, fps=30):
     facing = -1 if m.get("facing") == -1 else 1
     out = {"kind": sm["kind"], "module": sm.get("module") or plan.get("brand"),
            **{k: sm[k] for k in ("rig", "atlas") if sm.get(k)},
+           **({"rig": atlas_rig(brand, bdir)} if geo["kind"] == "atlas" else {}),
            "x": x, "y": y, "scale": sc, "facing": facing, "from": t0, "to": t1,
            "frames": frames_of(m, plan, s, geo, opens, fps, sp)}
     ch = changes(m, geo)
