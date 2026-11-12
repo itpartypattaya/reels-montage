@@ -352,7 +352,7 @@ Each only if the brief chose it; numbers, layouts, risks and which ones are not 
 ## 11. Your own library of sounds, music and icons (optional)
 
 An `{{ASSETS_DIR}}` folder with sounds, music, icons and memes, used through a catalog (sound start, loudness, background, brand verdict, overview sheets, a meme annotation; `library_catalog.py --dir {{ASSETS_DIR}}`), not by browsing files: `references/library.md`. In every video:
-- sound effects: no more than one every 2–3 s, placed by the start of the sound, not of the file, 12–18 dB below voice peaks;
+- sound effects: only for what is seen, no more than one every 2–3 s, placed by the start of the sound, not of the file, one frame after the picture, 12–18 dB below voice peaks; no library → short sounds synthesized in code with ffmpeg (recipes in `references/library.md`);
 - icons: flat pictograms; service logos only when the service is named; `{{FORBIDDEN_IMAGES}}`, celebrities and film stills are a no; one at a time, 180–320 px, not on the face;
 - **music: license first** ⟨YOURS: `{{ACCOUNT_TYPE}}`⟩: a burned-in track needs a commercial license; the safe default is a render without music and a track picked in the app when publishing.
 
