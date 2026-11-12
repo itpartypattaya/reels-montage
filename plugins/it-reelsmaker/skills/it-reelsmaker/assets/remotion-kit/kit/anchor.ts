@@ -22,6 +22,37 @@ export type PictureShot = DriftSegment & {
 export const picShots = (captions: { segments?: DriftSegment[] | null; shots?: PictureShot[] | null }): PictureShot[] =>
   "shots" in captions ? [...(captions.shots ?? [])] : (captions.segments ?? []).map((g) => ({ ...g, kind: "video" as const }));
 
+/** The shot carries a motion of its own (move other than "none"): the virtual camera and the drift are off on it
+ *  (pic_track.own_motion). A segment of a cut made before the picture track has no move. */
+export const ownMotion = (g: DriftSegment | PictureShot | null | undefined): boolean =>
+  !!g && ((g as PictureShot).move ?? "none") !== "none";
+
+/** The purpose of each stretch (pic_track.purposes, references/no-speaker.md): "speaker" — the sound source's own video
+ *  at the seconds of its sound with the voice on camera; "graphic" — a fill shot (the style's background); "picture" —
+ *  everything else (voice-over shots, other clips, photos). */
+export type Purpose = "speaker" | "picture" | "graphic";
+type SoundSegment = DriftSegment & { source?: string | null; src_start?: number; speed?: number };
+const SYNC = 1 / 30 + 0.002;
+const speaking = (g: PictureShot, segments: SoundSegment[]): boolean =>
+  (g.kind ?? "video") === "video" && segments.some((s) => s.source === g.source
+    && g.out_start >= s.out_start - 1e-6 && g.out_start < s.out_start + s.out_dur - 1e-6
+    && Math.abs((s.src_start ?? 0) + (g.out_start - s.out_start) * (s.speed || 1) - (g.src_start ?? 0)) <= SYNC);
+export const picturePurposes = (captions: { segments?: SoundSegment[] | null; shots?: PictureShot[] | null },
+  voiceMode?: string | null): { start: number; end: number; purpose: Purpose }[] => {
+  const segs = captions.segments ?? [];
+  return picShots(captions).sort((a, b) => a.out_start - b.out_start).map((g) => ({
+    start: g.out_start, end: Math.round((g.out_start + g.out_dur) * 1000) / 1000,
+    purpose: g.kind === "fill" ? "graphic" : (voiceMode ?? "on_camera") === "on_camera" && speaking(g, segs) ? "speaker" : "picture",
+  }));
+};
+/** The picture shot on screen at second t (a join belongs to the shot it starts; past the end, the last one). */
+export const picShotAt = (shots: PictureShot[], t: number): PictureShot | undefined => {
+  const hit = shots.filter((g) => g.out_start - 1e-6 <= t && t < g.out_start + g.out_dur - 1e-6);
+  return hit.length ? hit[hit.length - 1] : shots[shots.length - 1];
+};
+/** A scene starting at second t is drawn on the style's background (a fill shot): it is the whole picture there. */
+export const onGraphic = (shots: PictureShot[], t: number): boolean => picShotAt(shots, t)?.kind === "fill";
+
 export const WHIP = 7; // frames
 export const WHIP_BLUR = 6; // px on screen at the whip's peak (camera.md), whatever the zoom
 export const DRIFT = 0.05; // the template's slow push-in per span when there is no camera
@@ -64,7 +95,7 @@ export const cameraAt = (shots: Shot[], t: number, end: number, fps: number, vie
  *  1 → 1.05 on even spans and back on odd ones; past the last span, the last one. */
 export const driftZoom = (segments: DriftSegment[], t: number): number => {
   const seg = segments.find((g) => t >= g.out_start && t < g.out_start + g.out_dur) ?? segments[segments.length - 1];
-  if (!seg) return 1;
+  if (!seg || ownMotion(seg)) return 1; // a shot with its own move: one motion layer, no drift on it
   const k = unit(t, seg.out_start, seg.out_start + Math.max(1e-6, seg.out_dur));
   return seg.i % 2 === 0 ? 1 + DRIFT * k : 1 + DRIFT - DRIFT * k;
 };

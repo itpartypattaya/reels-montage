@@ -2,11 +2,12 @@
 name: it-reelsmaker
 description: >
   Edit vertical short videos (Reels, Shorts, TikTok) from talking-head, two-person or horizontal footage, cut a long
-  recording (podcast, webinar, interview) into a series of clips, or make a brand promo with no footage: local
+  recording (podcast, webinar, interview) into a series of clips, lay voice notes over your shots, or
+  make a brand promo with no footage: local
   transcription, pauses and retakes cut by audio, virtual camera and on-brand motion graphics in Remotion, word-timed
   subtitles and their translation, designed scenes drawn in code (hook, quote, number, list, CTA, cover), optional
-  inserts (B-roll, code scenes, memes), face-aware layout, −14 LUFS mastering, 1080×1920 render. Brand profiles with a
-  tone. Use when asked to edit, cut, assemble or fix a vertical video: “edit a reel”, “make a Reel/Short from
+  inserts (B-roll, code scenes, memes), face-aware layout, −14 LUFS mastering, 1080×1920 render.
+  Use when asked to edit, cut, assemble or fix a vertical video: “edit a reel”, “make a Reel/Short from
   IMG_xxxx.MOV”, “clips from this podcast”, “add subtitles / a hook / an end card / a cover / B-roll”, “translate the
   subtitles”, “a promo without footage”, “the video jumps back”, fixes to a finished video. Not for editing a long
   horizontal video as a whole, format conversion or compression. Needs ffmpeg, Node.js with Remotion and Python.
@@ -167,6 +168,11 @@ Three tools in sequence: **transcription and cut plan** (locally faster-whisper,
 File layout per video: `{{PROJECT_ROOT}}/edit/<id>/` with `cut.json`, `reel.json`, `project.md` (work log · strategy · brief · decisions · open items), `transcripts/`, `final.mp4`, `captions.json`; in Remotion, `public/<id>/video.mp4`, plus `src/Reel<id>.tsx` only when the video needs its own composition (the kit's `ReelKit` with props covers the rest). `<id>` is the source file number; a promo without footage gets a short name (`promo-<brand>`) and skips steps 1–6 (`references/scenes.md`, the “scenes only” format). The next video of a series starts from the series preset (step 0), not from a copy of the last folder.
 
 **A long recording → a series of clips** (a podcast, webinar or interview of 10–90 min): `longform.py` and `references/longform.md`. One brief for the series; the whole recording transcribed once (`transcribe.py`, in the background) or the subtitles the person has (`longform.py import`); the agent reads it part by part (`outline`) and writes one card per clip by its first and last words, with no quota and no virality score; `check` finds and checks the pieces; the person approves the list (`sheet`, one stop); `extract` turns each approved card into an ordinary folder `edit/<series>-<id>/` with its pieces as files and their transcripts, finished from step 5 on, each clip in a fresh context, one render at a time; its framed camera is proposed by `longform.py camera` after `faces.py scan` (who sits where asked once per series; review the shots, `--write`).
+
+**A voice-over or a mixed video** (a voice note recorded on the phone over silent wide shots, clips or photos; a talking
+head with a stretch of voice-over; a text ending after the voice): the same folder and `cut.json`, the sound cut by
+`ranges` as usual and the picture in `picture` blocks, built by one `cut.py` run; color per place, strangers marked and
+hidden (a blocking check), the speaker's rules held only over the speaker: `references/no-speaker.md`.
 
 **Workflow** (`reel.json → workflow`, `reelcfg.py save edit/<id> --set workflow=…`, the project default `standard`) sets how often the person is asked before the master. Asked for “quickly”, “as usual”, or a series → `quick`; a new brand, an ad or a first video for a client → `standard` or `full`.
 
@@ -433,6 +439,7 @@ Several agents at once in one editing folder are normal: write JSON (video setti
 | `references/profiles.md` | step 0 and before showing the draft: the video's profile and content format, their defaults under the brand tone, the brand's own tone for a profile, each profile's checklist with sources |
 | `references/structure.md` | step 3a: start, middle and ending mechanics (teaser, slow start, proof first, beat before the payoff, re-hook, payoff with a hold, callback, loop), how to offer them, a 20–30 s video in beats |
 | `references/examples.md` | steps 5, 9 and 10: what the cut plan, the self-review notes and the delivery report look like |
+| `references/no-speaker.md` | step 0 and 6 when the voice is not a person speaking in the frame: a voice-over over clips and photos, a talking head with a voice-over stretch, the `picture` block, color per place, strangers, the two-track contract (sound and picture apart) |
 | `references/longform.md` | a long recording → a series of clips: the brief, transcript or subtitles, reading by parts, the cards, the checks, the list, extract, the framed camera proposal, cost and limits |
 | `references/playbook.md` | before the plan and at delivery: measurement vs taste, trust levels, the project playbook cards, conflicts, “Supports”, learning from a guide or a video, turning corrections into rules |
 | `references/pitfalls.md` | something went wrong in steps 6–9: symptom → cause → what to do |

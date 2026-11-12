@@ -25,6 +25,7 @@ picture" and is never replaced by the segments.
 import hashlib
 
 SHOT_KEYS = ("i", "kind", "source", "src_start", "src_end", "speed", "out_start", "out_dur", "move", "look")
+MOVES = ("none", "still", "push", "pull", "pan")  # a shot's own motion (cut.json picture, footage.prepare)
 CONVENTIONAL = ("photo", "fill")  # kinds whose source seconds are conventional coordinates, not time
 
 
@@ -58,7 +59,8 @@ def follows_sound(cap):
     cap = cap or {}
     if "shots" not in cap:
         return True
-    want = copy_shots(cap.get("segments"))
+    # a narration cut (cut_voice.py, captions.json -> voice) copies its sound-only segments as the background
+    want = copy_shots(cap.get("segments"), {g.get("source") for g in cap.get("segments") or []} if cap.get("voice") else ())
     have = cap.get("shots") or []
     return len(want) == len(have) and all({k: a.get(k) for k in SHOT_KEYS} == {k: b.get(k) for k in SHOT_KEYS}
                                           for a, b in zip(want, have))
@@ -102,3 +104,98 @@ def shots_of_words(words, cap):
 def maps_source_time(g):
     """Can a source second land in this shot? Not on a photo or a background: their seconds are conventional."""
     return g.get("kind", "video") not in CONVENTIONAL
+
+
+# --- the purpose of each stretch and where each rule applies (references/no-speaker.md) -----------------------------
+# speaker  the person speaking is on screen: the voice is on camera and the shot is the sound source's own video at
+#          the seconds of its sound
+# picture  the main picture with no one speaking on screen: voice-over shots, other clips, photos
+# graphic  a designed scene is the picture: a "fill" shot (the style's background), the whole "scenes only" video
+# A scene, a B-roll or a meme laid over a speaker stretch is an insert: the rules of the speaker column hold for it.
+PURPOSES = ("speaker", "picture", "graphic")
+ALL = frozenset(PURPOSES)
+RULES = {
+    "coverage": {"speaker"},          # the insert budget, coverage_max (vp_validate)
+    "full_in_a_row": {"speaker"},     # no two full scenes in a row (vp_scenes): the face disappears for too long
+    "full_scenes_max": {"speaker"},   # the brand tone's ceiling of full scenes (vp_scenes.tone_issues)
+    "hook_full": {"speaker"},         # a full hook at most hook_full_max_s (vp_scenes)
+    "face_visible": {"speaker"},      # the speaker's face stays on screen
+    "text_off_faces": {"speaker", "picture"},
+    "ending": set(ALL),               # only the ending / CTA in the last seconds (a structure rule, not the face's)
+    "reading": set(ALL), "tone": set(ALL), "facts": set(ALL), "no_slideshow": set(ALL),
+    "strangers": {"picture"},         # strangers only under an opaque full scene (vp_defects.stranger_issues)
+    "lips": {"picture"},              # lips moving under someone else's voice: a self-check item
+}
+SYNC = 1.0 / 30 + 0.002  # s: a shot of the sound source within a frame of its sound's seconds is the speaker speaking
+
+
+def is_speaking(g, segments):
+    """The shot is the sound source's own video at the seconds of its sound (lips in sync with the voice)."""
+    if g.get("kind", "video") != "video":
+        return False
+    for s in segments or []:
+        if s.get("source") != g.get("source"):
+            continue
+        a, d = s["out_start"], s["out_dur"]
+        if not a - 1e-6 <= g["out_start"] < a + d - 1e-6:
+            continue
+        sp = s.get("speed") or 1.0
+        if abs(s["src_start"] + (g["out_start"] - a) * sp - g["src_start"]) <= SYNC:
+            return True
+    return False
+
+
+def purposes(cap, voice="on_camera"):
+    """[(out_start, out_end, purpose)] per picture shot, in timeline order. voice: reel.json -> voice; only on_camera
+    has a speaker on screen."""
+    cap = cap or {}
+    segs = cap.get("segments") or []
+    out = []
+    for g in sorted(pic_shots(cap), key=lambda x: x["out_start"]):
+        if g.get("kind") == "fill":
+            p = "graphic"
+        elif voice == "on_camera" and is_speaking(g, segs):
+            p = "speaker"
+        else:
+            p = "picture"
+        out.append((g["out_start"], round(g["out_start"] + g["out_dur"], 3), p))
+    return out
+
+
+def speaker_seconds(spans, a, b):
+    """Seconds of [a, b) over speaker stretches."""
+    return sum(max(0.0, min(b, y) - max(a, x)) for x, y, p in spans if p == "speaker")
+
+
+def over_speaker(spans, a, b):
+    """An insert over [a, b) lies (at least partly) over the speaker: the speaker's rules hold for it. A cut made
+    before the picture track, or one with no shots at all, is all speaker as before."""
+    if not spans:
+        return True
+    return speaker_seconds(spans, a, b) > 1e-6 or (b > spans[-1][1] and spans[-1][2] == "speaker")
+
+
+def all_speaker(spans):
+    return all(p == "speaker" for _, _, p in spans)
+
+
+def speaker_parts(spans, a, b):
+    """The parts of [a, b) over the speaker: [(from, to)]. All of it when every stretch is the speaker (a talking head,
+    or a cut made before the picture track: the budget counts as it always did, the end card included)."""
+    if not spans or all_speaker(spans):
+        return [(a, b)]
+    out = [(max(a, x), min(b, y)) for x, y, p in spans if p == "speaker" and min(b, y) > max(a, x)]
+    if b > spans[-1][1] and spans[-1][2] == "speaker":
+        out.append((max(a, spans[-1][1]), b))
+    return out
+
+
+def on_graphic(shots, t):
+    """A scene starting at second t is drawn on the style's background (a fill shot): it is the whole picture there."""
+    g = shot_at(shots, t)
+    return bool(g) and g.get("kind") == "fill"
+
+
+def own_motion(g):
+    """The shot carries a motion of its own (move other than none): the virtual camera and the drift are off on it."""
+    return bool(g) and (g.get("move") or "none") != "none"

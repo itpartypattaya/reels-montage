@@ -10,6 +10,7 @@ from vp_core import (HEADROOM_BAND, HEADROOM_MIN, SCENE_MODES, STATUSES, TRANSIT
                      current_settings, editing_plan, find_spoken, fmt_t, format_label, is_inside, item_time, jround,
                      near_match, no_footage, norm_words, overlap, plan_duration, read_need, resolve_at)
 from vp_camera import (camera_at, camera_view, plan_camera)
+from pic_track import on_graphic, over_speaker, pic_shots, purposes
 
 
 # --- Designed scenes ---------------------------------------------------------------------------------------
@@ -501,6 +502,10 @@ def check_scenes(e, plan, s, doc, brand, fdata, cap, scenes, brolls, memes, tail
     band = ml.layout(s, doc).get("subtitles_band", list(SUB_BAND))
     words_ok = bool((cap or {}).get("words"))
     voice_band = subtitle_band_off_camera(plan, s)
+    # the purpose of each stretch (pic_track.py): the full hook's limit and "no two full scenes in a row" protect the
+    # speaker's face; over a voice-over picture the scenes are the picture itself
+    spans = [] if nofoot else purposes(cap, voice_mode(s))
+    pshots = [] if nofoot else pic_shots(cap)
 
     def E(sc, msg):
         errs.append(f"{sc['id']}: {msg}")
@@ -628,7 +633,8 @@ def check_scenes(e, plan, s, doc, brand, fdata, cap, scenes, brolls, memes, tail
         t_end = sc["start"] + sc["dur"]
         if sc["start"] < -1e-6 or t_end > D + 0.05:
             E(sc, f"runs past the video ({fmt_t(sc['start'])} + {sc['dur']} s, video {fmt_t(D)})")
-        if typ == "hook" and mode == "full" and not nofoot and sc["dur"] > conf.get("hook_full_max_s", 1.5) + 1e-6:
+        if (typ == "hook" and mode == "full" and not nofoot and over_speaker(spans, sc["start"], sc["start"] + sc["dur"])
+                and sc["dur"] > conf.get("hook_full_max_s", 1.5) + 1e-6):
             E(sc, f"full hook {sc['dur']} s > {conf.get('hook_full_max_s', 1.5)} s: the face disappears in the most "
                   f"important seconds (shorter, or overlay/split)")
         # 2. the reading-time floor: counted from the frame when the whole text is on screen and the entrance is over
@@ -636,7 +642,7 @@ def check_scenes(e, plan, s, doc, brand, fdata, cap, scenes, brolls, memes, tail
         #    the last word. Timing: sceneTimeline in kit/scenes/tones.ts (a transition over a pause -> a cut).
         hold = T.get("hold", 0.4)
         cw = cap.get("words") if words_ok else []
-        tl = scene_timeline(sc, T, mode, fps, cw, nofoot)
+        tl = scene_timeline(sc, T, mode, fps, cw, nofoot or on_graphic(pshots, sc["start"]))
         t0 = sc["start"]
         exit_t = t0 + tl["settle_to"] / fps
         label = str(text.get("label") or "")  # the caps label is on screen with the lines: it is read too (T6)
@@ -773,6 +779,8 @@ def check_scenes(e, plan, s, doc, brand, fdata, cap, scenes, brolls, memes, tail
     if not nofoot:
         gap_need = conf.get("full_gap_s", 2.0)
         for x, y in zip(fulls, fulls[1:]):
+            if not (over_speaker(spans, x["start"], x["start"] + x["dur"]) and over_speaker(spans, y["start"], y["start"] + y["dur"])):
+                continue  # one of them lies over a voice-over picture: no face goes missing there
             gap = y["start"] - (x["start"] + x["dur"])
             if gap < gap_need - 1e-6:
                 errs.append(f"{x['id']} and {y['id']}: two full scenes in a row (gap {max(gap, 0):.1f} s < {gap_need} s): "
@@ -818,7 +826,7 @@ def check_scenes(e, plan, s, doc, brand, fdata, cap, scenes, brolls, memes, tail
     return errs, warns, bad
 
 
-def tone_issues(s, doc, brolls, memes, scenes, only=False):
+def tone_issues(s, doc, brolls, memes, scenes, only=False, spans=None):
     """The brand tone's ceilings (references/brands.md, "Brand tone"): memes, transitions, flash/whip, full, scene tones.
     -> [(message, insert ids)]. In validate they are errors; with reel.json -> tone_override, warnings."""
     bt = s.get("brand_tone") or {}
@@ -855,7 +863,8 @@ def tone_issues(s, doc, brolls, memes, scenes, only=False):
         out.append((f"light flashes (flash) {len(flash)} > {bt['flash_max']}: the ceiling of {name}", sorted(set(flash))))
     if bt.get("whip_max") is not None and len(whip) > bt["whip_max"]:
         out.append((f"whip transitions {len(whip)} > {bt['whip_max']}: the ceiling of {name}", sorted(set(whip))))
-    fulls = [x for x in scenes if x.get("mode") == "full"]
+    # the ceiling of full scenes protects the speaker's face: the ones over a voice-over picture don't count
+    fulls = [x for x in scenes if x.get("mode") == "full" and over_speaker(spans, x["start"], x["start"] + x["dur"])]
     if not only and bt.get("full_scenes_max") is not None and len(fulls) > bt["full_scenes_max"]:
         out.append((f"full scenes {len(fulls)} > {bt['full_scenes_max']}: the ceiling of {name}", [x["id"] for x in fulls]))
     st = bt.get("scene_tones") or []

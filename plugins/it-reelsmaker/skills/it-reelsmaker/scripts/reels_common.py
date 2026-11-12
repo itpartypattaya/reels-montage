@@ -1049,6 +1049,8 @@ def probe(p):
         d = {}
     info = {"w": None, "h": None, "dur": None, "fps": None, "has_audio": False, "vcodec": None, "pix_fmt": None}
     for s in d.get("streams", []):
+        if s.get("codec_type") == "video" and (s.get("disposition") or {}).get("attached_pic"):
+            continue  # cover art of a recording (a phone memo, an mp3): a sound-only file, not a one-frame video
         if s.get("codec_type") == "video" and info["w"] is None:
             w, h = s.get("width"), s.get("height")
             rot = 0
