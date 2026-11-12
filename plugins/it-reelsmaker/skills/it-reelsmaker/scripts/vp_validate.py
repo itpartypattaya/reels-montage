@@ -210,6 +210,17 @@ def cmd_validate(a, quiet=False):
             elif "captions_id" not in plan:  # a plan from before captions_id: it follows the cut it was checked on
                 plan["captions_id"] = cut_id(cap0)
                 save_json(plan_path(e), plan)
+            if plan.get("picture_id") != cap0.get("picture_id"):  # pic_track.py: absent on both sides = the same picture
+                # a new picture over the same sound: the spans stay (they follow the speech); what was measured on the
+                # picture is stale
+                if cap0.get("picture_id"):
+                    plan["picture_id"] = cap0["picture_id"]
+                else:
+                    plan.pop("picture_id", None)
+                save_json(plan_path(e), plan)
+                if not quiet:
+                    print("the rough cut's picture changed (captions.json picture shots): the spans stay; measure the "
+                          "picture again: faces.py, defects.py, track.py for tracked callouts, then check the camera")
         if snapshot(plan, s, prov, eff, why, doc):
             save_json(plan_path(e), plan)
             if not quiet:

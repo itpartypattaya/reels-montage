@@ -25,7 +25,7 @@ import { Sample, Sampled, useMedia } from "./kit/Sample";
 export { MediaOn, Sampled, TextProbe, useMedia } from "./kit/Sample";
 export type { Sample } from "./kit/Sample";
 import { breakLines, fitSize, useFontsReady } from "./kit/Phrase";
-import { WHIP_BLUR, cameraAt, driftZoom, fitCamera } from "./kit/anchor";
+import { WHIP_BLUR, cameraAt, driftZoom, fitCamera, picShots } from "./kit/anchor";
 import type { Cam, Shot } from "./kit/anchor";
 import { CalloutLayer } from "./kit/Callout";
 import type { CalloutSpec } from "./kit/Callout";
@@ -132,7 +132,7 @@ const Voice: React.FC<{ p: ReelKitProps }> = ({ p }) => {
 const Footage: React.FC<{ p: ReelKitProps; bt: ResolvedTone }> = ({ p, bt }) => {
   const frame = useCurrentFrame();
   const t = frame / KIT_FPS;
-  const z = p.drift ? driftZoom(p.captions.segments, t) : 1;
+  const z = p.drift ? driftZoom(picShots(p.captions), t) : 1; // the picture's shots drift, not the sound's segments
   const media = useMedia(); // before the early returns
   if (!p.video || !media) return null;
   if (p.framed) return <FramedFootage p={p} z={z} />;
@@ -360,7 +360,7 @@ const ReelKitFrame: React.FC<ReelKitProps> = (p) => {
       {offCamera ? shadeLayer : null}
       {!g && p.video ? (
         <CalloutLayer callouts={p.callouts} brand={p.brand} look={look} fonts={fonts} bt={bt} camera={p.camera}
-          segments={p.captions.segments} drift={p.drift} end={p.captions.duration} scenes={p.scenes} words={p.captions.words} />
+          segments={picShots(p.captions)} drift={p.drift} end={p.captions.duration} scenes={p.scenes} words={p.captions.words} />
       ) : null}
       <MemeLayer inserts={p.inserts} brand={p.brand} />
       <KitSubtitles captions={p.subtitleCaptions ?? p.captions} brand={p.brand} font={fonts.body} mode={p.subtitles} hide={hide}

@@ -59,6 +59,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from reels_common import (NUMBER_RE, edit_dir, editing_json, is_project, load_json, locked, probe, project_root,
                           project_settings, rel, run, safe_slug, save_json, speaker_of, utf8_stdio, warn)
+from pic_track import follows_sound  # noqa: E402
 
 HERE = Path(__file__).resolve().parent
 SCHEMA = 1
@@ -1300,6 +1301,9 @@ def frame_shot(size, face, others, view, zc, zm):
 def camera_plan(ce, data, cap, sides, default_who, zmax=None):
     """The proposal -> (shots for camera.json, rows for the person, notes, unresolved {speaker: (source, groups)})."""
     import faces as fc
+    if not follows_sound(cap):  # pic_track.py: the plan groups faces by the speaking source and its seconds
+        sys.exit(f"{ce}/captions.json: its picture is not the speaking source (a picture of its own over the sound): "
+                 f"a long-form camera plan is not supported for such a piece")
     segs = sorted(cap.get("segments") or [], key=lambda g: g["out_start"])
     if not segs:
         sys.exit(f"{ce}/captions.json has no segments: cut.py {ce.name} first")
