@@ -2,6 +2,15 @@
 
 What changed in IT Reelsmaker, written for the people who use it. The newest version is on top. The skill shows a short “What's new” note from this file once, on the first edit after an update.
 
+## 1.25.0
+
+- **The rough cut records its picture apart from its sound.** `captions.json` and `edl.json` get the picture
+  shots next to the sound pieces; for now they are an exact copy, so nothing changes in your videos.
+- Face checks, picture defects, the virtual camera's source seconds, the slow drift, tracked callouts and the
+  plan's “hide the join” hints follow the picture; speech checks, leveling and subtitles follow the sound.
+  A rough cut made with an earlier version keeps working as it is.
+- This is the groundwork for voice-over, mixed and no-speech videos in the next releases.
+
 ## 1.24.0
 
 - **A P0 defect that survives two rounds of fixes now stops the preview** with a blocker report instead of
