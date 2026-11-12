@@ -433,4 +433,5 @@ Several agents at once in one editing folder are normal: write JSON (video setti
 | `references/playbook.md` | before the plan and at delivery: measurement vs taste, trust levels, the project playbook cards, conflicts, “Supports”, learning from a guide or a video, turning corrections into rules |
 | `references/pitfalls.md` | something went wrong in steps 6–9: symptom → cause → what to do |
 | `references/migrations.md` | step 0: bringing older brand profiles and settings up to date |
+| `references/mascot-atlas.md` | a mascot from the brand's own character picture: what to bring, `mascot_atlas.py`, the check sheet, the limits of an overlay mouth |
 | `assets/brand-template/` | brand profile template (`brand.json`, `rules.md`, `assets/`); copy into `{{PROJECT_ROOT}}/brands/<slug>/` |
