@@ -4,6 +4,8 @@
 
 Turn a raw talking-head recording into a finished vertical video (Reels, Shorts, TikTok) without opening an editor. Claude Code cuts pauses and retakes by the audio, adds a virtual camera, on-brand graphics and word-timed subtitles in Remotion, checks that no text covers a face, masters the sound to −14 LUFS and renders 1080×1920, with the cover in the master and next to it as a picture. Nothing is cut before you approve the cut plan, and no inserts are rendered before you approve the visual plan.
 
+No footage? Record your voice on a phone and get a video of scenes drawn in code over it, optionally hosted by your brand's mascot whose mouth moves with your recording.
+
 The plugin is a skill built on real client videos: the thresholds and numbers in it come from practice. It works for videos in any language.
 
 ## How it works
@@ -34,6 +36,14 @@ A podcast, webinar or interview of 10–90 minutes becomes a series of vertical 
 ## Designed scenes
 
 A hook set large, a quote taken verbatim from the speech, the main thought as a punch, a number with a counter and its source, a list item by item, “before → after”, the call to action as an action, a cover picture. Claude draws them in code in your brand's colors and fonts and places each one on its spoken word. By default the speaker's face stays in the frame: the scene sits in a free zone of the shot. The plan check counts reading time (0.8 s for a short line, 0.3 s per word in a phrase), compares quotes with the transcript and asks for a source for every number. A promo without footage uses the same scenes on their own, 15–25 s. The scene planning method is adapted from [brag](https://github.com/latent-spaces/brag) (MIT).
+
+## No camera: your voice, scenes and a mascot
+
+**Scenes over your recorded voice.** Don't want to be on camera? Record a voice note on your phone (m4a, wav, mp3, ogg or opus). The plugin cuts it the way it cuts a video: pauses, bad takes and uneven loudness are gone. Claude then draws scenes in code over your voice: headlines, numbers, lists, “before → after”. You get an explainer with your own voice and its subtitles and no face on screen. The subtitles stay visible over the scenes, and the scene text keeps clear of them. If music or a loud room sits under your voice, the plugin tells you right away: music is better added later, when the sound is mixed.
+
+**A brand mascot.** A character in your brand's colors stands beside the scenes. It blinks and breathes, and on the words you choose it points at a scene, shows a palm, thinks or celebrates. Its mouth moves with your recording: the louder the speech, the wider it opens, and it stays shut in the pauses. It is drawn in code and the voice is yours. Your brand tone decides how lively it is: a premium brand has none, a calm one keeps it modest, a bold one lets it bounce on a pose change. The plugin keeps the mascot off the subtitles, the app's buttons and the other graphics, and refuses to render a mouth measured on an older cut of your voice.
+
+**A mascot from your own character picture.** Already have a character from an illustrator? Give the plugin a sheet of its poses (one grid image or a folder of PNGs). It removes the background, lines the poses up so the head doesn't jump between them, and animates the eyes and mouth over the picture; drawn “talking” and “blink” frames look even more natural. A picture with a one-sided detail (a logo on a shirt, a parting) is never shown mirrored.
 
 ## Experimental
 
