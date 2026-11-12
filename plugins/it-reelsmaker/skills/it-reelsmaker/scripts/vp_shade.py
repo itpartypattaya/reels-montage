@@ -76,7 +76,7 @@ def cmd_shade(a):
         top = max(a0, min(top, a1 - SUB_BLOCK_H["typewriter"]))
     bottom = min(1500, top + SHADE_LINES)
     hidden = ([(i["start"], i["start"] + i["dur"]) for i in plan.get("inserts", []) if i.get("kind") == "scene"
-               and i.get("status") == "ready" and i.get("type") != "cover" and hides_subtitles(i)]
+               and i.get("status") == "ready" and i.get("type") != "cover" and hides_subtitles(i, s)]
               + [tuple(h) for h in hidden_windows(plan)])
     spoken = [(w["start"], w["end"] + 0.4) for w in cap.get("words", [])]
     W, H, fps = 270, 480, 4  # a quarter of the frame, 4 frames a second

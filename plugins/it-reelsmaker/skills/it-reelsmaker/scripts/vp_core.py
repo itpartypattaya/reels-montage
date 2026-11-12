@@ -122,6 +122,19 @@ def load_plan(e):
 # logo and end (review 2026-10-18: init after a stage lost them, the next stage dropped the card), the subtitle band
 # the render has, the subtitles hidden by a per-video composition
 KEEP_ON_INIT = ("finish", "hook", "corner", "end_card", "subtitles_band", "hide_subtitles")
+# plan formats whose picture is designed scenes only (no footage): "scenes only" (a promo, no speech) and "scenes +
+# voice" (a narration cut by cut.py into voice.wav: reel.json -> voice off_camera, subtitles from its words)
+NO_FOOTAGE = ("scenes-only", "scenes-voice")
+VOICE_MAX_S = 70  # s: a "scenes + voice" video longer than this may not render on an 8 GB laptop (SKILL.md section 15)
+
+
+def no_footage(plan):
+    """The plan's picture is designed scenes only: no rough cut on screen, no faces, camera or framed window."""
+    return (plan or {}).get("format") in NO_FOOTAGE
+
+
+def format_label(plan):
+    return "'scenes + voice'" if (plan or {}).get("format") == "scenes-voice" else "'scenes only'"
 
 
 def ensure_plan(e):

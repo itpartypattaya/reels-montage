@@ -45,7 +45,7 @@ import argparse, json, re, sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from reels_common import (PROJECT_DEFAULTS, RENAMED, SETTING_KEYS_BOOL, to_new_names, edit_dir, editing_json,
+from reels_common import (PROJECT_DEFAULTS, RENAMED, SETTING_KEYS_BOOL, VOICE_MODES, to_new_names, edit_dir, editing_json,
                           effective, framed_issues, renamed,
                           framed_of, is_project, load_config, load_defaults, load_json, online, parse_sets, profiles_of,
                           project_root, save_json, tone_summary, utf8_stdio, warn)
@@ -56,7 +56,8 @@ KNOWN = set(SETTING_KEYS_BOOL) | {"brand", "style", "subtitles", "intensity", "b
                                   "scene_tone", "tone_override", "subtitles_lang", "subtitles_shade",
                                   "format", "window", "label", "subtitles_at",  # format: "framed" (window, label, subtitles_at) or "full"
                                   "profile", "content_format",  # the video's goal and its form (references/profiles.md)
-                                  "workflow"}  # stops and questions (SKILL.md, section 6)
+                                  "workflow",  # stops and questions (SKILL.md, section 6)
+                                  "voice"}  # on_camera | off_camera (reels_common.VOICE_MODES)
 WORKFLOWS = ("quick", "standard", "full")
 # what a series preset does not carry: values measured on this video's frames, a one-off permission to go past the
 # brand tone (review 2026-10-18: it became the series' rule), the plan's own copies, and the finish (kept apart)
@@ -251,6 +252,8 @@ def cmd_save(a):
         if over.get(k) is not None and over[k] not in known_ids:
             sys.exit(f"not saved: unknown {k} {over[k]!r} (known: {', '.join(known_ids)}; references/profiles.md)")
     bad_workflow(over)
+    if over.get("voice") is not None and over["voice"] not in VOICE_MODES:
+        sys.exit(f"not saved: unknown voice {over['voice']!r} (known: {', '.join(VOICE_MODES)})")
     e = edit_dir(a.edit, create=True)  # step 0 of a new video: the edit/<id> folder doesn't exist yet
     if {"format", "window", "label", "subtitles_at"} & set(over):  # the framed format's fields are checked together, before saving
         bad = framed_issues({**(load_json(e / "reel.json", {}) or {}), **over})

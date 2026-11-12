@@ -4,11 +4,11 @@ of its own: the other scripts take these names from visual_plan."""
 import filecmp, json, math, re, shutil, sys
 from pathlib import Path
 
-from reels_common import (FRAMED_HOOK_MIN, MEME_SIZES, SUB_BAND, edit_dir, framed_area, framed_at, load_json,
-                          media_kind, probe, ui_zone, warn)
+from reels_common import (FRAMED_HOOK_MIN, MEME_SIZES, SUB_BAND, SUB_BLOCK_H, SUB_TOP_KIT, edit_dir, framed_area,
+                          framed_at, load_json, media_kind, probe, ui_zone, voice_mode, warn)
 from vp_core import (HEADROOM_BAND, HEADROOM_MIN, SCENE_MODES, STATUSES, TRANSITIONS, WINDOW_DEFAULT, WINDOW_SLOTS,
-                     current_settings, editing_plan, find_spoken, fmt_t, is_inside, item_time, jround, near_match,
-                     norm_words, overlap, plan_duration, read_need, resolve_at)
+                     current_settings, editing_plan, find_spoken, fmt_t, format_label, is_inside, item_time, jround,
+                     near_match, no_footage, norm_words, overlap, plan_duration, read_need, resolve_at)
 from vp_camera import (camera_at, camera_view, plan_camera)
 
 
@@ -230,10 +230,36 @@ def default_box(mode):
     return {"overlay": WINDOW_DEFAULT, "split": SPLIT_BOX, "window": WINDOW_SCENE_BOX}.get(mode)
 
 
-def hides_subtitles(sc):
+VOICE_SUB_GAP = 40  # px: with the voice off camera a full scene's text ends this far above the subtitles' top (kit)
+
+
+def subtitle_band_off_camera(plan, s):
+    """With reel.json -> voice off_camera the subtitles stay on over full scenes: their band [top, bottom] (the one the
+    last stage recorded, else the kit's default top with the mode's two-line block); None when the voice is on
+    camera or the subtitles are off."""
+    mode = str((s or {}).get("subtitles") or "accent")
+    if voice_mode(s) != "off_camera" or mode == "none":
+        return None
+    b = (plan or {}).get("subtitles_band")
+    if isinstance(b, list) and len(b) == 2:
+        return [int(b[0]), int(b[1])]
+    return [SUB_TOP_KIT, SUB_TOP_KIT + SUB_BLOCK_H.get(mode, max(SUB_BLOCK_H.values()))]
+
+
+def voice_stage(band):
+    """A full scene's zone with the voice off camera, as sceneStage in the kit draws it with textBottom: the safe
+    zone's width from y 250 down to VOICE_SUB_GAP above the subtitles."""
+    return [60, 250, 900, max(1, min(1200, band[0] - VOICE_SUB_GAP - 250))]
+
+
+def hides_subtitles(sc, s=None):
     """Subtitles are hidden (as in SceneLayer of the scene kit): split/panel/window/full and slogan always; hook, quote
     and list by default (the scene text repeats the speech; a list over the video replaces it, two texts at once don't
-    read) unless hide_subtitles=false is explicit; the rest per hide_subtitles."""
+    read) unless hide_subtitles=false is explicit; the rest per hide_subtitles. s: the video's settings; with reel.json
+    -> voice off_camera (a narration) the subtitles stay on over every scene, full ones too, unless the scene sets
+    hide_subtitles (its text repeats the narration): sceneHideIntervals in the kit with voiceMode off_camera."""
+    if voice_mode(s) == "off_camera":
+        return bool(sc.get("hide_subtitles"))
     if sc.get("mode") in ("split", "panel", "window", "full") or sc.get("type") == "slogan":
         return True
     if sc.get("type") in ("hook", "quote", "list") and sc.get("hide_subtitles") is not False:
@@ -296,7 +322,7 @@ def scene_keep_entries(plan):
         if sc.get("kind") != "scene" or sc.get("status") != "ready" or sc.get("type") == "cover":
             continue
         mode = sc.get("mode")
-        if mode not in ("overlay", "split", "window") or plan.get("format") == "scenes-only":
+        if mode not in ("overlay", "split", "window") or no_footage(plan):
             continue
         k = {"start": sc["start"], "end": round(sc["start"] + sc["dur"], 3), "box": sc.get("box") or default_box(mode),
              "what": f"scene {sc['id']} {sc.get('type')} ({mode})", "scene": sc["id"], "mode": mode}
@@ -350,17 +376,18 @@ def add_scene(a):
         media = {"file": rel_, "kind": "video" if media_kind(rel_) == "video" else "image"}
     with editing_plan(e) as plan:
         only = plan.get("format") == "scenes-only"
+        nofoot = no_footage(plan)  # "scenes only" or "scenes + voice": every scene is the picture, full
         if only and not re.fullmatch(r"-?\d+(\.\d+)?", a.at.strip()):
             sys.exit("'scenes only' format: there is no speech, so --at is in seconds only (3.0)")
         s, prov, doc, bdir, brand = current_settings(e, plan)
         start = round(resolve_at(a.at, plan, cap) + a.offset, 3)
         # the first mode of the type's own list: a slogan is full, not the experimental split (wave 3); the others
         # were already the first of their list
-        mode = a.mode or ("full" if only else spec["modes"][0])
+        mode = a.mode or ("full" if nofoot else spec["modes"][0])
         if mode not in SCENE_MODES:
             sys.exit(f"scene mode {mode}: allowed {', '.join(SCENE_MODES)}")
-        if only and mode != "full":  # T6: accepted here, refused only by validate
-            sys.exit(f"'scenes only' format: there is no speaker, so the mode is full only, not {mode}")
+        if nofoot and mode != "full":  # T6: accepted here, refused only by validate
+            sys.exit(f"{format_label(plan)} format: there is no speaker, so the mode is full only, not {mode}")
         if mode not in spec["modes"]:
             sys.exit(f"scene {a.type}: mode {mode} is not for it (allowed: {', '.join(spec['modes'])})")
         for it in items or []:  # item times: by spoken words (or seconds)
@@ -382,7 +409,8 @@ def add_scene(a):
               "box": [int(float(x)) for x in a.box.split(",")] if a.box else None, "side": a.side,
               "source": {"kind": a.source, "ref": a.source_ref} if a.source in SCENE_SOURCES else None,
               "what": a.what, "why": a.why, "transition_in": tr_in, "transition_out": a.transition_out or tr_in,
-              "sound": a.sound, "hide_subtitles": bool(a.hide_subtitles) or mode in ("split", "panel", "window", "full") or a.type in ("slogan", "hook", "quote", "list"),
+              "sound": a.sound, "hide_subtitles": bool(a.hide_subtitles) or (voice_mode(s) != "off_camera" and (
+                  mode in ("split", "panel", "window", "full") or a.type in ("slogan", "hook", "quote", "list"))),
               "status": "planned", "fallback": "main footage"}
         if a.type == "cover" and a.frame_at is not None:
             sc["frame_at"] = round(a.frame_at, 3)  # the video second under the cover (the cover composition, stage -> cover.frameAt)
@@ -390,7 +418,7 @@ def add_scene(a):
             sc["cam"] = [float(x) for x in a.cam.split(",")]
         if getattr(a, "covers", None):
             sc["covers"] = list(a.covers)
-        if not only and mode in ("overlay", "split", "window") and sc["box"] is None:
+        if not nofoot and mode in ("overlay", "split", "window") and sc["box"] is None:
             if mode == "overlay":  # the first free slot, as for a B-roll window, then a low band in the headroom
                 slots = overlay_slots(e, plan, sc)
                 sc["box"] = next((b for b in slots if not scene_box_issues(e, plan, sc, b)), None)
@@ -401,7 +429,7 @@ def add_scene(a):
                              f"shows the free zones), another --mode, or move the scene")
             else:
                 sc["box"] = default_box(mode)
-        if sc["box"] and not only and mode in ("overlay", "split", "window"):
+        if sc["box"] and not nofoot and mode in ("overlay", "split", "window"):
             for m in scene_box_issues(e, plan, sc, sc["box"]):
                 warn(f"{sc['id']}: {m}: validate will refuse it; set --box or move the scene")
         plan["inserts"].append(sc)
@@ -456,8 +484,8 @@ def check_scenes(e, plan, s, doc, brand, fdata, cap, scenes, brolls, memes, tail
     """Scene checks (references/scenes.md, the plan check). -> (errors, warnings, ids of scenes with errors)."""
     errs, warns, bad = [], [], set()
     if not [x for x in scenes if x.get("type") != "cover"]:
-        if plan.get("format") == "scenes-only":
-            errs.append("'scenes only': the plan has no scenes; the video would be an empty frame in the brand color")
+        if no_footage(plan):
+            errs.append(f"{format_label(plan)}: the plan has no scenes; the video would be an empty frame in the brand color")
         if not scenes:
             return errs, warns, bad
     import faces as fc
@@ -466,11 +494,13 @@ def check_scenes(e, plan, s, doc, brand, fdata, cap, scenes, brolls, memes, tail
     R = conf.get("reading") or {}
     fps = conf.get("fps", 30)
     only = plan.get("format") == "scenes-only"
-    framed = None if only else framed_at(e)
+    nofoot = no_footage(plan)  # the scenes are the whole picture ("scenes only", "scenes + voice")
+    framed = None if nofoot else framed_at(e)
     D = plan.get("duration") or 0.0
     tones = {k: v for k, v in (doc.get("scene_tones") or {}).items() if not k.startswith("_")}
     band = ml.layout(s, doc).get("subtitles_band", list(SUB_BAND))
     words_ok = bool((cap or {}).get("words"))
+    voice_band = subtitle_band_off_camera(plan, s)
 
     def E(sc, msg):
         errs.append(f"{sc['id']}: {msg}")
@@ -491,8 +521,8 @@ def check_scenes(e, plan, s, doc, brand, fdata, cap, scenes, brolls, memes, tail
         # 1. mode, required fields, scene tone
         if mode not in SCENE_MODES:
             E(sc, f"mode {mode} (allowed: {', '.join(SCENE_MODES)})")
-        elif only and mode != "full":
-            E(sc, f"'scenes only' format: there is no speaker, so the mode is full only, not {mode}")
+        elif nofoot and mode != "full":
+            E(sc, f"{format_label(plan)} format: there is no speaker, so the mode is full only, not {mode}")
         elif framed and mode in ("split", "panel", "window") and typ != "cover":
             E(sc, f"the framed format: the kit draws overlay (inside the window) and full (covering the window) scenes, "
                   f"not {mode}: the speaker already sits in a window")
@@ -598,7 +628,7 @@ def check_scenes(e, plan, s, doc, brand, fdata, cap, scenes, brolls, memes, tail
         t_end = sc["start"] + sc["dur"]
         if sc["start"] < -1e-6 or t_end > D + 0.05:
             E(sc, f"runs past the video ({fmt_t(sc['start'])} + {sc['dur']} s, video {fmt_t(D)})")
-        if typ == "hook" and mode == "full" and not only and sc["dur"] > conf.get("hook_full_max_s", 1.5) + 1e-6:
+        if typ == "hook" and mode == "full" and not nofoot and sc["dur"] > conf.get("hook_full_max_s", 1.5) + 1e-6:
             E(sc, f"full hook {sc['dur']} s > {conf.get('hook_full_max_s', 1.5)} s: the face disappears in the most "
                   f"important seconds (shorter, or overlay/split)")
         # 2. the reading-time floor: counted from the frame when the whole text is on screen and the entrance is over
@@ -606,7 +636,7 @@ def check_scenes(e, plan, s, doc, brand, fdata, cap, scenes, brolls, memes, tail
         #    the last word. Timing: sceneTimeline in kit/scenes/tones.ts (a transition over a pause -> a cut).
         hold = T.get("hold", 0.4)
         cw = cap.get("words") if words_ok else []
-        tl = scene_timeline(sc, T, mode, fps, cw, only)
+        tl = scene_timeline(sc, T, mode, fps, cw, nofoot)
         t0 = sc["start"]
         exit_t = t0 + tl["settle_to"] / fps
         label = str(text.get("label") or "")  # the caps label is on screen with the lines: it is read too (T6)
@@ -683,11 +713,11 @@ def check_scenes(e, plan, s, doc, brand, fdata, cap, scenes, brolls, memes, tail
         elif typ == "stat" and src.get("kind") in ("client", "brief") and not str(src.get("ref") or "").strip():
             W(sc, f"a number from {src['kind']}: give source.ref")
         # 8. the overlay/split/window box
-        if not only and mode in ("overlay", "split", "window"):
+        if not nofoot and mode in ("overlay", "split", "window"):
             box = sc.get("box") or default_box(mode)
             for m in scene_box_issues(e, plan, sc, box, fdata):
                 E(sc, m + ("" if sc.get("box") else " (the default box: set add ... --box)"))
-            if mode == "overlay" and not hides_subtitles(sc) and fc.inter(box, [0, band[0], 1080, band[1] - band[0]]):
+            if mode == "overlay" and not hides_subtitles(sc, s) and fc.inter(box, [0, band[0], 1080, band[1] - band[0]]):
                 E(sc, f"box {box} is on the subtitle band (y {band[0]}-{band[1]}): move it higher or set hide_subtitles")
             if typ == "hook" and mode == "overlay" and lines and (sc.get("variant") or "slam") in ("slam", "type"):
                 # the kit's hook on plates: the font is the box height over the lines (1.21 per line with plates, the
@@ -700,6 +730,14 @@ def check_scenes(e, plan, s, doc, brand, fdata, cap, scenes, brolls, memes, tail
                                             f"label: the field joins the text area) or give it more of the window's "
                                             f"headroom; {FRAMED_HOOK_MIN} px is the floor inside the window"
                                             if framed else "the hook rule is 92-120 px: a taller box, or fewer lines"))
+        if voice_band and mode == "full" and typ != "cover" and not hides_subtitles(sc, s):
+            box = sc.get("box") or voice_stage(voice_band)
+            # the text ends VOICE_SUB_GAP above the subtitles (Codex review: a box down to 1270 or under the band passed
+            # an overlap test); the kit clips a box to the zone above them
+            if box[1] + box[3] > voice_band[0] - VOICE_SUB_GAP:
+                E(sc, f"box {box} is on the subtitle band (y {voice_band[0]}-{voice_band[1]}): the narration's subtitles "
+                      f"stay on over full scenes, so the scene text ends above y {voice_band[0] - VOICE_SUB_GAP} (a lower "
+                      f"--box), or set --hide-subtitles when the scene's text repeats the narration")
         if accent := text.get("accent"):
             if norm_words(accent) and " ".join(norm_words(accent)) not in " ".join(norm_words(" ".join(lines))):
                 W(sc, f"accent '{accent}' is not found in the lines")
@@ -732,7 +770,7 @@ def check_scenes(e, plan, s, doc, brand, fdata, cap, scenes, brolls, memes, tail
             E(x, f"in the last {final} s only cta is allowed (the ending and the call to action), but this is {x.get('type')}"
                  + (f" (the video ends at {D + tail:.2f} s with the {tail} s end card or sting)" if tail else ""))
     fulls = [x for x in tl if x.get("mode") == "full"]
-    if not only:
+    if not nofoot:
         gap_need = conf.get("full_gap_s", 2.0)
         for x, y in zip(fulls, fulls[1:]):
             gap = y["start"] - (x["start"] + x["dur"])
@@ -748,10 +786,10 @@ def check_scenes(e, plan, s, doc, brand, fdata, cap, scenes, brolls, memes, tail
     if hooks and others and max(hooks) + 1e-6 < max(others):
         warns.append(f"the hook is settled for {max(hooks):.2f} s, less than another scene ({max(others):.2f} s, longer than "
                      f"its own reading floor): the hook should get the most")
-    if only:
+    if nofoot:
         so = conf.get("scenes_only") or {}
         lo, hi = so.get("duration", [15, 25])
-        if not lo <= D <= hi:
+        if only and not lo <= D <= hi:  # "scenes + voice": the narration's own length
             warns.append(f"'scenes only': length {D} s is outside {lo}-{hi} s (best {'-'.join(map(str, so.get('optimum', [18, 22])))} s)")
         cov, cur = 0.0, None
         for x0, x1 in sorted((x["start"], x["start"] + x["dur"]) for x in tl):
@@ -763,17 +801,20 @@ def check_scenes(e, plan, s, doc, brand, fdata, cap, scenes, brolls, memes, tail
         cov += (cur[1] - cur[0]) if cur else 0.0
         need = so.get("coverage_min", 0.95)
         if D and cov / D < need - 1e-6:
-            errs.append(f"'scenes only': scenes cover {cov:.1f} of {D} s ({cov / D * 100:.0f} %) < {need * 100:.0f} %: "
-                        f"put the scenes back to back, with no empty frame")
-        vis = text_frames(tl, s, tones, fps, only)
+            # "scenes + voice": between scenes the field still carries the narration's subtitles: a warning
+            (errs if only else warns).append(
+                f"{format_label(plan)}: scenes cover {cov:.1f} of {D} s ({cov / D * 100:.0f} %) < {need * 100:.0f} %: "
+                f"put the scenes back to back, with no empty frame")
+        vis = text_frames(tl, s, tones, fps, True)
         for (x, a0, a1), (y, b0, b1) in zip(vis, vis[1:]):
             empty = b0 - a1  # frames of bare field between the old text leaving and the new one entering
             if empty > JOIN_EMPTY_MAX:
                 warns.append(f"{x['id']} -> {y['id']}: {empty} frames of empty field at the join (the text of {x['id']} "
                              f"has left at {fmt_t(a1 / fps)}, {y['id']} shows from {fmt_t(b0 / fps)}): more than "
                              f"{JOIN_EMPTY_MAX}, start {y['id']} where {x['id']} ends")
-        if tl and (tl[0].get("type") != "hook" or tl[0]["start"] > 0.05):
-            warns.append("'scenes only': storyboard: the first scene is a hook starting at 0 s")
+        if tl and (tl[0].get("type") != "hook" or tl[0]["start"] > (0.05 if only else 1.0)):
+            warns.append(f"{format_label(plan)}: storyboard: the first scene is a hook starting at 0 s"
+                         + ("" if only else " (or on the narration's first word)"))
     return errs, warns, bad
 
 
@@ -898,7 +939,7 @@ def scene_export(i, e, pub, name, plan, cap, s):
             sp["media"]["aspect"] = m.get("aspect") or round(info["w"] / info["h"], 4)
     if i.get("mode") in ("overlay", "split", "window") and not sp.get("box"):
         sp["box"] = default_box(i["mode"])
-    sp["hide_subtitles"] = hides_subtitles(i)
+    sp["hide_subtitles"] = hides_subtitles(i, s)
 
     def clean(o):  # optional fields without null: in SceneSpec they are simply absent
         return {k: clean(v) for k, v in o.items() if v is not None} if isinstance(o, dict) else o

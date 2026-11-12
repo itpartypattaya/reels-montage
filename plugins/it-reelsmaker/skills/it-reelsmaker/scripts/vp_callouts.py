@@ -30,7 +30,7 @@ def check_callouts(e, plan, s, doc, fdata, callouts, brolls, memes, scenes, corn
     def W(c, msg):
         warns.append(f"{c['id']}: {msg}")
 
-    only = plan.get("format") == "scenes-only"
+    only = plan.get("format") in ("scenes-only", "scenes-voice")  # no rough cut on screen (vp_core.NO_FOOTAGE)
     fr = None if only else framed_at(e)
     ctx = callout_context(e, plan, fdata)
     segs, shots, drift, end = ctx[:4]
@@ -51,7 +51,7 @@ def check_callouts(e, plan, s, doc, fdata, callouts, brolls, memes, scenes, corn
     cover += [x for x in brolls + memes if x.get("mode") in ("replace", "cutaway") and x.get("status") == "ready"]
     # where the subtitles are hidden their band is free: hide-subs windows and scenes that hide them
     hidden = [tuple(h) for h in hidden_windows(plan)] + [(x["start"], x["start"] + x["dur"]) for x in scenes
-                                                         if x.get("type") != "cover" and hides_subtitles(x)]
+                                                         if x.get("type") != "cover" and hides_subtitles(x, s)]
     # the hook headline at its own height: its lines of up to 14 characters, ~121 px each (ReelKit Hook, Mark)
     hook_box = [HOOK_BOX[0], HOOK_BOX[1], HOOK_BOX[2], 121 * (hook_lines(hook) if isinstance(hook, str) else 2)]
     # a horizontal rough cut without the framed format: the kit lays it as a band, the anchor is not where it points

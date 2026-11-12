@@ -256,7 +256,7 @@ def settled_scene(e):
     fps = (doc.get("scenes") or {}).get("fps", 30)
     pick = [(typ, min((x for x in scenes if x.get("type") == typ), key=lambda x: x["start"], default=None))
             for typ in ("hook", "cover")]
-    if plan.get("format") == "scenes-only":
+    if plan.get("format") in ("scenes-only", "scenes-voice"):  # no footage: the first scene is the picture
         first = min((x for x in scenes if x.get("type") != "cover"), key=lambda x: x["start"], default=None)
         pick.append(((first or {}).get("type"), first))
     for typ, sc in pick:
@@ -332,7 +332,7 @@ def cmd_pick(a):
         print(f"cover candidates ({label}, {lo:.2f}–{hi:.2f} s), "
               f"left to right: " + ", ".join(f"{j + 1}: {tt:.2f} s{'' if ok else ' (on speech)'}"
                                              for j, (tt, ok) in enumerate(cs)) + f" → {out}")
-        only = (load_json(e / "visual_plan.json") or {}).get("format") == "scenes-only"  # no footage, no face
+        only = (load_json(e / "visual_plan.json") or {}).get("format") in ("scenes-only", "scenes-voice")  # no face
         face = not only and any(faces_near(e, tt) is not False for tt in ts)  # no face scan: assume there may be one
         if not any(ok for _, ok in cs):
             print(f"no pause of {PAUSE:.2f} s or more in the window (a dense cut): every candidate is on speech"

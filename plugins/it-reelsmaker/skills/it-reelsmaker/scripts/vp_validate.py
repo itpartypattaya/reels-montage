@@ -3,10 +3,10 @@ of its own: the other scripts take these names from visual_plan."""
 import re
 
 from reels_common import (CORNER_BOX, FRAMED_LABEL_UP, SUB_BLOCK_H, budget, edit_dir, effective, forbidden_hits,
-                          framed_at, framed_issues, framed_source, load_json, locked, online, probe, save_json)
+                          framed_at, framed_issues, framed_source, load_json, locked, online, probe, save_json, voice_mode)
 from vp_core import (CTA_RE, GEN_FIELDS, KINDS, SOURCES, STATUSES, TRANSITIONS, WINDOW_DEFAULT, build_plan,
-                     current_settings, cut_id, editing_plan, end_now, end_tail, ensure_plan, fmt_t, load_plan,
-                     norm_words, plan_duration, plan_path, resolve_at, snapshot)
+                     current_settings, cut_id, editing_plan, end_now, end_tail, ensure_plan, fmt_t, format_label, load_plan,
+                     no_footage, norm_words, plan_duration, plan_path, resolve_at, snapshot)
 from vp_scenes import (COVER_MODES, check_scenes, default_box, faces_seen, scene_text, scenes_only_cover, tone_issues,
                        window_issues)
 from vp_defects import (defect_issues)
@@ -113,7 +113,7 @@ def profile_issues(e, plan, s, brand, cap, scenes, memes, tail, corner=False, en
             h = SUB_BLOCK_H.get(str(s.get("subtitles") or "accent"), max(SUB_BLOCK_H.values()))
             if not only and y1 - y0 < h:
                 bad.append(f"the subtitles ({h} px) do not fit between y {y0} and {y1}")
-            fr = None if only else framed_at(e)
+            fr = None if no_footage(plan) else framed_at(e)
             if corner and not fr:  # stage puts it at the zone's top for this profile (props.cornerTop)
                 cx, cy, cw, ch = CORNER_BOX
                 b = [cx, max(cy, y0), cw, ch]
@@ -143,6 +143,25 @@ def profile_issues(e, plan, s, brand, cap, scenes, memes, tail, corner=False, en
         else:
             st[item] = "check"
     return errs, warns, st
+
+
+def voice_issues(e, plan, s, callouts):
+    """The "scenes + voice" format: a narration cut by cut.py (voice.wav, captions.json with its stamp) under designed
+    scenes, with the voice off camera; callouts point at objects of a rough cut, which this format has not."""
+    if plan.get("format") != "scenes-voice":
+        return []
+    out = []
+    if voice_mode(s) != "off_camera":
+        out.append(f"format 'scenes + voice': the narration is off camera, but reel.json has voice={voice_mode(s)}: "
+                   f"reelcfg.py save edit/{e.name} --set voice=off_camera")
+    cap = load_json(e / "captions.json") or {}
+    if not (cap.get("voice") and (e / "voice.wav").is_file()):
+        out.append(f"format 'scenes + voice': no narration cut in {e.name} (voice.wav and captions.json -> voice): "
+                   f"cut the recording with cut.py")
+    if callouts:
+        out.append(f"format 'scenes + voice': callouts {', '.join(c['id'] for c in callouts)} point at objects of a rough "
+                   f"cut, and this video has no footage: remove them")
+    return out
 
 
 def follow_rough_cut(e, plan, cap, s, prov, doc, quiet=False):
@@ -220,7 +239,7 @@ def cmd_validate(a, quiet=False):
     memes = [i for i in ins if i["kind"] == "meme" and i["status"] != "skipped"]
     scenes = [i for i in ins if i["kind"] == "scene" and i["status"] != "skipped"]
     callouts = [i for i in ins if i["kind"] == "callout" and i["status"] != "skipped"]
-    only = plan.get("format") == "scenes-only"
+    only = no_footage(plan)  # the scenes are the picture: "scenes only", "scenes + voice"
     timeline = [x for x in scenes if x.get("type") != "cover"]  # the cover is a still only
     # scenes that cover the speaker's frame count toward coverage together with B-roll (not in "scenes only")
     covering = [] if only else [x for x in timeline if x.get("mode") in COVER_MODES]
@@ -254,6 +273,7 @@ def cmd_validate(a, quiet=False):
     fdata = fc.load(e)
     fr = None if only else framed_at(e)
     errs += [f"reel.json: {m}" for m in framed_issues(load_json(e / "reel.json", {}) or {})]
+    errs += voice_issues(e, plan, s, callouts)
     if not only:
         # the framed format and the measurement agree: faces.json in source geometry, a horizontal rough cut
         src = framed_source(e)
@@ -502,7 +522,7 @@ def cmd_validate(a, quiet=False):
               + (f"{len(callouts)} callout(s) (experimental, ready {sum(1 for x in callouts if x['status'] == 'ready')}); "
                  if callouts else "")
               + (f"{len(timeline)} scene(s) (ready {sum(1 for x in timeline if x['status'] == 'ready')}, "
-                 + ("'scenes only' format" if only else
+                 + (f"{format_label(plan)} format" if only else
                     f"full {sum(1 for x in timeline if x.get('mode') == 'full')}/"
                     f"{(s.get('brand_tone') or {}).get('full_scenes_max')}") + "); " if scenes else "")
               + f"{len(errs)} error(s), {len(warns)} warning(s)"

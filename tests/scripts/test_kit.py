@@ -282,7 +282,7 @@ def test_t7_framed_is_drawn_by_the_kit():
     # scenes, B-roll and subtitles inside the window
     assert reel.count("framed={g ? sceneBox(g) : null}") == 2 and reel.count("{...subArea}") == 2
     layer = code("kit/scenes/SceneLayer.tsx")
-    assert "sceneStage(s, mode, fb?.area)" in layer and "clampStage(s, s.box, area ?? SAFE_STAGE" in layer
+    assert "sceneStage(s, mode, fb?.area, p.textBottom)" in layer and "clampStage(s, s.box, area ?? zone" in layer
     assert "(scenesOnly || framed) && LAYOUT.includes(s.mode)" in layer
     subs = code("kit/Subtitles.tsx")
     assert "const bottom = area ? Math.min(SUB_BOTTOM, area.y + area.h) : SUB_BOTTOM;" in subs and "left: -clip.x" in subs
@@ -329,8 +329,8 @@ def test_sampled_render_and_text_probe():
     assert 'const PROBE = "RK_TEXT ";' in sample
     import textcheck
     assert textcheck.PROBE == "RK_TEXT "
-    # media: false reaches every video and image layer the kit draws
-    for f, n in (("ReelKit.tsx", 2), ("kit/Inserts.tsx", 1), ("kit/Presenter.tsx", 1), ("kit/scenes/Ui.tsx", 1)):
+    # media: false reaches every video, image and sound layer the kit draws (ReelKit: Footage, FramedFootage, Voice)
+    for f, n in (("ReelKit.tsx", 3), ("kit/Inserts.tsx", 1), ("kit/Presenter.tsx", 1), ("kit/scenes/Ui.tsx", 1)):
         assert (KIT / f).read_text(encoding="utf-8").count("useMedia()") == n, f
     # the kit's text carries data-rk groups
     for f, g in (("ReelKit.tsx", 'data-rk="hook"'), ("ReelKit.tsx", 'data-rk="endcard"'), ("ReelKit.tsx", 'data-rk="label"'),
