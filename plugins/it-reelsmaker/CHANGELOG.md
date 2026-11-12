@@ -2,6 +2,61 @@
 
 What changed in IT Reelsmaker, written for the people who use it. The newest version is on top. The skill shows a short “What's new” note from this file once, on the first edit after an update.
 
+## 1.28.0
+
+- **A mascot from your own character picture.** `mascot_atlas.py atlas <brand> <sheet|folder>` cuts a sheet of
+  poses (a grid, or a folder of `<pose>.png` with optional talk and blink frames) into an atlas, a rig and a
+  check sheet in the brand's folder, and prints the `brand.py mascot` command to save it.
+- **The background goes, the character stays.** A transparent picture is kept as drawn; a flat background is
+  removed from the edges in, so white eyes on a white background survive; background enclosed by the character
+  is numbered on the check sheet and removed only with `--holes`; a gradient or photo background is refused.
+- **The head does not jump between poses:** every pose is scaled and moved so the head lands on one anchor;
+  `check <brand> --fix` places them again after you correct the eyes in the rig.
+- **Kit 1.17.0** (`kit.py update`): the kit draws the atlas mascot, with a drawn talk frame or a mouth over
+  the picture and a blink; a one-sided picture is never shown mirrored.
+
+## 1.27.0
+
+- **Brand mascot (new, opt-in).** A character drawn in code in the brand's colors stands beside the scenes,
+  blinks, breathes and gestures on the words you choose, its mouth animated to your recorded narration
+  (`mascot.py mouth`, `mascot.py plan`, `references/mascot.md`).
+- **`brand.py mascot <slug> --drawn <component>`** saves the brand's character; `brand.py stage` registers it
+  in the Remotion project (`src/gen/mascots.ts`, added by `kit.py update`).
+- **The brand tone caps it:** off for premium, calm or full for the others; a pose change bounces only on a
+  loud scene in a brand that allows bounces.
+- **The checks keep the mascot clear** of the subtitle band, the app's buttons, scene boxes, callouts and
+  memes, with at most one gesture per 0.8 s and none at a scene's entrance; staging refuses a mouth measured
+  on an older cut, and the text check reports text over the mascot.
+- **Kit 1.16.0** (`kit.py update`): the kit draws the mascot.
+
+## 1.26.0
+
+- **Scenes over your recorded narration.** Record the voice on a phone (sound only), cut it with the same
+  `cut.json` as a video, and get an explainer of designed scenes with your voice and its subtitles
+  (`visual_plan.py init edit/<id> --scenes-voice`).
+- **A sound-only recording is cut like a video:** pauses, takes, speed, speech leveling and the edge check
+  work on m4a, wav, mp3, ogg and opus; a second run with nothing changed is cached; a file that is too short
+  or empty, and music under the voice, are named instead of failing later.
+- **New setting `reel.json → voice`** (`on_camera` by default, `off_camera` for a narration): with the voice
+  off camera the subtitles stay on over full scenes and the scene text keeps above them.
+- **Kit 1.15.0** (`kit.py update`): the kit plays the narration and keeps the subtitle band free over full
+  scenes.
+- **Mastering refuses a “scenes + voice” render that lost its voice** instead of mastering it as a silent promo.
+
+## 1.25.1
+
+- **Subtitles over a change of camera angle are checked against the right face.** A face measured exactly at the
+  change belonged to both angles, so the check could warn about a face that is not on screen yet.
+
+## 1.25.0
+
+- **The rough cut records its picture apart from its sound.** `captions.json` and `edl.json` get the picture
+  shots next to the sound pieces; for now they are an exact copy, so nothing changes in your videos.
+- Face checks, picture defects, the virtual camera's source seconds, the slow drift, tracked callouts and the
+  plan's “hide the join” hints follow the picture; speech checks, leveling and subtitles follow the sound.
+  A rough cut made with an earlier version keeps working as it is.
+- This is the groundwork for voice-over, mixed and no-speech videos in the next releases.
+
 ## 1.24.0
 
 - **A P0 defect that survives two rounds of fixes now stops the preview** with a blocker report instead of

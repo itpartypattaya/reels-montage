@@ -8,21 +8,8 @@
 import React from "react";
 import { Img, staticFile } from "remotion";
 
-// The mascot contract (kit/mascot/types.ts of the mascot engine), declared here with the same shape: TypeScript
-// compares types by structure, so the module made here is a MascotModule there.
-export type MascotBox = { width: number; height: number; anchor: [number, number] }; // anchor = between the eyes
-export type MascotFrame = {
-  t: number; // seconds on the render timeline
-  pose: string; // current pose name
-  prevPose: string; // the pose before the current change
-  k: number; // 0..1 progress of the change prevPose -> pose (eased; outside 0..1 only when overshoot is allowed)
-  open: number; // mouth opening 0..1
-  talking: boolean; // inside a speaking span and open > 0.08
-  blink: boolean; // eyes closed on this frame
-  facing: 1 | -1; // -1 = mirrored horizontally by the layer
-};
-export type MascotRender = (f: MascotFrame) => React.ReactNode;
-export type MascotModule = { box: MascotBox; poses: string[]; render: MascotRender };
+// The mascot contract: kit/mascot/types.ts (the module made here is a MascotModule the layer places).
+import type { MascotModule, MascotRender } from "./types";
 
 // rig.json as mascot_atlas.py writes it: rectangles [x, y, w, h] and points in atlas px; offset places a pose's
 // frame in the shared box so that its head lands on the shared anchor; talk/blink frames have the pose's size.

@@ -14,6 +14,23 @@ def lf(b):
     return b.replace(b"\r\n", b"\n")
 
 
+def test_the_mascot_registry_is_the_persons_and_update_adds_it(project):
+    # ReelKit reads the brand mascots from src/gen/mascots.ts (brand.py stage writes it): new creates it, update adds
+    # it to an older project and never replaces the person's copy
+    run_script("kit.py", "new", "reels", cwd=project)
+    rem = project / "reels"
+    assert (rem / "src" / "gen" / "mascots.ts").read_bytes() == lf((KIT / "gen" / "mascots.ts").read_bytes())
+    assert 'from "./gen/mascots"' in (KIT / "ReelKit.tsx").read_text(encoding="utf-8")
+    (rem / "src" / "gen" / "mascots.ts").unlink()
+    (rem / "src" / "kit" / "brand.ts").write_text("// edited\n", encoding="utf-8")
+    r = run_script("kit.py", "update", "--remotion", rem, cwd=project)
+    assert "add: src/gen/mascots.ts" in r.stdout and (rem / "src" / "gen" / "mascots.ts").is_file()
+    (rem / "src" / "gen" / "mascots.ts").write_text("// mine\n", encoding="utf-8")
+    (rem / "src" / "kit" / "brand.ts").write_text("// edited again\n", encoding="utf-8")
+    run_script("kit.py", "update", "--remotion", rem, cwd=project)
+    assert (rem / "src" / "gen" / "mascots.ts").read_text(encoding="utf-8") == "// mine\n"
+
+
 def test_kit_version_is_not_ahead_of_the_plugin():
     # The kit version changes only when the kit changes (a release without kit changes must not make every project
     # look outdated), so it may lag behind the plugin version, never lead it.
@@ -282,7 +299,7 @@ def test_t7_framed_is_drawn_by_the_kit():
     # scenes, B-roll and subtitles inside the window
     assert reel.count("framed={g ? sceneBox(g) : null}") == 2 and reel.count("{...subArea}") == 2
     layer = code("kit/scenes/SceneLayer.tsx")
-    assert "sceneStage(s, mode, fb?.area)" in layer and "clampStage(s, s.box, area ?? SAFE_STAGE" in layer
+    assert "sceneStage(s, mode, fb?.area, p.textBottom)" in layer and "clampStage(s, s.box, area ?? zone" in layer
     assert "(scenesOnly || framed) && LAYOUT.includes(s.mode)" in layer
     subs = code("kit/Subtitles.tsx")
     assert "const bottom = area ? Math.min(SUB_BOTTOM, area.y + area.h) : SUB_BOTTOM;" in subs and "left: -clip.x" in subs
@@ -329,8 +346,8 @@ def test_sampled_render_and_text_probe():
     assert 'const PROBE = "RK_TEXT ";' in sample
     import textcheck
     assert textcheck.PROBE == "RK_TEXT "
-    # media: false reaches every video and image layer the kit draws
-    for f, n in (("ReelKit.tsx", 2), ("kit/Inserts.tsx", 1), ("kit/Presenter.tsx", 1), ("kit/scenes/Ui.tsx", 1)):
+    # media: false reaches every video, image and sound layer the kit draws (ReelKit: Footage, FramedFootage, Voice)
+    for f, n in (("ReelKit.tsx", 3), ("kit/Inserts.tsx", 1), ("kit/Presenter.tsx", 1), ("kit/scenes/Ui.tsx", 1)):
         assert (KIT / f).read_text(encoding="utf-8").count("useMedia()") == n, f
     # the kit's text carries data-rk groups
     for f, g in (("ReelKit.tsx", 'data-rk="hook"'), ("ReelKit.tsx", 'data-rk="endcard"'), ("ReelKit.tsx", 'data-rk="label"'),

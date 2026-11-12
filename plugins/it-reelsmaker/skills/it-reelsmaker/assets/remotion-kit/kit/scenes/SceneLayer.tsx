@@ -8,6 +8,8 @@
 // the old one has left by the scene's last frame, the new one enters from its first (no empty field between scenes).
 // “Framed” (props.framed, a horizontal source in a window): scenes stay in the window's text area (a box is clipped to it,
 // not to the whole safe zone), a full scene covers the window (rounded), split/panel/window are drawn as full there.
+// Voice off camera (props.voiceMode "off_camera", the “scenes + voice” format): the narration's subtitles stay on over
+// full scenes (only a scene with hide_subtitles hides them), so a full scene's text ends above them (textBottom).
 import React from "react";
 import { AbsoluteFill, Sequence, interpolate, useCurrentFrame, useVideoConfig } from "remotion";
 import { Brand, Look, alpha, useLookFonts } from "../brand";
@@ -132,9 +134,10 @@ export const speakerRectAt = (scenes: SceneSpec[] | null | undefined, frame: num
 };
 
 /** Intervals without subtitles — the same rule as visual_plan.py hides_subtitles: every mode except overlay, and slogan always;
- *  hook, quote and list in overlay — yes by default (they repeat or replace the speech); an explicit hide_subtitles: false keeps the subtitles. */
-export const sceneHideIntervals = (scenes?: SceneSpec[] | null): [number, number][] =>
-  playableScenes(scenes).filter((s) => s.mode !== "overlay" || s.type === "slogan" ||
+ *  hook, quote and list in overlay — yes by default (they repeat or replace the speech); an explicit hide_subtitles: false keeps the subtitles.
+ *  offCamera (props.voiceMode "off_camera"): the narration's subtitles stay on over every scene; only hide_subtitles: true hides them. */
+export const sceneHideIntervals = (scenes?: SceneSpec[] | null, offCamera = false): [number, number][] =>
+  playableScenes(scenes).filter((s) => offCamera ? s.hide_subtitles === true : s.mode !== "overlay" || s.type === "slogan" ||
     (s.hide_subtitles ?? (s.type === "hook" || s.type === "quote" || s.type === "list")))
     .map((s) => [s.start, s.start + s.dur] as [number, number]);
 
@@ -163,9 +166,13 @@ const clampStage = (s: SceneSpec, b: number[], zone: Stage, name: string): Stage
 };
 
 /** The scene's zone. area — the “framed” text area (the window, ReelKit framedGeometry): a box is clipped to it, an
- *  overlay without a box takes its top, a full scene fills it. */
-export const sceneStage = (s: SceneSpec, mode: SceneMode, area?: Stage | null): Stage => {
-  if (s.box && s.box.length === 4 && mode !== "panel") return clampStage(s, s.box, area ?? SAFE_STAGE, area ? "the framed window" : "the safe zone");
+ *  overlay without a box takes its top, a full scene fills it. textBottom — the voice is off camera and the subtitles stay
+ *  on over this full scene: its text ends at this y (visual_plan.py voice_stage, validate refuses a box below it). */
+export const sceneStage = (s: SceneSpec, mode: SceneMode, area?: Stage | null, textBottom?: number | null): Stage => {
+  const above = textBottom != null && mode === "full" && !area && !s.hide_subtitles;
+  const zone = above ? { ...SAFE_STAGE, h: Math.max(1, Math.min(SAFE_STAGE.h, (textBottom ?? 0) - SAFE_STAGE.y)) } : SAFE_STAGE;
+  if (s.box && s.box.length === 4 && mode !== "panel") return clampStage(s, s.box, area ?? zone, area ? "the framed window" : above ? "the zone above the subtitles" : "the safe zone");
+  if (above) return { x: 60, y: 250, w: 900, h: Math.max(1, Math.min(1200, (textBottom ?? 0) - 250)) };
   if (area) return mode === "overlay" ? { x: area.x, y: area.y, w: area.w, h: Math.min(600, area.h) } : { ...area };
   switch (mode) {
     case "overlay":
@@ -192,7 +199,7 @@ const flashes = (s: SceneSpec, bt: ResolvedTone, words: Word[], fps: number, sce
 };
 
 const SceneFrame: React.FC<{ spec: SceneSpec; brand: Brand; look: Look; fonts: { heading: string; body: string }; bt: ResolvedTone;
-  words: Word[]; scenesOnly: boolean; framed?: SceneFrameBox | null }> = (p) => {
+  words: Word[]; scenesOnly: boolean; framed?: SceneFrameBox | null; textBottom?: number | null }> = (p) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
   const s = p.spec;
@@ -207,7 +214,7 @@ const SceneFrame: React.FC<{ spec: SceneSpec; brand: Brand; look: Look; fonts: {
     return null;
   }
   if (MODES[s.type] && !MODES[s.type].includes(s.mode)) warnOnce(`mode-${s.id}`, `kit: scene ${s.id} (${s.type}) — mode ${s.mode} is not one of ${MODES[s.type].join("/")}`);
-  const stage = sceneStage(s, mode, fb?.area);
+  const stage = sceneStage(s, mode, fb?.area, p.textBottom);
   const shell: SceneCtx["shell"] =
     mode === "panel" || (mode === "overlay" && CARD_TYPES.includes(s.type)) ? "card" : mode === "overlay" && PLATE_TYPES.includes(s.type) ? "plates" : "field";
   // slogan: the style's field when brand.looks[style].field is set, and the primary field in the "brand" style (accent on
@@ -295,9 +302,10 @@ const SceneFrame: React.FC<{ spec: SceneSpec; brand: Brand; look: Look; fonts: {
 
 /** Scene layer. words — speech words (captions.words): the “on a pause — cut” rule and slogan words landing on their spoken words.
  *  sceneTone — the video's scene tone (props.sceneTone): for scenes without their own tone. framed — the “framed” text area
- *  and window (ReelKit framedGeometry): scenes stay inside the window. */
+ *  and window (ReelKit framedGeometry): scenes stay inside the window. textBottom — the voice is off camera: a full scene's
+ *  text ends at this y, above the subtitles that stay on (ReelKit: subtitlesTop − VOICE_SUB_GAP). */
 export const SceneLayer: React.FC<{ scenes?: SceneSpec[] | null; brand: Brand; look: Look; words?: Word[]; scenesOnly?: boolean;
-  sceneTone?: string | null; framed?: SceneFrameBox | null }> = (p) => {
+  sceneTone?: string | null; framed?: SceneFrameBox | null; textBottom?: number | null }> = (p) => {
   const { fps } = useVideoConfig();
   const fonts = useLookFonts(p.look);
   const bt = withRollTone(resolveBrandTone(p.brand), p.sceneTone);
@@ -309,7 +317,7 @@ export const SceneLayer: React.FC<{ scenes?: SceneSpec[] | null; brand: Brand; l
           <Sequence from={Math.round(s.start * fps)} durationInFrames={Math.max(1, Math.round(s.dur * fps))} layout="none">
             <div data-rk={`scene:${s.id}`} style={{ display: "contents" }}>
               <SceneFrame spec={s} brand={p.brand} look={p.look} fonts={fonts} bt={bt} words={p.words ?? []} scenesOnly={!!p.scenesOnly}
-                framed={p.framed} />
+                framed={p.framed} textBottom={p.textBottom} />
             </div>
           </Sequence>
           {flashes(s, bt, p.words ?? [], fps, !!p.scenesOnly, !!p.framed).map((t) => <FlashAt key={String(s.id) + "-" + String(t)} t={t} brand={p.brand} />)}

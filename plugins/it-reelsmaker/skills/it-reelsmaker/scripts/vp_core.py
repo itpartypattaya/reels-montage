@@ -6,6 +6,7 @@ from pathlib import Path
 
 from reels_common import (NUMBER_RE, budget, editing_json, effective, load_config, load_json, locked, probe,
                           save_json, warn)
+from pic_track import pic_shots, shots_of_words
 
 
 SCENE_MODES = ["overlay", "split", "panel", "window", "full"]  # a scene's default mode: the first of its own list
@@ -119,8 +120,21 @@ def load_plan(e):
 
 # what a rebuilt plan (init, init --force) keeps from the old one besides keep_clear: the last stage's hook, corner
 # logo and end (review 2026-10-18: init after a stage lost them, the next stage dropped the card), the subtitle band
-# the render has, the subtitles hidden by a per-video composition
-KEEP_ON_INIT = ("finish", "hook", "corner", "end_card", "subtitles_band", "hide_subtitles")
+# the render has, the subtitles hidden by a per-video composition, the brand mascot (its pose track follows the words)
+KEEP_ON_INIT = ("finish", "hook", "corner", "end_card", "subtitles_band", "hide_subtitles", "mascot")
+# plan formats whose picture is designed scenes only (no footage): "scenes only" (a promo, no speech) and "scenes +
+# voice" (a narration cut by cut.py into voice.wav: reel.json -> voice off_camera, subtitles from its words)
+NO_FOOTAGE = ("scenes-only", "scenes-voice")
+VOICE_MAX_S = 70  # s: a "scenes + voice" video longer than this may not render on an 8 GB laptop (SKILL.md section 15)
+
+
+def no_footage(plan):
+    """The plan's picture is designed scenes only: no rough cut on screen, no faces, camera or framed window."""
+    return (plan or {}).get("format") in NO_FOOTAGE
+
+
+def format_label(plan):
+    return "'scenes + voice'" if (plan or {}).get("format") == "scenes-voice" else "'scenes only'"
 
 
 def ensure_plan(e):
@@ -263,20 +277,22 @@ def build_plan(e, cap, s, prov, doc):
     lim = doc.get("limits", {})
     cap = cap or {}
     dur = float(cap["duration"]) if cap.get("duration") else plan_duration(e, {})
-    segs = cap.get("segments", [])
-    cut_starts = {round(g["out_start"], 2) for g in segs if g.get("out_start", 0) > 0.05}
-    long_cuts = {g["i"]: g["out_dur"] for g in segs if g.get("out_dur", 0) > 6.0}
+    # "hide the join" and "a long shot" are about the PICTURE (pic_track.py): where it jumps and how long it holds
+    shots = pic_shots(cap)
+    cut_starts = {round(g["out_start"], 2) for g in shots if (g.get("out_start") or 0) > 0.05}
+    long_cuts = {g["i"]: g["out_dur"] for g in shots if (g.get("out_dur") or 0) > 6.0}
     plan_segs = []
     phs = phrases(cap, lim)
     for n, ph in enumerate(phs):
         start = 0.0 if n == 0 else round(ph[0]["start"], 3)
         end = round(phs[n + 1][0]["start"], 3) if n + 1 < len(phs) else round(dur or ph[-1]["end"], 3)
         text = " ".join(w["text"].strip() for w in ph)
-        cuts = sorted({w.get("seg") for w in ph if w.get("seg") is not None})
+        cuts = sorted({w.get("seg") for w in ph if w.get("seg") is not None})  # the sound segments of the phrase
+        under = sorted(shots_of_words(ph, cap), key=lambda i: (i is None, i))  # the picture shots under it
         hints = []
         if any(start - 0.3 <= c <= start + 0.3 for c in cut_starts):
             hints.append("a segment join at the start: B-roll will hide the cut")
-        for c in cuts:
+        for c in under:
             if c in long_cuts:
                 hints.append(f"a {long_cuts[c]:.1f} s segment without a cut: room for a change of picture")
                 break
@@ -290,12 +306,13 @@ def build_plan(e, cap, s, prov, doc):
             hints.append("hook: the first 1.5 s decide whether people keep watching")
         if dur and end >= dur - 3.0:
             hints.append("ending/CTA: no memes here")
-        hints += scene_hints(n, len(phs), text, start, end, cuts, long_cuts)
+        hints += scene_hints(n, len(phs), text, start, end, under, long_cuts)
         plan_segs.append({"id": f"s{n + 1:02d}", "start": start, "end": end, "text": text, "cut_segs": cuts,
                           "main": "main shot", "camera": "", "graphics": "", "hints": hints, "notes": ""})
     plan = {"schema": 1, "id": e.name, "created": datetime.datetime.now().isoformat(timespec="minutes"),
             "duration": dur, "segments": plan_segs, "inserts": [], "keep_clear": [],
-            **({"captions_id": cut_id(cap)} if cap.get("words") is not None else {})}
+            **({"captions_id": cut_id(cap)} if cap.get("words") is not None else {}),
+            **({"picture_id": cap["picture_id"]} if cap.get("picture_id") else {})}  # pic_track.py: none for a copy
     snapshot(plan, s, prov, eff, why, doc)
     return plan
 

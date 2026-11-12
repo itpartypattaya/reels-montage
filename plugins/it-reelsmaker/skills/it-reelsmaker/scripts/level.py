@@ -261,16 +261,18 @@ def duration_of(path):
 
 
 def apply(audio_in, audio_out, g):
-    """audio_in (any ffmpeg audio) times the gain curve -> audio_out (AAC 192k, 48 kHz stereo, as cut.py writes it)."""
+    """audio_in (any ffmpeg audio) times the gain curve -> audio_out (AAC 192k, 48 kHz stereo, as cut.py writes it; a
+    .wav audio_out: 16-bit PCM, the sound-only cut's voice.wav stays lossless)."""
     fd, gw = tempfile.mkstemp(prefix="level_gain_", suffix=".wav")
     os.close(fd)
     try:
         gain_track(g, gw, duration_of(audio_in))
+        codec = ["-c:a", "pcm_s16le"] if str(audio_out).lower().endswith(".wav") else ["-c:a", "aac", "-b:a", "192k"]
         fc = ("[0:a]aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo[a];"
               "[1:a]aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=mono,pan=stereo|c0=c0|c1=c0[g];"
               "[a][g]amultiply[o]")
         r = subprocess.run(local_media_args(["ffmpeg", "-v", "error", "-y", "-i", str(audio_in), "-i", gw, "-filter_complex",
-                                             fc, "-map", "[o]", "-c:a", "aac", "-b:a", "192k", "-ar", "48000",
+                                             fc, "-map", "[o]", *codec, "-ar", "48000",
                                              str(audio_out)]), capture_output=True, text=True, encoding="utf-8", errors="replace")
         if r.returncode != 0:
             raise RuntimeError(f"ffmpeg amultiply failed: {r.stderr.strip()[-300:]}")

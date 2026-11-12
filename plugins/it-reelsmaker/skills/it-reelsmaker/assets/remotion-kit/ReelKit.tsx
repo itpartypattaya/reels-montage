@@ -8,12 +8,15 @@
 // panel/window the main video shrinks (speaker frame — kit/scenes speakerRectAt), full covers the frame with a field.
 // “Scenes only” format (a promo with no footage): video "" + captions {duration, segments: [], words: []} — brand-color
 // background, length — captions.duration. The cover is the ReelCover composition (still) at the bottom of the file.
+// “Scenes + voice” format (a narration recorded off camera, references/scenes.md): video "" + voice (public/<id>/voice.wav,
+// played by Html5Audio) + the narration's captions; voiceMode "off_camera" keeps the subtitles on over full scenes (only a
+// scene with hide_subtitles hides them) and ends a full scene's text VOICE_SUB_GAP above them. Length — captions.duration.
 // “Framed” format (props.framed ← reel.json format: framed, references/techniques.md): a horizontal rough cut in a rounded
 // window on the style's field, an optional caps label above it, the camera clamped to the window, scenes, B-roll and
 // subtitles inside it (or the subtitles on the field under it: subtitles "below") — drawn here, no per-video composition. A per-video composition reuses the pieces exported below
 // (FramedFootage, FramedLabel, EndCard with its logo sting, Corner, cameraAt/fitCamera, framedGeometry).
 import React from "react";
-import { AbsoluteFill, CalculateMetadataFunction, Easing, Img, OffthreadVideo, interpolate, staticFile, useCurrentFrame } from "remotion";
+import { AbsoluteFill, CalculateMetadataFunction, Easing, Html5Audio, Img, OffthreadVideo, interpolate, staticFile, useCurrentFrame } from "remotion";
 import { Brand, Look, alpha, fullLogoOnDark, logoOnDark, styleLook, useLookFonts } from "./kit/brand";
 import { neutralBrand } from "./kit/defaultBrand";
 import { BrollLayer, Insert, MemeLayer } from "./kit/Inserts";
@@ -22,17 +25,25 @@ import { Sample, Sampled, useMedia } from "./kit/Sample";
 export { MediaOn, Sampled, TextProbe, useMedia } from "./kit/Sample";
 export type { Sample } from "./kit/Sample";
 import { breakLines, fitSize, useFontsReady } from "./kit/Phrase";
-import { WHIP_BLUR, cameraAt, driftZoom, fitCamera } from "./kit/anchor";
+import { WHIP_BLUR, cameraAt, driftZoom, fitCamera, picShots } from "./kit/anchor";
 import type { Cam, Shot } from "./kit/anchor";
 import { CalloutLayer } from "./kit/Callout";
 import type { CalloutSpec } from "./kit/Callout";
 import { COVER_ZONE, COVER_ZONE_LOW, Cover, CoverText, ResolvedTone, SceneFrameBox, SceneLayer, SceneSpec, contrast, resolveBrandTone, sceneActivity,
   sceneHideIntervals, speakerRectAt, withRollTone } from "./kit/scenes";
+import { MascotLayer } from "./kit/mascot/MascotLayer";
+import type { MascotProps } from "./kit/mascot/MascotLayer";
+import { MASCOTS } from "./gen/mascots"; // the brand mascots drawn in code (brand.py stage registers them; yours)
 
 export const KIT_FPS = 30;
+export const VOICE_SUB_GAP = 40; // px: with the voice off camera a full scene's text ends this far above the subtitles (vp_scenes.VOICE_SUB_GAP)
 
 export type ReelKitProps = {
   video: string; // path inside public/
+  // “scenes + voice”: the narration cut by cut.py (path inside public/, visual_plan.py stage → props.voice), played under the scenes
+  voice?: string | null;
+  // reel.json → voice: "off_camera" — the narration is not said in the frame (subtitles stay on over full scenes); absent — on camera
+  voiceMode?: "on_camera" | "off_camera" | "none" | null;
   captions: Captions;
   // subtitles in another language (subs.py → captions-<lang>.json); the speech words in captions still time the scenes
   subtitleCaptions?: Captions | null;
@@ -62,6 +73,9 @@ export type ReelKitProps = {
   callouts?: CalloutSpec[] | null;
   // board.py / textcheck.py: frame k shows frame frames[k] of the video, frozen; render --frames=0-(n−1) (kit/Sample.tsx)
   sample?: Sample | null;
+  // the brand mascot (visual_plan.py stage → props.mascot, references/mascot.md): a per-frame plan the kit plays,
+  // above the scenes, below callouts, memes and subtitles; absent — none
+  mascot?: MascotProps | null;
 };
 
 // The “framed” format: window — x, y, w, h on the 1080×1920 screen (reel.json → window, default 25, 340, 1030, 1240);
@@ -114,10 +128,17 @@ export const reelKitMetadata: CalculateMetadataFunction<ReelKitProps> = ({ props
     (props.endCard ? Math.round((props.endCard.seconds ?? 2.6) * KIT_FPS) : 0)),
 });
 
+/** The narration of a “scenes + voice” video: its sound only (no picture). Not in a sampled still (board, textcheck). */
+const Voice: React.FC<{ p: ReelKitProps }> = ({ p }) => {
+  const media = useMedia();
+  if (!p.voice || !media || p.sample) return null;
+  return <Html5Audio src={staticFile(p.voice)} />;
+};
+
 const Footage: React.FC<{ p: ReelKitProps; bt: ResolvedTone }> = ({ p, bt }) => {
   const frame = useCurrentFrame();
   const t = frame / KIT_FPS;
-  const z = p.drift ? driftZoom(p.captions.segments, t) : 1;
+  const z = p.drift ? driftZoom(picShots(p.captions), t) : 1; // the picture's shots drift, not the sound's segments
   const media = useMedia(); // before the early returns
   if (!p.video || !media) return null;
   if (p.framed) return <FramedFootage p={p} z={z} />;
@@ -312,7 +333,8 @@ const ReelKitFrame: React.FC<ReelKitProps> = (p) => {
   const bt = withRollTone(resolveBrandTone(p.brand), p.sceneTone);
   // subtitles are hidden on split/panel/window/full and slogan scenes (the scene text replaces them) and on hide_subtitles —
   // this duplicates the export's hideSubtitles, which does no harm
-  const hide = [...(p.hideSubtitles ?? []), ...sceneHideIntervals(p.scenes)];
+  const offCamera = p.voiceMode === "off_camera";
+  const hide = [...(p.hideSubtitles ?? []), ...sceneHideIntervals(p.scenes, offCamera)];
   // the last phrase and the darkening stay under the end card while its field fades in, then the card covers them
   // (T4: they vanished when the speech ended, on the second frame of the logo sting's 8-frame fade: a visible step)
   const tail = p.endCard ? STING_IN / KIT_FPS : 0;
@@ -321,22 +343,31 @@ const ReelKitFrame: React.FC<ReelKitProps> = (p) => {
   const g = p.framed && p.video ? framedGeometry(p.framed) : null;
   const subArea = g ? (g.below ? { area: g.sub } : { area: g.area, clip: { ...g.win, r: g.r } }) : {};
   const shade = g?.below ? 0 : p.subtitlesShade ?? 0.35;
+  // the “Typewriter” darkening: under the scenes as before; with the voice off camera the subtitles stay on over full
+  // scenes, so it goes over the scene's field (under the subtitle text), or the field would cover it
+  const shadeLayer = (
+    <KitSubtitles captions={p.subtitleCaptions ?? p.captions} brand={p.brand} font={fonts.body} mode={p.subtitles} hide={hide}
+      top={p.subtitlesTop ?? 1290} look={look} shade={shade} part="shade" tail={tail} {...subArea} />
+  );
   // behind the speaker shrunk by a split/panel/window scene (and around the framed window): the style's field
   // (brand.looks[style].field), the same surface the scene's text is colored for; without it, primary
   return (
     <AbsoluteFill style={{ backgroundColor: (g ? p.framed?.field : null) ?? look.field ?? p.brand.colors.primary }}>
       <Footage p={p} bt={bt} />
+      <Voice p={p} />
       {g ? <FramedLabel p={p} font={fonts.body} /> : null}
       <BrollLayer inserts={p.inserts} brand={p.brand} framed={g ? sceneBox(g) : null} />
-      <KitSubtitles captions={p.subtitleCaptions ?? p.captions} brand={p.brand} font={fonts.body} mode={p.subtitles} hide={hide}
-        top={p.subtitlesTop ?? 1290} look={look} shade={shade} part="shade" tail={tail} {...subArea} />
+      {offCamera ? null : shadeLayer}
       <Hook p={p} look={look} font={fonts.heading} />
       <Corner p={p} />
       <SceneLayer scenes={p.scenes} brand={p.brand} look={look} words={p.captions.words} scenesOnly={!p.video} sceneTone={p.sceneTone}
-        framed={g ? sceneBox(g) : null} />
+        framed={g ? sceneBox(g) : null}
+        textBottom={offCamera && p.subtitles !== "none" ? (p.subtitlesTop ?? 1290) - VOICE_SUB_GAP : null} />
+      {offCamera ? shadeLayer : null}
+      <MascotLayer mascot={p.mascot} modules={MASCOTS} />
       {!g && p.video ? (
         <CalloutLayer callouts={p.callouts} brand={p.brand} look={look} fonts={fonts} bt={bt} camera={p.camera}
-          segments={p.captions.segments} drift={p.drift} end={p.captions.duration} scenes={p.scenes} words={p.captions.words} />
+          segments={picShots(p.captions)} drift={p.drift} end={p.captions.duration} scenes={p.scenes} words={p.captions.words} />
       ) : null}
       <MemeLayer inserts={p.inserts} brand={p.brand} />
       <KitSubtitles captions={p.subtitleCaptions ?? p.captions} brand={p.brand} font={fonts.body} mode={p.subtitles} hide={hide}

@@ -18,6 +18,7 @@ to its scripts folder):
     python scripts/brand.py tone acme friendly [--field memes.max=1 flash_max=1] [--reset]   # brand tone: preset + field overrides
     python scripts/brand.py use acme --edit edit/4821              # brand into edit/<id>/reel.json + mark as used
     python scripts/brand.py stage acme --remotion reels           # src/brands/<slug>.json + logos in public/brands/<slug>/
+    python scripts/brand.py mascot acme --drawn src/mascot/Sprout.tsx [--symmetric] | --atlas assets/mascot/rig.json | --off
 
 Logos, fonts and LUTs live inside the brand: brands/<slug>/assets/ (new and logo copy them there), so a brand moves
 between projects as one folder. Logo roles: on_dark - light (for a dark background and over video), on_light - dark,
@@ -34,7 +35,7 @@ safe default, and the script says what it filled in.
 New brands are written to the project (--where project, the default). The plugin folder is replaced on update, so
 --where skill works only in a personal copy of the skill that already has a brands/ folder next to its scripts folder.
 """
-import argparse, contextlib, datetime, hashlib, json, re, shutil, sys
+import argparse, contextlib, datetime, hashlib, json, os, re, shutil, sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -730,9 +731,150 @@ def cmd_stage(a):
            "subtitles_default": b.get("subtitles_default"), "style_default": (b.get("styles") or {}).get("default")}
     if b.get("looks") is not None:  # style looks for the Remotion template, as they are
         out["looks"] = b["looks"]
+    mascot = stage_mascot(a.slug, d, b, rem, pub)
+    if mascot:
+        out["mascot"] = mascot
     save_json(rem / "src" / "brands" / f"{a.slug}.json", out)
     print(f"src/brands/{a.slug}.json + {len(logos)} logo(s) in public/brands/{a.slug}/; tone {tone['preset']}, "
           f"motion {out['motion']}")
+
+
+# ── the brand mascot (references/mascot.md) ──
+
+NUM = r"(-?\d+(?:\.\d+)?)"
+BOX_RE = re.compile(r"export\s+const\s+box\b[^=]*=\s*\{\s*width\s*:\s*" + NUM + r"\s*,\s*height\s*:\s*" + NUM
+                    + r"\s*,\s*anchor\s*:\s*\[\s*" + NUM + r"\s*,\s*" + NUM + r"\s*\]")
+POSES_RE = re.compile(r"export\s+const\s+poses\b[^=]*=\s*\[([^\]]*)\]")
+MASCOTS_HEAD = ('import type { MascotModule } from "../kit/mascot/types";\n'
+                "// Brand mascots drawn in code, by brand slug: brand.py stage <slug> writes this file from brand.json -> mascot\n"
+                "// (references/mascot.md). It is yours: kit.py update never replaces it.\n")
+
+
+def read_component(p):
+    """A drawn mascot's module (a .tsx in the Remotion project) -> ({box, anchor, poses}, None) or (None, why): the
+    literal `export const box = { width, height, anchor: [x, y] }` and `export const poses = [...]`."""
+    try:
+        text = Path(p).read_text(encoding="utf-8")
+    except OSError as x:
+        return None, f"the mascot's component {p} is not readable: {x}"
+    mb, mp = BOX_RE.search(text), POSES_RE.search(text)
+    if not mb or not mp:
+        return None, (f"{p}: no literal `export const box = {{ width: W, height: H, anchor: [X, Y] }}` and "
+                      f"`export const poses = [\"neutral\", ...]` (references/mascot.md, the contract)")
+    num = lambda v: int(float(v)) if float(v).is_integer() else float(v)
+    return {"box": [num(mb.group(1)), num(mb.group(2))], "anchor": [num(mb.group(3)), num(mb.group(4))],
+            "poses": re.findall(r"[\"']([A-Za-z_]+)[\"']", mp.group(1))}, None
+
+
+def mascot_ident(slug):
+    """A TypeScript name for the slug's import; slugs that differ only in - or . get a hash suffix, never the same name."""
+    clean = re.sub(r"\W", "_", slug)
+    return "M_" + clean if clean == slug else f"M_{clean}_{hashlib.sha1(slug.encode()).hexdigest()[:6]}"
+
+
+def register_mascot(rem, slug, component):
+    """src/gen/mascots.ts: the brand's drawn module under its slug (the kit's ReelKit reads MASCOTS from there)."""
+    from reels_common import locked
+    reg = rem / "src" / "gen" / "mascots.ts"
+    reg.parent.mkdir(parents=True, exist_ok=True)
+    with locked(reg):
+        text = reg.read_text(encoding="utf-8") if reg.is_file() else ""
+        mods = {s: imp for imp, s in re.findall(r'^import \* as M_\w+ from "([^"]+)"; // mascot ([\w.-]+)\r?$',
+                                                text, re.M)}
+        rel = Path(os.path.relpath(rem / component, reg.parent)).with_suffix("").as_posix()
+        mods[slug] = rel if rel.startswith(".") else "./" + rel
+        lines = [MASCOTS_HEAD]
+        lines += [f'import * as {mascot_ident(s)} from "{imp}"; // mascot {s}\n' for s, imp in sorted(mods.items())]
+        lines.append("\nexport const MASCOTS: Record<string, MascotModule> = {\n")
+        lines += [f'  "{s}": {{ box: {mascot_ident(s)}.box, poses: [...{mascot_ident(s)}.poses], '
+                  f"render: {mascot_ident(s)}.render }},\n" for s in sorted(mods)]
+        lines.append("};\n")
+        new = "".join(lines)
+        if new != text:
+            save_text(reg, new)
+    return reg
+
+
+def stage_mascot(slug, d, b, rem, pub):
+    """The mascot part of brand.py stage -> src/brands/<slug>.json "mascot", or None. A drawn one: its box and poses
+    re-read from the component (brand.json keeps them for the plan checks) and the module registered in
+    src/gen/mascots.ts; an atlas: rig.json and the atlas image copied to public/brands/<slug>/mascot/, like logos."""
+    m = b.get("mascot")
+    if not isinstance(m, dict) or not m.get("kind"):
+        return None
+    if m["kind"] == "drawn":
+        got, why = read_component(rem / m.get("component", ""))
+        if not got:
+            warn(f"mascot: {why}; the mascot is not staged")
+            return None
+        if any(m.get(k) != got[k] for k in ("box", "anchor", "poses")):
+            with editing_brand(slug) as (_d, b2):
+                b2["mascot"].update(got)
+            print(f"mascot: box/anchor/poses refreshed from {m['component']}")
+        reg = register_mascot(rem, slug, m["component"])
+        print(f"mascot: {m['component']} registered in {reg.relative_to(rem).as_posix()} as \"{slug}\"")
+        return {"kind": "drawn", "module": slug}
+    rig_p = brand_file(m.get("rig"), d)
+    rig = json.loads(rig_p.read_text(encoding="utf-8")) if rig_p else None
+    if not rig:
+        warn(f"mascot: the atlas rig {m.get('rig')} is missing; the mascot is not staged")
+        return None
+    img = rig_p.parent / str(rig.get("atlas") or "atlas.png")
+    if not img.is_file():
+        warn(f"mascot: the atlas image {img} is missing; the mascot is not staged")
+        return None
+    dst = pub / "mascot"
+    dst.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(rig_p, dst / rig_p.name)
+    shutil.copy2(img, dst / img.name)
+    return {"kind": "atlas", "module": slug, "rig": f"brands/{slug}/mascot/{rig_p.name}",
+            "atlas": f"brands/{slug}/mascot/{img.name}"}
+
+
+def cmd_mascot(a):
+    """brand.json -> mascot: a drawn module in the Remotion project, a PNG atlas (mascot.py atlas), or none."""
+    if a.off:
+        with editing_brand(a.slug) as (d, b):
+            b.pop("mascot", None)
+        print(f"{a.slug}: no mascot")
+        return
+    if a.drawn:
+        from board import remotion_dir
+        rem = Path(remotion_dir(a.remotion)).resolve()
+        comp = Path(a.drawn)
+        if comp.is_absolute():
+            try:
+                comp = comp.resolve().relative_to(rem)
+            except ValueError:
+                sys.exit(f"--drawn {a.drawn}: the component lives in the Remotion project {rem}")
+        got, why = read_component(rem / comp)
+        if not got:
+            sys.exit(why)
+        if "neutral" not in got["poses"]:
+            sys.exit(f"{comp}: the poses have no neutral (every track starts from it)")
+        with editing_brand(a.slug) as (d, b):
+            b["mascot"] = {"kind": "drawn", "component": comp.as_posix(), **got, "symmetric": bool(a.symmetric)}
+        print(f"{a.slug}: a drawn mascot {comp.as_posix()}, box {got['box'][0]}x{got['box'][1]}, poses "
+              f"{', '.join(got['poses'])}; for Remotion: brand.py stage {a.slug} --remotion {rem}")
+        return
+    d, b = find_brand(a.slug)
+    if not b:
+        sys.exit(f"no brand {a.slug}")
+    rig = brand_file(a.atlas, d)
+    if not rig:
+        sys.exit(f"--atlas {a.atlas}: no such file in the brand folder {d}")
+    try:
+        r = json.loads(rig.read_text(encoding="utf-8"))
+        r["box"], r["anchor"], r["poses"]["neutral"]  # noqa: B018 - the contract's required fields
+    except (ValueError, KeyError, TypeError):
+        sys.exit(f"{rig}: not a mascot rig (box, anchor, poses.neutral; mascot.py atlas writes it)")
+    try:
+        value = rig.resolve().relative_to(d.resolve()).as_posix()
+    except ValueError:
+        sys.exit(f"--atlas {a.atlas}: keep the rig inside the brand folder (brands/{a.slug}/assets/mascot/)")
+    with editing_brand(a.slug) as (d, b):
+        b["mascot"] = {"kind": "atlas", "rig": value}
+    print(f"{a.slug}: an atlas mascot {value}; for Remotion: brand.py stage {a.slug} --remotion <Remotion project>")
 
 
 def main():
@@ -773,6 +915,15 @@ def main():
     p.set_defaults(fn=cmd_tone)
     p = sub.add_parser("use"); p.add_argument("slug"); p.add_argument("--edit", required=True); p.set_defaults(fn=cmd_use)
     p = sub.add_parser("stage"); p.add_argument("slug"); p.add_argument("--remotion", required=True); p.set_defaults(fn=cmd_stage)
+    p = sub.add_parser("mascot", help="the brand mascot: a module drawn in code, a PNG atlas, or none (references/mascot.md)")
+    p.add_argument("slug")
+    g = p.add_mutually_exclusive_group(required=True)
+    g.add_argument("--drawn", metavar="COMPONENT", help="its .tsx in the Remotion project, e.g. src/mascot/Sprout.tsx")
+    g.add_argument("--atlas", metavar="RIG", help="rig.json in the brand folder (mascot.py atlas writes it)")
+    g.add_argument("--off", action="store_true", help="no mascot")
+    p.add_argument("--remotion", help="the Remotion project (default: it-reelsmaker.json -> remotion_dir)")
+    p.add_argument("--symmetric", action="store_true", help="the figure mirrors well (point_right drawn as point_left mirrored)")
+    p.set_defaults(fn=cmd_mascot)
     a = ap.parse_args()
     a.fn(a)
 

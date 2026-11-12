@@ -43,6 +43,7 @@ import tempfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+from pic_track import pic_shots  # noqa: E402
 from reels_common import edit_dir, load_json, probe, save_json, utf8_stdio, warn  # noqa: E402
 
 STEP = 0.1
@@ -283,7 +284,7 @@ def main():
         print("picture defects not measured (no model or OpenCV): look at the rough cut's frames by eye")
         return
     cap = load_json(e / "captions.json", {}) or {}
-    defects, info = find(data, cap.get("segments") or [], cap.get("words") or [])
+    defects, info = find(data, pic_shots(cap), cap.get("words") or [])  # the picture's sources, not the sound's
     save_json(e / "faces_defects.json", {"video": str(video), "step": a.step, "model": fc.model_path().name,
                                          **info, "defects": defects})
     if not info["on_camera"]:
