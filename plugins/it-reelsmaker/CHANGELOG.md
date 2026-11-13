@@ -2,6 +2,11 @@
 
 What changed in IT Reelsmaker, written for the people who use it. The newest version is on top. The skill shows a short “What's new” note from this file once, on the first edit after an update.
 
+## 1.38.1
+
+- **Wording.** With the online-sources add-on linked, the “no footage” question also names the add-on's own narration
+  option, by the add-on's rules.
+
 ## 1.38.0
 
 - **Is the footage usable? `picture.py scan` says where to look.** Before the shots of a voice-over or a no-speech

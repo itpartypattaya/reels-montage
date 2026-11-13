@@ -2,15 +2,15 @@
 name: it-reelsmaker-online
 description: >
   Online sources for it-reelsmaker video edits: vertical stock footage (Pixabay, Pexels, Magnific), CC-licensed
-  memes (Openverse; GIPHY as reference only), paid AI video generation (Veo, Kling, LTX via fal.ai) for B-roll,
-  a cloud transcript (OpenAI text on the local word times), subtitle translation through the Claude, OpenAI or
-  Gemini API, and figure cut-outs on your own server over SSH. Use only inside an it-reelsmaker edit, and only when
-  the person names a cloud service, an API, paid generation, stock or online sources, or their own server, or turned
-  these on in the settings: "find stock footage", "generate an insert", "online memes", "transcribe it through
-  OpenAI", "translate the subtitles through Gemini", "cut out the figure on my server". A plain "transcribe",
-  "translate the subtitles" or "cut out the person" belongs to the core it-reelsmaker skill, which does it on this
-  computer. Every download and every paid run happens only after the person approves the visual plan with source,
-  size and price.
+  memes (Openverse; GIPHY as reference only), paid AI video generation (Veo, Kling, LTX via fal.ai) for B-roll, a
+  cloud transcript (OpenAI), subtitle translation through the Claude, OpenAI or Gemini API, a narration in the
+  person's own cloned voice (ElevenLabs), and figure cut-outs on your own server. Use only inside an it-reelsmaker
+  edit, and only when the person names a cloud service, an API, paid generation, stock or online sources, or their
+  own server, or turned these on: "find stock footage", "generate an insert", "online memes",
+  "transcribe it through OpenAI", "translate the subtitles through Gemini", "voice the script with my cloned voice",
+  "cut out the figure on my server". A plain "transcribe", "translate the subtitles" or "cut out the person" belongs
+  to the core skill, which does it locally. Every download and paid run waits for the person's approval of the
+  source, size and price.
 ---
 
 # Online sources for it-reelsmaker
@@ -37,6 +37,7 @@ It writes `online_scripts` into the project's `it-reelsmaker.json` (`unlink` rem
 | `python <core scripts>/addon.py matte cut edit/<id> --from … --to … [--host H]` | figure cut-out on your own server (below) |
 | `python <core scripts>/addon.py transcribe edit/<id> <source> --provider openai [--language ru] [--yes]` | a more accurate transcript (below); `--price` only names the price |
 | `python <core scripts>/addon.py translate edit/<id> --to en --provider anthropic\|openai\|gemini [--yes]` | subtitle translation through an API (below) |
+| `python <core scripts>/addon.py voice list\|use\|clone\|plan\|run\|status\|build\|check …` | a narration in the person's own cloned voice (below, `references/voice.md`) |
 
 ## Reel settings
 
@@ -121,6 +122,32 @@ tokens (the command prints them; the price is the model's rate); paid all the sa
 `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY` (the person adds them with `keys set`). A phrase the model
 skipped stays empty: translate it in the session, then `subs.py apply`.
 
+## A narration in the person's own voice (ElevenLabs)
+
+For a reel with no voice recorded (the core's “no footage” question, or scenes and silent shots) the person may want
+their own cloned voice to read the script. It is a narration like a voice note from a phone: the core cuts it as an
+off-camera voice. Offer it only when the add-on is linked and the person names it or has no way to record.
+
+- **Only the person's own voice**, and only after they confirm it: read them the consent sentence the command prints and
+  pass `--consent own` after their explicit “yes”. Someone else's voice (a colleague, a client, a family member) is not
+  supported in this version, even if the voice is in their account. A voice ElevenLabs asks to verify is blocked.
+- **Start with the account's voices**: `voice list` (free) shows them with a link to listen; the person says whose voice
+  it is; then `voice use <voice_id> --name <name> --consent own`. A new clone (`voice clone`) only from a fresh, clean
+  1–3 minute recording of the person alone, which they chose and listened to; it goes to ElevenLabs.
+- **The script** is the brief's text, word for word: `voice script edit/<id> --text <file> --voice <name>` (blocks by
+  paragraph, ≤ 1000 characters each). Numbers, dates and abbreviations: best written in words.
+- **Paid, the price first**: `voice plan edit/<id>` names credits per block and a plan id; show it, and only after the
+  person's explicit “yes” to that price run `voice run edit/<id> --yes --plan <id>` (`generate_voice_now=true` for the
+  video). A changed text, voice or setting is a new plan and a new “yes”. A block left `unknown` is never sent again by
+  the script: follow its message (history, `recover`, `clear`).
+- **Listen before editing**: the person listens to `generated/narration.wav` whole; stress and pronunciation are checked
+  by nothing else (`voice check` compares words only). Then picture blocks or scenes as for a recorded narration
+  (`cut.py`, then `visual_plan.py init edit/<id> --scenes-voice`).
+- **Label when publishing**: realistic synthetic audio may need the platform's AI label (Instagram's “AI info”);
+  say so in the report.
+
+Key `ELEVENLABS_API_KEY`, added by the person with `keys set`; it needs the permissions listed in `references/voice.md`.
+
 ## Figure cut-out on your own server
 
 The core cuts the figure out on this computer (`matte.py`; the cut-out reference of the core skill, `figure.md`). On a weak laptop the same step can run on a server you control: `addon.py matte cut … --host ${user_config.matte_host}` (the add-on setting). If that value is empty or still reads `${user_config…}`, it is not set: leave `--host` out entirely (an empty `--host` breaks the command line), and the script takes `matte.host` from `it-reelsmaker.json` or `REELS_MATTE_HOST`; if neither is set, ask the person once and write `matte.host` there. Frames of the span go to that host as one JPG archive over your own SSH client, the WebM with alpha comes back, and the temporary files are removed there, on error too. The server needs `rembg` with the `u2net_human_seg` model (its path on the server: `matte.server_rembg`, or `matte.rembg` when you never cut out locally); one cut-out at a time under a server-side lock, with a memory check. Nothing goes anywhere else.
@@ -131,5 +158,6 @@ The core cuts the figure out on this computer (`matte.py`; the cut-out reference
 |---|---|
 | `references/sources.md` | connecting stock, video models and online memes: terms, prices, endpoints, keys |
 | `references/generation.md` | model generation: prompt fields and template, checks, run rules, AI label |
+| `references/voice.md` | a narration in a cloned voice: files, states, recovery, joining, the contract with the core |
 
 Paid submissions reserve `gen.job` under the plan lock before contacting fal. A `submitting` or `unknown` state never resubmits automatically: check the provider dashboard, then restore the request ID and queue URLs to resume, or clear the job by hand only after confirming that no paid request was accepted. Resumed fal jobs use only `FAL_KEY`; other saved providers are refused. Downloaded raw clips are bound to their request ID, so an older clip cannot satisfy a new job. Requests and redirects require HTTPS; credentials are stripped on an origin change, and fal queue hosts are checked at every hop. JSON responses are limited to 20 MB and downloads use unique temporary files.

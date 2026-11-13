@@ -19,6 +19,7 @@ Keys are read from environment variables or from a file outside the skill and ou
 | `GROQ_API_KEY` | Groq | fallback transcript text (whisper-large-v3-turbo); never its word times |
 | `ANTHROPIC_API_KEY` | Anthropic | subtitle translation (Claude) |
 | `GEMINI_API_KEY` | Google AI Studio | subtitle translation (Gemini) |
+| `ELEVENLABS_API_KEY` | ElevenLabs | a narration in the person's own cloned voice (`addon.py voice`) |
 | — | Openverse | CC images, no key (about 100 requests a day anonymously) |
 
 Offline mode (a variable such as `REELS_OFFLINE=1`) turns the network off entirely.
@@ -58,6 +59,71 @@ Model names checked 2026-10-04 on the providers' model pages; each takes `--mode
 Only the subtitle text goes out (the phrases, the brand's voice and forbidden words). Checked live with OpenAI on a
 61 s video (25 phrases, about 2,100 tokens): every phrase translated in one request; without the form-of-address
 rule the polite Russian "you" became the informal German "du", hence the rule in the prompt.
+
+## Voice: ElevenLabs (a narration in a cloned voice)
+
+From the documentation, 2026-11-13 (not all checked live, see below):
+
+- Text to speech with timings: `POST https://api.elevenlabs.io/v1/text-to-speech/{voice_id}/with-timestamps?output_format=…`,
+  header `xi-api-key`; JSON `{text, model_id, voice_settings, apply_text_normalization, previous_text, next_text}` →
+  `audio_base64`, `alignment` and `normalized_alignment` (characters with start and end seconds each). No idempotency
+  key: a repeated request is paid again.
+- Model in the add-on: `eleven_multilingual_v2` (Russian among 29 languages, up to 10,000 characters a request,
+  1 credit per character; `language_code` is not for this model). `eleven_v3` and `eleven_flash_v2_5` are not used yet:
+  their timings and rates are not confirmed.
+- Voice settings: stability 0.5, similarity_boost 0.75, style 0 (above 0 costs more: refused), speaker boost on, speed
+  1.0. Output `mp3_44100_128` is on every plan; 44.1 kHz PCM needs Pro.
+- Plans (credits a month): Free 10,000 (no commercial license), Starter $6 / 30,000 (instant voice cloning from here),
+  Creator $22 / 121,000, Pro $99 / 600,000. The API pricing page shows other numbers; the add-on counts credits only.
+- Instant clone: `POST /v1/voices/add` (multipart `name`, `files`), 1–2 minutes of one clean voice (at most 3), MP3
+  ≥ 128 kbit/s, about −23…−18 dB RMS, true peak ≤ −3 dB; the answer can ask for verification (`requires_verification`,
+  `library_voice_match`). Delete: `DELETE /v1/voices/{voice_id}`. History: `GET /v1/history/{id}` and `…/audio`.
+- Errors: `{"detail": {status/code, message, request_id}}`; 401 invalid key or missing permission, 402 not enough
+  credits, 403 not on the plan, 404 no such voice, 429 limits.
+- Rules: cloning a living person needs their explicit consent; no voices of minors; disclose AI where the law or the
+  platform asks (Instagram's “AI info”, TikTok's AI label: wording for audio is provisional).
+
+**Checked live on 2026-11-13** (a Starter account's restricted key, free requests only):
+
+- `GET /v1/voices` with a key allowed Voices read: 200; a cloned voice carries `category: "cloned"`, `is_owner: true`,
+  `samples[]` with `duration_secs`, `voice_verification.requires_verification`, `preview_url`.
+- `GET /v1/voices/{id}/settings`: 200, the defaults above.
+- A key without a permission answers **401** with `detail.status: "missing_permissions"` and names it: `user_read`
+  (`/v1/user`, `/v1/user/subscription`), `models_read` (`/v1/models`), `speech_history_read` (`/v1/history`). So the
+  key needs Text to Speech, Voices read, User read (the balance before every block), History read (recovery); Voices
+  write only to clone or delete. 401 is the one status the add-on treats as "nothing charged".
+- `GET /v1/usage/character-stats` works without User read (daily usage).
+- With User read: `GET /v1/user/subscription` on Starter gives `character_limit` (with rollover, above the plan's
+  30,000), `character_count`, `can_use_instant_voice_cloning: true`, `voice_limit: 10`,
+  `can_extend_character_limit: false` (no usage-based overage: a run cannot go past the balance into extra money).
+- `GET /v1/models`: `model_rates.character_cost_multiplier` — `eleven_multilingual_v2`, `eleven_v3`, `eleven_v4` 1.0;
+  `eleven_flash_v2_5`, `eleven_turbo_v2_5`, `eleven_v4_turbo` 0.5; all of these list Russian.
+- With History read: every history item has `request_id`, `voice_id`, `model_id`, `output_format`, `settings`,
+  `character_count_change_from/to` and **`alignments` {`alignment`, `normalized_alignment`}**, so a lost answer is
+  recovered with its timings. `GET /v1/history/{id}/audio` costs nothing (the balance was the same before and after).
+- Earlier text-to-speech requests of the same account (multilingual v2, from the history) were charged about 0.4 credit
+  per character (66 credits for 165 characters, the same ratio for four items).
+
+**Paid check on 2026-11-13** (Starter, `eleven_multilingual_v2`, own cloned voice, five requests, 42 credits in all):
+
+- Charge: `character-cost` header 17 credits for a 42-character text with numbers, %, the letter yo and quotes; 4 for
+  11 and for 9 characters: about **0.4 credit per character**, matching the history. The add-on keeps 1 per character
+  as the ceiling and shows 0.4 as the likely price.
+- The neighbours' text (`previous_text` / `next_text`) is not charged: the same 17 credits with it.
+- `alignment` carries the text exactly as sent (numbers as digits, quotes as typed); `normalized_alignment` has a space
+  at each end and `«` as two characters `<<`, numbers still digits. The first character starts at 0.0 s and stretches
+  over the silence before the voice (the voice starts at about 0.17 s, mp3 and PCM alike); the add-on takes the first
+  word's start from the sound.
+- The decoded audio is exactly as long as the alignment's last end, for `mp3_44100_128` (ffmpeg removes the encoder
+  delay) and `pcm_24000` (it works on Starter).
+- `language_code: "ru"` with multilingual v2 is accepted (200) and charged as usual; the add-on does not send it.
+- A wrong voice id: 404 `voice_not_found`, no `request-id` or `character-cost` header, no history item, nothing charged.
+- Headers of a success: `request-id`, `history-item-id`, `character-cost`, `x-trace-id`,
+  `current-concurrent-requests` / `maximum-concurrent-requests` (3 on Starter).
+- The balance in `/v1/user/subscription` shows a charge only minutes later: a run counts its own charges.
+
+Not checked (the add-on keeps the safe side): whether 400, 402, 422 and 429 answers are charged — they stay
+`unknown`.
 
 ## Stock video
 
