@@ -7,7 +7,7 @@ from pathlib import Path
 from reels_common import (CORNER_BOX, LINE_FACE_MARGIN, SUB_BAND, edit_dir, framed_at, framed_source, load_config,
                           load_json, ui_safe, ui_zone, warn)
 from vp_core import (NUM_RE, STATUSES, _ru, editing_plan, fmt_t, jround, overlap, read_need, resolve_at, srgb_lum)
-from pic_track import pic_shots
+from pic_track import own_motion, pic_shots
 from vp_camera import (camera_at, plan_camera)
 from vp_scenes import (COVER_MODES, SCENE_SOURCES, default_box, hidden_windows, hides_subtitles, scene_tone)
 
@@ -414,7 +414,7 @@ def drift_zoom(segs, t):
     """The template's drift at second t (no camera), as ReelKit's Footage draws it (kit/anchor.ts driftZoom): each span
     of the rough cut scales around the frame's center, 1 -> 1.05 on even spans and back on odd ones."""
     seg = next((g for g in segs if g["out_start"] <= t < g["out_start"] + g["out_dur"]), segs[-1] if segs else None)
-    if not seg:
+    if not seg or own_motion(seg):  # a shot with its own move (pic_track.py): one motion layer, no drift on it
         return 1.0
     k = min(max((t - seg["out_start"]) / max(1e-6, seg["out_dur"]), 0.0), 1.0)
     return 1 + DRIFT * k if seg["i"] % 2 == 0 else 1 + DRIFT - DRIFT * k

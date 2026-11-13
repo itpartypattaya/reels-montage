@@ -6,7 +6,7 @@ from pathlib import Path
 
 from reels_common import (SUB_BAND, SUB_MAX_TOP, SUB_TOP_KIT, cam_fit, framed_at, framed_source, framed_view,
                           load_json)
-from pic_track import maps_source_time, pic_shots
+from pic_track import maps_source_time, own_motion, pic_shots
 from vp_core import (resolve_at)
 
 
@@ -98,7 +98,36 @@ def camera_shots(e, plan, cap, quiet=False):
             sys.exit(f"camera.json shot {k}: z {z} < 1 would show the frame edge")
         shots.append({"t": round(t, 3), "z": z, "cx": float(sh.get("cx", 540)), "cy": float(sh.get("cy", 960)),
                       "drift": float(sh.get("drift", 0)), "whip": bool(sh.get("whip"))})
-    return sorted(shots, key=lambda x: x["t"])
+    return camera_off_on_moves(sorted(shots, key=lambda x: x["t"]), cap, e, quiet)
+
+
+def camera_off_on_moves(shots, cap, e=None, quiet=False):
+    """One motion layer (references/no-speaker.md): on a picture shot with a move of its own (a push-in baked into a
+    photo, a still wide shot) the virtual camera rests at the whole frame, and after it the camera is where it would
+    have been. The kit plays these camera shots as they are, so the render and the checks agree. A camera shot that
+    starts inside such a picture shot is dropped (named unless quiet)."""
+    moved = [(g["out_start"], round(g["out_start"] + g["out_dur"], 3)) for g in pic_shots(cap) if own_motion(g)]
+    if not shots or not moved:
+        return shots
+    v = camera_view(e) if e is not None else None
+    win = v[0] if v else (0, 0, 1080, 1920)
+    rest = {"z": 1.0, "cx": float(win[0] + win[2] / 2), "cy": float(win[1] + win[3] / 2), "drift": 0.0, "whip": False}
+    out = list(shots)
+    for a, b in moved:
+        before = [s for s in out if s["t"] <= a + 1e-6]
+        inside = [s for s in out if a + 1e-6 < s["t"] < b - 1e-6]
+        after_b = [s for s in out if s["t"] >= b - 1e-6]
+        if not before and not inside:
+            continue  # the camera has not started yet: the frame is as it is
+        if inside and not quiet:
+            at = ", ".join("%.2f" % s["t"] for s in inside)
+            print(f"camera.json: {len(inside)} shot(s) at {at} s fall on a "
+                  f"picture shot with its own move ({a:.2f}-{b:.2f} s): the camera is off there")
+        cur = (inside or before)[-1]
+        keep = [s for s in before if s["t"] < a - 1e-6]
+        resume = [] if any(abs(s["t"] - b) < 1e-6 for s in after_b) else [dict(cur, t=b, whip=False)]
+        out = keep + [dict(rest, t=round(a, 3))] + resume + after_b
+    return out
 
 
 def plan_camera(e, plan):

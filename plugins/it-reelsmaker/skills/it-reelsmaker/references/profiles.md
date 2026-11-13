@@ -69,7 +69,7 @@ kept free); TikTok's depends on the caption length, so check its template when t
 | Testimonial | `testimonial` | promo | 15–25 s |
 | Intro video | `intro` | promo | 25–35 s |
 | Job opening, offer | `offer` | promo | 15–30 s, two CTAs allowed (apply + recommend) |
-| Review (a place, a product; often voice-over) | `review` | promo | 20–45 s |
+| Review (a place, a product; often voice-over: `references/no-speaker.md`) | `review` | promo | 20–45 s |
 | Event, launch | `event` | promo | 15–30 s |
 | Interview clip | `interview` | expert-clip | 30–60 s |
 | Scenes only (no footage) | `scenes-only` | promo | 15–25 s |

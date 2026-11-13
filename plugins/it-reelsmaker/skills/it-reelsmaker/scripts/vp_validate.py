@@ -9,7 +9,8 @@ from vp_core import (CTA_RE, GEN_FIELDS, KINDS, SOURCES, STATUSES, TRANSITIONS, 
                      no_footage, norm_words, plan_duration, plan_path, resolve_at, snapshot)
 from vp_scenes import (COVER_MODES, check_scenes, default_box, faces_seen, scene_text, scenes_only_cover, tone_issues,
                        window_issues)
-from vp_defects import (defect_issues)
+from vp_defects import (defect_issues, stranger_issues)
+from pic_track import purposes, speaker_parts
 from vp_callouts import (_point, callout_at, callout_context, callout_times, check_callouts)
 
 
@@ -245,6 +246,9 @@ def cmd_validate(a, quiet=False):
     timeline = [x for x in scenes if x.get("type") != "cover"]  # the cover is a still only
     # scenes that cover the speaker's frame count toward coverage together with B-roll (not in "scenes only")
     covering = [] if only else [x for x in timeline if x.get("mode") in COVER_MODES]
+    # the purpose of each stretch (pic_track.py): the insert budget protects the speaker's face, so only the parts of
+    # the inserts over the speaker count (over a voice-over picture the shots and scenes are the picture itself)
+    spans = [] if only else purposes(load_json(e / "captions.json", {}) or {}, voice_mode(s))
     # since 1.13 a brand tone no longer turns B-roll or memes on: a plan made before keeps its inserts once they are
     # chosen for the video (the hint), instead of a bare error on a re-render
     if brolls and not s.get("use_broll"):
@@ -263,7 +267,8 @@ def cmd_validate(a, quiet=False):
     # left it out and the plan read 39 % while the video had 51 % against a ceiling of 40 %
     layers = [] if only else [(k["start"], k["end"]) for k in plan.get("keep_clear", []) if k.get("matte")]
     cover, cur = 0.0, None
-    for x0, x1 in sorted([(i["start"], i["start"] + i["dur"]) for i in brolls + memes + covering] + layers):
+    for x0, x1 in sorted([part for i in brolls + memes + covering
+                          for part in speaker_parts(spans, i["start"], i["start"] + i["dur"])] + layers):
         if cur and x0 <= cur[1]:
             cur[1] = max(cur[1], x1)
         else:
@@ -462,7 +467,7 @@ def cmd_validate(a, quiet=False):
     errs += ce
     warns += cw
     bad.update(cbad)
-    for m, ids in tone_issues(s, doc, brolls, memes, timeline + callouts, only):
+    for m, ids in tone_issues(s, doc, brolls, memes, timeline + callouts, only, spans):
         if s.get("tone_override"):  # going past the tone on explicit request: a warning, the reason goes into the report
             warns.append(m + " (tone_override: the brand tone is exceeded; note it in the report)")
         else:
@@ -510,6 +515,7 @@ def cmd_validate(a, quiet=False):
         de, dw, _ = defect_issues(e, plan, s, doc, load_json(e / "captions.json", {}))
         errs += de
         warns += dw
+        errs += stranger_issues(e, plan, s, doc, load_json(e / "captions.json", {}))
     if not quiet:
         for m in errs:
             print("error: " + m)

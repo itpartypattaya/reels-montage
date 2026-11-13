@@ -45,6 +45,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from reels_common import (IMAGE_EXT, VIDEO_EXT, brand_file, edit_dir, editing_json, effective, library_dirs, load_config,
                           load_json, online, probe, project_root, rel, run, save_json, score, utf8_stdio, warn)
 from cut import extract_path, load_cut, look_chain, lut_inputs
+from pic_track import MOVES  # a picture shot's own motion (cut.json picture)
 
 NO_FOOTAGE = "no footage in any enabled source"  # plan-search's skip reason: --retry looks for these again
 MAX_PAD_S = 0.5  # how much a short source may be stretched with a freeze frame (tpad clone); more -> other footage
@@ -146,7 +147,7 @@ class ProjectProvider(Provider):
             out += [p for p in o["edit"].glob("broll*") if p.suffix.lower() in VIDEO_EXT]
         main = set()
         edl = load_json(o["edit"] / "edl.json", {}) if o.get("edit") else {}
-        for v in (edl.get("sources") or {}).values():
+        for v in list((edl.get("sources") or {}).values()) + list((edl.get("picture_sources") or {}).values()):
             main.add(Path(v).name.lower())
         # finished renders (<brand>-<slug>-YYYY-MM-DD[-master].mp4) are not sources
         render = re.compile(r"\d{4}-\d{2}-\d{2}(-master)?\.mp4$", re.I)
@@ -503,13 +504,37 @@ class ShortSource(ValueError):
     """The source is too short for the insert: take other footage or a smaller --in."""
 
 
+MOVE_Z = 0.06  # how far a push, a pull or a pan zooms over the shot
+
+
+def move_zoompan(move, n, w, h, fps, fx, fy):
+    """zoompan for a picture shot's own motion over n frames (d=1 per input frame of a video, d=n for a photo is
+    given by the caller): push 1 -> 1+MOVE_Z towards the focus, pull back, pan from left to right at 1+MOVE_Z; None
+    for "none" and "still" (the frame stands)."""
+    if move in ("none", "still", None):
+        return None
+    last = max(1, n - 1)
+    if move == "push":
+        z, x, y = f"1+{MOVE_Z}*on/{last}", f"(iw-iw/zoom)*{fx}", f"(ih-ih/zoom)*{fy}"
+    elif move == "pull":
+        z, x, y = f"1+{MOVE_Z}-{MOVE_Z}*on/{last}", f"(iw-iw/zoom)*{fx}", f"(ih-ih/zoom)*{fy}"
+    else:  # pan
+        z, x, y = f"{1 + MOVE_Z}", f"(iw-iw/zoom)*on/{last}", f"(ih-ih/zoom)*{fy}"
+    return f"zoompan=z='{z}':x='{x}':y='{y}':s={w}x{h}:fps={fps}"
+
+
 def prepare(src, out, dur, start=0.0, fit="cover", focus=(0.5, 0.5), speed=1.0, lut=None, lut_strength=0.7, grade=None,
-            look=None):
+            look=None, strict=False, size=(1080, 1920), fps=30, move=None):
     """Any video or photo source -> 1080×1920, 30 fps, yuv420p, no audio, exactly dur seconds.
     fit/focus/grade work for both video and photos (grade: before the LUT). look: the rough cut's look (cut.py
     load_cut: correct, lut, lut_mix, grade), applied by cut.py's own look_chain; it replaces lut/lut_strength.
     A video shorter than needed: a gap <= MAX_PAD_S is filled with a freeze of the last frame (with a warning), a
-    larger one raises ShortSource; the result's length is checked after ffmpeg."""
+    larger one raises ShortSource; the result's length is checked after ffmpeg.
+    strict (a picture shot of cut.json, cut_picture.py): no freeze at all (any shortfall raises ShortSource), the
+    video's own size and fps, and the motion is the shot's move (MOVES): none/still keep the frame standing, a photo
+    included; push, pull and pan move it. Without strict (B-roll) everything stays as above: a photo always pushes in."""
+    if strict:
+        return prepare_shot(src, out, dur, start, fit, focus, speed, look, size, fps, move or "none")
     src, out = Path(src), Path(out)
     out.parent.mkdir(parents=True, exist_ok=True)
     is_img = src.suffix.lower() in IMAGE_EXT
@@ -570,6 +595,69 @@ def prepare(src, out, dur, start=0.0, fit="cover", focus=(0.5, 0.5), speed=1.0, 
         out.unlink(missing_ok=True)
         raise ShortSource(f"{out.name}: {info.get('dur') or 0:.2f} s after preparing instead of {dur} s: "
                           f"take other footage or a smaller --in")
+    return info
+
+
+def usable(src_dur, start, speed):
+    """Seconds of the finished video a clip gives from start at this speed."""
+    return max(0.0, (float(src_dur) - start) / speed)
+
+
+def prepare_shot(src, out, dur, start=0.0, fit="cover", focus=(0.5, 0.5), speed=1.0, look=None, size=(1080, 1920),
+                 fps=30, move="none"):
+    """prepare(strict=True): one picture shot of cut.json at the video's size and fps, exactly round(dur * fps) frames,
+    no freeze frame, the shot's own move (MOVES). The color is the look of the shot's place (cut.py look_chain)."""
+    src, out = Path(src), Path(out)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    if move not in MOVES:
+        raise ValueError(f"move {move!r}: one of {', '.join(MOVES)}")
+    w, h = (int(v) for v in size)
+    n = round(dur * fps)
+    fx, fy = (max(0.0, min(1.0, float(v))) for v in focus)
+    is_img = src.suffix.lower() in IMAGE_EXT
+    zp = move_zoompan(move, n, w, h, fps, fx, fy)
+    # a moving frame is cut from a larger one, so the push-in never upscales its last frame
+    bw, bh = (2 * round(w * 0.6), 2 * round(h * 0.6)) if zp else (w, h)
+
+    def framing(head):
+        if fit == "cover":
+            return (f"{head}scale={bw}:{bh}:force_original_aspect_ratio=increase:flags=lanczos,"
+                    f"crop={bw}:{bh}:(iw-{bw})*{fx}:(ih-{bh})*{fy}")
+        return (f"{head}split[f][g];[g]scale={bw}:{bh}:force_original_aspect_ratio=increase,crop={bw}:{bh},"
+                f"boxblur=30:3,eq=brightness=-0.08[bg];[f]scale={bw}:{bh}:force_original_aspect_ratio=decrease:"
+                f"flags=lanczos[fg];[bg][fg]overlay=(W-w)/2:(H-h)/2")
+
+    if is_img:
+        inputs = ["-loop", "1", "-framerate", str(fps), "-t", f"{(n + 1) / fps:.4f}", "-i", src]
+        body = framing("[0:v]format=rgb24,")
+        body += f",fps={fps}" + (f",{zp.replace('zoompan=', 'zoompan=d=1:', 1)}" if zp else "")
+    else:
+        info = probe(src)
+        src_dur = info.get("dur")
+        if not src_dur or info.get("w") is None:
+            raise ShortSource(f"{src.name}: no picture in the file")
+        have = usable(src_dur, start, speed)
+        if have + 0.5 / fps < dur:
+            raise ShortSource(f"{src.name}: the shot needs {dur:.2f} s from {start:.2f} s at speed {speed:g}, the file "
+                              f"has {have:.2f} s usable (it is {src_dur:.2f} s long): take a shorter shot, an earlier "
+                              f"start or another clip (no freeze frame and no repeat is added)")
+        pre = f"setpts=(PTS-STARTPTS)/{speed}," if speed != 1.0 else ""
+        body = framing(f"[0:v]{pre}fps={fps},")
+        if zp:
+            body += "," + zp.replace("zoompan=", "zoompan=d=1:", 1)
+        inputs = ["-ss", f"{start:.3f}", "-t", f"{dur * speed + 0.5:.3f}", "-i", src]
+    if look:
+        filt = look_chain(look, body, "v")
+        inputs += lut_inputs(look)
+    else:
+        filt = body + ",setsar=1,format=yuv420p[v]"
+    run(["ffmpeg", "-v", "error", "-y", *inputs, "-filter_complex", filt, "-map", "[v]", "-an", "-frames:v", str(n),
+         "-c:v", "libx264", "-preset", "medium", "-crf", "16", "-movflags", "+faststart", out])
+    info = probe(out)
+    if not info.get("dur") or info["dur"] + 0.5 / fps < dur:
+        out.unlink(missing_ok=True)
+        raise ShortSource(f"{out.name}: {info.get('dur') or 0:.2f} s after preparing instead of {dur:.2f} s: take "
+                          f"another clip or a shorter shot")
     return info
 
 

@@ -2,15 +2,38 @@
 
 What changed in IT Reelsmaker, written for the people who use it. The newest version is on top. The skill shows a short “What's new” note from this file once, on the first edit after an update.
 
-## 1.28.2
+## 1.29.1
 
 - **No camera? The agent now offers it.** Ask for a video without filming and it asks one question: scenes over
-  your voice recorded on a phone, or a promo of scenes only. “A video from my voice note” starts the skill too.
+  your voice recorded on a phone, your voice over your own silent shots or photos, or a promo of scenes only. “A video from my voice note” starts the skill too.
 - **The brand mascot is offered where it fits:** in a video with no speaker on screen, a brand without a mascot
   sees one item marked new (drawn in your colors, or your own character picture brought to life); never at the
   premium tone, off unless you choose it. A new brand's summary mentions it in one line.
 - **A first run says what the plugin can do** in three lines, the no-camera videos included. After an update
   across several versions, “What's new” shows the headline of each version instead of the first four points.
+
+## 1.29.0
+
+- **A voice-over over your own shots.** A voice note recorded on the phone (`.ogg`, `.opus`, `.m4a`, `.wav`, `.mp3`)
+  is the sound of the video, and silent wide shots, other clips and photos are its picture: the voice goes into
+  `ranges` as usual and the picture into a `picture` block of `cut.json`; one `cut.py` run builds `final.mp4`. No
+  black video under the voice, no second project for the picture, no gluing by hand.
+- **Part of a talking head can be voice-over** (head → voice-over → head): a `picture` block covers only that stretch,
+  and the video can end on a text over the background after the voice (the sound is padded with silence).
+- **Exact timing, no hidden tricks.** Shots cut on spoken words (`"until": "word:sea#1"`), in whole frames, with no
+  gaps; a clip shorter than its shot stops with the numbers ("needs 4.20 s, has 3.10 s") instead of a frozen frame.
+  A photo can stand still, push in, pull out or pan; the virtual camera stays off on a shot that moves by itself.
+- **Color per place.** A source can have its own `look` (an office and a sunset are not one balance); the white
+  balance measures the picture, never the voice, and the eyedropper on one place writes into that place.
+- **Strangers in the frame are a blocking check:** each wide shot says whether people who may not be shown are in it
+  and where; `validate` fails the video until a full scene hides them.
+- **The speaker's rules only over the speaker:** the insert budget, two full scenes in a row, the full hook's
+  1.5 s and the full-scene ceiling no longer count over a voice-over picture; reading time and the brand tone still do.
+- A recording with cover art (an `.m4a` or `.mp3` with a picture inside) is read as sound only. A long-form clip
+  folder with a voice-over picture is refused before anything in it changes.
+- **Kit 1.18.0** (`kit.py update`): the drift and scenes follow the picture track (a scene on the background is
+  timed as in "scenes only").
+- New guide: `references/no-speaker.md`; shooting tips for a voice-over in `references/shooting.md`.
 
 ## 1.28.1
 

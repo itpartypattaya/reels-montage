@@ -63,7 +63,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from cut import load_cut, lut_inputs, video_graph
-from reels_common import edit_dir, editing_json, local_media_args, project_root, rel, utf8_stdio, warn
+from reels_common import IMAGE_EXT, edit_dir, editing_json, local_media_args, project_root, rel, utf8_stdio, warn
 
 TILE_W = 360            # px: each frame's width in the measured still
 SHEET_W = 1600          # px: the comparison image's width at most
@@ -123,11 +123,48 @@ def look_key(look):
 def frames_key(cut):
     """Which frames a measurement saw: the sources (files) with the scale mode of cut.json, and the kept ranges.
     -> (sources, ranges) signatures. The scale is in the sources signature (review 2026-10-18, Codex on GitHub): "auto" crops a
-    non-9:16 source to 1080x1920 and "none" keeps it whole, so the pixels and a --ref box's coordinates change."""
+    non-9:16 source to 1080x1920 and "none" keeps it whole, so the pixels and a --ref box's coordinates change.
+    With a picture block the frames are those of the picture shots: the blocks and the places with a look of their
+    own (measured apart, --source) are in the ranges signature; a source's own look is not in the sources signature, so
+    a correction written into one place does not stale the video's mark. A cut list without a picture block keeps the
+    signatures it always had (a mark written before stays valid)."""
     src = cut.get("sources") or cut.get("source")
+    if isinstance(src, dict):
+        src = {k: ({x: y for x, y in v.items() if x != "look"} if isinstance(v, dict) else v) for k, v in src.items()}
     rng = [[r.get("source"), r.get("start"), r.get("end")] for r in (cut.get("ranges") or []) if isinstance(r, dict)]
-    return (json.dumps({"sources": src, "scale": cut.get("scale", "auto")}, sort_keys=True, ensure_ascii=False),
-            json.dumps(rng, ensure_ascii=False))
+    sig = json.dumps({"sources": src, "scale": cut.get("scale", "auto")}, sort_keys=True, ensure_ascii=False)
+    if not cut.get("picture"):
+        return sig, json.dumps(rng, ensure_ascii=False)
+    own = sorted(k for k, v in (cut.get("sources") or {}).items() if isinstance(v, dict) and v.get("look"))
+    return sig, json.dumps({"ranges": rng, "picture": cut["picture"], "own_look": own}, sort_keys=True, ensure_ascii=False)
+
+
+def sound_only_source(sv):
+    """A recorded voice (sound, no picture): it has no frame to measure."""
+    return sv["info"].get("w") is None and bool(sv["info"].get("has_audio"))
+
+
+def picture_windows(c, source=None):
+    """The source windows the picture shows, in the video's order: [(source, start, end)]. Without a picture of its own,
+    the kept ranges (a sound-only recording has no frame to measure); with one, the picture shots (cut_picture.py; a
+    photo is one window of no length, the background none). source: only that place's windows; None: the places
+    without a look of their own (they take the video's look)."""
+    if not c.get("own_picture"):
+        out = [(r["source"], r["start"], r["end"]) for r in c["ranges"] if not sound_only_source(c["sources"][r["source"]])]
+    else:
+        import cut_picture
+        from cut import load_words, timeline
+        words = load_words(c)
+        segments, captions, total = timeline(c, words)
+        try:
+            shots, _ = cut_picture.resolve(c, segments, captions, total)
+        except cut_picture.PictureError as x:
+            sys.exit(f"cut.json: {x}")
+        out = [(g["source"], g["src_start"], g["src_end"] if g["kind"] == "video" else g["src_start"])
+               for g in shots if g["kind"] in ("video", "photo")]
+    if source is not None:
+        return [w for w in out if w[0] == source]
+    return [w for w in out if not c["sources"][w[0]].get("look")]
 
 
 def is_gain_mixer(f):
@@ -147,19 +184,27 @@ def correct_with(g, rest):
     return ",".join(filter(None, [mixer(g), rest]))
 
 
-def frame_times(c, n):
-    """n moments spread evenly over the kept ranges, in the video's order: [(source, source second)]."""
-    total = sum(r["end"] - r["start"] for r in c["ranges"])
-    out = []
-    for k in range(n):
+def frame_times(c, n, windows=None):
+    """n moments spread evenly over the kept ranges (or the given windows: picture_windows), in the video's order:
+    [(source, source second)]. A photo's window has no length: it is measured once, at its only frame."""
+    wins = windows if windows is not None else [(r["source"], r["start"], r["end"]) for r in c["ranges"]]
+    out = [(name, a) for name, a, b in wins if b <= a]  # photos
+    moving = [(name, a, b) for name, a, b in wins if b > a]
+    total = sum(b - a for _, a, b in moving)
+    for k in range(n if moving else 0):
         pos = (k + 0.5) * total / n
-        for r in c["ranges"]:
-            d = r["end"] - r["start"]
+        for name, a, b in moving:
+            d = b - a
             if pos <= d:
-                out.append((r["source"], r["start"] + pos))
+                out.append((name, a + pos))
                 break
             pos -= d
     return out
+
+
+def seek(sv, t):
+    """ffmpeg's input seek for a frame at source second t: none on a photo (it has one frame)."""
+    return [] if Path(sv["path"]).suffix.lower() in IMAGE_EXT else ["-ss", f"{t:.3f}"]
 
 
 def frame_size(sv):
@@ -173,7 +218,8 @@ def ref_source(label, spec, source_id, sec, t, c):
         sys.exit(f"{label} {spec!r}: no source {source_id!r} in cut.json (sources: {', '.join(c['sources'])})")
     if source_id:
         return source_id
-    inside = sorted({r["source"] for r in c["ranges"] if r["start"] <= t <= r["end"]})
+    inside = sorted({r["source"] for r in c["ranges"] if r["start"] <= t <= r["end"]
+                     and not sound_only_source(c["sources"][r["source"]])})
     if len(c["sources"]) == 1:
         return next(iter(c["sources"]))
     if len(inside) == 1:
@@ -190,11 +236,11 @@ def write_still(c, spec, out_dir):
         sys.exit(f"--still {spec!r}: expected [SOURCE:]SECOND")
     source_id = ref_source("--still", spec, source_id, sec, t, c)
     sv = c["sources"][source_id]
-    if not 0 <= t <= float(sv["info"].get("dur") or 0):
+    if not 0 <= t <= float(sv["info"].get("dur") or 0) and seek(sv, 0):
         sys.exit(f"--still {spec!r}: second {t} is outside the source {source_id!r}")
     out_dir.mkdir(parents=True, exist_ok=True)
     f = out_dir / f"still-{source_id}-{t:.2f}.png"
-    ffmpeg(["-ss", f"{t:.3f}", "-i", sv["path"], "-frames:v", "1", "-vf",
+    ffmpeg([*seek(sv, t), "-i", sv["path"], "-frames:v", "1", "-vf",
             ",".join(filter(None, [sv["scale"], "setsar=1"])), f])
     return (f, *frame_size(sv))
 
@@ -218,7 +264,7 @@ def parse_ref(spec, c):
     w, h = w - w % 2, h - h % 2
     if w < 4 or h < 4 or x < 0 or y < 0 or x + w > fw or y + h > fh:
         sys.exit(f"--ref {spec!r}: the box must lie inside the {fw}x{fh} frame and be at least 4x4 px")
-    if not 0 <= t <= float(sv["info"].get("dur") or 0):
+    if not 0 <= t <= float(sv["info"].get("dur") or 0) and seek(sv, 0):
         sys.exit(f"--ref {spec!r}: second {t} is outside the source {source_id!r}")
     return {"source": source_id, "t": t, "box": (x, y, w, h)}
 
@@ -230,7 +276,7 @@ def make_still(c, times, tmp):
         sv = c["sources"][name]
         vf = ",".join(filter(None, [sv["scale"], f"scale={TILE_W}:-2:flags=area", "setsar=1"]))
         f = tmp / f"frame{k}.png"
-        ffmpeg(["-ss", f"{t:.3f}", "-i", sv["path"], "-frames:v", "1", "-vf", vf, f])
+        ffmpeg([*seek(sv, t), "-i", sv["path"], "-frames:v", "1", "-vf", vf, f])
         files.append(f)
     still = tmp / "still.png"
     stack = "".join(f"[{k}:v]" for k in range(len(files))) + f"hstack=inputs={len(files)}" if len(files) > 1 else "null"
@@ -247,7 +293,7 @@ def make_patches(c, refs, tmp):
         x, y, w, h = r["box"]
         f = tmp / f"patch{k}.png"
         vf = ",".join(filter(None, [sv["scale"], "setsar=1", f"crop={w}:{h}:{x}:{y}"]))
-        ffmpeg(["-ss", f"{r['t']:.3f}", "-i", sv["path"], "-frames:v", "1", "-vf", vf, f])
+        ffmpeg([*seek(sv, r["t"]), "-i", sv["path"], "-frames:v", "1", "-vf", vf, f])
         files.append(f)
         offsets.append(x0)
         x0 += w
@@ -591,6 +637,10 @@ def main():
                          "scales that source (1080x1920 for a vertical video); several allowed, averaged")
     ap.add_argument("--still", metavar="[SOURCE:]SECOND",
                     help="only write the frame at that source second, scaled as cut.py scales it, to find a --ref box on")
+    ap.add_argument("--source", metavar="NAME",
+                    help="measure one place on its own (a picture source with a light of its own: an office and a "
+                         "sunset are not one balance) and write into cut.json -> sources.NAME.look.correct; a --ref "
+                         "on a picture-only source implies it")
     ap.add_argument("--write", action="store_true", help="put the suggested correction into cut.json -> look.correct")
     ap.add_argument("--json", action="store_true", help="print the measurements and the suggestion as JSON")
     a = ap.parse_args()
@@ -605,7 +655,23 @@ def main():
         print(f"{rel(f, project)}: {fw}x{fh}, the frame a --ref box is measured in (X, Y, W, H in these pixels)")
         return
     refs = [parse_ref(s, c) for s in a.ref]
-    spread = frame_times(c, a.frames)
+    place = a.source
+    if place is not None and place not in c["sources"]:
+        sys.exit(f"--source {place!r}: no such source in cut.json (sources: {', '.join(c['sources'])})")
+    if place is None and refs and c.get("own_picture"):
+        import cut_picture
+        shown = set(cut_picture.picture_sources(c))
+        if len({r["source"] for r in refs}) == 1 and refs[0]["source"] in shown:
+            place = refs[0]["source"]  # the eyedropper on one place: its color is that place's own
+    if place is not None and any(r["source"] != place for r in refs):
+        sys.exit(f"--source {place}: every --ref must be on that source")
+    if place is not None:  # measured with the place's own look (merged over the video's), written into it
+        c = dict(c, **(c["sources"][place].get("look") or {}))
+    wins = picture_windows(c, place)
+    if not wins and not refs:
+        sys.exit("no frames to measure: " + (f"{place} is not on screen" if place else
+                                             "every place on screen has a look of its own: measure each with --source NAME"))
+    spread = frame_times(c, a.frames, wins)
     ref_times = list(dict.fromkeys((r["source"], r["t"]) for r in refs))
     times = ref_times + spread
     marks = [(ref_times.index((r["source"], r["t"])), r["box"], frame_size(c["sources"][r["source"]])[0]) for r in refs]
@@ -613,7 +679,8 @@ def main():
     look = ", ".join(filter(None, [
         f"LUT {Path(c['lut']).name} at {round(c['lut_mix'] * 100)}%" if c["lut"] else "no LUT",
         f"grade {c['grade']}" if c["grade"] else "", f"current correct {c['correct']}" if c["correct"] else ""]))
-    say(f"balance: {len(spread)} frames over {len(c['ranges'])} ranges"
+    say(f"balance: {len(spread)} frames over " + (f"{len(wins)} picture shots" + (f" of {place}" if place else "")
+                                                   if c.get("own_picture") else f"{len(c['ranges'])} ranges")
         + (f" + {len(ref_times)} reference frame(s), {len(refs)} patch(es)" if refs else "") + f"; {look}")
     refused = None
     with tempfile.TemporaryDirectory(prefix="balance-") as tmp:
@@ -711,6 +778,16 @@ def main():
                 f"(or put it into cut.json by hand), then cut.py {a.edit}")
         elif suggested == c["correct"]:
             say("cut.json already has this correction: nothing to write")
+        elif place is not None:
+            with editing_json(e / "cut.json", {}) as cut:
+                sv = cut["sources"][place]
+                sv = cut["sources"][place] = {"file": sv} if isinstance(sv, str) else sv
+                lk = sv.get("look") if isinstance(sv.get("look"), dict) else {}
+                lk["correct"] = suggested or ""
+                sv["look"] = lk
+            out["written"] = True
+            say(f"written: cut.json -> sources.{place}.look.correct (this place's own color); rebuild the rough cut: "
+                f"cut.py {a.edit}")
         else:
             with editing_json(e / "cut.json", {}) as cut:
                 lk = cut.get("look") if isinstance(cut.get("look"), dict) else {}
@@ -721,7 +798,7 @@ def main():
                 cut["look"] = lk
             out["written"] = True
             say(f"written: cut.json -> look.correct; rebuild the rough cut: cut.py {a.edit}")
-    if a.write:  # what this look was measured for, whatever the outcome: cut.py measures again only when the look changes
+    if a.write and place is None:  # what this look was measured for, whatever the outcome: cut.py measures again only when the look changes
         result = "written" if out["written"] else "refused" if refused else "unchanged"
         with editing_json(e / "cut.json", {}) as cut:
             if cut.get("balance") is not False:

@@ -360,7 +360,7 @@ const ReelKitFrame: React.FC<ReelKitProps> = (p) => {
       {offCamera ? null : shadeLayer}
       <Hook p={p} look={look} font={fonts.heading} />
       <Corner p={p} />
-      <SceneLayer scenes={p.scenes} brand={p.brand} look={look} words={p.captions.words} scenesOnly={!p.video} sceneTone={p.sceneTone}
+      <SceneLayer scenes={p.scenes} brand={p.brand} look={look} words={p.captions.words} scenesOnly={!p.video} pictureShots={picShots(p.captions)} sceneTone={p.sceneTone}
         framed={g ? sceneBox(g) : null}
         textBottom={offCamera && p.subtitles !== "none" ? (p.subtitlesTop ?? 1290) - VOICE_SUB_GAP : null} />
       {offCamera ? shadeLayer : null}

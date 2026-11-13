@@ -148,3 +148,62 @@ def cmd_accept(a):
                 sys.exit("--why: say why it stays (a natural glance, a gesture, the only take)")
             acc[did] = {"why": a.why.strip(), "kind": d["kind"], "start": d["start"], "end": d["end"]}
             print(f"{did}: {d['kind']} {fmt_t(d['start'])}-{fmt_t(d['end'])} accepted: {a.why.strip()}")
+
+
+# Strangers in a picture source (references/no-speaker.md): people who did not agree to be filmed (a pool, a street).
+# For every source shown as the main picture (a voice-over shot, purpose "picture") the person says once, in cut.json,
+# whether strangers are in it: sources.<name>.strangers = [] (none), [[from, to], ...] (source seconds where they are)
+# or "ok" (they may be shown). A marked stretch is on screen wherever a shot shows those source seconds; an opaque
+# insert (a full scene, a replacing B-roll, a cutaway meme: hides_face) must hide it from COVER_PAD before to COVER_PAD
+# after, entering and leaving by then. Not answered, or not hidden: an error, the video is not released. A face
+# detector only suggests candidates for the marks; the marks are the person's.
+def stranger_issues(e, plan, s, doc, cap):
+    """-> [error] for the strangers of the picture sources of edit/<id>."""
+    from pic_track import purposes
+    from reels_common import voice_mode
+    cut = load_json(Path(e) / "cut.json", {}) or {}
+    srcs = cut.get("sources") or {}
+    shots = {g["i"]: g for g in (cap or {}).get("shots") or []}
+    if not shots:
+        return []
+    spans = purposes(cap, voice_mode(s))
+    shown = [g for g in sorted(shots.values(), key=lambda x: x["out_start"])
+             if g.get("kind") in ("video", "photo") and any(abs(a - g["out_start"]) < 1e-6 and p == "picture"
+                                                            for a, _, p in spans)]
+    errs, D = [], float(plan.get("duration") or (cap or {}).get("duration") or 1e9)
+    live = [i for i in plan.get("inserts", []) if i.get("status") != "skipped" and hides_face(i)]
+    asked = set()
+    for g in shown:
+        name = g.get("source")
+        sv = srcs.get(name)
+        marks = sv.get("strangers") if isinstance(sv, dict) else None
+        if marks is None:
+            if name not in asked:
+                asked.add(name)
+                errs.append(f"strangers: say whether people who may not be shown are in the picture source {name!r}: "
+                            f"cut.json sources.{name}.strangers = [] (none), [[from, to], ...] (its seconds where they "
+                            f"are: they get hidden under a full scene) or \"ok\" (they may be shown)")
+            continue
+        if marks == "ok" or not marks:
+            continue
+        if not isinstance(marks, list) or not all(isinstance(m, list) and len(m) == 2 for m in marks):
+            errs.append(f"strangers: cut.json sources.{name}.strangers is [] , [[from, to], ...] or \"ok\"")
+            continue
+        for a, b in marks:
+            if g["kind"] == "photo":
+                w0, w1 = g["out_start"], g["out_start"] + g["out_dur"]
+            else:
+                x, y = max(float(a), g["src_start"]), min(float(b), g["src_end"])
+                if y <= x:
+                    continue
+                sp = g.get("speed") or 1.0
+                w0, w1 = g["out_start"] + (x - g["src_start"]) / sp, g["out_start"] + (y - g["src_start"]) / sp
+            p0, p1 = max(0.0, w0 - COVER_PAD), min(D, w1 + COVER_PAD)
+            by = [i for i in live if hidden_span(i, s, doc, cap)[0] <= p0 + 1e-6 and hidden_span(i, s, doc, cap)[1] >= p1 - 1e-6]
+            if any(i.get("status") == "ready" for i in by):
+                continue
+            errs.append(f"strangers: {name} {float(a):.2f}-{float(b):.2f} s is on screen at {w0:.2f}-{w1:.2f} s: hide it "
+                        f"under a full scene (or a replacing B-roll, a cutaway) from {p0:.2f} to {p1:.2f} s, entering "
+                        f"and leaving by a cut" + (f" ({by[0]['id']} covers it once it is ready)" if by else "")
+                        + "; or cut that stretch out of the shot")
+    return errs
