@@ -112,7 +112,7 @@ def profile_issues(e, plan, s, brand, cap, scenes, memes, tail, corner=False, en
             # the subtitles: stage lifts them into the zone itself (a band an earlier stage recorded lower is not
             # blocked: Codex review); only a block taller than the zone can't fit
             h = SUB_BLOCK_H.get(str(s.get("subtitles") or "accent"), max(SUB_BLOCK_H.values()))
-            if not only and y1 - y0 < h:
+            if not only and plan.get("format") != "silent" and y1 - y0 < h:  # a no-speech reel has no subtitles
                 bad.append(f"the subtitles ({h} px) do not fit between y {y0} and {y1}")
             fr = None if no_footage(plan) else framed_at(e)
             if corner and not fr:  # stage puts it at the zone's top for this profile (props.cornerTop)
@@ -163,6 +163,51 @@ def voice_issues(e, plan, s, callouts):
         out.append(f"format 'scenes + voice': callouts {', '.join(c['id'] for c in callouts)} point at objects of a rough "
                    f"cut, and this video has no footage: remove them")
     return out
+
+
+def silent_issues(e, plan, s, tail=0.0):
+    """The no-speech reel (format silent, reel.json -> voice: none): the scenes are the script's text word for word,
+    each block once, at its timing; music made in code belongs to its WAV and the video's length. -> (errors, warnings)."""
+    if plan.get("format") != "silent":
+        return [], []
+    from vp_script import beats_issues, script_issues
+    errs, warns = [], []
+    if voice_mode(s) != "none":
+        errs.append(f"format 'no speech': the video has no voice, but reel.json has voice={voice_mode(s)}: reelcfg.py "
+                    f"save edit/{e.name} --set voice=none")
+    cap = load_json(e / "captions.json") or {}
+    if cap.get("segments") or cap.get("words"):
+        errs.append("format 'no speech': captions.json has speech in it: cut.py again without ranges (voice none)")
+    x, y = script_issues(e, plan)
+    errs += x
+    warns += y
+    x, y, _ = beats_issues(e, plan, tail)
+    errs += x
+    warns += y
+    src = (s.get("music") if isinstance(s.get("music"), dict) else {}).get("source")
+    if src is None:
+        warns.append("no-speech reel: the brief has no answer about the music (reel.json -> music.source: code, own, "
+                     "app or none): ask about the sounds and the music (references/no-speaker.md)")
+    elif src == "code" and not (e / "beats.json").is_file():
+        warns.append(f"music made in code is chosen, but there is none yet: python scripts/music.py --edit edit/{e.name}")
+    return errs, warns
+
+
+def refresh_clock(e, plan, a):
+    """A no-speech plan keeps a copy of the text's timing and of the music's beats and markers (resolve_at reads them
+    for block:, beat: and marker: anchors). -> True when the copy changed."""
+    from vp_script import beats_issues, timing_of
+    tm = timing_of(e, stop=False)[1] if (e / "script.json").is_file() else None
+    st = [{"id": x["id"], "start": x["start"], "dur": x["dur"]} for x in (tm or {}).get("blocks") or []]
+    music = beats_issues(e, plan, end_tail(a, plan))[2]
+    changed = False
+    for k, v in (("script_timing", st), ("music", music)):
+        if v and plan.get(k) != v:
+            plan[k], changed = v, True
+        elif not v and k in plan:
+            plan.pop(k)
+            changed = True
+    return changed
 
 
 def follow_rough_cut(e, plan, cap, s, prov, doc, quiet=False):
@@ -228,6 +273,8 @@ def cmd_validate(a, quiet=False):
             save_json(plan_path(e), plan)
             if not quiet:
                 print("the settings snapshot in the plan was refreshed from reel.json")
+        if plan.get("format") == "silent" and refresh_clock(e, plan, a):  # block:, beat: and marker: anchors
+            save_json(plan_path(e), plan)
     lim = doc.get("limits", {})
     brand = brand or {}
     ext = online()  # online sources (footage, memes) are available only with the online add-on
@@ -281,6 +328,9 @@ def cmd_validate(a, quiet=False):
     fr = None if only else framed_at(e)
     errs += [f"reel.json: {m}" for m in framed_issues(load_json(e / "reel.json", {}) or {})]
     errs += voice_issues(e, plan, s, callouts)
+    se, sw = silent_issues(e, plan, s, tail)
+    errs += se
+    warns += sw
     if not only:
         # the framed format and the measurement agree: faces.json in source geometry, a horizontal rough cut
         src = framed_source(e)

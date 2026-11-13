@@ -86,6 +86,20 @@ A teaser in the edit:
 
 Hold the reaction after the last word rather than cutting on it: a cut on the final syllable sounds clipped.
 
+## A no-speech reel (no voice: the text on screen carries it)
+
+Templates for `script.json` (`references/no-speaker.md`); the text is the brief's, word for word; the music's markers
+go on the blocks in brackets.
+
+| Template | Blocks | Picture | Sound |
+|---|---|---|---|
+| **Phrase -> translation -> punchline** | `hook` (the phrase, 2 lines) -> `label` (one caps word: the turn) -> `translation` -> `punchline` with `hold` 0.8-1.2 s | a person on the hook, a fill or a calm shot under the label, the shot that means it under the translation | groove; `stop` on the label, `resume` on the translation, `button` on the punchline |
+| **The person only on the hook, then graphics** | `hook` over the person (`overlay`, the default), then `point` blocks with `"mode": "full"` on `fill` shots, a `punchline` | the person 3-5 s, then the style's field | pulse or groove; `button` on the punchline |
+| **A question -> cards one by one** | `hook` (the question), `point` × 2-4 (one card each, read in turn), `cta` or `punchline` | a wide shot slowed to ×0.8, one place per card | pulse; scenes on strong beats (`visual_plan.py script --bpm`) |
+
+The phrase -> device catalog stays the same as for a voice: a number is a `stat` scene of its own, a list is a `list`
+scene (not a block), a contrast is a `contrast` block. The length is the reading time, not the brief's estimate.
+
 ## A 20–30 s video in beats (a guide, not a template)
 
 | Seconds | Picture | What is heard | Text | Sound |

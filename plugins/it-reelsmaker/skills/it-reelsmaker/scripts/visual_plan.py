@@ -97,7 +97,7 @@ from vp_core import (ABSTRACT_RE, AND_RE, CTA_RE, EMO_RE, END_CARD_S, FILLER_RE,
 from vp_camera import (camera_at, camera_off_on_moves, camera_shots, camera_view, chin_on_screen, plan_camera,
                        same_source, source_files, src_to_out, subtitle_top, subtitles_in)  # noqa: F401
 from vp_scenes import (CHAT_FROM, COVER_MODES, EXPERIMENTAL_MODES, EXPERIMENTAL_SCENES, INTERACTIONS, JOIN_EMPTY_MAX,
-                       SCENE_SOUNDS, SCENE_SOURCES, SCENE_TYPES, SPEAKER_WINDOW, SPLIT_BOX, SPLIT_CAM, VOICE_SUB_GAP,
+                       RUBRIC_BOX, SCENE_SOUNDS, SCENE_SOURCES, SCENE_TYPES, SPEAKER_WINDOW, SPLIT_BOX, UNDER_RUBRIC, SPLIT_CAM, VOICE_SUB_GAP,
                        WINDOW_SCENE_BOX, add_scene, subtitle_band_off_camera, voice_stage, check_scenes, default_box, experimental, faces_seen,
                        hidden_windows, hides_subtitles, layout_frames, overlay_slots, scene_box_issues, scene_export,
                        scene_face, scene_keep_entries, scene_text, scene_timeline, scene_tone, scenes_only_cover,
@@ -112,9 +112,13 @@ from vp_callouts import (CALLOUT, CALLOUT_AT_ONCE, CALLOUT_GAP_S, CALLOUT_INK, C
                          callout_path, callout_side, callout_span, callout_times, callout_width, check_callouts,
                          drift_zoom, hook_lines, label_contrast, motion_note, parse_keys, path_at, path_frames,
                          path_issue, person_path, picture_motion, screen_to_frame, track_key, zoom_at)  # noqa: F401
-from vp_validate import (cmd_validate, follow_rough_cut, profile_issues, voice_issues)  # noqa: F401
-from vp_stage import (cmd_export, copy_voice)  # noqa: F401
+from vp_validate import (cmd_validate, follow_rough_cut, profile_issues, refresh_clock, silent_issues,
+                         voice_issues)  # noqa: F401
+from vp_stage import (cmd_export, copy_voice, series_marks)  # noqa: F401
 from vp_shade import (SHADE_LINES, SHADE_TARGET, SHADE_X, cmd_shade)  # noqa: F401
+from vp_script import (BPM_RANGE, ENDING_ROLES, SCRIPT_FPS, MAX_BLOCK_S, ROLES, ROLE_TYPE, TEXT_TYPES, beats_file, beats_issues,
+                       block_type, clock_id, cmd_script, default_mode, load_script, read_frames, scene_of, script_id, script_issues, script_path,
+                       sha256_of, time_script, timing_of)  # noqa: F401
 
 
 def cmd_init(a):
@@ -122,10 +126,15 @@ def cmd_init(a):
         return init_scenes_only(a)
     if a.scenes_voice:
         return init_scenes_voice(a)
+    if a.no_speech:
+        return init_no_speech(a)
     e = edit_dir(a.edit)
     cap = load_json(e / "captions.json")
     if not cap:
         sys.exit(f"no {e / 'captions.json'}: the visual plan is built after the rough cut (step 6)")
+    if not cap.get("segments") and not cap.get("words") and (e / "script.json").is_file():
+        sys.exit(f"{e.name} is a no-speech reel (script.json, no speech in captions.json): visual_plan.py init "
+                 f"edit/{e.name} --no-speech")
     if cap.get("voice") and not (e / "final.mp4").exists():  # cut.py cut a narration: there is no picture to plan over
         sys.exit(f"{e.name} is a narration cut (voice.wav, no picture): its plan is scenes over the voice: "
                  f"visual_plan.py init edit/{e.name} --scenes-voice")
@@ -234,6 +243,54 @@ def init_scenes_voice(a):
     print("storyboard: a hook on the first words, then one scene per idea, back to back; every scene is full, --at may "
           "name a spoken word (word:...#1); the subtitles stay on over the scenes (--hide-subtitles on a scene whose text "
           "repeats the narration)")
+
+
+def init_no_speech(a):
+    """A no-speech reel (reel.json -> voice: none): the rough cut is the picture (cut.py on silent clips, timed by
+    script.json), the scenes are the script's text blocks, word for word, at their timing (vp_script.py)."""
+    from vp_script import clock_id, scene_of, timing_of
+    e = edit_dir(a.edit)
+    doc, tm = timing_of(e)
+    cap = load_json(e / "captions.json") or {}
+    if not (e / "final.mp4").is_file() or "shots" not in cap:
+        sys.exit(f"no rough cut in {e}: a no-speech reel is cut first: cut.json with picture blocks, then cut.py "
+                 f"edit/{e.name} (a promo with no footage at all is the 'scenes only' format: init --scenes-only)")
+    if cap.get("segments") or cap.get("words"):
+        sys.exit(f"{e / 'captions.json'} has speech: a no-speech reel has none (cut.json without ranges, reel.json "
+                 f"voice none)")
+    if cap.get("clock_id") != clock_id(tm) or abs(float(cap.get("duration") or 0) - tm["duration"]) > 0.5 / tm["fps"]:
+        sys.exit(f"the rough cut ({cap.get('duration')} s) was cut for another timing of the text ({tm['duration']} s, "
+                 f"blocks moved or re-timed): cut.py edit/{e.name} again")
+    over = parse_sets(a.set)
+    if a.brand:
+        over["brand"] = safe_slug(a.brand, "--brand")
+    over["voice"] = "none"  # the sound mode (reels_common.VOICE_MODES): no voice at all
+    with locked(plan_path(e)):
+        old = load_json(plan_path(e))
+        if old and old.get("inserts") and not a.force:
+            sys.exit(f"the plan already exists: {plan_path(e)} (--force rebuilds it; the inserts are lost)")
+        with editing_json(e / "reel.json", {}) as reel:
+            reel.update(over)
+        s, prov, cfg, bdir, brand = current_settings(e, old)
+        plan = build_plan(e, {**cap, "segments": [], "words": []}, s, prov, cfg)
+        plan.update({k: old[k] for k in KEEP_ON_INIT if k in (old or {})})
+        plan["format"] = "silent"
+        plan["script_timing"] = [{"id": b["id"], "start": b["start"], "dur": b["dur"]} for b in tm["blocks"]]
+        times = {b["id"]: b for b in tm["blocks"]}
+        for k, b in enumerate(doc["blocks"]):
+            sc = scene_of(b, times[b["id"]], k + 1)
+            if s.get("rubric") and sc["mode"] == "overlay" and not sc.get("box"):  # below the series' label
+                sc["box"] = list(UNDER_RUBRIC)
+            plan["inserts"].append(sc)
+        plan["inserts"].sort(key=lambda i: i["start"])
+        save_json(plan_path(e), plan)
+    print(f"no-speech plan: {plan_path(e)}: {len(doc['blocks'])} text block(s) as scenes, {fmt_t(plan['duration'])}, "
+          f"brand {s['brand']}")
+    for i in plan["inserts"]:
+        print(f"  {i['id']} {i['script']:<14} {i['type']:<7} {i['mode']:<7} {fmt_t(i['start'])} +{i['dur']} s  "
+              f"«{' / '.join(i['text']['lines'])[:60]}»")
+    print("the text is the brief's, word for word (validate checks it); a box, a mode or an accent may be changed in "
+          "script.json (then visual_plan.py script and init --no-speech --force). Next: validate, music (music.py --edit)")
 
 
 def meme_rights(meme_id):
@@ -538,8 +595,13 @@ def main():
     p.add_argument("--duration", type=float, help="the length of a 'scenes only' video, s (15-25)")
     p.add_argument("--scenes-voice", action="store_true", help="scenes over a recorded narration (cut.py made voice.wav): "
                                                                "the plan on its words, the voice off camera")
+    p.add_argument("--no-speech", action="store_true", help="a no-speech reel (voice none): the scenes are the text "
+                                                            "blocks of script.json over the rough cut")
     p.add_argument("--brand", help="the video's brand (saved to reel.json)")
     p.set_defaults(fn=cmd_init)
+    p = sub.add_parser("script", help="a no-speech reel: time the text blocks of script.json by their reading")
+    p.add_argument("edit"); p.add_argument("--bpm", type=float, help="run each block on to the next beat of this tempo")
+    p.set_defaults(fn=cmd_script)
     p = sub.add_parser("add"); p.add_argument("edit"); p.add_argument("--kind", choices=list(KINDS), required=True)
     p.add_argument("--at", required=True); p.add_argument("--offset", type=float, default=0.0)
     p.add_argument("--dur", type=float, required=True); p.add_argument("--what", required=True); p.add_argument("--why", required=True)

@@ -172,7 +172,7 @@ Sounds come from your own library `{{ASSETS_DIR}}`; CC0 packs are the easiest (n
 
 The sound goes on the **start** of the motion (0–0.1 s before the first visible frame). In a sequence, sound the first, the last or the strongest item, not every one. Repeated sounds should have no sharp, ringing highs: they are fatiguing. Density follows the brand tone, and no more than one effect every 2–3 s.
 
-**Beat.** Scenes are placed on the music's beat only if the music is burned in and has a commercial license: major moments within ±0.15 s of a strong beat, small ones within ±0.10 s of the grid, readable text on every other beat. Without burned-in music, the speech is the video's clock: the anchor is the word.
+**Beat.** Scenes are placed on the music's beat only if the music is burned in and its rights are clear: a licensed track, or music composed in code by `music.py` (it is yours; `references/music.md`). Major moments within ±0.15 s of a strong beat, small ones within ±0.10 s of the grid, readable text on every other beat. Reading wins over the grid: a scene may run on to the next beat, never end before its reading floor (`visual_plan.py script --bpm` does it for a no-speech reel's text blocks; `--at beat:N` / `marker:button` place a scene on the code music's beats.json). The `ambient` style has no marked beat: no need to land on it. Music picked in the app at publishing is not synchronized: promise no beats. Without burned-in music, the speech is the video's clock: the anchor is the word; in a no-speech reel, the text's reading time.
 
 ## The “scenes only” format: a promo without footage
 
