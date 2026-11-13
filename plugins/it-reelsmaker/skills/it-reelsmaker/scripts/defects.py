@@ -146,6 +146,24 @@ def pose(f):
     return (nx - (rex + lex) / 2) / iod, (ny - (rey + ley) / 2) / iod, eyes
 
 
+def faces_camera(eyes):
+    """The head faces the camera: the eyes at least FACING of the face width apart (a profile or a side view is
+    narrower)."""
+    return bool(eyes and eyes >= FACING)
+
+
+def turn_state(f, min_w=0):
+    """-> (state, turn, eyes) of one face, the head turn measure picture.py scan shares: "facing" (frontal: the eyes
+    apart as for a face to the camera and the nose within TURN eye distances of their middle), "away" (a profile, a side
+    view, a head turned), "small" (narrower than min_w px: its points are too coarse to judge a turn, no verdict)."""
+    if f[2] < min_w:
+        return "small", None, None
+    turn, _, eyes = pose(f)
+    if turn is not None and faces_camera(eyes) and abs(turn) <= TURN:
+        return "facing", turn, eyes
+    return "away", turn, eyes
+
+
 def median(xs):
     xs = sorted(x for x in xs if x is not None)
     return xs[len(xs) // 2] if xs else None
@@ -222,7 +240,7 @@ def find(data, segs, words=(), turn=None, blur=None):
         eyes = median([r["pose"][2] for r in rr])
         norms[src] = {"turn": median([r["pose"][0] for r in rr]), "tilt": median([r["pose"][1] for r in rr]),
                       "eyes": eyes, "sharp": median([r["sharp"] for r in rr]),
-                      "facing": bool(eyes and eyes >= FACING)}
+                      "facing": faces_camera(eyes)}
     base = {"usual_faces": usual, "norms": norms, "samples": len(smp), "with_face": seen}
     if not any(nm["facing"] for nm in norms.values()):  # a profile interview, a side view, a staged scene
         return [], {"on_camera": False, "facing": False, **base}
