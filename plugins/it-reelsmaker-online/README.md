@@ -7,7 +7,9 @@ An optional add-on for [IT Reelsmaker](../it-reelsmaker/README.md). It adds thre
 - **paid AI video generation** through fal.ai: Veo, Kling and LTX;
 - **a more accurate transcript**: OpenAI's text laid onto the local word times (fewer wrong words in subtitles);
 - **subtitle translation** through Claude, OpenAI or Gemini (by default Claude translates in the session, free);
-- **figure cut-out on your own server** over SSH, when it is too heavy for your laptop.
+- **figure cut-out on your own server** over SSH, when it is too heavy for your laptop;
+- **a narration in your own cloned voice** through ElevenLabs: it reads the reel's script, and the core cuts it like a
+  voice note you recorded (paid; only your own voice, with your consent recorded; the price in credits first).
 
 The core plugin works without this add-on. Install the add-on only if you want these sources. Every download and every paid generation waits until you approve the visual plan, which lists the source, the size in MB and the price.
 
@@ -43,6 +45,7 @@ python <add-on scripts>/reels_online.py keys set PEXELS_API_KEY
 - `OPENAI_API_KEY`
 - `ANTHROPIC_API_KEY`
 - `GEMINI_API_KEY`
+- `ELEVENLABS_API_KEY` (allow it Text to Speech, Voices, User read and History read)
 
 Plugin settings can't hold these keys: Claude Code keeps protected plugin settings away from the commands Claude runs, so the add-on's scripts could not read them. Openverse needs no key. The skill never prints keys and masks them in its output and in saved errors. Without a key, that source simply switches off.
 
@@ -55,6 +58,7 @@ Enable sources per video in `edit/<id>/reel.json`, for example `"use_online_foot
 - “Find a CC-licensed reaction meme for the line about missed deadlines.”
 - “Transcribe video 4821 through OpenAI.”
 - “Translate the subtitles of 4821 into German through Gemini.”
+- “Voice this script with my cloned voice and make a reel of scenes over it. Show me the price first.”
 
 ## Data and network
 
@@ -65,6 +69,8 @@ When a source is enabled, these requests leave your computer:
 - **OpenAI**, only for a cloud transcript you asked for: the speech audio of the video.
 - **Groq**, only if you set it as the fallback (`transcription_fallback=groq`) or ask for it: the same speech audio, for the transcript text.
 - **Anthropic, OpenAI or Google**, only for a subtitle translation you asked for: the subtitle text.
+- **ElevenLabs**, only for a narration you asked for: the script's text (each block with its neighbours' text for
+  intonation), the voice id, and for a new clone your voice recordings, which ElevenLabs keeps.
 - **Services that need a key** receive their own API key with each request; Openverse needs none.
 - **Your own server**, only if you set one for cut-outs: frames of the span go there over your SSH client and are deleted after the job.
 

@@ -2,6 +2,11 @@
 
 What changed in IT Reelsmaker, written for the people who use it. The newest version is on top. The skill shows a short “What's new” note from this file once, on the first edit after an update.
 
+## 1.37.1
+
+- **Wording.** With the online-sources add-on linked, the “no footage” question also names the add-on's own narration
+  option, by the add-on's rules.
+
 ## 1.37.0
 
 - **iPhone photos in HEIC are read.** A HEIC or HEIF photo is now footage like a JPEG: the index lists it with its

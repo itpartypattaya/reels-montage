@@ -2,6 +2,25 @@
 
 What changed in IT Reelsmaker Online. The newest version is on top.
 
+## 1.6.0
+
+- **A narration in your own cloned voice (ElevenLabs).** `addon.py voice` reads the reel's script with your voice and
+  hands the core a narration it cuts like a voice note from your phone (`reel.json → voice: off_camera`, `cut.json`
+  points at `generated/narration.wav` and its word timings). Only your own voice, picked from your account (`use`) or
+  cloned from a fresh clean recording (`clone`), with your consent recorded per voice; a voice ElevenLabs wants
+  verified is blocked until you verify it.
+- **The price first, and the “yes” covers exactly that.** `voice plan` names the credits per block and a plan id; a run
+  needs `--yes --plan <id>` and its own switch `generate_voice_now`. A changed text, voice or setting is a new plan and a
+  new “yes”. The balance is checked before every block, and a charge above the plan stops the run.
+- **Money is never spent twice.** Each paid answer is kept whole on disk before anything else; a lost connection or a
+  broken answer leaves the block `unknown`, never sent again by itself: find it in the ElevenLabs history
+  (`voice recover`) or clear it after checking (`voice clear --not-charged`). A run stopped half-way voices only the
+  blocks still missing.
+- Checked on the live service: the real charge (about 0.4 credit per character, shown as the likely price), the
+  timings of the text as sent, `pcm_24000` on Starter, a lost block recovered with its timings from the free history.
+- The ElevenLabs key goes to `https://api.elevenlabs.io` only, every redirect included; the `xi-api-key` header is
+  removed on an origin change and masked in all output.
+
 ## 1.5.1
 
 - Follows core 1.22, which reads no environment variables: the project folder comes from `--project` or

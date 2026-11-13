@@ -7,7 +7,7 @@ plugin folder path contains the version):
 
     python <add-on scripts>/reels_online.py link [--project DIR]     # online_scripts -> <project>/it-reelsmaker.json
     python <add-on scripts>/reels_online.py unlink [--project DIR]   # remove that key
-    python <core scripts>/addon.py memes|gen|matte|transcribe|translate ...   # the add-on's commands, via the core
+    python <core scripts>/addon.py memes|gen|matte|transcribe|translate|voice ...   # the add-on's commands, via the core
     python <add-on scripts>/reels_online.py keys list                 # which keys are set (values masked)
     python <add-on scripts>/reels_online.py keys set PEXELS_API_KEY   # in your own terminal: hidden input
     python <add-on scripts>/reels_online.py keys remove PEXELS_API_KEY
@@ -40,10 +40,10 @@ def _version():
 UA = f"it-reelsmaker/{_version()}"
 
 # --- Settings the add-on adds to the core's reel settings ----------------------------------------------------
-SETTING_KEYS_BOOL = ["use_online_footage", "generate_now", "use_online_memes"]
+SETTING_KEYS_BOOL = ["use_online_footage", "generate_now", "use_online_memes", "generate_voice_now"]
 SETTING_KEYS = ["online_footage_providers", "online_meme_providers", "generation_provider", "generation_model",
                 "generation_seconds", "transcription_provider", "transcription_fallback", "translation_provider",
-                "translation_model"]
+                "translation_model", "voice_model", "voice_settings"]
 # Deep-merged by the core's load_defaults() on top of its assets/reel-defaults.json (lists are replaced whole).
 # Online sources and paid generation stay off until a video's reel.json, the brand or the prompt turns them on.
 DEFAULTS = {
@@ -59,11 +59,14 @@ DEFAULTS = {
         "generation_provider": "fal",
         "generation_model": "veo3.1-fast",
         "generation_seconds": 6,
+        # a narration in a cloned voice (voice_online.py): paid, its own switch, independent of the B-roll settings
+        "generate_voice_now": False,
+        "voice_model": "eleven_multilingual_v2",
     }
 }
 # command -> add-on module; the core runs it: python <core scripts>/addon.py <command> [args...]
 COMMANDS = {"memes": "memes_online", "gen": "genfootage", "matte": "matte_server", "transcribe": "transcribe_online",
-            "translate": "translate_online"}
+            "translate": "translate_online", "voice": "voice_online"}
 
 # --- API keys: environment variables, otherwise KEYS_FILE -------------------------------------------------------
 FOOTAGE_KEYS = {"pixabay": "PIXABAY_API_KEY", "pexels": "PEXELS_API_KEY", "magnific": "MAGNIFIC_API_KEY", "coverr": "COVERR_API_KEY"}
@@ -73,6 +76,7 @@ GEN_KEYS = {"fal": "FAL_KEY", "replicate": "REPLICATE_API_TOKEN", "gemini": "GEM
             "openai": "OPENAI_API_KEY", "runway": "RUNWAYML_API_SECRET"}
 TRANSCRIBE_KEYS = {"openai": "OPENAI_API_KEY", "groq": "GROQ_API_KEY"}
 TRANSLATE_KEYS = {"anthropic": "ANTHROPIC_API_KEY", "openai": "OPENAI_API_KEY", "gemini": "GEMINI_API_KEY"}
+VOICE_KEYS = {"elevenlabs": "ELEVENLABS_API_KEY"}
 
 _KEYS = None
 
@@ -95,7 +99,7 @@ KEY_NAME_RE = re.compile(r"^[A-Z][A-Z0-9_]{1,63}$")
 
 def known_keys():
     """Every key name the add-on reads, aliases included."""
-    names = {v for d in (FOOTAGE_KEYS, MEME_KEYS, GEN_KEYS, TRANSCRIBE_KEYS, TRANSLATE_KEYS) for v in d.values() if v}
+    names = {v for d in (FOOTAGE_KEYS, MEME_KEYS, GEN_KEYS, TRANSCRIBE_KEYS, TRANSLATE_KEYS, VOICE_KEYS) for v in d.values() if v}
     names |= {a for v in KEY_ALIASES.values() for a in v}
     return sorted(names)
 
@@ -108,24 +112,35 @@ def _keys_lines():
     return KEYS_FILE.read_text(encoding="utf-8").splitlines() if KEYS_FILE.is_file() else []
 
 
-def _write_keys(lines):
-    """Atomic write of the keys file, readable by its owner only (POSIX mode 600; on Windows the file stays in your
-    user profile, which other users can't read by default)."""
-    created = not KEYS_FILE.parent.exists()
-    KEYS_FILE.parent.mkdir(parents=True, exist_ok=True)
+def write_private(path, text):
+    """Atomic write of a file readable by its owner only (POSIX mode 600; on Windows the file stays in your user
+    profile, which other users can't read by default): the keys file, voices.json."""
+    path = Path(path)
+    created = not path.parent.exists()
+    path.parent.mkdir(parents=True, exist_ok=True)
     if created and os.name != "nt":  # only a folder made here; an existing one (a project, /tmp) keeps its rights
-        os.chmod(KEYS_FILE.parent, 0o700)
-    tmp = KEYS_FILE.with_name(f".{KEYS_FILE.name}.{os.getpid()}.{uuid.uuid4().hex}.tmp")
+        os.chmod(path.parent, 0o700)
+    tmp = path.with_name(f".{path.name}.{os.getpid()}.{uuid.uuid4().hex}.tmp")
     try:
         fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
         with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as f:
-            f.write("\n".join(lines) + ("\n" if lines else ""))
-        os.replace(tmp, KEYS_FILE)
+            f.write(text)
+        os.replace(tmp, path)
     finally:
         if tmp.exists():
             tmp.unlink()
     if os.name != "nt":
-        os.chmod(KEYS_FILE, 0o600)
+        os.chmod(path, 0o600)
+
+
+def _write_keys(lines):
+    write_private(KEYS_FILE, "\n".join(lines) + ("\n" if lines else ""))
+
+
+def voices_file():
+    """The add-on's record of voices and their consent (voice_online.py): next to the keys file, outside every
+    project, git and the installed skill; never in a brand or reel.json, which only name the voice."""
+    return KEYS_FILE.parent / "voices.json"
 
 
 def _key_name(name):
@@ -223,6 +238,11 @@ def effective_online(s, put, eff):
               f"no key {GEN_KEYS.get(prov, prov)}" if not api_key(GEN_KEYS.get(prov, "")) else
               "REELS_OFFLINE=1" if offline() else "off")
     put("generate_now", gen_ready, reason)
+    # a narration in a cloned voice: its own switch (generate_voice_now), the key and the network; the voice and its
+    # consent are checked by voice_online.py itself
+    vkey = api_key(VOICE_KEYS["elevenlabs"])
+    put("generate_voice_now", s.get("generate_voice_now") and vkey and not offline(),
+        "off" if not s.get("generate_voice_now") else f"no key {VOICE_KEYS['elevenlabs']}" if not vkey else "REELS_OFFLINE=1")
     memes = eff.get("memes")  # the core has already applied the brand tone's meme ban
     mo = memes and s.get("use_online_memes")
     mkeyed = [p for p in s.get("online_meme_providers", []) if p in MEME_KEYS and (MEME_KEYS[p] is None or api_key(MEME_KEYS[p]))]
@@ -238,10 +258,10 @@ def effective_online(s, put, eff):
 # --- Safe error text: API keys never reach the output or JSON ---------------------------------------------------
 SECRET_ENVS = ["PIXABAY_API_KEY", "PEXELS_API_KEY", "MAGNIFIC_API_KEY", "FREEPIK_API_KEY", "COVERR_API_KEY", "FAL_KEY",
                "GIPHY_API_KEY", "REPLICATE_API_TOKEN", "GEMINI_API_KEY", "OPENAI_API_KEY", "RUNWAYML_API_SECRET",
-               "ANTHROPIC_API_KEY"]
+               "ANTHROPIC_API_KEY", "ELEVENLABS_API_KEY"]
 _SECRET_RES = [
     (re.compile(r"(?i)([?&;](?:api[_-]?key|key|token|access[_-]?token|sig|signature)=)[^&\s'\"#]+"), r"\1***"),
-    (re.compile(r"(?i)\b(authorization|x-[\w-]*api-key|x-api-key|api[_-]?key)(['\"]?\s*[:=]\s*['\"]?)"
+    (re.compile(r"(?i)\b(authorization|xi-api-key|x-[\w-]*api-key|x-api-key|api[_-]?key)(['\"]?\s*[:=]\s*['\"]?)"
                 r"(?:(?:key|bearer|token|basic)\s+)?[^\s'\",}]+"), r"\1\2***"),
     (re.compile(r"(?i)\b(key|bearer)\s+[A-Za-z0-9_\-:.]{16,}"), r"\1 ***"),
 ]
@@ -291,7 +311,7 @@ def ensure_online():
 
 
 MAX_JSON = 20 << 20
-SECRET_HEADERS = {"authorization", "x-api-key", "x-key", "key"}
+SECRET_HEADERS = {"authorization", "x-api-key", "x-key", "key", "xi-api-key"}
 SECRET_QUERY = {"key", "api_key", "apikey", "api-key", "x-api-key", "x-key", "token", "access_token", "authorization"}
 
 
@@ -404,6 +424,42 @@ def download(url, dest, headers=None, timeout=60):
         if tmp.exists():
             tmp.unlink()
     return dest
+
+
+# --- ElevenLabs: one origin, checked at every hop -----------------------------------------------------------------
+ELEVENLABS = "https://api.elevenlabs.io"
+
+
+def elevenlabs_url_ok(url):
+    """The ElevenLabs key goes to https://api.elevenlabs.io only (port 443): no other host, no redirect elsewhere."""
+    u = urllib.parse.urlsplit(str(url or ""))
+    try:
+        port = u.port or 443
+    except ValueError:
+        return False
+    return u.scheme == "https" and (u.hostname or "").lower() == "api.elevenlabs.io" and port == 443 \
+        and not u.username and not u.password
+
+
+def elevenlabs(method, path, key, body=None, content_type="application/json", timeout=60, limit=MAX_JSON):
+    """One request to the ElevenLabs API -> (status, headers with lower-case names, body bytes up to `limit`).
+    An HTTP error is raised as urllib.error.HTTPError, as everywhere in the add-on; scrub() its text before output."""
+    if not str(path).startswith("/") or str(path).startswith("//"):
+        raise ValueError("an API path starts with a single /")
+    url = ELEVENLABS + path
+    if not elevenlabs_url_ok(url):
+        raise ValueError("the URL is not the ElevenLabs API; the key is not sent there")
+    hdr = {"User-Agent": UA, "xi-api-key": key, "Accept": "application/json"}
+    if body is not None:
+        hdr["Content-Type"] = content_type
+        if isinstance(body, (dict, list)):
+            body = json.dumps(body, ensure_ascii=False).encode("utf-8")
+    req = urllib.request.Request(url, data=body, headers=hdr, method=method)
+    with open_url(req, timeout, elevenlabs_url_ok) as r:
+        raw = r.read(limit + 1)
+        if len(raw) > limit:
+            raise ValueError(f"the answer exceeds {limit >> 20} MB")
+        return getattr(r, "status", 200), {k.lower(): v for k, v in r.headers.items()}, raw
 
 
 def footage_providers():
