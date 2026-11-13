@@ -30,7 +30,12 @@ EDGE_S = 0.3        # a gesture this close to a scene's entrance or exit compete
 BAND_GAP = 30       # px between the mascot's lowest point and the subtitle band
 DEFAULT_H = 540     # px: the placed mascot's height when the room allows it
 EASE_FRAMES, BOUNCE_FRAMES = 12, 14
-BLINK_FRAMES = 3
+# a blink: the lids half shut, shut, shut, half shut (frames at 30 fps; as long at another rate); one in about five is
+# a double blink, its second blink DOUBLE_GAP_S after the first
+BLINK_SHAPE = (0.5, 1.0, 1.0, 0.5)
+DOUBLE_SHARE, DOUBLE_GAP_S = 0.2, 0.27
+CHANGE_CLEAR_S = 0.5  # a planned blink keeps this far from the blink that hides a pose change
+FADE_FRAMES = 2     # the atlas cross-fades its two pictures over the 2 frames after a change's first (`since` 1, 2)
 TALK_MIN = 0.08     # an opening under this reads as a closed mouth (the kit's `talking`)
 W, H = 1080, 1920
 
@@ -235,14 +240,45 @@ def ease(p, bounce):
     return 1 - (1 - p) ** 3
 
 
+def hashed(seed, k, salt=""):
+    """0..1, the same for the same seed and k: the plan's randomness, the same at every render."""
+    return int(hashlib.sha256(f"{seed}:{k}{salt}".encode()).hexdigest()[:8], 16) / 0xFFFFFFFF
+
+
 def blinks(seed, t0, t1):
-    """Blink times: every 2.6-4.6 s, the same for the same video (no randomness between renders)."""
+    """The planned blinks: [[t], ...] every 2.6-4.6 s, about one in five [t, t2], a double blink. The same for the same
+    video (no randomness between renders)."""
     out, t, k = [], t0 + 1.2, 0
     while t < t1:
-        out.append(t)
-        h = int(hashlib.sha256(f"{seed}:{k}".encode()).hexdigest()[:8], 16) / 0xFFFFFFFF
-        t += 2.6 + 2.0 * h
+        out.append([t, t + DOUBLE_GAP_S] if hashed(seed, k, ":double") < DOUBLE_SHARE else [t])
+        t += 2.6 + 2.0 * hashed(seed, k)
         k += 1
+    return out
+
+
+def blink_shape(fps):
+    """BLINK_SHAPE stretched to the frame rate: the lids per frame of one blink."""
+    n = max(len(BLINK_SHAPE), jround(len(BLINK_SHAPE) * fps / 30.0))
+    return [BLINK_SHAPE[i * len(BLINK_SHAPE) // n] for i in range(n)]
+
+
+def lid_track(seed, t0, t1, fps, change_frames):
+    """{frame: lid 0..1}: a blink over every change of the picture, shut on its first frames (where the atlas swaps
+    its pictures), and the planned blinks that keep CHANGE_CLEAR_S away from those."""
+    shape = blink_shape(fps)
+    lead = shape.index(1.0)
+    hide = [(fc - lead, fc - lead + len(shape)) for fc in change_frames]
+    clear = jround(CHANGE_CLEAR_S * fps)
+    starts = [a for a, _ in hide]
+    for series in blinks(seed, t0, t1):
+        fs = [jround(t * fps) for t in series]
+        a, b = fs[0], fs[-1] + len(shape)
+        if not any(a < he + clear and ha - clear < b for ha, he in hide):
+            starts += fs
+    out = {}
+    for a in starts:
+        for i, v in enumerate(shape):
+            out[a + i] = max(out.get(a + i, 0.0), v)
     return out
 
 
@@ -255,19 +291,27 @@ def speaking(m, plan, vend):
 
 
 def frames_of(m, plan, s, geo, opens, fps, speaks=None):
-    """The per-frame plan the kit plays: entries {f, pose, prev, k, open, blink[, facing]}, each holding until the
-    next one (an entry is written only where a value changes)."""
+    """The per-frame plan the kit plays: entries {f, pose, prev, k, open, blink, lid[, since][, facing]}, each holding
+    until the next one (an entry is written only where a value changes). lid 0..1: how shut the eyes are; blink: at
+    least half shut (a module that draws only open or shut eyes); since 0..FADE_FRAMES: the frames since a pose change
+    began, on its first frames only (the atlas swaps its pictures by it)."""
     t0, t1 = span(m, plan)
     f0, f1 = jround(t0 * fps), jround(t1 * fps)
     ch = changes(m, geo)
     facing = -1 if m.get("facing") == -1 else 1
     sp = speaks if speaks is not None else speaking(m, plan, len(opens) / float(fps))
-    bl = [jround(t * fps) for t in blinks(plan.get("id") or "", t0, t1)]
     start, _ = substitute("neutral", geo)
+    seen, last_pic = [], (start, False)
+    for c in ch:  # a change the viewer sees: another picture or a turn; a stand-in drawing the same pose is none
+        if (c[2], c[3]) != last_pic:
+            seen.append(jround(c[0] * fps))
+        last_pic = (c[2], c[3])
+    lids = lid_track(plan.get("id") or "", t0, t1, fps, seen)
     out, last = [], None
     for f in range(f0, max(f0 + 1, f1)):
         t = f / float(fps)
         cur = [c for c in ch if jround(c[0] * fps) <= f]
+        since = None
         if cur:
             c = cur[-1]
             fc = jround(c[0] * fps)
@@ -275,11 +319,15 @@ def frames_of(m, plan, s, geo, opens, fps, speaks=None):
             bounce = bounces(c[0], plan, s)
             k = ease((f - fc) / float(BOUNCE_FRAMES if bounce else EASE_FRAMES), bounce)
             pose, mir = c[2], c[3]
+            since = f - fc if f - fc <= FADE_FRAMES else None
         else:
             pose, prev, k, mir = start, start, 1.0, False
         o = opens[f] if 0 <= f < len(opens) and any(a - 1e-9 <= t < b for a, b in sp) else 0.0
-        blink = any(b <= f < b + BLINK_FRAMES for b in bl)
-        e = {"pose": pose, "prev": prev, "k": round(k, 3), "open": round(float(o), 3), "blink": blink}
+        lid = lids.get(f, 0.0)
+        e = {"pose": pose, "prev": prev, "k": round(k, 3), "open": round(float(o), 3), "blink": lid >= 0.5,
+             "lid": round(lid, 3)}
+        if since is not None:
+            e["since"] = since
         if mir:
             e["facing"] = -facing
         if e != last:
