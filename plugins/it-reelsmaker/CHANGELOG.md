@@ -2,6 +2,24 @@
 
 What changed in IT Reelsmaker, written for the people who use it. The newest version is on top. The skill shows a short “What's new” note from this file once, on the first edit after an update.
 
+## 1.33.0
+
+- **The mascot's mouth no longer jumps on a tight cut.** On a real narration with its pauses cut out, the 1.32.0 mouth
+  jumped more than before: every step of a third read as a jump, and a level held for two frames then caught up two
+  levels at once. The opening now moves in quarters, a quarter a frame at most, starting to close early enough to be
+  shut when the sound stops. On a 25 s tight-cut recording: frames where the opening jumps by more than 0.3 went from
+  23 % (1.31.0) and 39 % (1.32.0) to none; the mouth never shuts for a single frame (21 and 4 times before); a
+  picture mascot's drawn talk frame no longer flashes for one frame (23 and 4 times before). It still opens a frame
+  before the sound and follows the voice's loudness a little more closely than 1.32.0, but travels about a sixth less
+  per syllable. Speaking spans set by hand (`--speaks`) open and close the mouth at the same pace.
+- **Ordinary speech is no longer mostly round.** A consonant's hiss pulled the width's scale and turned the open “a”,
+  the commonest vowel, round: on the same recording the mouth was round on 63 % of its open frames. The scale is now
+  set on the vowels only: there it is round on none, neutral on 74 %, wide on 26 %. The width measure tells a real
+  voice's vowels apart only roughly, so expect it near neutral most of the time.
+- **The noise floor is measured on a transcribed recording with no pauses**, on its quietest short moments (a stop's
+  closure, a breath), instead of falling back to a fixed −50 dBFS: `mouth.json` shows it with `floor_from`.
+- **Measure the mouth again** (`mascot.py mouth`) for a video staged before: stage asks for it. No kit update.
+
 ## 1.32.0
 
 - **The mascot's mouth reads as speech.** Besides opening with the loudness of your voice, it gets wider on an “ee”
