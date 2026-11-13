@@ -7,8 +7,8 @@ such a video; the second is the data contract every script follows (the sound tr
 Here: the voice-over and the mixed video, then the **no-speech reel** (no voice at all: the text carries it, sounds
 and music always offered), **photos** (upright by their EXIF tag, a subject to move to, no slideshow), then the data
 contract. A promo with no footage at all stays the "scenes only" format
-(`references/scenes.md`). No speech is ever synthesized: no voice -> the person records a voice note on the phone
-(`references/shooting.md`) or the video goes without speech.
+(`references/scenes.md`). No voice -> the person records a voice note on the phone (`references/shooting.md`) or
+the video goes without speech.
 
 ## Voice-over and the mixed video
 
