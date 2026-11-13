@@ -34,7 +34,14 @@ DEFAULT_H = 540     # px: the placed mascot's height when the room allows it
 # FULL_TEXT_MIN tall (a hook, a stat with its caption, a list of three read in it), a mascot placed by hand into it is an error
 SCENE_GAP = VOICE_SUB_GAP
 FULL_TEXT_TOP, FULL_TEXT_MIN = 250, 540
-EASE_FRAMES, BOUNCE_FRAMES = 12, 14
+# a pose change: "out" eases out over EASE_FRAMES (a calm one); "snap" reaches the pose in SNAP_FRAMES and holds it
+# (a loud scene tone with a full mascot); "settle" snaps and then swings past the pose and back, a damped wobble of
+# SETTLE_AMP of the move every SETTLE_PERIOD frames, fading by SETTLE_DECAY frames (where the brand tone overshoots too)
+EASE_FRAMES, SNAP_FRAMES, SETTLE_FRAMES = 12, 2, 14
+SETTLE_AMP, SETTLE_PERIOD, SETTLE_DECAY = 0.12, 6.0, 3.0
+# frames `since` is kept after a change has eased: a module's channels that follow (rig.ts poseAtLagged: the arms, then
+# the hands and elbows) lag this much at most and finish on it
+LAG_TAIL = 4
 # a blink: the lids half shut, shut, shut, half shut (frames at 30 fps; as long at a higher rate, never under these
 # four frames: the atlas swaps its pictures on the two shut ones); one in about five is a double blink, its second
 # blink DOUBLE_GAP_S after the first, with two open frames between them at least
@@ -244,19 +251,32 @@ def tone_at(t, plan, s):
     return s.get("scene_tone") or (s.get("brand_tone") or {}).get("scene_tone") or "calm"
 
 
-def bounces(t, plan, s):
-    """A pose change may overshoot only with a loud scene tone, a brand tone that bounces and a full mascot."""
-    bt = s.get("brand_tone") or {}
-    return level(s) == "full" and bool(bt.get("overshoot")) and tone_at(t, plan, s) in LOUD
+def change_mode(t, plan, s):
+    """How a pose change at t moves: out (a calm ease), snap (a loud scene tone and a full mascot: a click, then a
+    hold), settle (that and a brand tone that overshoots: the click swings past the pose and back). Only settle
+    overshoots."""
+    if level(s) != "full" or tone_at(t, plan, s) not in LOUD:
+        return "out"
+    return "settle" if (s.get("brand_tone") or {}).get("overshoot") else "snap"
 
 
-def ease(p, bounce):
-    p = min(1.0, max(0.0, p))
-    if bounce:
-        c = 1.70158
-        q = p - 1
-        return 1 + (c + 1) * q ** 3 + c * q ** 2
-    return 1 - (1 - p) ** 3
+def change_frames(mode):
+    """The frames a change of this mode takes to reach its pose (and, for settle, to stop swinging)."""
+    return {"out": EASE_FRAMES, "snap": SNAP_FRAMES, "settle": SETTLE_FRAMES}[mode]
+
+
+def change_k(mode, i):
+    """k, the progress of a change i frames after it began (0 on its first frame; 1 once it is done): out eases out
+    (cubic), snap eases out over SNAP_FRAMES (0.75 on its second frame), settle then swings, a damped sine."""
+    if i <= 0:
+        return 0.0
+    if mode == "out":
+        return 1 - (1 - min(1.0, i / float(EASE_FRAMES))) ** 3
+    k = 1 - (1 - min(1.0, i / float(SNAP_FRAMES))) ** 2
+    if mode == "settle" and SNAP_FRAMES < i < SETTLE_FRAMES:  # done swinging on its last frame
+        j = i - SNAP_FRAMES
+        k = 1 + SETTLE_AMP * math.exp(-j / SETTLE_DECAY) * math.sin(2 * math.pi * j / SETTLE_PERIOD)
+    return k
 
 
 def hashed(seed, k, salt=""):
@@ -317,7 +337,8 @@ def frames_of(m, plan, s, geo, opens, fps, speaks=None, wides=None):
     until the next one (an entry is written only where a value changes). wide 0..1: the mouth round .. wide, 0.5
     where it does not speak; lid 0..1: how shut the eyes are; blink: at
     least half shut (a module that draws only open or shut eyes); since: the frames since a pose change began, while
-    it eases (absent once it has settled; the atlas swaps its pictures by it)."""
+    it eases and LAG_TAIL frames more (absent once it has settled; the atlas swaps its pictures by it); ease: how
+    the change moves (change_mode), next to since."""
     t0, t1 = span(m, plan)
     f0, f1 = jround(t0 * fps), jround(t1 * fps)
     ch = changes(m, geo)
@@ -339,11 +360,10 @@ def frames_of(m, plan, s, geo, opens, fps, speaks=None, wides=None):
             c = cur[-1]
             fc = jround(c[0] * fps)
             prev = cur[-2][2] if len(cur) > 1 else start
-            bounce = bounces(c[0], plan, s)
-            n_ease = BOUNCE_FRAMES if bounce else EASE_FRAMES
-            k = ease((f - fc) / float(n_ease), bounce)
+            mode = change_mode(c[0], plan, s)
+            k = change_k(mode, f - fc)
             pose, mir = c[2], c[3]
-            since = f - fc if f - fc < n_ease else None
+            since = f - fc if f - fc <= change_frames(mode) + LAG_TAIL else None
         else:
             pose, prev, k, mir = start, start, 1.0, False
         # the spans are the sound's: frame f shows the window of frame g = f + MOUTH_LEAD (mouth.json moved it early),
@@ -358,6 +378,7 @@ def frames_of(m, plan, s, geo, opens, fps, speaks=None, wides=None):
              "lid": round(lid, 3)}
         if since is not None:
             e["since"] = since
+            e["ease"] = mode
         if mir:
             e["facing"] = -facing
         if e != last:

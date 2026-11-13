@@ -67,7 +67,8 @@ def test_a_pose_change_is_hidden_by_a_blink_shut_where_the_picture_swaps():
     fr = plan_frames([(2.0, "palm")])  # frame 60
     assert [lid(fr[f]) for f in range(57, 65)] == [0, 0, 0.5, 1, 1, 0.5, 0, 0]
     # the frames the atlas swaps on (since 0 and 1) are the shut ones; since counts while the change eases (12 frames)
-    assert [fr[f].get("since") for f in range(59, 74)] == [None] + list(range(12)) + [None, None]
+    # and four frames more, for a drawn mascot's parts that follow it (test_mascot_overlap.py)
+    assert [fr[f].get("since") for f in range(59, 79)] == [None] + list(range(17)) + [None, None]
     assert fr[61]["pose"] == "palm" and fr[61]["prev"] == "neutral"
 
 
