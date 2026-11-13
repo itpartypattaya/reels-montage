@@ -425,3 +425,32 @@ def test_another_face_model_of_the_same_size_measures_again(project, tmp_path):
         finally:
             fc.MODEL = None
     assert keys[0] != keys[1]
+
+
+def test_the_sound_of_a_long_recording_is_measured_in_bounded_memory(tmp_path):
+    """A two-hour recording must not need gigabytes: the voice band is measured piece by piece, so the peak memory
+    of a 4-minute sound is about that of a 1-minute one (review of PR #64: all the windows were built at once)."""
+    import tracemalloc
+    import picture
+    peaks = {}
+    for dur in (60, 240):
+        wav = tmp_path / f"s{dur}.wav"
+        ffmpeg("-f", "lavfi", "-i", f"anoisesrc=color=pink:amplitude=0.2:duration={dur}:seed=5", "-ar", 16000, wav)
+        tracemalloc.start()
+        snd = picture.measure_sound(wav, 0.0, float(dur))
+        peaks[dur] = tracemalloc.get_traced_memory()[1]
+        tracemalloc.stop()
+        assert abs(len(snd["db"]) - dur * 100) <= 3
+    assert peaks[240] < 1.6 * peaks[60], peaks
+
+
+def test_the_band_levels_do_not_depend_on_the_piece_size(tmp_path, monkeypatch):
+    import picture
+    from speechlike import dense_speech
+    wav = tmp_path / "talk.wav"
+    dense_speech(wav, dur=6.0, lead_in=1.0, noise_db=-50)
+    whole = picture.measure_sound(wav, 0.0, 7.5)
+    monkeypatch.setattr(picture, "SOUND_PIECE_S", 0.37)  # pieces that cut through the analysis windows
+    pieces = picture.measure_sound(wav, 0.0, 7.5)
+    assert len(pieces["db"]) == len(whole["db"])
+    assert max(abs(x - y) for x, y in zip(pieces["db"], whole["db"])) <= 0.1

@@ -90,6 +90,7 @@ TAIL_S = 6.0      # s: a cut this close to the end, then another picture to it, 
 END_EPS = 0.3     # s: a stretch ending this close to the clip's end reaches it
 SR = 16000
 VOICE_BAND = (300.0, 3400.0)
+SOUND_PIECE_S = 30.0               # s of sound analysed at a time (a 2-hour clip stays in a few MB)
 HOP_S, WIN_S = 0.25, 1.5            # the sound's hints: one every 0.25 s over 1.5 s around it
 SPEECH_DYN = 9.0                    # dB: the voice band's swing (90th minus 15th percentile) of speech
 SPEECH_MOD = 0.45                   # share of the level's modulation at the syllable rate (2.5-8 Hz)
@@ -310,19 +311,37 @@ def measure_sound(path, a, b):
     measured alone (its own noise floor)."""
     import numpy as np
     pre, dur = window_args(a, b)
-    r = subprocess.run(["ffmpeg", "-v", "error", "-nostdin", *pre, "-i", str(path), *dur, "-vn", "-ac", "1", "-ar",
-                        str(SR), "-f", "s16le", "pipe:1"], capture_output=True)
-    x = np.frombuffer(r.stdout, np.int16).astype(np.float32) / 32768.0
-    if len(x) < SR // 2:
-        return None
+    proc = subprocess.Popen(["ffmpeg", "-v", "error", "-nostdin", *pre, "-i", str(path), *dur, "-vn", "-ac", "1", "-ar",
+                             str(SR), "-f", "s16le", "pipe:1"], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
     nfft, hop = 400, SR // 100
-    nfr = 1 + (len(x) - nfft) // hop
-    idx = np.arange(nfft)[None, :] + hop * np.arange(nfr)[:, None]
-    spec = np.abs(np.fft.rfft(x[idx] * np.hanning(nfft), axis=1)) ** 2
+    win = np.hanning(nfft).astype(np.float32)
     fr = np.fft.rfftfreq(nfft, 1.0 / SR)
-    band = spec[:, (fr >= VOICE_BAND[0]) & (fr <= VOICE_BAND[1])].sum(axis=1)
-    band_db = 10 * np.log10(band / (np.hanning(nfft) ** 2).sum() / nfft * 2 + 1e-12)  # ~dBFS of the band
-    return {"t0": round(a, 3), "rate": 100, "db": [round(float(v), 1) for v in band_db]}
+    band_bins = (fr >= VOICE_BAND[0]) & (fr <= VOICE_BAND[1])
+    norm = float((win.astype(np.float64) ** 2).sum()) * nfft / 2
+    piece = max(nfft, int(SOUND_PIECE_S * SR)) // hop * hop
+    buf = np.zeros(0, np.float32)
+    out, total = [], 0
+    try:
+        while True:  # the sound piece by piece: the memory stays that of one piece however long the clip
+            raw = read_exact(proc.stdout, piece * 2)
+            if raw:
+                total += len(raw) // 2
+                buf = np.concatenate([buf, np.frombuffer(raw[:len(raw) // 2 * 2], np.int16).astype(np.float32) / 32768.0])
+            if len(buf) >= nfft:
+                nfr = 1 + (len(buf) - nfft) // hop
+                idx = np.arange(nfft)[None, :] + hop * np.arange(nfr)[:, None]
+                spec = np.abs(np.fft.rfft(buf[idx] * win, axis=1)) ** 2
+                band = spec[:, band_bins].sum(axis=1)
+                out.extend(round(float(v), 1) for v in 10 * np.log10(band / norm + 1e-12))  # ~dBFS of the band
+                buf = buf[nfr * hop:]
+            if not raw:
+                break
+    finally:
+        proc.stdout.close()
+        proc.wait()
+    if total < SR // 2:
+        return None
+    return {"t0": round(a, 3), "rate": 100, "db": out}
 
 
 def speech_flags(snd):
