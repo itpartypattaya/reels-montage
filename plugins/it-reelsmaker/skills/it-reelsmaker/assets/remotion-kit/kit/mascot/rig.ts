@@ -61,14 +61,15 @@ export type MouthBase = { width: number; curve: number };
 export type MouthShape = { d: string; filled: boolean; width: number; height: number };
 const SHUT = 0.05; // an opening under this is drawn as the expression's line
 /** The mouth for a frame, around its centre (0, 0) on the line through its corners: shut, the expression's line
- *  (stroke it); open, a shape whose corners stay where the expression put them, its upper lip still curved like the
+ *  (stroke it); open, a shape whose corners stay at the expression's height, its upper lip curved exactly like the
  *  expression, its lower lip dropped by `open` (fill it). `wide` 1 (an "ee") makes it wider and flatter, 0 (an "oo")
- *  narrower and taller. Corners, then the upper lip to the right corner, then the lower lip back. */
+ *  narrower and taller; at 0.5 the corners stay where the expression put them. Corners, then the upper lip to the right corner, then the lower lip back. */
 export const mouthPath = (base: MouthBase, open: number, wide: number): MouthShape => {
   const o = clamp01(open);
   const w = clamp01(wide);
-  const half = (base.width / 2) * (o <= SHUT ? 1 : mix(0.78, 1.18, w));
-  const cu = 2 * base.curve * (1 - 0.5 * o); // a quadratic curve reaches half its control point
+  // the width moves with `wide` only as far as the mouth is open: shut or neutral, the corners are the expression's
+  const half = (base.width / 2) * (o <= SHUT ? 1 : 1 + 0.4 * (w - 0.5) * o);
+  const cu = 2 * base.curve; // the upper lip keeps the expression's curve (a quadratic curve reaches half its control)
   if (o <= SHUT) return { d: `M ${-half} 0 Q 0 ${cu} ${half} 0`, filled: false, width: 2 * half, height: Math.abs(base.curve) };
   const drop = Math.max(2, base.width * o * mix(0.75, 0.42, w));
   const cl = Math.max(cu + 4, 2 * (base.curve + drop));

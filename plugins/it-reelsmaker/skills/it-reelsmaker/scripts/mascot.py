@@ -17,9 +17,10 @@ frames (one click does not squash the rest), smoothed [1,2,1]/4, opened from 0.0
 frame that is not speech is closed; the opening is then held to four levels (shut, a third, two thirds, full), a level
 reached inside speech held two frames at least, and the whole track moves one frame early (the mouth opens a frame
 before the sound). The width (wide 0 round .. 1 wide, 0.5 neutral) per speech frame: the energy of the voice near its
-second formant (1.8-2.9 kHz, an "ee") against its energy near the first (450-900 Hz, an "oo"), measured on a 16 kHz
-copy through two band-pass filters, placed between this recording's own 10th and 90th percentile (a low
-and a high voice alike), smoothed, held to five steps; neutral wherever nobody speaks. mouth.json keeps the frame rate, the frame count (round half up, as the kit
+second formant (1.8-2.9 kHz, an "ee") against its energy near the first (450-950 Hz, an "oo"), in dB, measured on a
+16 kHz copy through two band-pass filters, placed on a 16 dB scale around the middle of this recording's 10th and 90th
+percentile (kept within -8 ± 4 dB, so a recording of one vowel cannot turn the scale over), smoothed, held to five steps; neutral wherever nobody
+speaks. mouth.json keeps the frame rate, the frame count (round half up, as the kit
 rounds) and stamps of the track and the words: once either changes, stage refuses the old mouth.
 
 plan: the plan's "mascot" field (mascot_plan.py has its format). --pose AT=POSE adds or replaces a pose change at AT
@@ -42,7 +43,11 @@ GATE_DB, MIN_DB = 10.0, -50.0
 LEVELS = (0.0, 0.333, 0.667, 1.0)  # the opening's levels
 WIDE_STEPS = 4  # the width in quarters: 0, 0.25, 0.5, 0.75, 1
 HOLD = 2  # frames: a level reached inside speech holds this long at least
-LEAD = 1  # frames: the mouth moves this much before the sound
+LEAD = vm.MOUTH_LEAD  # frames: the mouth moves this much before the sound
+# the width: the voice's tilt (energy in HIGH_BAND against LOW_BAND, dB) placed on WIDE_RANGE_DB around a centre; the
+# centre is the middle of this recording's 10th and 90th percentile tilt, kept within CENTRE_DB ± CENTRE_SHIFT_DB (a voice of its own adjusts the scale,
+# a recording of one vowel cannot turn it over)
+CENTRE_DB, CENTRE_SHIFT_DB, WIDE_RANGE_DB = -8.0, 4.0, 16.0
 SPECTRUM_SR = 16000
 LOW_BAND = (450, 950)  # Hz: the first formant of an "oo" / "o", the second of an "oo"
 HIGH_BAND = (1800, 2900)  # Hz: the second formant of an "ee" / "e"
@@ -134,9 +139,9 @@ def band(a16, lo_hz, hi_hz):
     return out
 
 
-def balance(a16, fps, n, speech):
-    """Per frame: the share of the voice's energy near its second formant against near its first, 0..1, or None
-    where nobody speaks (16 kHz samples)."""
+def tilt(a16, fps, n, speech):
+    """Per frame: the voice's energy near its second formant against near its first, dB, or None where nobody
+    speaks (16 kHz samples)."""
     lo, hi = band(a16, *LOW_BAND), band(a16, *HIGH_BAND)
     out = []
     for f in range(n):
@@ -146,19 +151,19 @@ def balance(a16, fps, n, speech):
             continue
         el = math.fsum(v * v for v in lo[i0:i1])
         eh = math.fsum(v * v for v in hi[i0:i1])
-        out.append(eh / (eh + el) if eh + el > 0 else None)
+        out.append(10 * math.log10(eh / el) if eh > 0 and el > 0 else None)
     return out
 
 
-def widths(ratio, n):
-    """The width per frame from the balance: placed between this recording's own 10th and 90th percentile, smoothed
-    [1, 2, 1]/4 over speech, held to quarter steps HOLD frames at least; 0.5 where nobody speaks."""
-    vals = [r for r in ratio if r is not None]
-    if len(vals) < 2:
+def widths(tilts, n):
+    """The width per frame from the tilt: on WIDE_RANGE_DB around the recording's centre (the middle of its 10th and
+    90th percentile, kept near CENTRE_DB), smoothed [1, 2, 1]/4 over speech, held to quarter steps HOLD frames at least; 0.5 where nobody
+    speaks."""
+    vals = [d for d in tilts if d is not None]
+    if not vals:
         return [0.5] * n
-    lo, hi = pct(vals, 0.10), pct(vals, 0.90)
-    span = hi - lo
-    w = [None if r is None else (0.5 if span <= 1e-9 else min(1.0, max(0.0, (r - lo) / span))) for r in ratio]
+    c = min(CENTRE_DB + CENTRE_SHIFT_DB, max(CENTRE_DB - CENTRE_SHIFT_DB, (pct(vals, 0.1) + pct(vals, 0.9)) / 2))
+    w = [None if d is None else min(1.0, max(0.0, 0.5 + (d - c) / WIDE_RANGE_DB)) for d in tilts]
     sm = []
     for f in range(n):
         if w[f] is None:
@@ -211,8 +216,10 @@ def envelope(a, sr, fps, words=None, a16=None):
     for f in range(n):
         sm = ((amp[f - 1] if f > 0 else 0.0) + 2 * amp[f] + (amp[f + 1] if f + 1 < n else 0.0)) / 4
         raw.append(min(1.0, max(0.0, (sm - THRESHOLD) / (FULL - THRESHOLD))) if speech[f] else 0.0)
-    out = lead(quantize(raw, speech), n, 0.0)
-    wide = lead(widths(balance(a16, fps, n, speech), n) if a16 is not None else [0.5] * n, n, 0.5)
+    # moved early first, then held: the first level of a phrase keeps its two frames too
+    sp_early = lead(speech, n, False)
+    out = quantize(lead(raw, n, 0.0), sp_early)
+    wide = widths(lead(tilt(a16, fps, n, speech), n, None), n) if a16 is not None else [0.5] * n
     return out, wide, {"floor_db": None if floor is None else round(floor, 1), "gate_db": round(gate, 1), "peak": round(peak, 5),
                  "speech_frames": len(sp), "words": bool(words)}
 
