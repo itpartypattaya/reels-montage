@@ -10,6 +10,16 @@ What changed in IT Reelsmaker, written for the people who use it. The newest ver
 - **Kit 1.18.1** (`kit.py update`): the mascot's helpers, its breath and the atlas mascot's overlay mouth and eyelid
   are drawn anew; the mouth's lower lip now drops with the opening. Nothing else changes in your videos.
 
+## 1.29.1
+
+- **No camera? The agent now offers it.** Ask for a video without filming and it asks one question: scenes over
+  your voice recorded on a phone, your voice over your own silent shots or photos, or a promo of scenes only. “A video from my voice note” starts the skill too.
+- **The brand mascot is offered where it fits:** in a video with no speaker on screen, a brand without a mascot
+  sees one item marked new (drawn in your colors, or your own character picture brought to life); never at the
+  premium tone, off unless you choose it. A new brand's summary mentions it in one line.
+- **A first run says what the plugin can do** in three lines, the no-camera videos included. After an update
+  across several versions, “What's new” shows the headline of each version instead of the first four points.
+
 ## 1.29.0
 
 - **A voice-over over your own shots.** A voice note recorded on the phone (`.ogg`, `.opus`, `.m4a`, `.wav`, `.mp3`)
