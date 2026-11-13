@@ -6,19 +6,26 @@ Requirements:
   (the "oo" of "too") it is round; the same for a low and a high voice; a recording of one vowel only never turns
   the scale over: it stays near neutral (its own small changes are not stretched into wide and round, and with no
   second vowel to compare there is no telling an "ee" from an "oo" of another voice);
+- in ordinary speech (the open "a" most often, a consonant's hiss between the syllables) the mouth is not mostly round:
+  the "a" reads neutral, an "ee" wide, an "oo" round, for a low and a high voice;
 - where nobody speaks the width is neutral (0.5), whatever sound is there;
-- the opening has four levels (shut, a third, two thirds, full) and a level, once reached inside speech, holds at
-  least two frames: the mouth does not flutter;
-- the mouth opens one frame before the sound and shuts one frame before the sound stops, also where the plan's own
-  speaking spans start and end with the sound; a phrase that starts on the first frame keeps its first level two
-  frames too;
-- a mouth.json measured by the older version (one axis) is stale: stage asks to measure it again;
+- on a narration cut tight (syllables back to back, no pause, the dips and clicks of real speech) the mouth never
+  jumps: from one frame to the next its opening changes by a quarter at most, in steps of a quarter; it never shuts
+  for a single frame between two open ones; a picture mascot's drawn talk frame never flashes for one frame; and it
+  still follows the syllables (it opens fully on the loud ones,
+  moves with the voice's loudness, a frame early);
+- the mouth opens one frame before the sound and shuts one frame before the sound stops (it starts to close earlier,
+  a quarter a frame), also where the plan's own speaking spans start and end with the sound;
+- a track with no pauses still has its noise floor measured, on its quietest short moments, and the gate follows it;
+  digital silence (an edit's own gap) is not the room's noise;
+- a mouth.json measured by an older version (one axis; levels of a third) is stale: stage asks to measure it again;
 - the per-frame plan carries the width; the kit reads a plan from before as neutral width;
 - the kit's mouthPath keeps the pose's expression while the mouth speaks: the corners stay at its height (and where it
   put them at a neutral width), the upper lip keeps its curve, a wide mouth is wider and flatter than a round one.
 
-These signals are stand-ins built of a few partials at the formants of two vowels, not a voice: the thresholds still
-have to be checked on real recordings (a man's and a woman's voice), which the tests cannot do.
+These signals are stand-ins (a few partials at the formants of two vowels; speechlike.py: syllables of six vowels
+and three kinds of consonant, cut tight), not a voice: the thresholds are checked on real recordings by hand (the
+CHANGELOG has the numbers), which the tests cannot do.
 """
 import json
 import subprocess
@@ -26,6 +33,7 @@ import subprocess
 import pytest
 
 from conftest import ffmpeg, needs_ffmpeg, run_script, write_json
+from speechlike import dense_speech
 from test_callouts import KIT, needs_node
 from test_mascot import mascot_project
 
@@ -114,44 +122,113 @@ def test_where_nobody_speaks_the_width_is_neutral(project):
     assert all(m["wide"][f] == 0.5 for f in quiet), [m["wide"][f] for f in quiet]
 
 
+def tight_cut(project, name, **kw):
+    """A tight cut of dense speech (speechlike.py) with its words in captions.json, measured: (mouth.json, info)."""
+    e = project / "edit" / name
+    info = dense_speech(e / "voice.wav", **kw)
+    write_json(e / "captions.json", {"words": [{"text": "w", "start": a, "end": b} for a, b in info["words"]]})
+    return mouth(project, e), info
+
+
+def corr(x, y):
+    mx, my = sum(x) / len(x), sum(y) / len(y)
+    sxy = sum((a - mx) * (b - my) for a, b in zip(x, y))
+    return sxy / (sum((a - mx) ** 2 for a in x) * sum((b - my) ** 2 for b in y)) ** 0.5
+
+
+VOICES = pytest.mark.parametrize("f0,scale,seed", [(115, 1.0, 7), (215, 1.17, 11)], ids=["low voice", "high voice"])
+
+
 @needs_ffmpeg
-def test_the_opening_has_four_levels_and_does_not_flutter(project):
-    e = project / "edit" / "v3"
-    # syllables: the loudness rises and falls five times a second inside two phrases
-    voiced = vowel_expr([(0.5, 3.0, EE), (3.5, 6.0, OO)], 130, amp=1.0)
-    record(e / "voice.wav", f"0.3*(0.55+0.45*sin(2*PI*5*t))*({voiced})", 6.5)
-    m = mouth(project, e)
-    lv = {0.0, 0.333, 0.667, 1.0}
-    assert set(m["open"]) <= lv, sorted(set(m["open"]) - lv)
-    assert len(set(m["open"])) >= 3  # it does use the levels between shut and full
-    assert not short_levels(m["open"]), short_levels(m["open"])[:10]
+@VOICES
+def test_on_a_tight_cut_the_mouth_steps_by_quarters_and_never_jumps(project, f0, scale, seed):
+    m, info = tight_cut(project, "tight", f0=f0, scale=scale, seed=seed)
+    o = m["open"]
+    assert set(o) <= {0.0, 0.25, 0.5, 0.75, 1.0}, sorted(set(o))
+    jumps = [(f, o[f - 1], o[f]) for f in range(1, len(o)) if abs(o[f] - o[f - 1]) > 0.25 + 1e-9]
+    assert not jumps, jumps[:10]
 
 
-def short_levels(opens):
-    """The first frames of open levels held a single frame and followed by another open level (a level the speech
-    ends on may shut at once)."""
-    out, f = [], 0
-    while f < len(opens):
-        g = f
-        while g + 1 < len(opens) and opens[g + 1] == opens[f]:
-            g += 1
-        if opens[f] != 0 and g == f and g + 1 < len(opens) and opens[g + 1] != 0:
-            out.append(f)
-        f = g + 1
-    return out
+@needs_ffmpeg
+@VOICES
+def test_on_a_tight_cut_the_mouth_never_shuts_for_a_single_frame(project, f0, scale, seed):
+    m, info = tight_cut(project, "tight", f0=f0, scale=scale, seed=seed)
+    o = m["open"]
+    blinks = [f for f in range(1, len(o) - 1) if o[f] == 0 and o[f - 1] > 0 and o[f + 1] > 0]
+    assert not blinks, blinks
 
 
-def test_a_phrase_from_the_first_frame_keeps_its_first_level_two_frames():
+@needs_ffmpeg
+@VOICES
+def test_on_a_tight_cut_a_picture_mascots_talk_frame_never_flashes_for_one_frame(project, f0, scale, seed):
+    import re
+    m, info = tight_cut(project, "tight", f0=f0, scale=scale, seed=seed)
+    # the atlas shows its drawn talk frame from OPEN_FRAME: no frame alone on either side of it
+    at = float(re.search(r"const OPEN_FRAME = ([0-9.]+)", (KIT / "kit" / "mascot" / "AtlasMascot.tsx")
+                         .read_text(encoding="utf-8")).group(1))
+    talk = [x >= at for x in m["open"]]
+    flashes = [f for f in range(1, len(talk) - 1) if talk[f - 1] == talk[f + 1] != talk[f]]
+    assert not flashes, flashes
+
+
+@needs_ffmpeg
+@VOICES
+def test_on_a_tight_cut_the_mouth_still_follows_the_syllables(project, f0, scale, seed):
+    m, info = tight_cut(project, "tight", f0=f0, scale=scale, seed=seed)
+    o, env = m["open"], info["env"]
+    n = min(len(o), len(env)) - 4
+    # the mouth against the voice's own loudness, the voice moved by s frames: the best match is one frame early
+    by_lag = {s: corr([o[f] for f in range(4, n)], [env[f + s] for f in range(4, n)]) for s in range(-3, 4)}
+    best = max(by_lag, key=by_lag.get)
+    assert best == 1 and by_lag[1] >= 0.8, by_lag
+    # it opens fully on the loud syllables and uses at least three levels between (with no pause it need not shut)
+    assert max(o) == 1.0 and len({x for x in o if 0 < x < 1}) >= 3, sorted(set(o))
+
+
+@needs_ffmpeg
+@VOICES
+def test_ordinary_speech_is_not_mostly_round(project, f0, scale, seed):
+    m, info = tight_cut(project, "mix", f0=f0, scale=scale, seed=seed)
+    fps, o, w = m["fps"], m["open"], m["wide"]
+    by_vowel = {}
+    for a, b, v, (va, vb) in info["syllables"]:
+        # the vowel's own frames, shown a frame early, its first and last two frames left out (the shape moves there)
+        fr = [f - 1 for f in range(int(va * fps) + 2, int(vb * fps) - 1) if 0 < f < len(w) and o[f - 1] >= 0.5]
+        by_vowel.setdefault(v, []).extend(w[f] for f in fr)
+    shown = [x for v in by_vowel.values() for x in v]
+    round_share = sum(1 for x in shown if x < 0.5) / len(shown)
+    assert round_share <= 0.4, round_share
+    assert median(by_vowel["a"]) == 0.5, sorted(by_vowel["a"])
+    # the front vowels never read rounder than the back ones (how far apart they read depends on the voice: the bands
+    # measure a real voice's vowels only roughly)
+    # (equal is allowed: a width stuck at neutral passes here, test_ee_is_wide_and_oo_is_round_... catches that one)
+    front = by_vowel.get("i", []) + by_vowel.get("e", [])
+    back = by_vowel.get("u", []) + by_vowel.get("o", [])
+    assert median(front) >= median(back), (sorted(front), sorted(back))
+
+
+@needs_ffmpeg
+@pytest.mark.parametrize("noise_db", [-55, -42])
+def test_a_track_with_no_pauses_has_its_noise_floor_measured(project, noise_db):
+    m, info = tight_cut(project, f"floor{-noise_db}", noise_db=noise_db)
+    assert m.get("floor_from") == "short windows" and m["floor_db"] is not None, (m.get("floor_from"), m["floor_db"])
+    assert abs(m["floor_db"] - noise_db) <= 3, m["floor_db"]
+    assert m["gate_db"] == max(-50.0, round(m["floor_db"] + 10, 1)), (m["floor_db"], m["gate_db"])
+
+
+@pytest.mark.parametrize("words", [None, [(0.0, 0.4), (0.4, 0.8), (0.8, 1.2)]], ids=["no words", "words, no pause"])
+def test_digital_silence_reads_as_silence_and_does_not_gate_the_voice_out(words):
     import math
     from array import array
     import mascot as M
-    sr, fps, n = 16000, 30, 20
-    per = sr // fps
-    # a word from the very start: one loud frame, then a softer voice (the level steps down after the first frames)
-    a = array("h", (int((12000 if i < per else 4800) * math.sin(2 * math.pi * 220 * i / sr)) for i in range(n * per)))
-    opens, wide, _ = M.envelope(a, sr, fps, [(0.0, n / fps)])
-    assert opens[0] > 0 and len(set(opens)) > 1, opens
-    assert not short_levels(opens), opens[:6]
+    sr, fps = 16000, 30
+    # a generated voice with digital zeros between its syllables (and no room at all): the quietest moments are those
+    # zeros, not the voice, so the gate stays at the absolute floor and the voice opens the mouth
+    a = array("h", (int(9000 * math.sin(2 * math.pi * 200 * i / sr)) if i % 6400 < 4800 else 0
+                    for i in range(int(1.2 * sr))))  # 0.3 s of voice, 0.1 s of zeros
+    opens, _, info = M.envelope(a, sr, fps, words)
+    assert info["gate_db"] == -50.0 and (info["floor_db"] is None or info["floor_db"] <= -100), info
+    assert max(opens) == 1.0, opens
 
 
 @needs_ffmpeg
@@ -170,6 +247,9 @@ def test_a_mouth_measured_by_the_older_version_is_stale(project):
     run_script("mascot.py", "mouth", "edit/4821", cwd=project)
     assert vm.load_mouth(e)[1] is None
     m = json.loads((e / "mouth.json").read_text(encoding="utf-8"))
+    # version 2 had the width but levels of a third (they jumped); version 1 had no width
+    write_json(e / "mouth.json", {**m, "version": 2})
+    assert "older" in (vm.load_mouth(e)[1] or ""), vm.load_mouth(e)[1]
     m["version"] = 1
     m.pop("wide")
     write_json(e / "mouth.json", m)
@@ -192,7 +272,7 @@ def test_the_plans_speaking_span_keeps_the_frame_the_mouth_opens_early():
     plan = {"id": "s", "duration": 3.0, "inserts": []}
     fr = vm.frames_of(m, plan, {"brand_tone": {"mascot": "calm"}}, geo, opens, 30, None, [0.5] * 90)
     at = lambda f: [x for x in fr if x["f"] <= f][-1]
-    assert [at(f)["open"] for f in (28, 29, 58, 59)] == [0, 0.667, 0.667, 0]
+    assert [at(f)["open"] > 0 for f in (28, 29, 58, 59)] == [False, True, True, False]
 
 
 @pytest.mark.parametrize("span,first,last", [((1.01, 2.01), 29, 59), ((1.0, 4.4), 29, 130)])
@@ -208,6 +288,19 @@ def test_a_speaking_span_off_the_frame_grid_keeps_the_lead_and_ends_on_its_frame
     talking = [f for f in range(150) if at(f)["open"] > 0]
     assert (talking[0], talking[-1]) == (first, last), (talking[0], talking[-1])
     assert talking == list(range(first, last + 1))
+
+
+def test_a_speaking_span_that_cuts_into_speech_does_not_make_the_mouth_jump():
+    # the plan's own spans start and end inside a loud stretch (and leave one frame out between two of them): the
+    # mouth still opens and closes a quarter a frame there
+    import mascot_plan as vm
+    geo = {"box": (400, 520), "anchor": (200, 170), "poses": ["neutral"], "symmetric": False}
+    m = {"track": [], "from": 0.0, "to": 2.0, "facing": 1, "speaks": [[0.2, 0.4], [13 / 30, 0.8]]}
+    plan = {"id": "c", "duration": 2.0, "inserts": []}
+    fr = vm.frames_of(m, plan, {"brand_tone": {"mascot": "calm"}}, geo, [1.0] * 60, 30, None, [0.5] * 60)
+    o = [[x for x in fr if x["f"] <= f][-1]["open"] for f in range(60)]
+    assert all(abs(o[f] - o[f - 1]) <= 0.25 + 1e-9 for f in range(1, 60)), o
+    assert max(o) == 1.0 and o[30] == 0, o  # it still opens fully inside a span, and is shut after the last one
 
 
 def test_the_plan_carries_the_width_only_while_it_speaks():

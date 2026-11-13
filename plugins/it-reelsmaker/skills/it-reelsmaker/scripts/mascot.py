@@ -10,17 +10,20 @@
 mouth: the track the viewer hears, on the edit's timeline: edit/<id>/voice.wav (scenes over a recorded narration),
 else the rough cut's audio (edit/<id>/final.mp4, the file stage copies to public/<id>/video.mp4); --audio names
 another file on the same timeline. Per frame of the kit's grid (frame f takes the samples from round(f*sr/fps) to
-round((f+1)*sr/fps), no drift), the RMS; speech frames are the ones 10 dB above the noise floor (measured between
-the words of captions.json when it has words, else on the quietest tenth; at least -50 dBFS) and inside a word when
-there are words; the level is normalized by the 98th percentile of the speech
-frames (one click does not squash the rest), smoothed [1,2,1]/4, opened from 0.08 to fully at 0.63, and every
-frame that is not speech is closed; the opening is then held to four levels (shut, a third, two thirds, full), a level
-reached inside speech held two frames at least, and the whole track moves one frame early (the mouth opens a frame
-before the sound). The width (wide 0 round .. 1 wide, 0.5 neutral) per speech frame: the energy of the voice near its
-second formant (1.8-2.9 kHz, an "ee") against its energy near the first (450-950 Hz, an "oo"), in dB, measured on a
-16 kHz copy through two band-pass filters, placed on a fixed 16 dB scale around the middle of this recording's 10th and
-90th percentile (a voice's own level of highs drops out; one vowel alone stays near neutral), smoothed, held to five
-steps; neutral wherever nobody speaks. mouth.json keeps the frame rate, the frame count (round half up, as the kit
+round((f+1)*sr/fps), no drift), the RMS; speech frames are the ones 10 dB above the noise floor and inside a word
+when there are words (the floor: between the words of captions.json when there are pauses enough, else the quietest 2 %
+of the track's 10 ms windows (no words: the quietest tenth of the frames), a tight cut's stop closures and breaths, when it lies 15 dB under their median; digital
+silence counts as -100 dBFS; the gate at least -50 dBFS); the level is normalized by the 98th percentile of the speech frames (one click does not squash the
+rest), smoothed [1,2,1]/4, opened from 0.08 to fully at 0.63, and every frame that is not speech is closed; the whole
+track moves one frame early (the mouth opens a frame before the sound), then the opening steps in quarters, one quarter
+a frame at most, towards the nearest quarter, opening a quarter a frame and closing early enough to keep the pace (shut where
+the speech ends, as before); a shut frame
+alone between two open ones opens to a quarter, and no frame alone crosses 0.3 (an atlas's drawn talk frame). The width (wide 0 round .. 1 wide, 0.5 neutral) per speech
+frame: the energy of the voice near its second formant (1.8-2.9 kHz, an "ee") against its energy near the first
+(450-950 Hz, an "oo"), in dB, measured on a 16 kHz copy through two band-pass filters, placed on a fixed 16 dB scale
+around the middle of the 25th and 75th percentile of this recording's vowel frames (an opening of a quarter and more:
+a consonant's hiss does not pull the centre, the commonest vowel reads neutral, one vowel alone stays near neutral),
+smoothed, held to five steps; neutral wherever nobody speaks. mouth.json keeps the frame rate, the frame count (round half up, as the kit
 rounds) and stamps of the track and the words: once either changes, stage refuses the old mouth.
 
 plan: the plan's "mascot" field (mascot_plan.py has its format). --pose AT=POSE adds or replaces a pose change at AT
@@ -40,9 +43,21 @@ import mascot_plan as vm  # noqa: E402
 THRESHOLD, FULL = 0.08, 0.63
 FLOOR_PCT, PEAK_PCT = 0.10, 0.98
 GATE_DB, MIN_DB = 10.0, -50.0
-LEVELS = (0.0, 0.333, 0.667, 1.0)  # the opening's levels
+# the opening in quarters, one quarter a frame at most: on a real tight cut a level of a third was a jump in itself,
+# and a level held two frames caught up by two levels at once; a quarter a frame still opens fully in four frames
+LEVELS = (0.0, 0.25, 0.5, 0.75, 1.0)
 WIDE_STEPS = 4  # the width in quarters: 0, 0.25, 0.5, 0.75, 1
-HOLD = 2  # frames: a level reached inside speech holds this long at least
+HOLD = 2  # frames: a width reached inside speech holds this long at least
+NUCLEUS = 0.25  # an opening from here up is a vowel's: the width's centre is measured on these frames
+TALK_FRAME = 0.3  # a picture mascot shows its drawn talk frame from this opening (OPEN_FRAME in kit/mascot/AtlasMascot.tsx)
+# the noise floor of a track with no pauses: the quietest SHORT_PCT of its SHORT_S windows (a stop's closure, the
+# breath between two words of a tight cut: a few tens of ms each, far more than this share of any speech); digital
+# silence (an edit's gap, a generated track) reads as SILENT_DB, so the gate stays at MIN_DB there
+SHORT_S, SHORT_PCT, SILENT_DB = 0.010, 0.02, -100.0
+# a floor less than this under the track's median window is no floor: a track with no quiet moment at all (a held
+# note, a steady tone) has only its own voice there
+SHORT_MARGIN_DB = 15.0
+MIN_SHORT = 50  # windows needed: half a second of audio
 LEAD = vm.MOUTH_LEAD  # frames: the mouth moves this much before the sound
 # the width: the voice's tilt (energy in HIGH_BAND against LOW_BAND, dB) on a fixed WIDE_RANGE_DB scale around the
 # middle of this recording's 10th and 90th percentile: any voice's own level of highs drops out, and a recording that
@@ -102,19 +117,38 @@ def pct(vals, q):
 
 
 def quantize(opens, speech):
-    """The opening held to LEVELS: the nearest level, a level reached inside speech held HOLD frames at least (a
-    one-frame dip between two syllables is not shown), shut at once where the speech ends."""
-    out, cur, held = [], 0.0, HOLD
+    """The opening on LEVELS, moving one level a frame at most: it opens towards the nearest level inside speech a level
+    a frame, and closes early enough to be at each lower level when the sound is (shut outside speech: it is shut on
+    the frame the speech ends, as before). Then a shut frame alone between two open
+    ones opens to the first level, even outside speech (a gap of one frame is bridged) (the mouth does not blink shut between two syllables), and a frame alone on its side
+    of TALK_FRAME takes its neighbours' side (a picture mascot's drawn talk frame does not flash for one frame)."""
+    out, cur = [], 0
     for o, sp in zip(opens, speech):
-        if not sp:
-            cur, held = 0.0, HOLD
-        else:
-            q = min(LEVELS, key=lambda v: abs(v - o))
-            if q != cur and held >= HOLD:
-                cur, held = q, 0
-        held += 1
+        to = min(range(len(LEVELS)), key=lambda i: abs(LEVELS[i] - o)) if sp else 0
+        cur = cur + 1 if to > cur else to  # opening: a level a frame; closing: at once, then spread backwards
         out.append(cur)
-    return out
+    for f in range(len(out) - 2, -1, -1):  # a fall of more than a level a frame starts earlier
+        out[f] = min(out[f], out[f + 1] + 1)
+    top = min(i for i, v in enumerate(LEVELS) if v >= TALK_FRAME)  # the first level that shows the talk frame
+    for f in range(1, len(out) - 1):
+        if out[f] == 0 and out[f - 1] and out[f + 1]:
+            out[f] = 1
+        a, b, c = (x >= top for x in out[f - 1:f + 2])
+        if a == c != b:  # the neighbours are one level away (a level a frame): moving to their side keeps that
+            out[f] = top - 1 if b else top
+    return [LEVELS[i] for i in out]
+
+
+def short_floor(a, sr):
+    """The noise floor of a track with no pauses, dBFS: the quietest SHORT_PCT of its SHORT_S windows (digital
+    silence: SILENT_DB); None on less than MIN_SHORT of them, or when it is not SHORT_MARGIN_DB under their median
+    (no quiet moment to measure)."""
+    w = max(1, jround(SHORT_S * sr))
+    db = [max(SILENT_DB, 20 * math.log10(max(level_of(a[i:i + w]), 1e-12))) for i in range(0, len(a) - w + 1, w)]
+    if len(db) < MIN_SHORT:
+        return None
+    floor = pct(db, SHORT_PCT)
+    return floor if floor <= pct(db, 0.5) - SHORT_MARGIN_DB else None
 
 
 def lead(track, n, fill):
@@ -155,14 +189,20 @@ def tilt(a16, fps, n, speech):
     return out
 
 
-def widths(tilts, n):
-    """The width per frame from the tilt: on WIDE_RANGE_DB around the recording's centre (the middle of its 10th and
-    90th percentile), smoothed [1, 2, 1]/4 over speech, held to quarter steps HOLD frames at least; 0.5 where nobody
-    speaks."""
+def widths(tilts, n, nuclei=None):
+    """The width per frame from the tilt: on WIDE_RANGE_DB around the recording's centre, smoothed [1, 2, 1]/4 over
+    speech, held to quarter steps HOLD frames at least; 0.5 where nobody speaks. The centre: the middle of the 25th and
+    75th percentile of the vowels' frames (nuclei: True where the mouth opens as on a vowel; None or fewer than
+    MIN_PAUSE_FRAMES of them: every speech frame). A consonant's hiss has far more highs than any vowel: measured
+    with the vowels, this long tail pulled the centre up and turned the open "a", the commonest vowel, round."""
     vals = [d for d in tilts if d is not None]
     if not vals:
         return [0.5] * n
-    c = (pct(vals, 0.1) + pct(vals, 0.9)) / 2
+    if nuclei is not None:
+        nv = [d for d, k in zip(tilts, nuclei) if d is not None and k]
+        if len(nv) >= MIN_PAUSE_FRAMES:
+            vals = nv
+    c = (pct(vals, 0.25) + pct(vals, 0.75)) / 2
     w = [None if d is None else min(1.0, max(0.0, 0.5 + (d - c) / WIDE_RANGE_DB)) for d in tilts]
     sm = []
     for f in range(n):
@@ -201,10 +241,18 @@ def envelope(a, sr, fps, words=None, a16=None):
         for s0, s1 in words:
             for f in range(max(0, int((s0 - WORD_PAD) * fps)), min(n, int(math.ceil((s1 + WORD_PAD) * fps)))):
                 inw[f] = True
-    # the noise floor: with words, the frames between them (a recording with no pauses has none: only the absolute
-    # floor then, or steady speech would gate itself out); without words, the quietest tenth of the track
-    out_db = [d for d, w in zip(db, inw) if not w] if inw else db
-    floor = pct(out_db, 0.5 if inw else FLOOR_PCT) if len(out_db) >= MIN_PAUSE_FRAMES else None
+    # the noise floor: with words, the frames between them, or a track cut tight (too few of them) on its quietest
+    # short moments (short_floor); without words, the quietest tenth of the track; the absolute floor only when none
+    # can be measured
+    if inw:
+        out_db = [max(SILENT_DB, d) for d, w in zip(db, inw) if not w]
+        floor_from = "pauses" if len(out_db) >= MIN_PAUSE_FRAMES else "short windows"
+        floor = pct(out_db, 0.5) if floor_from == "pauses" else short_floor(a, sr)
+    else:
+        floor_from = "quietest tenth"
+        floor = max(SILENT_DB, pct(db, FLOOR_PCT)) if len(db) >= MIN_PAUSE_FRAMES else None
+    if floor is None:
+        floor_from = None
     gate = max(MIN_DB, floor + GATE_DB) if floor is not None else MIN_DB
     speech = [d >= gate for d in db]
     if inw:
@@ -218,9 +266,12 @@ def envelope(a, sr, fps, words=None, a16=None):
         raw.append(min(1.0, max(0.0, (sm - THRESHOLD) / (FULL - THRESHOLD))) if speech[f] else 0.0)
     # moved early first, then held: the first level of a phrase keeps its two frames too
     sp_early = lead(speech, n, False)
-    out = quantize(lead(raw, n, 0.0), sp_early)
-    wide = widths(lead(tilt(a16, fps, n, speech), n, None), n) if a16 is not None else [0.5] * n
-    return out, wide, {"floor_db": None if floor is None else round(floor, 1), "gate_db": round(gate, 1),
+    early = lead(raw, n, 0.0)
+    out = quantize(early, sp_early)
+    nuclei = [o >= NUCLEUS for o in early]
+    wide = widths(lead(tilt(a16, fps, n, speech), n, None), n, nuclei) if a16 is not None else [0.5] * n
+    return out, wide, {"floor_db": None if floor is None else round(floor, 1), "floor_from": floor_from,
+                       "gate_db": round(gate, 1),
                        "peak": round(peak, 5),
                        "speech_frames": len(sp), "words": bool(words)}
 
