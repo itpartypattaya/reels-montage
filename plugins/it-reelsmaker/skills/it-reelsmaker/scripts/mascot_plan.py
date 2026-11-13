@@ -337,7 +337,8 @@ def frames_of(m, plan, s, geo, opens, fps, speaks=None, wides=None):
         o = opens[f] if talks else 0.0
         w = wides[f] if talks and wides is not None and f < len(wides) and o > 0 else 0.5
         lid = lids.get(f, 0.0)
-        e = {"pose": pose, "prev": prev, "k": round(k, 3), "open": round(float(o), 3), "wide": round(float(w), 3), "blink": lid >= 0.5,
+        e = {"pose": pose, "prev": prev, "k": round(k, 3), "open": round(float(o), 3), "wide": round(float(w), 3),
+             "blink": lid >= 0.5,
              "lid": round(lid, 3)}
         if since is not None:
             e["since"] = since

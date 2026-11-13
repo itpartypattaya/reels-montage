@@ -18,9 +18,9 @@ frame that is not speech is closed; the opening is then held to four levels (shu
 reached inside speech held two frames at least, and the whole track moves one frame early (the mouth opens a frame
 before the sound). The width (wide 0 round .. 1 wide, 0.5 neutral) per speech frame: the energy of the voice near its
 second formant (1.8-2.9 kHz, an "ee") against its energy near the first (450-950 Hz, an "oo"), in dB, measured on a
-16 kHz copy through two band-pass filters, placed on a 16 dB scale around the middle of this recording's 10th and 90th
-percentile (kept within -8 ± 4 dB, so a recording of one vowel cannot turn the scale over), smoothed, held to five steps; neutral wherever nobody
-speaks. mouth.json keeps the frame rate, the frame count (round half up, as the kit
+16 kHz copy through two band-pass filters, placed on a fixed 16 dB scale around the middle of this recording's 10th and
+90th percentile (a voice's own level of highs drops out; one vowel alone stays near neutral), smoothed, held to five
+steps; neutral wherever nobody speaks. mouth.json keeps the frame rate, the frame count (round half up, as the kit
 rounds) and stamps of the track and the words: once either changes, stage refuses the old mouth.
 
 plan: the plan's "mascot" field (mascot_plan.py has its format). --pose AT=POSE adds or replaces a pose change at AT
@@ -44,10 +44,10 @@ LEVELS = (0.0, 0.333, 0.667, 1.0)  # the opening's levels
 WIDE_STEPS = 4  # the width in quarters: 0, 0.25, 0.5, 0.75, 1
 HOLD = 2  # frames: a level reached inside speech holds this long at least
 LEAD = vm.MOUTH_LEAD  # frames: the mouth moves this much before the sound
-# the width: the voice's tilt (energy in HIGH_BAND against LOW_BAND, dB) placed on WIDE_RANGE_DB around a centre; the
-# centre is the middle of this recording's 10th and 90th percentile tilt, kept within CENTRE_DB ± CENTRE_SHIFT_DB (a voice of its own adjusts the scale,
-# a recording of one vowel cannot turn it over)
-CENTRE_DB, CENTRE_SHIFT_DB, WIDE_RANGE_DB = -8.0, 4.0, 16.0
+# the width: the voice's tilt (energy in HIGH_BAND against LOW_BAND, dB) on a fixed WIDE_RANGE_DB scale around the
+# middle of this recording's 10th and 90th percentile: any voice's own level of highs drops out, and a recording that
+# barely varies (one vowel) stays near neutral instead of having its small changes stretched into wide and round
+WIDE_RANGE_DB = 16.0
 SPECTRUM_SR = 16000
 LOW_BAND = (450, 950)  # Hz: the first formant of an "oo" / "o", the second of an "oo"
 HIGH_BAND = (1800, 2900)  # Hz: the second formant of an "ee" / "e"
@@ -157,12 +157,12 @@ def tilt(a16, fps, n, speech):
 
 def widths(tilts, n):
     """The width per frame from the tilt: on WIDE_RANGE_DB around the recording's centre (the middle of its 10th and
-    90th percentile, kept near CENTRE_DB), smoothed [1, 2, 1]/4 over speech, held to quarter steps HOLD frames at least; 0.5 where nobody
+    90th percentile), smoothed [1, 2, 1]/4 over speech, held to quarter steps HOLD frames at least; 0.5 where nobody
     speaks."""
     vals = [d for d in tilts if d is not None]
     if not vals:
         return [0.5] * n
-    c = min(CENTRE_DB + CENTRE_SHIFT_DB, max(CENTRE_DB - CENTRE_SHIFT_DB, (pct(vals, 0.1) + pct(vals, 0.9)) / 2))
+    c = (pct(vals, 0.1) + pct(vals, 0.9)) / 2
     w = [None if d is None else min(1.0, max(0.0, 0.5 + (d - c) / WIDE_RANGE_DB)) for d in tilts]
     sm = []
     for f in range(n):
@@ -220,8 +220,9 @@ def envelope(a, sr, fps, words=None, a16=None):
     sp_early = lead(speech, n, False)
     out = quantize(lead(raw, n, 0.0), sp_early)
     wide = widths(lead(tilt(a16, fps, n, speech), n, None), n) if a16 is not None else [0.5] * n
-    return out, wide, {"floor_db": None if floor is None else round(floor, 1), "gate_db": round(gate, 1), "peak": round(peak, 5),
-                 "speech_frames": len(sp), "words": bool(words)}
+    return out, wide, {"floor_db": None if floor is None else round(floor, 1), "gate_db": round(gate, 1),
+                       "peak": round(peak, 5),
+                       "speech_frames": len(sp), "words": bool(words)}
 
 
 def cmd_mouth(a):
@@ -243,7 +244,8 @@ def cmd_mouth(a):
         rel = src.relative_to(e.resolve()).as_posix()
     except ValueError:
         rel = str(src)
-    save_json(e / "mouth.json", {"version": vm.MOUTH_VERSION, "fps": fps, "frames": len(opens), "sample_rate": sr, "source": rel,
+    save_json(e / "mouth.json", {"version": vm.MOUTH_VERSION, "fps": fps, "frames": len(opens), "sample_rate": sr,
+                                 "source": rel,
                                  "explicit": bool(a.audio), "stamp": vm.file_stamp(src),
                                  "words_stamp": vm.words_stamp(words), **info, "open": opens, "wide": wide})
     talk = sum(1 for o in opens if o > vm.TALK_MIN)

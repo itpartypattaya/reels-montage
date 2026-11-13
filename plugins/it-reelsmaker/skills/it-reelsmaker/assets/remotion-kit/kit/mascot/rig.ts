@@ -63,7 +63,8 @@ const SHUT = 0.05; // an opening under this is drawn as the expression's line
 /** The mouth for a frame, around its centre (0, 0) on the line through its corners: shut, the expression's line
  *  (stroke it); open, a shape whose corners stay at the expression's height, its upper lip curved exactly like the
  *  expression, its lower lip dropped by `open` (fill it). `wide` 1 (an "ee") makes it wider and flatter, 0 (an "oo")
- *  narrower and taller; at 0.5 the corners stay where the expression put them. Corners, then the upper lip to the right corner, then the lower lip back. */
+ *  narrower and taller; at 0.5 the corners stay where the expression put them. Corners, then the upper lip to the
+ *  right corner, then the lower lip back. */
 export const mouthPath = (base: MouthBase, open: number, wide: number): MouthShape => {
   const o = clamp01(open);
   const w = clamp01(wide);

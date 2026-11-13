@@ -4,7 +4,8 @@ over the pose's own expression (references/mascot.md → The mouth, How Claude d
 Requirements:
 - on a vowel with its energy high in the spectrum (the "ee" of "see") the mouth is wide, on one with its energy low
   (the "oo" of "too") it is round; the same for a low and a high voice; a recording of one vowel only never turns
-  the scale over (its own small changes are not stretched into wide and round);
+  the scale over: it stays near neutral (its own small changes are not stretched into wide and round, and with no
+  second vowel to compare there is no telling an "ee" from an "oo" of another voice);
 - where nobody speaks the width is neutral (0.5), whatever sound is there;
 - the opening has four levels (shut, a third, two thirds, full) and a level, once reached inside speech, holds at
   least two frames: the mouth does not flutter;
@@ -87,7 +88,18 @@ def test_a_recording_of_one_vowel_does_not_turn_the_scale_over(project, f0, scal
         record(e / "voice.wav", vowel_expr([(0.5, 3.5, v)], f0, scale), 4.0)
         m = mouth(project, e)
         got[name] = median([m["wide"][f] for f in frames(m, 0.7, 3.3)])
-    assert got["ee"] >= 0.5 and got["oo"] <= 0.25 and got["ee"] > got["oo"], got
+    assert got["ee"] >= 0.5 >= got["oo"], got
+    assert 0.25 <= got["oo"] and got["ee"] <= 0.75, got  # near neutral, not stretched to either end
+
+
+@pytest.mark.parametrize("shift_db", [-20, -10, 0, 10])
+def test_a_voice_with_quieter_or_louder_highs_still_gets_a_wide_ee_and_a_round_oo(shift_db):
+    # a real voice's highs sit lower or higher overall than the stand-ins' (another voice, another microphone): the
+    # scale follows the recording, not a fixed level (the tilts of the stand-in "ee" and "oo", moved by shift_db)
+    import mascot as M
+    tilts = [2.7 + shift_db] * 20 + [None] * 5 + [-15.1 + shift_db] * 20
+    w = M.widths(tilts, len(tilts))
+    assert w[10] == 1.0 and w[35] == 0.0 and w[22] == 0.5, (w[10], w[35], w[22])
 
 
 @needs_ffmpeg
