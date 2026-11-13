@@ -2,6 +2,19 @@
 
 What changed in IT Reelsmaker, written for the people who use it. The newest version is on top. The skill shows a short “What's new” note from this file once, on the first edit after an update.
 
+## 1.31.0
+
+- **The mascot's mouth reads as speech.** Besides opening with the loudness of your voice, it gets wider on an “ee”
+  and rounder on an “oo”, measured from the sound of your own recording: no transcript and no phonemes, so it works
+  in any language, for a low and a high voice alike. The opening now steps through four levels and holds each for two
+  frames, so it no longer flutters, and it opens a frame before the sound, which reads as on time.
+- **It talks and keeps its expression.** The pose sets the mouth (a smile in `celebrate`, doubt in `shrug`) and the
+  voice opens it: the corners stay where the expression put them. The sample mascot shows it with the new
+  `mouthPath` helper; a picture mascot's overlay mouth gets wider or rounder too.
+- **Measure the mouth again** (`mascot.py mouth`) for a video staged before: stage asks for it.
+- **Kit 1.20.0** (`kit.py update`): the mascot's frame gets `wide`; `mouthPath` in `kit/mascot/rig.ts`. A module
+  written before keeps working (it ignores `wide`).
+
 ## 1.30.0
 
 - **The mascot blinks like a living character.** A blink now closes and opens through a half-shut lid (half shut,

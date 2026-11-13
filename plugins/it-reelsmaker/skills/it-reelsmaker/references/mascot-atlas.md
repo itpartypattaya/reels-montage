@@ -104,7 +104,8 @@ width in the atlas.
 `kit/mascot/AtlasMascot.tsx`, `atlasMascot(rig, atlasPath)`: one image of the whole atlas, cropped to the frame of the
 pose of the moment.
 - **Mouth**: the pose's talk frame from a medium opening; without one, an ellipse in the line color sized by the
-  opening, a tongue when it opens wide.
+  opening and wider or rounder with the voice (`wide`), a tongue when it opens wide. A talk frame belongs to its pose
+  (`celebrate-talk` keeps the joy of `celebrate`): draw one per pose that speaks, not one shared talking face.
 - **Blink**: the pose's blink frame, shown half over the open picture on the blink's half-shut frames and alone on
   the shut ones; without one (and over a talk frame), an eyelid in the skin color with a lash arc, lowered halfway
   on the half-shut frames.

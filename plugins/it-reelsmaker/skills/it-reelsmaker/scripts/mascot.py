@@ -14,7 +14,12 @@ round((f+1)*sr/fps), no drift), the RMS; speech frames are the ones 10 dB above 
 the words of captions.json when it has words, else on the quietest tenth; at least -50 dBFS) and inside a word when
 there are words; the level is normalized by the 98th percentile of the speech
 frames (one click does not squash the rest), smoothed [1,2,1]/4, opened from 0.08 to fully at 0.63, and every
-frame that is not speech is closed. mouth.json keeps the frame rate, the frame count (round half up, as the kit
+frame that is not speech is closed; the opening is then held to four levels (shut, a third, two thirds, full), a level
+reached inside speech held two frames at least, and the whole track moves one frame early (the mouth opens a frame
+before the sound). The width (wide 0 round .. 1 wide, 0.5 neutral) per speech frame: the energy of the voice near its
+second formant (1.8-2.9 kHz, an "ee") against its energy near the first (450-900 Hz, an "oo"), measured on a 16 kHz
+copy through two band-pass filters, placed between this recording's own 10th and 90th percentile (a low
+and a high voice alike), smoothed, held to five steps; neutral wherever nobody speaks. mouth.json keeps the frame rate, the frame count (round half up, as the kit
 rounds) and stamps of the track and the words: once either changes, stage refuses the old mouth.
 
 plan: the plan's "mascot" field (mascot_plan.py has its format). --pose AT=POSE adds or replaces a pose change at AT
@@ -34,6 +39,13 @@ import mascot_plan as vm  # noqa: E402
 THRESHOLD, FULL = 0.08, 0.63
 FLOOR_PCT, PEAK_PCT = 0.10, 0.98
 GATE_DB, MIN_DB = 10.0, -50.0
+LEVELS = (0.0, 0.333, 0.667, 1.0)  # the opening's levels
+WIDE_STEPS = 4  # the width in quarters: 0, 0.25, 0.5, 0.75, 1
+HOLD = 2  # frames: a level reached inside speech holds this long at least
+LEAD = 1  # frames: the mouth moves this much before the sound
+SPECTRUM_SR = 16000
+LOW_BAND = (450, 950)  # Hz: the first formant of an "oo" / "o", the second of an "oo"
+HIGH_BAND = (1800, 2900)  # Hz: the second formant of an "ee" / "e"
 WORD_PAD = 0.1  # s around a word: recognizers end words early
 MIN_PAUSE_FRAMES = 10  # frames between the words needed to measure the noise floor on them
 
@@ -46,13 +58,13 @@ def jround(x):
     return int(math.floor(x + 0.5))
 
 
-def read_mono(src):
-    """-> (samples as int16 array, sample rate): the first audio stream, mixed to mono, its own rate, aligned to the
-    container's start like every analysis track (first_pts=0)."""
+def read_mono(src, rate=None):
+    """-> (samples as int16 array, sample rate): the first audio stream, mixed to mono, at its own rate (or `rate`),
+    aligned to the container's start like every analysis track (first_pts=0)."""
     r = run(["ffprobe", "-v", "error", "-select_streams", "a:0", "-show_entries", "stream=sample_rate", "-of", "json",
              str(src)], check=False)
     try:
-        sr = int(json.loads(r.stdout or "{}")["streams"][0]["sample_rate"])
+        sr = rate or int(json.loads(r.stdout or "{}")["streams"][0]["sample_rate"])
     except (KeyError, IndexError, ValueError, TypeError):
         sys.exit(f"{src}: no audio track")
     # 16-bit samples in this machine's own byte order, so they load into an array as they are
@@ -84,8 +96,93 @@ def pct(vals, q):
     return s[min(len(s) - 1, max(0, jround(q * (len(s) - 1))))] if s else 0.0
 
 
-def envelope(a, sr, fps, words=None):
-    """-> (open per frame, info). words: [(start, end)] on the same timeline (captions.json), or None."""
+def quantize(opens, speech):
+    """The opening held to LEVELS: the nearest level, a level reached inside speech held HOLD frames at least (a
+    one-frame dip between two syllables is not shown), shut at once where the speech ends."""
+    out, cur, held = [], 0.0, HOLD
+    for o, sp in zip(opens, speech):
+        if not sp:
+            cur, held = 0.0, HOLD
+        else:
+            q = min(LEVELS, key=lambda v: abs(v - o))
+            if q != cur and held >= HOLD:
+                cur, held = q, 0
+        held += 1
+        out.append(cur)
+    return out
+
+
+def lead(track, n, fill):
+    """The track moved LEAD frames early: frame f shows what frame f + LEAD measured."""
+    return [track[f + LEAD] if f + LEAD < n else fill for f in range(n)]
+
+
+def band(a16, lo_hz, hi_hz):
+    """The samples through a band-pass filter from lo_hz to hi_hz (one second-order section: centre at their geometric
+    mean, its width their difference)."""
+    f0 = math.sqrt(lo_hz * hi_hz)
+    q = f0 / float(hi_hz - lo_hz)
+    w0 = 2 * math.pi * f0 / SPECTRUM_SR
+    al = math.sin(w0) / (2 * q)
+    a0 = 1 + al
+    b0, b2, a1, a2 = al / a0, -al / a0, -2 * math.cos(w0) / a0, (1 - al) / a0
+    out, x1, x2, y1, y2 = [], 0.0, 0.0, 0.0, 0.0
+    for x in a16:
+        y = b0 * x + b2 * x2 - a1 * y1 - a2 * y2
+        x2, x1, y2, y1 = x1, x, y1, y
+        out.append(y)
+    return out
+
+
+def balance(a16, fps, n, speech):
+    """Per frame: the share of the voice's energy near its second formant against near its first, 0..1, or None
+    where nobody speaks (16 kHz samples)."""
+    lo, hi = band(a16, *LOW_BAND), band(a16, *HIGH_BAND)
+    out = []
+    for f in range(n):
+        i0, i1 = jround(f * SPECTRUM_SR / float(fps)), min(len(a16), jround((f + 1) * SPECTRUM_SR / float(fps)))
+        if not speech[f] or i1 - i0 < 16:
+            out.append(None)
+            continue
+        el = math.fsum(v * v for v in lo[i0:i1])
+        eh = math.fsum(v * v for v in hi[i0:i1])
+        out.append(eh / (eh + el) if eh + el > 0 else None)
+    return out
+
+
+def widths(ratio, n):
+    """The width per frame from the balance: placed between this recording's own 10th and 90th percentile, smoothed
+    [1, 2, 1]/4 over speech, held to quarter steps HOLD frames at least; 0.5 where nobody speaks."""
+    vals = [r for r in ratio if r is not None]
+    if len(vals) < 2:
+        return [0.5] * n
+    lo, hi = pct(vals, 0.10), pct(vals, 0.90)
+    span = hi - lo
+    w = [None if r is None else (0.5 if span <= 1e-9 else min(1.0, max(0.0, (r - lo) / span))) for r in ratio]
+    sm = []
+    for f in range(n):
+        if w[f] is None:
+            sm.append(None)
+            continue
+        a = w[f - 1] if f > 0 and w[f - 1] is not None else w[f]
+        b = w[f + 1] if f + 1 < n and w[f + 1] is not None else w[f]
+        sm.append((a + 2 * w[f] + b) / 4)
+    out, cur, held = [], 0.5, HOLD
+    for v in sm:
+        if v is None:
+            cur, held = 0.5, HOLD
+        else:
+            q = round(v * WIDE_STEPS) / WIDE_STEPS
+            if q != cur and held >= HOLD:
+                cur, held = q, 0
+        held += 1
+        out.append(cur)
+    return out
+
+
+def envelope(a, sr, fps, words=None, a16=None):
+    """-> (open per frame, wide per frame, info). words: [(start, end)] on the same timeline (captions.json), or
+    None; a16: the same track at SPECTRUM_SR for the width (None: neutral everywhere)."""
     n = jround(len(a) * fps / float(sr))
     rms = []
     for f in range(n):
@@ -110,12 +207,13 @@ def envelope(a, sr, fps, words=None):
     sp = [rms[f] for f in range(n) if speech[f]]
     peak = pct(sp, PEAK_PCT) if sp else 0.0
     amp = [min(1.0, v / peak) if peak > 0 else 0.0 for v in rms]
-    out = []
+    raw = []
     for f in range(n):
         sm = ((amp[f - 1] if f > 0 else 0.0) + 2 * amp[f] + (amp[f + 1] if f + 1 < n else 0.0)) / 4
-        o = min(1.0, max(0.0, (sm - THRESHOLD) / (FULL - THRESHOLD))) if speech[f] else 0.0
-        out.append(round(o, 3))
-    return out, {"floor_db": None if floor is None else round(floor, 1), "gate_db": round(gate, 1), "peak": round(peak, 5),
+        raw.append(min(1.0, max(0.0, (sm - THRESHOLD) / (FULL - THRESHOLD))) if speech[f] else 0.0)
+    out = lead(quantize(raw, speech), n, 0.0)
+    wide = lead(widths(balance(a16, fps, n, speech), n) if a16 is not None else [0.5] * n, n, 0.5)
+    return out, wide, {"floor_db": None if floor is None else round(floor, 1), "gate_db": round(gate, 1), "peak": round(peak, 5),
                  "speech_frames": len(sp), "words": bool(words)}
 
 
@@ -132,14 +230,15 @@ def cmd_mouth(a):
     samples, sr = read_mono(src)
     if not len(samples):
         sys.exit(f"{src}: the audio track is empty")
-    opens, info = envelope(samples, sr, fps, words or None)
+    a16, _ = read_mono(src, SPECTRUM_SR)
+    opens, wide, info = envelope(samples, sr, fps, words or None, a16)
     try:
         rel = src.relative_to(e.resolve()).as_posix()
     except ValueError:
         rel = str(src)
-    save_json(e / "mouth.json", {"version": 1, "fps": fps, "frames": len(opens), "sample_rate": sr, "source": rel,
+    save_json(e / "mouth.json", {"version": vm.MOUTH_VERSION, "fps": fps, "frames": len(opens), "sample_rate": sr, "source": rel,
                                  "explicit": bool(a.audio), "stamp": vm.file_stamp(src),
-                                 "words_stamp": vm.words_stamp(words), **info, "open": opens})
+                                 "words_stamp": vm.words_stamp(words), **info, "open": opens, "wide": wide})
     talk = sum(1 for o in opens if o > vm.TALK_MIN)
     print(f"{e / 'mouth.json'}: {len(opens)} frames at {fps} fps from {src.name} ({sr} Hz); the mouth moves on {talk} "
           f"({talk / max(1, len(opens)) * 100:.0f} %)" + ("; speech inside the words of captions.json" if words else ""))

@@ -2,7 +2,7 @@
 pose track follows the words, and the mascot never lands on the subtitles, the app's buttons or another graphic.
 
 Requirements (references/mascot.md):
-- in a pause the mouth is closed on every frame; noise with no speech never opens it; one loud click does not squash
+- in a pause the mouth is closed on every frame but the last (it opens a frame before the sound); noise with no speech never opens it; one loud click does not squash
   the normalization of the speech around it;
 - the envelope has exactly as many frames as the narration has on the kit's frame grid (round half up, as the kit
   rounds), for a 16 kHz mono and a 48 kHz stereo file alike;
@@ -55,7 +55,9 @@ def test_a_pause_keeps_the_mouth_closed_on_every_frame(project):
     e = project / "edit" / "v1"
     tone(e / "voice.wav", [(0.5, 1.5), (2.5, 3.5)], 4.0)
     m = mouth(project, e)
-    pause = inside(m, 1.5, 2.5)  # every frame whose window lies in the pause, the ones next to speech too
+    # every frame whose window lies in the pause, the ones next to speech too, except the last one: the mouth opens a
+    # frame before the sound (references/mascot.md → The mouth)
+    pause = inside(m, 1.5, 2.5 - 1 / m["fps"])
     assert pause and all(m["open"][f] == 0 for f in pause), [m["open"][f] for f in pause]
     speech = inside(m, 0.6, 1.4)
     assert max(m["open"][f] for f in speech) > 0.5  # and it does open while the tone sounds
