@@ -41,9 +41,11 @@ EASE_FRAMES, BOUNCE_FRAMES = 12, 14
 BLINK_SHAPE = (0.5, 1.0, 1.0, 0.5)
 DOUBLE_SHARE, DOUBLE_GAP_S = 0.2, 0.27
 CHANGE_CLEAR_S = 0.5  # a planned blink keeps this far from the blink that hides a pose change
-MOUTH_VERSION = 2   # mouth.json by an older mascot.py (one axis, no width) is stale
+MOUTH_VERSION = 3   # mouth.json by an older mascot.py (one axis, or levels of a third that jumped) is stale
 MOUTH_LEAD = 1      # frames: mouth.json moves the mouth this much before the sound (mascot.py mouth)
 TALK_MIN = 0.08     # an opening under this reads as a closed mouth (the kit's `talking`)
+MOUTH_STEP = 0.25   # the most the opening moves from one frame to the next (mascot.py mouth; kept where speaks cuts it)
+TALK_FRAME = 0.3    # a picture mascot shows its drawn talk frame from this opening (OPEN_FRAME in kit/mascot/AtlasMascot.tsx)
 W, H = 1080, 1920
 
 
@@ -134,7 +136,7 @@ def load_mouth(e, fps=30):
     if not isinstance(m, dict) or not isinstance(m.get("open"), list):
         return None, "no mouth.json"
     if m.get("version") != MOUTH_VERSION or not isinstance(m.get("wide"), list) or len(m["wide"]) != len(m["open"]):
-        return m, "mouth.json was measured by an older mascot.py (no mouth width): measure it again"
+        return m, "mouth.json was measured by an older mascot.py: measure it again"
     src = Path(m.get("source") or "")
     src = src if src.is_absolute() else e / src
     if not m.get("explicit") and voice_track(e) and voice_track(e).resolve() != src.resolve():
@@ -311,6 +313,33 @@ def speaking(m, plan, vend):
     return [(t0, min(t1, vend))] if vend > t0 else []
 
 
+def paced(vals, step=MOUTH_STEP):
+    """vals moved `step` a frame at most: a rise climbs from where it is, a fall starts early enough to keep the pace
+    (so a frame is never higher than vals says, and shut where it says shut)."""
+    out, cur = [], 0.0
+    for v in vals:
+        cur = min(v, cur + step)
+        out.append(cur)
+    for f in range(len(out) - 2, -1, -1):
+        out[f] = min(out[f], out[f + 1] + step)
+    return no_lone(out)
+
+
+def no_lone(vals):
+    """No frame alone: a shut frame between two open ones opens to the lower of them (the mouth does not blink shut
+    between two syllables), and a frame alone on its side of TALK_FRAME takes its neighbours' side, the nearer of
+    their values (a picture mascot's drawn talk frame does not flash for one frame). Neighbours a step away stay a
+    step away."""
+    out = list(vals)
+    for f in range(1, len(out) - 1):
+        a, c = out[f - 1], out[f + 1]
+        if out[f] == 0 and a > 0 and c > 0:
+            out[f] = min(a, c)
+        if (a >= TALK_FRAME) == (c >= TALK_FRAME) != (out[f] >= TALK_FRAME):
+            out[f] = max(a, c) if out[f] >= TALK_FRAME else min(a, c)
+    return out
+
+
 def frames_of(m, plan, s, geo, opens, fps, speaks=None, wides=None):
     """The per-frame plan the kit plays: entries {f, pose, prev, k, open, wide, blink, lid[, since][, facing]}, each
     holding
@@ -330,6 +359,13 @@ def frames_of(m, plan, s, geo, opens, fps, speaks=None, wides=None):
             seen.append(jround(c[0] * fps))
         last_pic = (c[2], c[3])
     lids = lid_track(plan.get("id") or "", t0, t1, fps, seen)
+    # the spans are the sound's: frame f shows the window of frame g = f + MOUTH_LEAD (mouth.json moved it early),
+    # which speaks when it overlaps a span; whole frames, so no sum of seconds lands a frame off. Cut by the spans, the
+    # opening is paced again: a span that starts or ends inside speech opens and closes the mouth a quarter a frame
+    fr = range(f0, max(f0 + 1, f1))
+    talks = {f: 0 <= f < len(opens) and any(f + MOUTH_LEAD + 1 > a * fps + 1e-6 and f + MOUTH_LEAD < b * fps - 1e-6
+                                            for a, b in sp) for f in fr}
+    shown = dict(zip(fr, paced([opens[f] if talks[f] else 0.0 for f in fr])))
     out, last = [], None
     for f in range(f0, max(f0 + 1, f1)):
         t = f / float(fps)
@@ -346,12 +382,8 @@ def frames_of(m, plan, s, geo, opens, fps, speaks=None, wides=None):
             since = f - fc if f - fc < n_ease else None
         else:
             pose, prev, k, mir = start, start, 1.0, False
-        # the spans are the sound's: frame f shows the window of frame g = f + MOUTH_LEAD (mouth.json moved it early),
-        # which speaks when it overlaps a span; whole frames, so no sum of seconds lands a frame off
-        g = f + MOUTH_LEAD
-        talks = 0 <= f < len(opens) and any(g + 1 > a * fps + 1e-6 and g < b * fps - 1e-6 for a, b in sp)
-        o = opens[f] if talks else 0.0
-        w = wides[f] if talks and wides is not None and f < len(wides) and o > 0 else 0.5
+        o = shown[f]
+        w = wides[f] if talks[f] and wides is not None and f < len(wides) and o > 0 else 0.5
         lid = lids.get(f, 0.0)
         e = {"pose": pose, "prev": prev, "k": round(k, 3), "open": round(float(o), 3), "wide": round(float(w), 3),
              "blink": lid >= 0.5,
