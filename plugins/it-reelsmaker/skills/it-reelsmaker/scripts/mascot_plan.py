@@ -421,9 +421,13 @@ def issues(e, plan, s, doc, brand, bdir, fps=30):
     for sc_ in fulls:
         b = sc_.get("box")
         if b and len(b) == 4:
-            if b[1] + b[3] > text_bottom and hits(r, [b[0], b[1], b[2], b[3]]):
-                errs.append(f"mascot {r}: under the box {b} of the full scene {sc_['id']}: its text must end "
-                            f"{SCENE_GAP} px above the mascot (y {text_bottom}); raise the box or the mascot")
+            # the kit cuts a full scene's box at text_bottom wherever it stands across the frame (sceneStage), so a
+            # box beside the mascot or ending inside the gap above it is cut too (Codex review): the same rule as the
+            # subtitles' (vp_scenes, voice_band)
+            if b[1] + b[3] > text_bottom:
+                errs.append(f"mascot {r}: under the box {b} of the full scene {sc_['id']}: while the mascot is on, a "
+                            f"full scene's text ends {SCENE_GAP} px above it (y {text_bottom}) and the kit cuts the box "
+                            f"there; end the box above y {text_bottom}, or lower the mascot")
         elif text_bottom - FULL_TEXT_TOP < FULL_TEXT_MIN:
             errs.append(f"mascot {r}: leaves the text of the full scene {sc_['id']} only {text_bottom - FULL_TEXT_TOP} "
                         f"px (y {FULL_TEXT_TOP}-{text_bottom}, at least {FULL_TEXT_MIN}): lower it or a smaller --scale "

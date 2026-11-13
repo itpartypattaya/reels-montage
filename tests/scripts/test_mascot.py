@@ -466,6 +466,23 @@ def test_a_full_scene_box_reaching_down_onto_the_mascot_is_an_error(project):
     r = validate(project, e)
     err = [ln for ln in r.stdout.splitlines() if ln.startswith("error: mascot") and "c02" in ln]
     assert r.returncode == 1 and err, r.stdout
+    # the kit cuts every full scene's box at the mascot's top minus the gap, wherever it stands across the frame
+    # (Codex review): a box beside the mascot or ending inside the gap above it is cut too, so it is an error as well
+    import mascot_plan as vm
+    run_script("brand.py", "stage", "acme", "--remotion", rem, cwd=project)
+    run_script("visual_plan.py", "remove", "edit/4821", "c02", cwd=project)
+    run_script("visual_plan.py", "stage", "edit/4821", "--remotion", rem, "--props", rem / "props.json", cwd=project)
+    top = json.loads((rem / "props.json").read_text(encoding="utf-8"))["mascot"]["top"]
+    for k, (at, box) in enumerate([(17.0, f"560,{top + 20},380,300"),             # beside it, below its top
+                                   (22.0, f"60,250,900,{top - 250 - 20}")]):       # ends inside the 40 px gap
+        run_script("visual_plan.py", "add", "edit/4821", "--kind", "scene", "--type", "slogan", "--at", str(at),
+                   "--dur", "4.0", "--lines", "Speed", "matters", "--source", "speech", "--source-ref", str(at),
+                   "--box", box, "--what", f"box {k}", "--why", "the main thought of the video", cwd=project)
+    r = validate(project, e)
+    errs = [ln for ln in r.stdout.splitlines() if ln.startswith("error: mascot")]
+    assert r.returncode == 1 and any("box [560, " in ln for ln in errs), r.stdout   # beside it
+    assert any("box [60, 250, 900, " in ln for ln in errs), r.stdout                # inside the gap
+    assert vm.SCENE_GAP == 40
 
 
 def test_the_kit_ends_full_scene_text_above_the_mascot_with_the_plans_gap():
