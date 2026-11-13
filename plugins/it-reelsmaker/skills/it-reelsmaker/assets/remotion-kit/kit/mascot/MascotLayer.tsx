@@ -22,6 +22,7 @@ export type MascotProps = {
   from: number; // seconds on screen
   to: number;
   frames: MascotPlanFrame[];
+  top?: number; // the top of its box on screen, px: a full scene's text ends above it while it is on (SceneLayer.tsx)
 };
 
 const IN_FRAMES = 10;

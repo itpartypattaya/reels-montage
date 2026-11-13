@@ -15,6 +15,16 @@ What changed in IT Reelsmaker, written for the people who use it. The newest ver
   pose change began, while it eases). A mascot module written before keeps working: it still gets `blink`, now on the frames the lids
   are at least half shut. Draw half-shut eyes from `f.lid` to use the softer blink (the sample shows how).
 
+## 1.29.3
+
+- **The mascot no longer stands on the scene text.** In scenes over your voice and in a promo, every scene fills the
+  frame and the mascot stands in its lower part: the kit now ends a full scene's text 40 px above the mascot, the
+  automatic placement leaves that text at least 540 px, and the plan check says so before the render when a mascot
+  placed by hand (or a scene's own box) leaves less. Found on a first real render: the check only warned, and the
+  text check found the words on the mascot after the storyboard.
+- **The sample mascot type-checks for every brand**, also one with extra colors in its profile.
+- **Kit 1.18.2** (`kit.py update`): full scenes keep their text above the mascot. Nothing else changes in your videos.
+
 ## 1.29.2
 
 - **The first guess of a character's eyes lands on the drawn eyes.** `mascot_atlas.py` now finds the head as the

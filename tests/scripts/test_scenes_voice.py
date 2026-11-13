@@ -323,7 +323,9 @@ def test_the_kit_plays_the_voice_and_keeps_full_scene_text_where_validate_expect
     gap = re.search(r"export const VOICE_SUB_GAP = (\d+);", reel)
     assert gap and int(gap.group(1)) == vp_scenes.VOICE_SUB_GAP
     assert "offCamera ? s.hide_subtitles === true" in layer
-    assert "{ x: 60, y: 250, w: 900, h: Math.max(1, Math.min(1200, (textBottom ?? 0) - 250)) }" in layer
+    # the zone ends at the lowest bound of the scene: the subtitles' (textBottom) or the mascot's (mascotTop)
+    assert "const subs = textBottom != null && !s.hide_subtitles ? textBottom : null;" in layer
+    assert "{ x: 60, y: 250, w: 900, h: Math.max(1, Math.min(1200, (bottom ?? 0) - 250)) }" in layer
     assert vp_scenes.voice_stage([1290, 1458]) == [60, 250, 900, 1290 - vp_scenes.VOICE_SUB_GAP - 250]
 
 

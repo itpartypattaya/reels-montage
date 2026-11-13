@@ -1,0 +1,6 @@
+# Packages the script tests need; CI installs these and keys its pip cache on this file.
+pytest
+pytest-xdist
+Pillow
+numpy
+opencv-python-headless
