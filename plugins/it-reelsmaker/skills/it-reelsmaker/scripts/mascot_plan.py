@@ -15,7 +15,7 @@ from pathlib import Path
 
 from reels_common import SUB_BAND, brand_file, load_json
 from vp_core import jround, resolve_at
-from vp_scenes import scene_keep_entries, scene_tone
+from vp_scenes import VOICE_SUB_GAP, scene_keep_entries, scene_tone
 
 POSES = ["neutral", "talk", "point_left", "point_right", "point_up", "palm", "think", "surprise", "celebrate", "shrug",
          "wink"]
@@ -29,6 +29,11 @@ MIN_GAP_S = 0.8     # pose changes at most this often
 EDGE_S = 0.3        # a gesture this close to a scene's entrance or exit competes with it (SKILL.md section 4)
 BAND_GAP = 30       # px between the mascot's lowest point and the subtitle band
 DEFAULT_H = 540     # px: the placed mascot's height when the room allows it
+# a full scene shares the frame with the mascot (scenes over a voice, a promo): its text ends SCENE_GAP above the
+# mascot's top (the kit's sceneStage, props.mascot.top), from FULL_TEXT_TOP down; the placement keeps that room at least
+# FULL_TEXT_MIN tall (a hook, a stat with its caption, a list of three read in it), a mascot placed by hand into it is an error
+SCENE_GAP = VOICE_SUB_GAP
+FULL_TEXT_TOP, FULL_TEXT_MIN = 250, 540
 EASE_FRAMES, BOUNCE_FRAMES = 12, 14
 BLINK_FRAMES = 3
 TALK_MIN = 0.08     # an opening under this reads as a closed mouth (the kit's `talking`)
@@ -160,17 +165,27 @@ def ui_safe_of(s, doc=None):
     return ml.layout(s, doc)["safe"]
 
 
-def placement(m, geo, band, safe):
+def full_scenes(plan, t0, t1):
+    """The full scenes on screen at the same time as the mascot [t0, t1): their text ends above it."""
+    return [i for i in plan.get("inserts", []) if i.get("kind") == "scene" and i.get("status") != "skipped"
+            and i.get("type") != "cover" and i.get("mode") == "full" and i["start"] < t1 and i["start"] + i["dur"] > t0]
+
+
+def placement(m, geo, band, safe, under_full=False):
     """-> (x, y, scale) of the anchor: the plan's own, else the lower left above the subtitle band (or above the UI
-    zone with no subtitles), as tall as the room allows up to DEFAULT_H."""
+    zone with no subtitles), as tall as the room allows up to DEFAULT_H. under_full: full scenes share the frame with
+    it, so it also stays low enough to leave their text FULL_TEXT_MIN px above it (2 px of rounding to spare)."""
     bw, bh = geo["box"]
     ax, ay = geo["anchor"]
     bottom = (band[0] - BAND_GAP) if band else (H - safe["bottom"])
     left = safe["left"] + 20
     sc = m.get("scale")
     if not sc:
-        sc = min(DEFAULT_H, bottom - safe["top"] - 40) / bh
-        sc = round(max(0.1, min(sc, (W / 2 - left) / bw)), 3)
+        room = min(DEFAULT_H, bottom - safe["top"] - 40)
+        if under_full:
+            room = min(room, bottom - (FULL_TEXT_TOP + FULL_TEXT_MIN + SCENE_GAP) - 2)
+        sc = max(0.1, min(room / bh, (W / 2 - left) / bw))
+        sc = math.floor(sc * 1000) / 1000 if under_full else round(sc, 3)
     x = m.get("x") if m.get("x") is not None else math.ceil(left + (ax if m.get("facing", 1) == 1 else bw - ax) * sc)
     y = m.get("y") if m.get("y") is not None else math.floor(bottom - (bh - ay) * sc)
     return x, y, float(sc)
@@ -383,7 +398,8 @@ def issues(e, plan, s, doc, brand, bdir, fps=30):
         warns.append(f"mascot: {problem}: run mascot.py mouth edit/{Path(e).name} (stage refuses it)")
     band = subtitle_band(plan, s, doc)
     safe = ui_safe_of(s, doc)
-    x, y, sc = placement(m, geo, band, safe)
+    fulls = full_scenes(plan, t0, t1)
+    x, y, sc = placement(m, geo, band, safe, bool(fulls))
     facing = -1 if m.get("facing") == -1 else 1
     r = union([rect(x, y, sc, geo, facing)] + ([rect(x, y, sc, geo, -facing)] if any(c[3] for c in ch) else []))
     # r is rounded outward to whole pixels: a pixel of rounding is not a collision
@@ -401,9 +417,24 @@ def issues(e, plan, s, doc, brand, bdir, fps=30):
             errs.append(f"mascot {r}: over {k.get('what')} {k['box']} at {k['start']:.1f}-{k['end']:.1f} s")
     scenes = [i for i in plan.get("inserts", []) if i.get("kind") == "scene" and i.get("status") != "skipped"
               and i.get("type") != "cover"]
+    text_bottom = r[1] - SCENE_GAP  # a full scene's text ends here while the mascot is on (the kit's sceneStage)
+    for sc_ in fulls:
+        b = sc_.get("box")
+        if b and len(b) == 4:
+            # the kit cuts a full scene's box at text_bottom wherever it stands across the frame (sceneStage), so a
+            # box beside the mascot or ending inside the gap above it is cut too (Codex review): the same rule as the
+            # subtitles' (vp_scenes, voice_band)
+            if b[1] + b[3] > text_bottom:
+                errs.append(f"mascot {r}: under the box {b} of the full scene {sc_['id']}: while the mascot is on, a "
+                            f"full scene's text ends {SCENE_GAP} px above it (y {text_bottom}) and the kit cuts the box "
+                            f"there; end the box above y {text_bottom}, or lower the mascot")
+        elif text_bottom - FULL_TEXT_TOP < FULL_TEXT_MIN:
+            errs.append(f"mascot {r}: leaves the text of the full scene {sc_['id']} only {text_bottom - FULL_TEXT_TOP} "
+                        f"px (y {FULL_TEXT_TOP}-{text_bottom}, at least {FULL_TEXT_MIN}): lower it or a smaller --scale "
+                        f"(mascot.py plan --auto-place)")
     for sc_ in scenes:
-        if sc_.get("mode") in ("full", "panel") and sc_["start"] < t1 and sc_["start"] + sc_["dur"] > t0:
-            warns.append(f"mascot: drawn over the {sc_['mode']} scene {sc_['id']}: textcheck.py measures its text "
+        if sc_.get("mode") == "panel" and sc_["start"] < t1 and sc_["start"] + sc_["dur"] > t0:
+            warns.append(f"mascot: drawn over the panel scene {sc_['id']}: textcheck.py measures its text "
                          f"against the mascot (text on the mascot is an error)")
         for edge, name in ((sc_["start"], "entrance"), (sc_["start"] + sc_["dur"], "exit")):
             for c in ch:
@@ -457,8 +488,8 @@ def props_of(e, plan, s, doc, brand, bdir, staged, fps=30, rem=None):
         return None, f"{problem or 'no mouth.json'}: run mascot.py mouth edit/{Path(e).name} first"
     opens = (mouth or {}).get("open") or []
     band = subtitle_band(plan, s, doc)
-    x, y, sc = placement(m, geo, band, ui_safe_of(s, doc))
     t0, t1 = span(m, plan)
+    x, y, sc = placement(m, geo, band, ui_safe_of(s, doc), bool(full_scenes(plan, t0, t1)))
     facing = -1 if m.get("facing") == -1 else 1
     out = {"kind": sm["kind"], "module": sm.get("module") or plan.get("brand"),
            **{k: sm[k] for k in ("rig", "atlas") if sm.get(k)},
@@ -467,6 +498,7 @@ def props_of(e, plan, s, doc, brand, bdir, staged, fps=30, rem=None):
            "frames": frames_of(m, plan, s, geo, opens, fps, sp)}
     ch = changes(m, geo)
     box = union([rect(x, y, sc, geo, facing)] + ([rect(x, y, sc, geo, -facing)] if any(c[3] for c in ch) else []))
+    out["top"] = box[1]  # a full scene's text ends SCENE_GAP above it while the mascot is on (SceneLayer.tsx)
     return out, box
 
 
