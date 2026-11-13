@@ -5,7 +5,8 @@ import filecmp, json, math, re, shutil, sys
 from pathlib import Path
 
 from reels_common import (FRAMED_HOOK_MIN, MEME_SIZES, SUB_BAND, SUB_BLOCK_H, SUB_TOP_KIT, edit_dir, framed_area,
-                          framed_at, load_json, media_kind, probe, ui_zone, voice_mode, warn)
+                          framed_at, load_json, media_kind, probe, ui_zone, voice_mode, warn, HEIF_EXT, UnreadablePhoto,
+                          photo_file)
 from vp_core import (HEADROOM_BAND, HEADROOM_MIN, SCENE_MODES, STATUSES, TRANSITIONS, WINDOW_DEFAULT, WINDOW_SLOTS,
                      current_settings, editing_plan, find_spoken, fmt_t, format_label, is_inside, item_time, jround,
                      near_match, no_footage, norm_words, overlap, plan_duration, read_need, resolve_at)
@@ -365,6 +366,11 @@ def add_scene(a):
     media = None
     if a.media:
         mp = Path(a.media) if Path(a.media).is_absolute() else (e / a.media if (e / a.media).exists() else Path(a.media))
+        if mp.exists() and mp.suffix.lower() in HEIF_EXT:  # the kit's browser shows no HEIC: its upright JPEG
+            try:
+                mp = photo_file(mp)
+            except UnreadablePhoto as ex:
+                sys.exit(str(ex))
         if mp.exists() and not is_inside(mp, e):  # someone else's file -> a copy in inserts/; a different file with the same name is not overwritten
             dst_dir = e / "inserts"
             dst_dir.mkdir(parents=True, exist_ok=True)

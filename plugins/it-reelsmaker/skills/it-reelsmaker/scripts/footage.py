@@ -42,9 +42,9 @@ import argparse, json, os, re, shutil, sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from reels_common import (IMAGE_EXT, VIDEO_EXT, brand_file, edit_dir, editing_json, effective, library_dirs, load_config,
+from reels_common import (IMAGE_EXT, PHOTO_EXT, VIDEO_EXT, UnreadablePhoto, brand_file, edit_dir, editing_json, effective, library_dirs, load_config,
                           load_json, online, photo_input, probe, project_root, rel, run, save_json, score,
-                          upright_image, upright_size, utf8_stdio, warn)
+                          photo_file, upright_image, upright_size, utf8_stdio, warn)
 from cut import extract_path, load_cut, look_chain, lut_inputs
 from pic_track import MOVES  # a picture shot's own motion (cut.json picture)
 import photo_move  # noqa: E402  the path of a photo shot with an ROI (cut.json picture shots -> roi)
@@ -143,7 +143,7 @@ class ProjectProvider(Provider):
         for d in o["settings"].get("footage_dirs", []):
             dd = root / d
             if dd.is_dir():
-                out += [p for p in dd.rglob("*") if p.is_file() and p.suffix.lower() in VIDEO_EXT | IMAGE_EXT]
+                out += [p for p in dd.rglob("*") if p.is_file() and p.suffix.lower() in VIDEO_EXT | PHOTO_EXT]
         extras = cut_extracts(o.get("edit"))
         if o.get("edit"):
             out += [p for p in o["edit"].glob("broll*") if p.suffix.lower() in VIDEO_EXT]
@@ -319,10 +319,23 @@ def cmd_providers(a):
               f"{'' if used else ' (not used in this video: off in the settings or not in the list)'}")
 
 
+def readable_photo(src):
+    """The file ffmpeg reads for this source: a HEIC's upright JPEG (reels_common.photo_file), or a stop that names
+    the photo and the way out when this ffmpeg cannot read it."""
+    try:
+        return photo_file(src)
+    except UnreadablePhoto as ex:
+        sys.exit(str(ex))
+
+
 def photo_facts(p):
-    """A photo's upright size (the EXIF orientation applied) for footage_index.json; no duration."""
+    """A photo's upright size (the EXIF orientation applied) for footage_index.json; no duration. A HEIC this ffmpeg
+    cannot read: a warning, no size."""
     try:
         w, h = upright_size(p)
+    except UnreadablePhoto as ex:
+        warn(str(ex))
+        w = h = None
     except Exception:
         w = h = None
     return {"w": w, "h": h, "dur": None}
@@ -349,7 +362,7 @@ def cmd_index(a):
     o = context(None)
     files = ProjectProvider().files({**o, "edit": None})
     if a.dir:
-        files = [p for d in a.dir for p in (project / d).rglob("*") if p.suffix.lower() in VIDEO_EXT | IMAGE_EXT]
+        files = [p for d in a.dir for p in (project / d).rglob("*") if p.suffix.lower() in VIDEO_EXT | PHOTO_EXT]
     idxf = project / "footage_index.json"
     sheet_dir = project / "_footage_index"
     sheet_dir.mkdir(exist_ok=True)
@@ -404,7 +417,7 @@ def cmd_describe(a):
         ref_id = rel(f, project)  # the index entries are named by paths from the project folder
     with editing_json(idxf, {}) as idx:
         if ref_id not in idx:
-            if f is None or f.suffix.lower() not in VIDEO_EXT | IMAGE_EXT:
+            if f is None or f.suffix.lower() not in VIDEO_EXT | PHOTO_EXT:
                 sys.exit(f"not in the index and no such video or photo in the project: {ref_id} (footage.py index)")
             idx[ref_id] = {**file_facts(f), "description": "", "tags": [], "exclude": False}  # a new file, an extract
         idx[ref_id]["description"] = a.text
@@ -550,6 +563,7 @@ def prepare(src, out, dur, start=0.0, fit="cover", focus=(0.5, 0.5), speed=1.0, 
         return prepare_shot(src, out, dur, start, fit, focus, speed, look, size, fps, move or "none", roi)
     src, out = Path(src), Path(out)
     out.parent.mkdir(parents=True, exist_ok=True)
+    src = readable_photo(src)
     is_img = src.suffix.lower() in IMAGE_EXT
     fx, fy = (max(0.0, min(1.0, float(v))) for v in focus)
     n = round(dur * 30)
@@ -629,6 +643,7 @@ def prepare_shot(src, out, dur, start=0.0, fit="cover", focus=(0.5, 0.5), speed=
     w, h = (int(v) for v in size)
     n = round(dur * fps)
     fx, fy = (max(0.0, min(1.0, float(v))) for v in focus)
+    src = readable_photo(src)
     is_img = src.suffix.lower() in IMAGE_EXT
     zp = move_zoompan(move, n, w, h, fps, fx, fy)
     # a moving frame is cut from a larger one, so the push-in never upscales its last frame
