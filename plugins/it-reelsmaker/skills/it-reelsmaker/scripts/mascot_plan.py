@@ -331,9 +331,10 @@ def frames_of(m, plan, s, geo, opens, fps, speaks=None, wides=None):
             since = f - fc if f - fc < n_ease else None
         else:
             pose, prev, k, mir = start, start, 1.0, False
-        # the spans are the sound's: the mouth, a frame early, follows them a frame early too
-        te = t + MOUTH_LEAD / float(fps)
-        talks = 0 <= f < len(opens) and any(a - 1e-9 <= te < b for a, b in sp)
+        # the spans are the sound's: frame f shows the window of frame g = f + MOUTH_LEAD (mouth.json moved it early),
+        # which speaks when it overlaps a span; whole frames, so no sum of seconds lands a frame off
+        g = f + MOUTH_LEAD
+        talks = 0 <= f < len(opens) and any(g + 1 > a * fps + 1e-6 and g < b * fps - 1e-6 for a, b in sp)
         o = opens[f] if talks else 0.0
         w = wides[f] if talks and wides is not None and f < len(wides) and o > 0 else 0.5
         lid = lids.get(f, 0.0)

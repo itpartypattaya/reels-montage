@@ -154,6 +154,35 @@ def test_a_phrase_from_the_first_frame_keeps_its_first_level_two_frames():
     assert not short_levels(opens), opens[:6]
 
 
+@needs_ffmpeg
+def test_the_mouth_opens_a_frame_before_the_sound(project):
+    e = project / "edit" / "v4"
+    record(e / "voice.wav", vowel_expr([(1.0, 2.0, EE)], 120), 3.0)  # the sound starts on frame 30, stops after 59
+    m = mouth(project, e)
+    assert m["open"][28] == 0 and m["open"][29] > 0, m["open"][26:33]
+    assert m["open"][58] > 0 and all(m["open"][f] == 0 for f in range(59, 70)), m["open"][55:62]
+
+
+@needs_ffmpeg
+def test_a_mouth_measured_by_the_older_version_is_stale(project):
+    import mascot_plan as vm
+    e, rem = mascot_project(project)
+    run_script("mascot.py", "mouth", "edit/4821", cwd=project)
+    assert vm.load_mouth(e)[1] is None
+    m = json.loads((e / "mouth.json").read_text(encoding="utf-8"))
+    m["version"] = 1
+    m.pop("wide")
+    write_json(e / "mouth.json", m)
+    problem = vm.load_mouth(e)[1]
+    assert problem and "older" in problem, problem  # the command is named by stage and validate, as for any stale mouth
+    run_script("mascot.py", "plan", "edit/4821", "--pose", "word:resume#1=point_left", cwd=project)
+    run_script("brand.py", "stage", "acme", "--remotion", rem, cwd=project)
+    (e / "final.mp4").write_bytes(b"a rough cut")
+    r = run_script("visual_plan.py", "stage", "edit/4821", "--remotion", rem, "--props", rem / "props.json",
+                   cwd=project, check=False)
+    assert r.returncode != 0 and "mascot.py mouth" in (r.stdout + r.stderr), r.stdout + r.stderr
+
+
 def test_the_plans_speaking_span_keeps_the_frame_the_mouth_opens_early():
     import mascot_plan as vm
     geo = {"box": (400, 520), "anchor": (200, 170), "poses": ["neutral"], "symmetric": False}
@@ -164,6 +193,21 @@ def test_the_plans_speaking_span_keeps_the_frame_the_mouth_opens_early():
     fr = vm.frames_of(m, plan, {"brand_tone": {"mascot": "calm"}}, geo, opens, 30, None, [0.5] * 90)
     at = lambda f: [x for x in fr if x["f"] <= f][-1]
     assert [at(f)["open"] for f in (28, 29, 58, 59)] == [0, 0.667, 0.667, 0]
+
+
+@pytest.mark.parametrize("span,first,last", [((1.01, 2.01), 29, 59), ((1.0, 4.4), 29, 130)])
+def test_a_speaking_span_off_the_frame_grid_keeps_the_lead_and_ends_on_its_frame(span, first, last):
+    # mouth.json moves the mouth a frame early; a span the plan names in seconds (not on the 1/30 s grid, or one whose
+    # end is not a sum of whole frames in floating point) gates the same frames the sound would
+    import mascot_plan as vm
+    geo = {"box": (400, 520), "anchor": (200, 170), "poses": ["neutral"], "symmetric": False}
+    m = {"track": [], "from": 0.0, "to": 5.0, "facing": 1, "speaks": [list(span)]}
+    plan = {"id": "g", "duration": 5.0, "inserts": []}
+    fr = vm.frames_of(m, plan, {"brand_tone": {"mascot": "calm"}}, geo, [0.667] * 150, 30, None, [0.5] * 150)
+    at = lambda f: [x for x in fr if x["f"] <= f][-1]
+    talking = [f for f in range(150) if at(f)["open"] > 0]
+    assert (talking[0], talking[-1]) == (first, last), (talking[0], talking[-1])
+    assert talking == list(range(first, last + 1))
 
 
 def test_the_plan_carries_the_width_only_while_it_speaks():
