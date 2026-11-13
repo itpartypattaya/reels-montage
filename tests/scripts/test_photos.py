@@ -16,6 +16,10 @@ What the person needs, in words:
 - Many photos in a row should not look like a slideshow: three or more photos in a row with the same motion, or four
   or more with no "hero" (none held longer than 1.5 times the others' median), are warnings in cut.py and validate.
   A deliberate photo reel (alternating motion, one hero) passes without a warning.
+- An iPhone's HEIC (a grid of tiles, often stored on its side with HEIF's own rotation) is footage like a JPEG:
+  indexed with its upright size, upright on the sheet, in a picture shot, a B-roll photo and cut.py; a scene given
+  one gets an upright JPEG (the kit's browser shows no HEIC). A HEIC this ffmpeg cannot read (cut off mid-copy, an
+  ffmpeg older than 7.1) stops with the photo's name and "export it as JPEG", never with one tile of it.
 """
 import json
 import subprocess
@@ -535,3 +539,126 @@ def test_the_picture_fingerprint_of_a_cut_without_an_roi_is_unchanged():
     assert with_roi != before  # an ROI is a different picture
     shots[0]["roi_path"] = pm.record(pm.plan((3000, 4000), (W, H), 60, "push", roi=(0.4, 0.2, 0.6, 0.35)))
     assert picture_id(cap) not in (before, with_roi)  # and a changed ROI too
+
+
+# --- HEIC: an iPhone's default photo format -------------------------------------------------------------------------
+
+def iphone_heic(path, side=1080):
+    """A HEIC as an iPhone saves a photo taken upright: two tiles side by side (red, blue), stored on its side with
+    HEIF's rotation (irot 3). Upright it is side x 2*side, red on top and blue below."""
+    from heif import make_heic
+    return make_heic(path, ["red", "blue"], side, side, rotation=3)
+
+
+_HEIC_READS = []
+
+
+def heic_reads(tmp):
+    """Does this ffmpeg join an iPhone HEIC's tiles into the photo (ffmpeg 7.1+)? Ubuntu 24.04's ffmpeg 6.1 cannot
+    read it, Ubuntu 26.04's gives one tile. A test that needs the photo read skips on such an ffmpeg (the tool lacks
+    the feature, like a missing ffmpeg); test_a_heic_is_the_whole_photo_or_a_clear_stop holds everywhere."""
+    if not _HEIC_READS:
+        f = iphone_heic(tmp / "probe.HEIC", side=64)
+        out = tmp / "probe.png"
+        subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", str(f), "-frames:v", "1", str(out)], capture_output=True)
+        r = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "stream=width,height", "-of", "csv=p=0",
+                            str(out)], capture_output=True, text=True) if out.is_file() else None
+        _HEIC_READS.append(bool(r) and r.stdout.strip() == "64,128")
+    if not _HEIC_READS[0]:
+        pytest.skip("this ffmpeg does not join HEIC tiles (needs ffmpeg 7.1 or newer)")
+
+
+@needs_ffmpeg
+def test_a_heic_is_the_whole_photo_or_a_clear_stop(project):
+    # Ubuntu 26.04's ffmpeg gave one 320x320 tile of a 640x320 photo, with no error: on any ffmpeg the scripts get the
+    # whole photo upright or stop with the way out (export as JPEG), never a tile
+    import reels_common
+    p = iphone_heic(project / "IMG_0004.HEIC", side=160)
+    try:
+        jpg = reels_common.photo_file(p)
+    except reels_common.UnreadablePhoto as ex:
+        assert "IMG_0004.HEIC" in str(ex) and "JPEG" in str(ex)
+        return
+    r = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "stream=width,height", "-of", "csv=p=0", str(jpg)],
+                       capture_output=True, text=True)
+    assert r.stdout.strip() == "160,320", r.stdout
+
+
+@needs_ffmpeg
+@needs_pillow
+def test_an_iphone_heic_is_indexed_upright_with_its_upright_size(project, tmp_path):
+    # "HEIC is not read: export JPEG": an iPhone's photos were skipped by the index, so the agent never saw them
+    heic_reads(tmp_path)
+    import reels_common
+    iphone_heic(project / "photos" / "IMG_0001.HEIC", side=320)
+    run_script("footage.py", "index", "--dir", "photos", cwd=project)
+    idx = json.loads((project / "footage_index.json").read_text(encoding="utf-8"))
+    assert (idx["photos/IMG_0001.HEIC"]["w"], idx["photos/IMG_0001.HEIC"]["h"]) == (320, 640), idx
+    from PIL import Image
+    sheet = Image.open(project / "_footage_index" / "photos-sheet-00.jpg").convert("RGB")
+    # the strip's first thumbnail: 320x640 shrunk into 160 px wide -> 160x320 at the top left
+    assert near(sheet.getpixel((80, 60)), (255, 0, 0)) and near(sheet.getpixel((80, 260)), (0, 0, 255))
+    info = reels_common.probe(project / "photos" / "IMG_0001.HEIC")
+    assert (info["w"], info["h"]) == (320, 640)
+
+
+@needs_ffmpeg
+def test_a_prepared_heic_shot_shows_the_photo_upright(project, tmp_path):
+    # ffmpeg reads an iPhone's HEIC as a grid of tiles and refuses a filter on it ("Simple and complex filtering cannot
+    # be used together"): the shot must still come out, upright, as a picture shot and as a B-roll photo
+    heic_reads(tmp_path)
+    import footage
+    p = iphone_heic(project / "IMG_0002.HEIC")
+    for strict in (True, False):
+        out = project / f"h-{strict}.mp4"
+        footage.prepare(p, out, 0.5, strict=strict, move="still" if strict else None)
+        rows = frame_rgb(out, k=0)
+        h, w = len(rows), len(rows[0])
+        assert near(rows[h // 4][w // 2], (255, 0, 0)) and near(rows[3 * h // 4][w // 2], (0, 0, 255)), strict
+
+
+@needs_ffmpeg
+@needs_pillow
+def test_cut_py_makes_a_photo_reel_from_an_iphone_heic(project, tmp_path):
+    heic_reads(tmp_path)
+    e = photo_project(project, [{"source": "h", "dur": 2.0, "move": "still"}, {"source": "p1", "move": "still"}])
+    iphone_heic(project / "h.HEIC")
+    cut = json.loads((e / "cut.json").read_text(encoding="utf-8"))
+    cut["sources"]["h"] = {"file": "h.HEIC", "strangers": []}
+    write_json(e / "cut.json", cut)
+    run_script("cut.py", "edit/ph", cwd=project)
+    rows = frame_rgb(e / "final.mp4", t=1.0)
+    h, w = len(rows), len(rows[0])
+    assert near(rows[h // 4][w // 2], (255, 0, 0)) and near(rows[3 * h // 4][w // 2], (0, 0, 255))
+
+
+@needs_ffmpeg
+def test_a_broken_heic_is_an_error_that_names_the_file_and_the_way_out(project):
+    # a photo cut off mid-copy (a messenger download that stopped): a clear stop, not a traceback or a tile of it
+    import footage
+    p = iphone_heic(project / "IMG_0003.HEIC", side=320)
+    p.write_bytes(p.read_bytes()[:len(p.read_bytes()) // 2])  # cut through its tiles
+    with pytest.raises(SystemExit) as ex:
+        footage.prepare(p, project / "x.mp4", 0.5, strict=True, move="still")
+    assert "IMG_0003.HEIC" in str(ex.value) and "JPEG" in str(ex.value)
+
+
+@needs_ffmpeg
+@needs_pillow
+def test_a_heic_given_to_a_scene_reaches_the_kit_as_an_upright_jpeg(project, tmp_path):
+    heic_reads(tmp_path)
+    # the kit renders in a browser, which shows no HEIC: a screenshot or photo taken as a scene's media is its JPEG
+    from test_plan import plan_project
+    e = plan_project(project, {"use_scenes": True})
+    run_script("visual_plan.py", "init", "edit/4821", cwd=project)
+    iphone_heic(project / "shot.HEIC", side=320)
+    run_script("visual_plan.py", "add", "edit/4821", "--kind", "scene", "--type", "ui", "--mode", "split",
+               "--at", "word:test#1", "--dur", "3.0", "--media", str(project / "shot.HEIC"), "--interaction-json",
+               '{"kind": "tap", "target": [160, 320], "at": "word:test#1"}', "--source", "agent", "--what", "the screen", "--why", "shows it",
+               cwd=project)
+    plan = json.loads((e / "visual_plan.json").read_text(encoding="utf-8"))
+    media = [i["media"] for i in plan["inserts"] if i.get("media")]
+    assert media and media[0]["file"].endswith(".jpg") and media[0]["kind"] == "image", media
+    from PIL import Image
+    im = Image.open(e / media[0]["file"]).convert("RGB")
+    assert im.size == (320, 640) and near(im.getpixel((160, 100)), (255, 0, 0)), im.size

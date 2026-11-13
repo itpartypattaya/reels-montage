@@ -29,6 +29,8 @@ Requirements, in words:
   video's (end card included), is refused. After the scene sounds the mix is still -14 +-0.7 LUFS with the true peak
   under -1 dBFS, measured on the finished AAC. "A track in the app" masters with the sounds and says to pick the track.
 - vp_core.resolve_at understands beat:N, marker:<kind> and block:<id>; doctor.py names numpy.
+- The cover (poster.py pick) of a no-speech reel is the script's hook block, whatever it is drawn as, never the
+  rubric label; nothing in it is timed to speech, since the sound is music.
 """
 import json
 import math
@@ -887,3 +889,34 @@ def test_changing_the_ending_after_the_music_names_the_music_for_that_ending_and
     (_, _, rate, n), _ = read_wav(e / "music.wav")
     assert n == round((d + 2.6) * rate)
     assert stage(project, rem, "--sting").returncode == 0
+
+
+@needs_ffmpeg
+def test_the_cover_of_a_no_speech_reel_is_its_hook_block_not_the_label_and_not_timed_to_speech(project):
+    # 2.4 found it: poster.py pick took the frame of the rubric label ("TRANSLATING:", drawn as a hook scene) at 4.37 s,
+    # not the video's hook (a long hook line is drawn as a quote), and said "in a pause of the speech" of a reel that
+    # has no speech: the music's gaps were taken for pauses. In a no-speech reel the cover is the script's hook block,
+    # the middle of its settled window, with nothing timed to speech (no "on speech" marks, no mid-word warning).
+    ffmpeg("-f", "lavfi", "-i", "testsrc2=size=360x640:rate=30:duration=7", "-f", "lavfi",
+           "-i", "sine=f=300:d=7,volume='if(between(t,3.6,3.9),0,1)':eval=frame", "-map", "0:v", "-map", "1:a",
+           "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", project / "r.mp4")
+    e = project / "edit" / "silent1"
+    write_json(e / "reel.json", {"voice": "none", "scene_tone": "calm"})
+    sc = {"kind": "scene", "mode": "overlay", "status": "planned"}
+    write_json(e / "visual_plan.json", {"id": "silent1", "format": "silent", "duration": 7.0, "segments": [], "inserts": [
+        dict(sc, id="c01", type="quote", role="hook", script="hook", start=0.0, dur=3.0),
+        dict(sc, id="c02", type="hook", role="label", script="label", start=3.0, dur=1.6),
+        dict(sc, id="c03", type="quote", role="translation", script="translation", start=4.6, dur=2.4)]})
+    r = run_script("poster.py", "pick", "edit/silent1", "--render", project / "r.mp4", "-o", project / "c.jpg",
+                   cwd=project)
+    t = float(r.stdout.split("cover: frame at ")[1].split(" s")[0])
+    # the hook's settled window, calm tone: 14 frames in, 9 out at 30 fps -> 0.47-2.70 s, its middle 1.58 s
+    assert 1.5 <= t <= 1.7 and "c01" in r.stdout, r.stdout
+    assert "pause of the speech" not in r.stdout and "quietest moment" not in r.stdout, r.stdout
+    r = run_script("poster.py", "pick", "edit/silent1", "--render", project / "r.mp4", "--sheet", project / "s.jpg",
+                   cwd=project)
+    assert "(on speech)" not in r.stdout and "every candidate is on speech" not in r.stdout, r.stdout
+    assert "c01" in r.stdout, r.stdout
+    r = run_script("poster.py", "pick", "edit/silent1", "--render", project / "r.mp4", "--t", "2.0", "-o",
+                   project / "c.jpg", cwd=project)
+    assert "falls on speech" not in r.stderr and "mid-word" not in r.stderr, r.stderr

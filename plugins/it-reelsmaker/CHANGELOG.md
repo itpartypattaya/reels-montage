@@ -2,7 +2,7 @@
 
 What changed in IT Reelsmaker, written for the people who use it. The newest version is on top. The skill shows a short “What's new” note from this file once, on the first edit after an update.
 
-## 1.37.0
+## 1.38.0
 
 - **Is the footage usable? `picture.py scan` says where to look.** Before the shots of a voice-over or a no-speech
   reel are picked, it scans the clips (a folder, one clip, `--window` for a stretch of a long one, or `--edit` for a
@@ -17,6 +17,18 @@ What changed in IT Reelsmaker, written for the people who use it. The newest ver
   into the script, no images on disk; measurements are kept, so a second scan is instant.
   `references/no-speaker.md`, "Is the footage usable".
 - `defects.py`'s head turn measure is one function (`turn_state`) that the scan shares; its results do not change.
+
+## 1.37.0
+
+- **iPhone photos in HEIC are read.** A HEIC or HEIF photo is now footage like a JPEG: the index lists it with its
+  upright size, the contact sheet shows it upright, and it works as a picture shot, a B-roll photo and a scene's
+  screenshot. The scripts make an upright JPEG of it once, in `_footage_index/heic/`, and use that; the scene gets the
+  JPEG, since the browser that renders the video shows no HEIC. This needs ffmpeg 7.1 or newer; an older ffmpeg, or a
+  photo cut off mid-copy, stops with the photo's name and the way out (export it as JPEG), never with one tile of it.
+- **The cover of a no-speech reel is its hook.** `poster.py pick` took the first scene drawn as a hook, which in a
+  no-speech reel can be the rubric label, and timed the frame to "pauses of the speech" that were gaps in the music.
+  It now takes the script's hook block, whatever it is drawn as, at the middle of its settled window, and nothing is
+  timed to speech: no "on speech" marks on the sheet, no mid-word warning for `--t`.
 
 ## 1.36.1
 
