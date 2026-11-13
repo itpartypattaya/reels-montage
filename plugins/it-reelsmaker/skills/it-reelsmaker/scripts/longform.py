@@ -914,6 +914,7 @@ def cmd_extract(a):
         sys.exit(f"card {a.id}: its pieces are not resolved (longform.py check)")
     cid = f"{e.name}-{safe_slug(str(card['id']), 'card id')}"
     ce = project / "edit" / cid
+    voice_over_refusal(ce)  # before the first change of the clip's folder: a refusal leaves it exactly as it was
     (ce / "src").mkdir(parents=True, exist_ok=True)
     (ce / "transcripts").mkdir(exist_ok=True)
     pad = float(a.pad if a.pad is not None else m.get("pad", PAD))
@@ -1013,6 +1014,18 @@ def cmd_extract(a):
           + ("; reel.json from the series" if new_reel else ""))
     print(f"next: speech_mask.py on each piece for the real edges -> cut.json ranges, then the usual steps from 5 "
           f"(cut plan, cut.py, faces, stage, check.py, kit.py render) in {rel(ce, project)}")
+
+
+def voice_over_refusal(ce):
+    """A clip folder whose cut list puts a picture of its own over the sound (cut.json "picture", a voice-over: core
+    references/no-speaker.md) is not supported by long-form extract: a new extract would replace the pieces its
+    picture blocks and seconds point at. Checked before anything in the folder changes."""
+    cut = load_json(ce / "cut.json") if (ce / "cut.json").is_file() else None
+    cap = load_json(ce / "captions.json") if (ce / "captions.json").is_file() else None
+    if (isinstance(cut, dict) and cut.get("picture")) or (isinstance(cap, dict) and not follows_sound(cap)):
+        sys.exit(f"{ce.name}: its cut.json puts a picture of its own over the sound (a voice-over \"picture\" block): "
+                 f"long-form extract is not supported for such a clip; nothing in {ce.name} was changed. Edit it as a "
+                 f"plain video (cut.py), or move it to another folder and extract the card again")
 
 
 def local_edges(doc, part, res, t0):

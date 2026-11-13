@@ -24,6 +24,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from level import describe as describe_level, level_audio
+from pic_track import copy_shots
 from reels_common import load_json, run, save_json, warn
 
 RATE = 48000
@@ -169,13 +170,16 @@ def build(c, e, segments, captions, total, extra, speed_arg=None, level=True, fo
         for k in ("_s", "_e", "_n", "_fps"):
             g.pop(k)
     speeds = {name: sv["speed"] for name, sv in c["sources"].items()}
+    # the picture track (pic_track.py): a recorded voice has no picture of its own, every stretch is the style's
+    # background ("fill") that the designed scenes are drawn over
+    shots = copy_shots(segments, audio_only=set(c["sources"]))
     # edl.json and captions.json in the format cut.py writes for a video (speech_mask.py --edl, visual_plan.py)
     save_json(e / "edl.json", {"version": 1, "sources": {name: str(sv["path"]) for name, sv in c["sources"].items()},
                                "speed": c["speed"], "speeds": speeds, "grade": "none",
                                "ranges": [{"source": g["source"], "start": g["src_start"], "end": g["src_end"],
                                            "speed": g["speed"], "beat": g["beat"]} for g in segments],
-                               "total_duration_s": round(total, 3)})
-    save_json(e / "captions.json", {"duration": round(total, 3), "segments": segments, "words": captions, **extra,
+                               "shots": shots, "total_duration_s": round(total, 3)})
+    save_json(e / "captions.json", {"duration": round(total, 3), "segments": segments, "shots": shots, "words": captions, **extra,
                                     **({"leveling": leveling} if leveling else {}),
                                     "voice": {"file": voice.name, "sha1": sha1_file(voice), "rate": RATE,
                                               "frames": frames, "fps": c["fps"], "stamp": stamp}})

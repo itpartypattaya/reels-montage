@@ -153,8 +153,10 @@ def load_cut(e, project, speed_arg=None):
             sys.exit(f"cut.json: source {name!r}: speed {sp} is outside 0.5..2.0")
         tr = sv.get("transcript")
         tr = resolve(tr, project, e) if tr else e / "transcripts" / f"{path.stem}.json"
-        sources[name] = {"path": path, "speed": sp, "transcript": tr, "info": probe(path)}
+        sources[name] = {"path": path, "speed": sp, "transcript": tr, "info": probe(path), "own_look": sv.get("look")}
         sound_only_checks(name, path, sources[name]["info"])
+        if sv.get("look") is not None and not isinstance(sv["look"], dict):
+            sys.exit(f"cut.json: source {name!r}: look is an object like the video's look (correct, lut, lut_mix, grade)")
     ranges = []
     for k, r in enumerate(cut.get("ranges") or []):
         src = r.get("source") or (next(iter(sources)) if len(sources) == 1 else None)
@@ -165,45 +167,47 @@ def load_cut(e, project, speed_arg=None):
                        "speaker": speaker_of(r), "speakers": speaker_switches(r, k)})
     if not ranges:
         sys.exit("cut.json: no ranges")
-    audio = all(sv["info"].get("w") is None for sv in sources.values())  # a narration: no picture anywhere
-    if not audio and any(sv["info"].get("w") is None for sv in sources.values()):
-        sys.exit("cut.json: the sources mix sound-only files and videos: a narration over footage is not supported yet; "
-                 "cut the narration on its own (its own edit/<id>)")
+    import cut_picture
+    try:
+        picture = cut_picture.blocks_of(cut.get("picture"), sources)
+    except cut_picture.PictureError as x:
+        sys.exit(f"cut.json: {x}")
+    sound = {r["source"] for r in ranges}
+    # a narration with no picture anywhere: voice.wav (cut_voice.py); a voice over a picture of its own (a picture
+    # block, or sound-only and video sources together): final.mp4 through cut_picture.py
+    audio = not picture and all(sv["info"].get("w") is None for sv in sources.values())
+    mixed = not audio and any(sources[n]["info"].get("w") is None for n in sound)
     if audio and cut.get("look"):
         warn("cut.json: look is ignored: the sources are sound only (no picture to color)")
     look = {} if audio else (cut.get("look") or {})
-    grade = (look.get("grade") or "").strip().strip(",")
-    correct = (look.get("correct") or "").strip().strip(",")
-    for name, chain in (("grade", grade), ("correct", correct)):
-        if any(c in chain for c in ";[]"):
-            sys.exit(f"cut.json: look.{name} must be a plain filter chain (no ';' or '[...]' labels)")
-    lut = look.get("lut")
-    if lut == "brand":
-        _, _, _, bdir, brand = load_config(e)
-        hald = ((brand or {}).get("lut") or {}).get("hald")
-        lut = brand_file(hald, bdir, project) if hald else None
-        if not lut:
-            warn("look.lut = brand, but the video's brand has no HALD LUT (brand.json -> lut.hald): no LUT")
-    elif lut:
-        lut = resolve(lut, project, e)
-        if not lut.is_file():
-            warn(f"look.lut: no file {lut}: no LUT")
-            lut = None
+    base = norm_look(look, e, project, "look")
+    for name, sv in sources.items():
+        own = sv.pop("own_look")
+        sv["look"] = norm_look({**look, **own}, e, project, f"sources.{name}.look") if own and not audio else None
+        sv["look_id"] = look_id(sv["look"]) if sv["look"] else None
     scale = cut.get("scale", "auto")
     if scale not in ("auto", "none"):
         sys.exit("cut.json: scale must be \"auto\" or \"none\"")
+    shown_only = {sh.get("source") for b in picture for sh in b["shots"] if not sh.get("fill")} - sound
     for name, sv in sources.items():
-        sv["scale"] = scale_filter(sv["info"], scale, name)
+        sv["scale"] = "" if name in shown_only else scale_filter(sv["info"], scale, name)
     geometry = set()
     for r in ([] if audio else ranges):  # a narration has no output geometry
         sv = sources[r["source"]]
         info = sv["info"]
+        if info.get("w") is None and (picture or mixed):
+            continue  # a recorded voice under a picture of its own: the picture sets the geometry
         w, h = (1080, 1920) if sv["scale"] else (info.get("w"), info.get("h"))
         if not w or not h:
             sys.exit("cut.json: cannot determine output geometry")
         geometry.add((w, h, "1:1"))  # video_graph normalizes SAR after scaling
-    if not audio and len(geometry) != 1:
+    if not audio and (len(geometry) > 1 or not geometry and not (picture or mixed)):
         sys.exit("cut.json: mismatched output geometry/SAR across segments")
+    gw, gh = next(iter(geometry))[:2] if geometry else (1080, 1920)
+    for name in shown_only:  # a picture source lies in the video as a cover of its frame (cut_picture.py, footage.prepare)
+        if sources[name]["info"].get("w") and (sources[name]["info"]["w"], sources[name]["info"]["h"]) != (gw, gh):
+            sources[name]["scale"] = (f"scale={gw}:{gh}:force_original_aspect_ratio=increase:flags=lanczos,"
+                                      f"crop={gw}:{gh}")
     extras = cut.get("extract") or {}
     if audio and extras:
         sys.exit(f"cut.json: extract {', '.join(extras)}: the sources are sound only, there is no picture to extract")
@@ -213,12 +217,56 @@ def load_cut(e, project, speed_arg=None):
         if src not in sources:
             sys.exit(f"cut.json: extract {name}: unknown source")
         validate_range(x, sources[src], fps, f"extract {name}")
-    return {"fps": fps, "speed": speed, "sources": sources, "ranges": ranges, "grade": grade, "correct": correct,
-            "lut": str(lut) if lut else None, "lut_mix": float(look.get("lut_mix", LUT_MIX)),
+    return {"fps": fps, "speed": speed, "sources": sources, "ranges": ranges, **base,
             "fix": fix_map(cut.get("fix")), "fix_at": word_fixes(cut.get("fix_at"), "fix_at", ("to",), sources),
             "retime": word_fixes(cut.get("retime"), "retime", ("start", "end"), sources), "extract": extras,
             "keep": word_fixes(cut.get("keep"), "keep", ("words",), sources),
-            "level": cut.get("level", True) is not False, "audio_only": audio}
+            "level": cut.get("level", True) is not False, "audio_only": audio,
+            "picture": picture, "own_picture": bool(picture or mixed)}
+
+
+def norm_look(look, e, project, label="look"):
+    """A look of cut.json (the video's, or a source's merged over it) -> {grade, correct, lut, lut_mix}: one shape for
+    every chain that colors the picture (look_chain), so a place's own color and the video's are applied the same way
+    and a LUT is never applied twice."""
+    look = look or {}
+    grade = (look.get("grade") or "").strip().strip(",")
+    correct = (look.get("correct") or "").strip().strip(",")
+    for name, chain in (("grade", grade), ("correct", correct)):
+        if any(c in chain for c in ";[]"):
+            sys.exit(f"cut.json: {label}.{name} must be a plain filter chain (no ';' or '[...]' labels)")
+    lut = look.get("lut")
+    if lut == "brand":
+        _, _, _, bdir, brand = load_config(e)
+        hald = ((brand or {}).get("lut") or {}).get("hald")
+        lut = brand_file(hald, bdir, project) if hald else None
+        if not lut:
+            warn(f"{label}.lut = brand, but the video's brand has no HALD LUT (brand.json -> lut.hald): no LUT")
+    elif lut:
+        lut = resolve(lut, project, e)
+        if not lut.is_file():
+            warn(f"{label}.lut: no file {lut}: no LUT")
+            lut = None
+    return {"grade": grade, "correct": correct, "lut": str(lut) if lut else None,
+            "lut_mix": float(look.get("lut_mix", LUT_MIX))}
+
+
+def look_id(lk):
+    """A short fingerprint of a source's own look (captions.json shots -> look)."""
+    import hashlib
+    return hashlib.sha1(json.dumps(lk, sort_keys=True).encode()).hexdigest()[:10]
+
+
+def reload_looks(c, e, project):
+    """The looks of cut.json again (after balance.py --write changed a correction), the rest of the cut list kept."""
+    cut = load_json(e / "cut.json") or {}
+    look = cut.get("look") or {}
+    c.update(norm_look(look, e, project, "look"))
+    for name, sv in c["sources"].items():
+        own = (cut.get("sources") or {}).get(name)
+        own = own.get("look") if isinstance(own, dict) else None
+        sv["look"] = norm_look({**look, **own}, e, project, f"sources.{name}.look") if own else None
+        sv["look_id"] = look_id(sv["look"]) if sv["look"] else None
 
 
 def sound_only_checks(name, path, info):
@@ -354,7 +402,7 @@ def video_graph(c, src, speed, out_label="v"):
     chain.append(f"fps={c['fps']}:start_time=0")
     if src["scale"]:
         chain.append(src["scale"])
-    return look_chain(c, "[0:v]" + ",".join(chain), out_label)
+    return look_chain(src.get("look") or c, "[0:v]" + ",".join(chain), out_label)
 
 
 def look_chain(c, head, out_label="v", lut_in="[1:v]"):
@@ -380,7 +428,12 @@ def lut_inputs(c):
 def load_words(c):
     """Words of every source's transcript with the retime fixes applied: {source: [word, ...]}."""
     out = {}
+    import cut_picture
+    shown_only = set(cut_picture.picture_sources(c))  # a picture source: its sound is not used, it has no transcript
     for name, sv in c["sources"].items():
+        if name in shown_only:
+            out[name] = []
+            continue
         doc = load_json(sv["transcript"])
         if not doc:
             warn(f"{name}: no transcript {sv['transcript']}: the cut is built without subtitles for this source")
@@ -643,11 +696,11 @@ def encode_segment(c, g, out):
     sv = c["sources"][g["source"]]
     s, e, n, speed = g["_s"], g["_e"], g["_n"], sv["speed"]
     d = n / c["fps"]
-    inputs = ["-ss", f"{s:.15g}", "-t", f"{e - s + 0.2:.15g}", "-i", sv["path"], *lut_inputs(c)]
+    inputs = ["-ss", f"{s:.15g}", "-t", f"{e - s + 0.2:.15g}", "-i", sv["path"], *lut_inputs(sv.get("look") or c)]
     if sv["info"].get("has_audio"):
         a_in = "[0:a]aformat=sample_rates=48000:channel_layouts=stereo," + (f"atempo={speed}," if speed != 1.0 else "")
     else:
-        k = 2 if c["lut"] else 1
+        k = 2 if (sv.get("look") or c)["lut"] else 1
         inputs += ["-f", "lavfi", "-t", f"{d + 0.1:.4f}", "-i", "anullsrc=r=48000:cl=stereo"]
         a_in = f"[{k}:a]"
         warn(f"{g['source']}: the source has no audio; segment {g['i']} gets silence")
@@ -730,8 +783,8 @@ def extract(c, e):
         sv = c["sources"][src]
         s, t = float(x["start"]), float(x["end"])
         out = extract_path(e, name)
-        run(["ffmpeg", "-v", "error", "-y", "-ss", f"{s:.4f}", "-t", f"{t - s:.4f}", "-i", sv["path"], *lut_inputs(c),
-             "-filter_complex", video_graph(c, sv, 1.0), "-map", "[v]", "-an", "-frames:v", str(round((t - s) * c["fps"])),
+        run(["ffmpeg", "-v", "error", "-y", "-ss", f"{s:.4f}", "-t", f"{t - s:.4f}", "-i", sv["path"],
+             *lut_inputs(sv.get("look") or c), "-filter_complex", video_graph(c, sv, 1.0), "-map", "[v]", "-an", "-frames:v", str(round((t - s) * c["fps"])),
              "-c:v", "libx264", "-preset", "medium", "-crf", "16", "-movflags", "+faststart", out])
         print(f"extract: {out.name} ({t - s:.2f} s from {src})")
 
@@ -786,12 +839,24 @@ def main():
     a = ap.parse_args()
     project = project_root()
     e = edit_dir(a.edit, project)
-    if not a.dry_run and not a.no_balance and not sound_only(e, project):
-        auto_balance(e)
+    own = has_own_picture(e)
+    if not own and not a.dry_run and not a.no_balance and not sound_only(e, project):
+        auto_balance(e)  # the picture is the sound's ranges: balance.py reads them from cut.json itself
     c = load_cut(e, project, a.speed)
     words = load_words(c)
     said = []
     segments, captions, total = timeline(c, words, said)
+    shots, video_total = None, total
+    if c["own_picture"]:  # load -> resolve -> balance -> encode (references/no-speaker.md)
+        import cut_picture
+        try:
+            shots, video_total = cut_picture.resolve(c, segments, captions, total)
+        except cut_picture.PictureError as x:
+            sys.exit(f"cut.json: {x}")
+        if own and not a.dry_run and not a.no_balance and not sound_only(e, project):
+            auto_balance(e)  # it measures the frames of these picture shots (balance.py resolves them the same way)
+            reload_looks(c, e, project)
+            shots, video_total = cut_picture.resolve(c, segments, captions, total)
     keeps, keep_problems = mark_keep(c, said, captions)
     for g in segments:
         nw = sum(1 for w in captions if w["seg"] == g["i"])
@@ -828,8 +893,19 @@ def main():
     if c["audio_only"]:
         import cut_voice
         cut_voice.background_warnings(c)
+    if shots is not None:
+        print(cut_picture.describe(shots, c))
+        if round(video_total * c["fps"]) > round(total * c["fps"]):
+            print(f"  the picture runs {video_total - total:.3f} s past the sound: silence to {video_total:.3f} s")
+        bare = [g for g in shots if g["kind"] == "fill" and g.get("_copy")]
+        if bare:
+            warn(f"{len(bare)} stretch(es) of a sound-only recording have no picture block ("
+                 + ", ".join(f"{g['out_start']:.2f}-{g['out_start'] + g['out_dur']:.2f} s" for g in bare)
+                 + "): the picture there is the style's background; draw full scenes over it or add a picture block")
     if a.dry_run:
         return
+    if shots is not None:  # a picture of its own over the sound: cut_picture.py
+        return build_own_picture(c, e, segments, captions, shots, total, video_total, c["level"] and not a.no_level)
     if c["audio_only"]:  # a narration with no picture: edit/<id>/voice.wav instead of final.mp4 (cut_voice.py)
         sp = speakers_of(captions)
         return cut_voice.build(c, e, segments, captions, total, {"speakers": sp} if sp else {}, a.speed,
@@ -869,6 +945,49 @@ def main():
         sys.exit(1)
     print(f"final.mp4 ready: {round(total, 3)} s; captions.json, edl.json written. Next: python scripts/speech_mask.py --edl "
           f"{(e / 'edl.json').as_posix()}")
+
+
+def has_own_picture(e):
+    """cut.json has a picture block (the raw file, before load_cut: the old order of the build is kept without one)."""
+    cut = load_json(e / "cut.json")
+    return isinstance(cut, dict) and bool(cut.get("picture"))
+
+
+def build_own_picture(c, e, segments, captions, shots, total, video_total, level):
+    """final.mp4 with a picture of its own (cut_picture.build), captions.json and edl.json: the sound records as for a
+    rough cut, the picture track in "shots", its fingerprint in captions.json -> picture_id, the picture-only files in
+    edl.json -> picture_sources (speech_mask.py --edl opens only the sound)."""
+    import cut_picture
+    from pic_track import picture_id
+    leveling, frames = cut_picture.build(c, e, segments, shots, video_total, level)
+    if leveling:
+        print(describe_level(leveling))
+    extract(c, e)
+    for g in segments:
+        for k in ("_s", "_e", "_n", "_fps"):
+            g.pop(k)
+    pic = cut_picture.public(shots)
+    only = set(cut_picture.picture_sources(c))
+    speeds = {n: sv["speed"] for n, sv in c["sources"].items() if n not in only}
+    look = ", ".join(filter(None, [c["correct"], f"haldclut {Path(c['lut']).name} {round(c['lut_mix'] * 100)}%" if c["lut"] else "",
+                                   c["grade"]]))
+    save_json(e / "edl.json", {"version": 1, "sources": {n: str(sv["path"]) for n, sv in c["sources"].items() if n not in only},
+                               "picture_sources": {n: str(c["sources"][n]["path"]) for n in c["sources"] if n in only},
+                               "speed": c["speed"], "speeds": speeds, "grade": look or "none",
+                               "ranges": [{"source": g["source"], "start": g["src_start"], "end": g["src_end"],
+                                           "speed": g["speed"], "beat": g["beat"]} for g in segments],
+                               "shots": pic, "total_duration_s": round(video_total, 3)})
+    cap = {"duration": round(video_total, 3), "segments": segments, "shots": pic, "words": captions,
+           **({"speakers": speakers_of(captions)} if speakers_of(captions) else {}),
+           **({"leveling": leveling} if leveling else {})}
+    pid = picture_id(cap)
+    save_json(e / "captions.json", {**cap, **({"picture_id": pid} if pid else {})})
+    problems = check_final(e / "final.mp4", c["fps"], frames)
+    if problems:
+        print("final.mp4 check FAILED: " + "; ".join(problems))
+        sys.exit(1)
+    print(f"final.mp4 ready: {round(video_total, 3)} s ({len(pic)} picture shots over {round(total, 3)} s of sound); "
+          f"captions.json, edl.json written. Next: python scripts/speech_mask.py --edl {(e / 'edl.json').as_posix()}")
 
 
 if __name__ == "__main__":

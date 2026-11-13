@@ -94,8 +94,8 @@ from vp_core import (ABSTRACT_RE, AND_RE, CTA_RE, EMO_RE, END_CARD_S, FILLER_RE,
                      item_time, jround, load_plan, near_match, no_footage, norm_words, overlap, phrases, plan_duration,
                      plan_path, read_need, refresh_plan, resolve_at, scene_hints, snapshot, srgb_lum, NO_FOOTAGE,
                      VOICE_MAX_S)  # noqa: F401
-from vp_camera import (camera_at, camera_shots, camera_view, chin_on_screen, plan_camera, same_source, source_files,
-                       src_to_out, subtitle_top, subtitles_in)  # noqa: F401
+from vp_camera import (camera_at, camera_off_on_moves, camera_shots, camera_view, chin_on_screen, plan_camera,
+                       same_source, source_files, src_to_out, subtitle_top, subtitles_in)  # noqa: F401
 from vp_scenes import (CHAT_FROM, COVER_MODES, EXPERIMENTAL_MODES, EXPERIMENTAL_SCENES, INTERACTIONS, JOIN_EMPTY_MAX,
                        SCENE_SOUNDS, SCENE_SOURCES, SCENE_TYPES, SPEAKER_WINDOW, SPLIT_BOX, SPLIT_CAM, VOICE_SUB_GAP,
                        WINDOW_SCENE_BOX, add_scene, subtitle_band_off_camera, voice_stage, check_scenes, default_box, experimental, faces_seen,
@@ -103,7 +103,7 @@ from vp_scenes import (CHAT_FROM, COVER_MODES, EXPERIMENTAL_MODES, EXPERIMENTAL_
                        scene_face, scene_keep_entries, scene_text, scene_timeline, scene_tone, scenes_only_cover,
                        text_frames, text_full_on, text_zone, tone_issues, window_issues, without_own, word_times)  # noqa: F401
 from vp_defects import (COVER_PAD, INSERT_IN, cmd_accept, defect_issues, hidden_span, hides_face, load_defects,
-                        same_defect)  # noqa: F401
+                        same_defect, stranger_issues)  # noqa: F401
 from vp_callouts import (CALLOUT, CALLOUT_AT_ONCE, CALLOUT_GAP_S, CALLOUT_INK, CALLOUT_MAX_W, CALLOUT_MOVES,
                          CALLOUT_PEOPLE, CALLOUT_RING, CALLOUT_SEEN, CALLOUT_STILL, CALLOUT_TIMES, CALLOUT_VARIANTS,
                          DRIFT, HOOK_BOX, PERSON_DOWN, PERSON_SIDE, _WIDE, _frames, _patch, _point, _screen_box,

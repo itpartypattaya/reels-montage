@@ -8,6 +8,8 @@
 // the old one has left by the scene's last frame, the new one enters from its first (no empty field between scenes).
 // “Framed” (props.framed, a horizontal source in a window): scenes stay in the window's text area (a box is clipped to it,
 // not to the whole safe zone), a full scene covers the window (rounded), split/panel/window are drawn as full there.
+// A scene that starts on a “fill” shot of the picture track (pictureShots: the style's background under a voice-over, a
+// text tail with no voice) is drawn as in “scenes only”: it is the whole picture there (vp_scenes uses the same rule).
 // Voice off camera (props.voiceMode "off_camera", the “scenes + voice” format): the narration's subtitles stay on over
 // full scenes (only a scene with hide_subtitles hides them), so a full scene's text ends above them (textBottom).
 import React from "react";
@@ -28,6 +30,8 @@ import { Chat } from "./Chat";
 import { Ui } from "./Ui";
 import { CtaAction } from "./CtaAction";
 import { FlashAt } from "../LightFlash";
+import { onGraphic } from "../anchor";
+import type { PictureShot } from "../anchor";
 
 const BY_TYPE: Record<string, React.FC<{ c: SceneCtx }>> = {
   hook: Hook, quote: Quote, slogan: Slogan, stat: Stat, list: List, contrast: Contrast, word: WordViz, chat: Chat, ui: Ui, cta: CtaAction,
@@ -305,24 +309,24 @@ const SceneFrame: React.FC<{ spec: SceneSpec; brand: Brand; look: Look; fonts: {
  *  and window (ReelKit framedGeometry): scenes stay inside the window. textBottom — the voice is off camera: a full scene's
  *  text ends at this y, above the subtitles that stay on (ReelKit: subtitlesTop − VOICE_SUB_GAP). */
 export const SceneLayer: React.FC<{ scenes?: SceneSpec[] | null; brand: Brand; look: Look; words?: Word[]; scenesOnly?: boolean;
-  sceneTone?: string | null; framed?: SceneFrameBox | null; textBottom?: number | null }> = (p) => {
+  sceneTone?: string | null; framed?: SceneFrameBox | null; textBottom?: number | null; pictureShots?: PictureShot[] | null }> = (p) => {
   const { fps } = useVideoConfig();
   const fonts = useLookFonts(p.look);
   const bt = withRollTone(resolveBrandTone(p.brand), p.sceneTone);
   const list = playableScenes(p.scenes);
   return (
     <>
-      {list.map((s) => (
+      {list.map((s) => { const only = !!p.scenesOnly || onGraphic(p.pictureShots ?? [], s.start); return (
         <React.Fragment key={s.id}>
           <Sequence from={Math.round(s.start * fps)} durationInFrames={Math.max(1, Math.round(s.dur * fps))} layout="none">
             <div data-rk={`scene:${s.id}`} style={{ display: "contents" }}>
-              <SceneFrame spec={s} brand={p.brand} look={p.look} fonts={fonts} bt={bt} words={p.words ?? []} scenesOnly={!!p.scenesOnly}
+              <SceneFrame spec={s} brand={p.brand} look={p.look} fonts={fonts} bt={bt} words={p.words ?? []} scenesOnly={only}
                 framed={p.framed} textBottom={p.textBottom} />
             </div>
           </Sequence>
-          {flashes(s, bt, p.words ?? [], fps, !!p.scenesOnly, !!p.framed).map((t) => <FlashAt key={String(s.id) + "-" + String(t)} t={t} brand={p.brand} />)}
+          {flashes(s, bt, p.words ?? [], fps, only, !!p.framed).map((t) => <FlashAt key={String(s.id) + "-" + String(t)} t={t} brand={p.brand} />)}
         </React.Fragment>
-      ))}
+      ); })}
     </>
   );
 };
