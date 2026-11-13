@@ -59,13 +59,24 @@ def load_envs(path):
     return load_span(path)[:2]
 
 
+def _analysis_wav(path):
+    """Is the WAV already the analysis format (mono 16-bit)? A narration's voice.wav (48 kHz stereo, cut_voice.py) is not:
+    it goes through the same conversion as a video's sound (Codex review of PR #43)."""
+    import wave
+    try:
+        with wave.open(path, "rb") as w:
+            return w.getnchannels() == 1 and w.getsampwidth() == 2
+    except (wave.Error, OSError, EOFError):
+        return False
+
+
 def load_span(path, start=None, end=None):
     """load_envs over [start, end) seconds of the file only -> (envelope, hf, t0): window k of the lists starts at
     t0 + k * HOP, t0 on the file's own 10 ms grid, so the windows are the ones a whole read gives (wave setpos: the
     samples before the stretch are never read)."""
     tmp = None
     try:
-        if not path.lower().endswith(".wav"):
+        if not path.lower().endswith(".wav") or not _analysis_wav(path):
             # a separate file per call: a shared speech_mask_16k.wav got replaced by a parallel check of another video
             fd, tmp = tempfile.mkstemp(prefix="speech_mask_", suffix=".wav")
             os.close(fd)

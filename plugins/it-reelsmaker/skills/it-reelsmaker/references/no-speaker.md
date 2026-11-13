@@ -174,7 +174,8 @@ author in the report and in `caption.txt`.
 **A series.** A preset (`reelcfg.py preset save <name> --from edit/<id>`) keeps `voice`, `music` (style, tempo,
 markers by block role), the rubric label at the top (`reel.json -> rubric`: a string for the whole video, or `{"text",
 "from", "to"}`; a light plate at y 228-288: `init --no-speech` puts overlay boxes below it, `validate` fails a box
-under it) and the corner logo for the last seconds only (`corner_last_s: 1.5` with `stage --corner`). It never
+under it) and the corner logo for the last seconds only (`corner_last_s: 1.5` with `stage --corner`; drawn above the scenes, so the
+punchline's field does not hide it). It never
 carries the clips, their windows, their color or the text: each video has its own `script.json` and `cut.json`.
 Structures that work: "setup -> label turn -> translation -> punchline with a hold", "the person only on the hook,
 then graphics", "a question -> cards one by one" (`references/structure.md`).

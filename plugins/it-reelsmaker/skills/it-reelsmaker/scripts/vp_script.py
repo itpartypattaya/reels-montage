@@ -274,7 +274,7 @@ def beats_file(e):
     return f, (doc if isinstance(doc, dict) else None)
 
 
-def beats_issues(e, plan, tail=0.0):
+def beats_issues(e, plan, tail=0.0, end=None):
     """validate: beats.json (music made in code) belongs to the WAV it names, has the video's length with its end card,
     and its markers serve blocks of the script at their times. -> (errors, warnings, the plan's music summary or None)."""
     f, b = beats_file(e)
@@ -290,8 +290,10 @@ def beats_issues(e, plan, tail=0.0):
     want = float(plan.get("duration") or 0) + float(tail or 0)
     have = float(b.get("samples") or 0) / float(b.get("rate") or 48000)
     if want and abs(have - want) > 0.5 / SCRIPT_FPS:
+        # the ending asked for now (end: "none", "card", "sting"): music.py makes the music for it, not for the
+        # ending the last stage recorded (Codex review of PR #57: the old command made the old length, round and round)
         errs.append(f"{wav.name} is {have:.3f} s, the video {want:.3f} s (with its end card): the music is made for the "
-                    f"finished length: music.py --edit edit/{Path(e).name}")
+                    f"finished length: music.py --edit edit/{Path(e).name}" + (f" --end {end}" if end else ""))
     tm = timing_of(e, stop=False)[1] if (Path(e) / "script.json").is_file() else None
     starts = {x["id"]: x["start"] for x in (tm or {}).get("blocks") or []}
     for m in b.get("markers") or []:

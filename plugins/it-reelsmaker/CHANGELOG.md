@@ -2,6 +2,20 @@
 
 What changed in IT Reelsmaker, written for the people who use it. The newest version is on top. The skill shows a short “What's new” note from this file once, on the first edit after an update.
 
+## 1.36.0
+
+- **A series' corner logo shows at the end of a no-speech reel.** The logo of the last seconds (`corner_last_s`) was
+  drawn under the scenes, and the punchline's field covered it. It is now drawn above them; the corner logo of a
+  talking head still fades out under a scene as before.
+- **Changing the ending after the music is made no longer goes round in circles.** When a stage takes the end card or
+  sting off (or adds one) after `music.py` made the music, its refusal names the music for the new ending:
+  `music.py --edit edit/<id> --end none` (or `card`, `sting`), and the next stage goes through. Before, the command it
+  named made the old length again.
+- **`transcribe.py rate` measures a narration.** A cut of a voice recording alone (its `voice.wav`, no `final.mp4`)
+  was refused with "build the rough cut first".
+- **Kit 1.23.0** (`kit.py update`): `cornerAbove` in `kit/series.ts`, the persistent corner logo above the scene
+  layer in `ReelKit.tsx`.
+
 ## 1.35.0
 
 - **Photo reels.** Photos under a voice-over or in a no-speech reel can name their subject: `"roi": [x0, y0, x1, y1]`

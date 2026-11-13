@@ -26,7 +26,7 @@ export { MediaOn, Sampled, TextProbe, useMedia } from "./kit/Sample";
 export type { Sample } from "./kit/Sample";
 import { breakLines, fitSize, useFontsReady } from "./kit/Phrase";
 import { WHIP_BLUR, cameraAt, driftZoom, fitCamera, picShots } from "./kit/anchor";
-import { cornerFade, cornerOn, rubricOn, scenesOnlyOf } from "./kit/series";
+import { cornerAbove, cornerFade, cornerOn, rubricOn, scenesOnlyOf } from "./kit/series";
 import type { Cam, Shot } from "./kit/anchor";
 import { CalloutLayer } from "./kit/Callout";
 import type { CalloutSpec } from "./kit/Callout";
@@ -380,11 +380,12 @@ const ReelKitFrame: React.FC<ReelKitProps> = (p) => {
       <BrollLayer inserts={p.inserts} brand={p.brand} framed={g ? sceneBox(g) : null} />
       {offCamera ? null : shadeLayer}
       <Hook p={p} look={look} font={fonts.heading} />
-      <Corner p={p} />
+      {cornerAbove(p) ? null : <Corner p={p} />}
       <SceneLayer scenes={p.scenes} brand={p.brand} look={look} words={p.captions.words} scenesOnly={scenesOnlyOf(p)} pictureShots={picShots(p.captions)} sceneTone={p.sceneTone}
         framed={g ? sceneBox(g) : null}
         textBottom={offCamera && p.subtitles !== "none" ? (p.subtitlesTop ?? 1290) - VOICE_SUB_GAP : null}
         mascotTop={p.mascot && p.mascot.top != null && p.mascot.frames?.length ? { top: p.mascot.top, from: p.mascot.from, to: p.mascot.to } : null} />
+      {cornerAbove(p) ? <Corner p={p} /> : null}
       {offCamera ? shadeLayer : null}
       <Rubric p={p} font={fonts.body} />
       <MascotLayer mascot={p.mascot} modules={MASCOTS} />
