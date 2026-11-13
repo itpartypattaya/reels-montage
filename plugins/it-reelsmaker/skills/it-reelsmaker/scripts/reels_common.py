@@ -1231,29 +1231,62 @@ def photo_file(p):
     if not out.is_file():
         way = (f"{p.name}: {{}}; export it as JPEG (iPhone: Settings -> Camera -> Formats -> Most Compatible, or "
                f"share it as JPEG) or use ffmpeg 7.1 or newer")
-        r = run(["ffprobe", "-v", "error", "-show_entries", "stream=index:stream_group=index", "-of", "json", str(p)],
-                check=False)
+        r = run(["ffprobe", "-v", "error", "-show_entries", "stream=index,width,height", "-show_stream_groups", "-of",
+                 "json", str(p)], check=False)
         try:
             d = json.loads(r.stdout or "{}")
         except ValueError:
             d = {}
         streams = d.get("streams") or []
         if r.returncode != 0 or not streams:
-            raise UnreadablePhoto(way.format("this ffmpeg cannot read the photo, it may be cut off or broken (ffmpeg: " +
+            raise UnreadablePhoto(way.format("this ffmpeg cannot read the photo: an ffmpeg older than 7.1, or the file "
+                                             "is cut off or broken (ffmpeg: " +
                                              ((r.stderr or "").strip().splitlines() or ["no picture in it"])[-1] + ")"))
         if len(streams) > 1 and not d.get("stream_groups"):  # tiles with no grid joining them: one tile is not it
             raise UnreadablePhoto(way.format("this ffmpeg reads its tiles but cannot join them into the photo"))
+        want = _heif_size(d)
         out.parent.mkdir(parents=True, exist_ok=True)
         tmp = out.with_name(out.stem + ".part.jpg")
         r = run(["ffmpeg", "-v", "error", "-y", "-i", str(p), "-frames:v", "1", "-q:v", "1", "-map_metadata", "-1",
                  str(tmp)], check=False)
         if r.returncode != 0 or not tmp.is_file() or tmp.stat().st_size == 0:
             tmp.unlink(missing_ok=True)
-            raise UnreadablePhoto(way.format("this ffmpeg cannot read the photo, it may be cut off or broken (ffmpeg: " +
+            raise UnreadablePhoto(way.format("this ffmpeg cannot read the photo: an ffmpeg older than 7.1, or the file "
+                                             "is cut off or broken (ffmpeg: " +
                                              ((r.stderr or "").strip().splitlines() or ["no picture in it"])[-1] + ")"))
+        got = _image_size(tmp)
+        if want and got not in (want, want[::-1]):  # an ffmpeg that knows the grid but gives one tile of it (seen:
+            # Ubuntu 26.04's ffmpeg gave 320x320 of a 640x320 grid); the turn is checked by ffmpeg's own matrix
+            tmp.unlink(missing_ok=True)
+            raise UnreadablePhoto(way.format(f"this ffmpeg gives {got[0]}x{got[1]} of a {want[0]}x{want[1]} photo "
+                                             "(one tile of it, not the photo)"))
         os.replace(tmp, out)
     _HEIF_CACHE[key] = out
     return out
+
+
+def _heif_size(d):
+    """(w, h) of the whole picture of a HEIC by ffprobe's JSON: the tile grid's canvas, or the one picture's size;
+    None when it is not said."""
+    for g in d.get("stream_groups") or []:
+        for c in g.get("components") or []:
+            if c.get("width") and c.get("height"):
+                return int(c["width"]), int(c["height"])
+    st = d.get("streams") or []
+    if len(st) == 1 and st[0].get("width") and st[0].get("height"):
+        return int(st[0]["width"]), int(st[0]["height"])
+    return None
+
+
+def _image_size(f):
+    """(w, h) of an image file by ffprobe; (0, 0) when unreadable."""
+    r = run(["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height", "-of", "csv=p=0",
+             str(f)], check=False)
+    try:
+        w, h = (int(x) for x in (r.stdout or "").strip().split(",")[:2])
+        return w, h
+    except ValueError:
+        return 0, 0
 
 
 def photo_input(p):

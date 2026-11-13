@@ -550,10 +550,45 @@ def iphone_heic(path, side=1080):
     return make_heic(path, ["red", "blue"], side, side, rotation=3)
 
 
+_HEIC_READS = []
+
+
+def heic_reads(tmp):
+    """Does this ffmpeg join an iPhone HEIC's tiles into the photo (ffmpeg 7.1+)? Ubuntu 24.04's ffmpeg 6.1 cannot
+    read it, Ubuntu 26.04's gives one tile. A test that needs the photo read skips on such an ffmpeg (the tool lacks
+    the feature, like a missing ffmpeg); test_a_heic_is_the_whole_photo_or_a_clear_stop holds everywhere."""
+    if not _HEIC_READS:
+        f = iphone_heic(tmp / "probe.HEIC", side=64)
+        out = tmp / "probe.png"
+        subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", str(f), "-frames:v", "1", str(out)], capture_output=True)
+        r = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "stream=width,height", "-of", "csv=p=0",
+                            str(out)], capture_output=True, text=True) if out.is_file() else None
+        _HEIC_READS.append(bool(r) and r.stdout.strip() == "64,128")
+    if not _HEIC_READS[0]:
+        pytest.skip("this ffmpeg does not join HEIC tiles (needs ffmpeg 7.1 or newer)")
+
+
+@needs_ffmpeg
+def test_a_heic_is_the_whole_photo_or_a_clear_stop(project):
+    # Ubuntu 26.04's ffmpeg gave one 320x320 tile of a 640x320 photo, with no error: on any ffmpeg the scripts get the
+    # whole photo upright or stop with the way out (export as JPEG), never a tile
+    import reels_common
+    p = iphone_heic(project / "IMG_0004.HEIC", side=160)
+    try:
+        jpg = reels_common.photo_file(p)
+    except reels_common.UnreadablePhoto as ex:
+        assert "IMG_0004.HEIC" in str(ex) and "JPEG" in str(ex)
+        return
+    r = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "stream=width,height", "-of", "csv=p=0", str(jpg)],
+                       capture_output=True, text=True)
+    assert r.stdout.strip() == "160,320", r.stdout
+
+
 @needs_ffmpeg
 @needs_pillow
-def test_an_iphone_heic_is_indexed_upright_with_its_upright_size(project):
+def test_an_iphone_heic_is_indexed_upright_with_its_upright_size(project, tmp_path):
     # "HEIC is not read: export JPEG": an iPhone's photos were skipped by the index, so the agent never saw them
+    heic_reads(tmp_path)
     import reels_common
     iphone_heic(project / "photos" / "IMG_0001.HEIC", side=320)
     run_script("footage.py", "index", "--dir", "photos", cwd=project)
@@ -568,9 +603,10 @@ def test_an_iphone_heic_is_indexed_upright_with_its_upright_size(project):
 
 
 @needs_ffmpeg
-def test_a_prepared_heic_shot_shows_the_photo_upright(project):
+def test_a_prepared_heic_shot_shows_the_photo_upright(project, tmp_path):
     # ffmpeg reads an iPhone's HEIC as a grid of tiles and refuses a filter on it ("Simple and complex filtering cannot
     # be used together"): the shot must still come out, upright, as a picture shot and as a B-roll photo
+    heic_reads(tmp_path)
     import footage
     p = iphone_heic(project / "IMG_0002.HEIC")
     for strict in (True, False):
@@ -583,7 +619,8 @@ def test_a_prepared_heic_shot_shows_the_photo_upright(project):
 
 @needs_ffmpeg
 @needs_pillow
-def test_cut_py_makes_a_photo_reel_from_an_iphone_heic(project):
+def test_cut_py_makes_a_photo_reel_from_an_iphone_heic(project, tmp_path):
+    heic_reads(tmp_path)
     e = photo_project(project, [{"source": "h", "dur": 2.0, "move": "still"}, {"source": "p1", "move": "still"}])
     iphone_heic(project / "h.HEIC")
     cut = json.loads((e / "cut.json").read_text(encoding="utf-8"))
@@ -608,7 +645,8 @@ def test_a_broken_heic_is_an_error_that_names_the_file_and_the_way_out(project):
 
 @needs_ffmpeg
 @needs_pillow
-def test_a_heic_given_to_a_scene_reaches_the_kit_as_an_upright_jpeg(project):
+def test_a_heic_given_to_a_scene_reaches_the_kit_as_an_upright_jpeg(project, tmp_path):
+    heic_reads(tmp_path)
     # the kit renders in a browser, which shows no HEIC: a screenshot or photo taken as a scene's media is its JPEG
     from test_plan import plan_project
     e = plan_project(project, {"use_scenes": True})
