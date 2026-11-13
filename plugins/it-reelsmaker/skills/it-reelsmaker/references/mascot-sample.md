@@ -1,13 +1,13 @@
 # Sample mascot drawn in code: Pip
 
-One complete mascot module for the contract in `references/mascot.md`, as a starting point for a brand's own character: a rounded note with two dot eyes, a mouth and two arms of two segments, in the brand's colors. It shows the conventions every drawn mascot follows: `box` and `poses` as literals (the scripts read them), the box holding every pose with the arms raised, the anchor between the eyes, poses as a table of numbers blended by `rig.ts`, the mouth from `f.open` and `f.wide` over the pose's smile (`mouthPath`), the eyelids from `f.lid`, no text, no outline, no shadow, no randomness.
+One complete mascot module for the contract in `references/mascot.md`, as a starting point for a brand's own character: a rounded note with two dot eyes, a mouth and two arms of two segments, in the brand's colors. It shows the conventions every drawn mascot follows: `box` and `poses` as literals (the scripts read them), the box holding every pose with the arms raised, the anchor between the eyes, poses as a table of numbers blended by `rig.ts` with each part on its own lag (the eyes first, the hands last), the mouth from `f.open` and `f.wide` over the pose's smile (`mouthPath`), the eyelids from `f.lid`, no text, no outline, no shadow, no randomness.
 
 Copy it into the person's Remotion project as `src/mascot/<Name>.tsx`, change `acme` to the brand's slug, then make it the brand's own: the body's shape, the proportions, the eyes, what each pose does. Every brand gets its own figure; this one is only the pattern. Register it: `brand.py mascot <slug> --drawn src/mascot/<Name>.tsx --symmetric` (Pip mirrors well) and `brand.py stage <slug> --remotion <dir>`; check the types with `npx tsc`.
 
 ```tsx
 import brand from "../brands/acme.json";
 import type { MascotBox, MascotFrame } from "../kit/mascot/types";
-import { armPath, mix, mouthPath, poseAt } from "../kit/mascot/rig";
+import { armPath, mix, mouthPath, poseAtLagged } from "../kit/mascot/rig";
 
 // Pip: a rounded note with two arms, drawn in code in the brand's colors. The box holds every pose, arms included.
 export const box: MascotBox = { width: 520, height: 480, anchor: [260, 190] };
@@ -31,6 +31,8 @@ const POSE: Record<string, P> = {
   wink: { ...base, la1: 120, la2: 270, smile: 1.3 },
 };
 const ANGLES = ["la1", "la2", "ra1", "ra2"] as const;
+// overlapping action: the eyes move with the change, the head a frame later, the upper arms two, the forearms three
+const LAGS: Partial<Record<keyof P, number>> = { tilt: 1, brow: 1, la1: 2, ra1: 2, la2: 3, ra2: 3 };
 
 const C = brand.colors as unknown as Record<string, string>; // via unknown: a profile with `colors.extra` (nested) type-checks too
 const BODY = C.primary;
@@ -38,7 +40,7 @@ const LIMB = C.accent ?? C.primary;
 const INK = "#1B1B1F"; // the features: dark on a light or saturated body; a very dark body takes a light ink
 
 export const render = (f: MascotFrame) => {
-  const p = poseAt(POSE, f, ANGLES);
+  const p = poseAtLagged(POSE, f, LAGS, ANGLES);
   const eyeH = mix(26, 3, f.lid); // f.lid: 0 open, 0.5 half shut, 1 shut
   const ex = 30 + p.lookX;
   const ey = 190 + p.lookY;

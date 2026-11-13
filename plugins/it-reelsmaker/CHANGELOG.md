@@ -2,6 +2,19 @@
 
 What changed in IT Reelsmaker, written for the people who use it. The newest version is on top. The skill shows a short “What's new” note from this file once, on the first edit after an update.
 
+## 1.34.0
+
+- **A drawn mascot's gesture plays like acting, not like a hinge.** Its parts can now follow a pose change at their
+  own pace: the eyes move first, the head a frame later, the arms two frames later, the forearms and hands a frame after that. The
+  sample mascot shows it with the new `poseAtLagged` helper; a module written before moves every part together, as
+  it did.
+- **Loud moments click, calm ones ease.** With a full mascot and a loud scene tone (`punchy`, `hype`, `parody`) a
+  pose change clicks into place in two frames and holds; where the brand tone allows overshoot it then swings past
+  the pose and back, a small wobble that fades in half a second. A calm mascot eases out over 12 frames as before.
+- **Kit 1.22.0** (`kit.py update`): the mascot's frame gets `ease` (how the change moves) and `kLag` (its progress
+  for a part that lags), and `since` runs four frames past the change. Stage the video again to use them; a plan
+  staged before plays as it did.
+
 ## 1.33.0
 
 - **The mascot's mouth no longer jumps on a tight cut.** On a real narration with its pauses cut out, the 1.32.0 mouth
