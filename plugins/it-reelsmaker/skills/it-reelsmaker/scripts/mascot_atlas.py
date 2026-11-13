@@ -48,7 +48,7 @@ OUTLINE_SHARE = 0.6         # a drawing with a dark outline on this share of its
 OUT_DIR = Path("assets") / "mascot"
 HEAD_MAX = 0.5             # the head is looked for in the top half of the neutral figure
 HAND_MAX = 0.12             # a piece of the middle column shorter than this share of the figure is a hand, not the head
-OUTLINE_LUMA = 90           # an outline pixel: darker than this, from the head's edge inward
+OUTLINE_SHARE_OF_FACE = 0.55  # an outline pixel: darker than this share of the face's brightness, from the edge in
 SHOULDER_GROWTH = 1.15     # the run widening by this past its narrowest row = the shoulders: the head ends there
 EYE_TO_MOUTH = 0.32        # the mouth this share of the head's height below the eyes (a guess, checked on the sheet)
 EYE_SPREAD = 0.2           # with no eyes found: each eye this share of the head's width from the middle
@@ -509,9 +509,14 @@ def dark_spots(img, col, y0, y1, cx):
         if not run:
             continue
         l, r = run[0], run[1] - 1
-        while l < r and lum[l, y] < OUTLINE_LUMA:
+        # the outline: darker than OUTLINE_SHARE of this row's face (the middle half of the run), from each edge in;
+        # a dark face is its own reference, so it is not taken for the outline
+        q = (r - l) // 4
+        ref = sorted(lum[x, y] for x in range(l + q, r - q + 1))
+        line = ref[len(ref) // 2] * OUTLINE_SHARE_OF_FACE if ref else 0
+        while l < r and lum[l, y] < line:
             l += 1
-        while r > l and lum[r, y] < OUTLINE_LUMA:
+        while r > l and lum[r, y] < line:
             r -= 1
         l, r = l + 2, r - 2
         if r - l < 4:

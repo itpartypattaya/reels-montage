@@ -366,6 +366,8 @@ def test_an_atlas_mascot_reaches_the_kit_with_its_rig(project):
     assert 'if (p.kind === "drawn") return modules[p.module] ?? null;' in body
     assert body.count("return null") == 1 and "m = atlasMascot(p.rig, p.atlas);" in body
     assert body.replace("\r", "").rstrip().endswith("return m;\n};")
+    # one module per rig AND image: the cache key is the atlas path (two images with one rig object get two modules)
+    assert 'const key = p.atlas ?? "";' in body and "byImage.get(key)" in body and "byImage.set(key, m)" in body
     atlas = (CORE.parent / "assets" / "remotion-kit" / "kit" / "mascot" / "AtlasMascot.tsx").read_text(encoding="utf-8")
     assert 'from "./types"' in atlas and "export type MascotFrame" not in atlas
 

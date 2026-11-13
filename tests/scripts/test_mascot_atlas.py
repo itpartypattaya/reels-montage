@@ -531,3 +531,18 @@ def test_a_figure_with_no_neck_is_an_unsure_guess():
     d.polygon([(150, 30), (250, 372), (50, 372)], fill=SKIN + (255,))
     assert mascot_atlas.guess_head(im)["sure"] is False
     assert mascot_atlas.guess_head(character("neutral", bg=(0, 0, 0, 0)))["sure"] is True
+
+
+def test_the_first_guess_finds_black_eyes_on_a_dark_face():
+    # a dark-skinned character with plain black eyes (no whites): the face is not taken for the outline
+    from PIL import Image, ImageDraw
+    import mascot_atlas
+    im = Image.new("RGBA", (300, 400), (0, 0, 0, 0))
+    d = ImageDraw.Draw(im)
+    d.rounded_rectangle((91, 211, 209, 374), radius=30, fill=(10, 10, 10, 255))  # the body under the head
+    d.rounded_rectangle((95, 215, 205, 370), radius=27, fill=SHIRT + (255,))
+    d.ellipse((150 - 52, 170 - 52, 150 + 52, 170 + 52), fill=(10, 10, 10, 255))
+    d.ellipse((150 - 48, 170 - 48, 150 + 48, 170 + 48), fill=(65, 50, 40, 255))
+    for ex in (-18, 18):
+        d.ellipse((150 + ex - 7, 165 - 9, 150 + ex + 7, 165 + 9), fill=(5, 5, 5, 255))
+    _eyes_near(mascot_atlas.guess_head(im), 150, 165, 18)
