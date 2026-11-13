@@ -628,6 +628,8 @@ def master(a, tmp):
                 or master_no_voice(a, tmp, D, f"the render's audio is silence ({i0:.0f} LUFS)"))
     if i0 is None:
         sys.exit(f"measuring the input failed (ebur128): is there audio in {a.input}?")
+    if no_speech_music(a, D) is False:  # a no-speech render with some sound (a B-roll's own): its music still counts
+        return 1
     nf = noise_floor(a.input)
     pre = "highpass=f=80"
     denoise = nf > -50 and not a.no_denoise

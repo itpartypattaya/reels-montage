@@ -117,7 +117,7 @@ from vp_validate import (cmd_validate, follow_rough_cut, profile_issues, refresh
 from vp_stage import (cmd_export, copy_voice, series_marks)  # noqa: F401
 from vp_shade import (SHADE_LINES, SHADE_TARGET, SHADE_X, cmd_shade)  # noqa: F401
 from vp_script import (BPM_RANGE, ENDING_ROLES, SCRIPT_FPS, MAX_BLOCK_S, ROLES, ROLE_TYPE, TEXT_TYPES, beats_file, beats_issues,
-                       block_type, cmd_script, default_mode, load_script, read_frames, scene_of, script_id, script_issues, script_path,
+                       block_type, clock_id, cmd_script, default_mode, load_script, read_frames, scene_of, script_id, script_issues, script_path,
                        sha256_of, time_script, timing_of)  # noqa: F401
 
 
@@ -248,7 +248,7 @@ def init_scenes_voice(a):
 def init_no_speech(a):
     """A no-speech reel (reel.json -> voice: none): the rough cut is the picture (cut.py on silent clips, timed by
     script.json), the scenes are the script's text blocks, word for word, at their timing (vp_script.py)."""
-    from vp_script import scene_of, timing_of
+    from vp_script import clock_id, scene_of, timing_of
     e = edit_dir(a.edit)
     doc, tm = timing_of(e)
     cap = load_json(e / "captions.json") or {}
@@ -258,8 +258,9 @@ def init_no_speech(a):
     if cap.get("segments") or cap.get("words"):
         sys.exit(f"{e / 'captions.json'} has speech: a no-speech reel has none (cut.json without ranges, reel.json "
                  f"voice none)")
-    if abs(float(cap.get("duration") or 0) - tm["duration"]) > 0.5 / tm["fps"]:
-        sys.exit(f"the rough cut is {cap.get('duration')} s, the timed text {tm['duration']} s: cut.py edit/{e.name} again")
+    if cap.get("clock_id") != clock_id(tm) or abs(float(cap.get("duration") or 0) - tm["duration"]) > 0.5 / tm["fps"]:
+        sys.exit(f"the rough cut ({cap.get('duration')} s) was cut for another timing of the text ({tm['duration']} s, "
+                 f"blocks moved or re-timed): cut.py edit/{e.name} again")
     over = parse_sets(a.set)
     if a.brand:
         over["brand"] = safe_slug(a.brand, "--brand")

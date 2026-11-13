@@ -22,6 +22,11 @@ export const scenesOnlyOf = (p: Pick<SeriesProps, "video" | "format">): boolean 
 export const cornerOn = (p: SeriesProps, frame: number, fps: number, tail = 0): boolean =>
   !!p.corner && frame >= Math.round((p.cornerFrom ?? 0) * fps) && frame < p.captions.duration * fps + tail;
 
+/** The corner logo under a scene: it fades out (1 - activity), except a series' logo of the last seconds or a
+ *  no-speech reel, where scenes run all along and would hide it for good (Codex review). */
+export const cornerFade = (p: Pick<SeriesProps, "cornerFrom" | "format">, activity: number): number =>
+  p.cornerFrom != null || p.format === "silent" ? 1 : 1 - activity;
+
 /** The rubric label's window, from..to (to: the end of the rough cut). */
 export const rubricOn = (p: SeriesProps, frame: number, fps: number): boolean => {
   const r = p.rubric;

@@ -26,7 +26,7 @@ export { MediaOn, Sampled, TextProbe, useMedia } from "./kit/Sample";
 export type { Sample } from "./kit/Sample";
 import { breakLines, fitSize, useFontsReady } from "./kit/Phrase";
 import { WHIP_BLUR, cameraAt, driftZoom, fitCamera, picShots } from "./kit/anchor";
-import { cornerOn, rubricOn, scenesOnlyOf } from "./kit/series";
+import { cornerFade, cornerOn, rubricOn, scenesOnlyOf } from "./kit/series";
 import type { Cam, Shot } from "./kit/anchor";
 import { CalloutLayer } from "./kit/Callout";
 import type { CalloutSpec } from "./kit/Callout";
@@ -272,7 +272,7 @@ export const Corner: React.FC<{ p: ReelKitProps }> = ({ p }) => {
   // stays while the end card's field fades in over it (STING_IN), as the subtitles do
   if (!src || !cornerOn(p, frame, KIT_FPS, p.endCard ? STING_IN : 0)) return null;
   const f0 = Math.round((p.cornerFrom ?? 0) * KIT_FPS); // the series' logo for the last seconds fades in there
-  const a = interpolate(frame - f0, [4, 16], [0, 1], { ...clamp, easing: easeOut }) * (1 - sceneActivity(p.scenes, frame, KIT_FPS)); // fades out during a scene
+  const a = interpolate(frame - f0, [4, 16], [0, 1], { ...clamp, easing: easeOut }) * cornerFade(p, sceneActivity(p.scenes, frame, KIT_FPS)); // fades out during a scene
   if (a <= 0) return null;
   // “framed”: on the field above the window, in the label's row (no room there — no mark)
   const g = p.framed ? framedGeometry(p.framed) : null;

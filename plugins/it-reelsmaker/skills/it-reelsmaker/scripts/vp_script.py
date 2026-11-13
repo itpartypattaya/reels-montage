@@ -168,6 +168,13 @@ def time_script(e, doc, bpm=None, fps=SCRIPT_FPS):
     return {"script_id": script_id(doc), "fps": fps, "bpm": bpm, "duration": round(cur / fps, 3), "blocks": out}
 
 
+def clock_id(tm):
+    """The fingerprint of a timing: where every block starts and how long it lasts (cut.py keeps it in captions.json:
+    the block: joins of the picture were cut on it)."""
+    blob = json.dumps([[b["id"], b["start"], b["dur"]] for b in tm["blocks"]])
+    return hashlib.sha1(blob.encode("utf-8")).hexdigest()[:12]
+
+
 def timing_of(e, stop=True):
     """script.json's timing, checked against its text. -> (doc, timing); with stop, a missing or stale timing exits."""
     doc = load_script(e)
@@ -213,7 +220,9 @@ def script_issues(e, plan):
                     + ", then cut.py and init --no-speech --force")
         tm = None
     times = {b["id"]: b for b in (tm or {}).get("blocks") or []}
-    scenes = [i for i in plan.get("inserts", []) if i.get("kind") == "scene" and i.get("type") != "cover"]
+    # only a scene that goes into the render shows its block: a skipped or pending one is not exported (Codex review)
+    scenes = [i for i in plan.get("inserts", []) if i.get("kind") == "scene" and i.get("type") != "cover"
+              and i.get("status") not in ("skipped", "pending")]
     by = {}
     for sc in scenes:
         if sc.get("script"):
@@ -240,6 +249,10 @@ def script_issues(e, plan):
     for bid, got in by.items():
         if bid not in known:
             errs.append(f"{', '.join(x['id'] for x in got)}: block {bid} is not in {f.name}")
+    cap = load_json(Path(e) / "captions.json") or {}
+    if tm and cap.get("clock_id") and cap["clock_id"] != clock_id(tm):
+        errs.append("the rough cut was cut for another timing of the text (blocks moved, the same length or not): "
+                    "cut.py again, then init --no-speech --force")
     if tm and abs(float(plan.get("duration") or 0) - float(tm["duration"])) > 0.5 / SCRIPT_FPS:
         errs.append(f"the plan is {plan.get('duration')} s, the timed text {tm['duration']} s: cut.py again "
                     f"(the rough cut follows the text)")

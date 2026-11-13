@@ -64,7 +64,8 @@ the `button`, or a tempo out of range is an error: nothing is written.
 ## The file
 
 WAV PCM 16-bit, 48 kHz, stereo; exactly `round(duration × 48000)` samples; the peak at −6 dBFS (headroom for the
-master's loudness and the scene sounds), never clipped; its own 0.25 s fade at the very end unless a button or a stop
+master's loudness and the scene sounds), never clipped; a 15 ms ease-in from silence (a kick on the very first sample
+made the master's AAC overshoot) and its own 0.25 s fade at the very end unless a button or a stop
 ended it. The same version of the algorithm, the same parameters and the same seed give the same bytes.
 
 ## beats.json (schema 1)

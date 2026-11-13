@@ -176,8 +176,9 @@ def load_cut(e, project, speed_arg=None):
     if silent:
         from vp_script import timing_of
         _, tm = timing_of(e)  # a missing or stale timing stops here: visual_plan.py script
-        clock = {"duration": tm["duration"], "blocks": {b["id"]: (b["start"], b["start"] + b["dur"])
-                                                        for b in tm["blocks"]}}
+        from vp_script import clock_id
+        clock = {"duration": tm["duration"], "id": clock_id(tm),
+                 "blocks": {b["id"]: (b["start"], b["start"] + b["dur"]) for b in tm["blocks"]}}
         if not cut.get("picture"):
             sys.exit('cut.json: a no-speech reel needs picture blocks (the clips over the text): "picture": [...]')
     import cut_picture
@@ -1004,6 +1005,7 @@ def build_own_picture(c, e, segments, captions, shots, total, video_total, level
                                            "speed": g["speed"], "beat": g["beat"]} for g in segments],
                                "shots": pic, "total_duration_s": round(video_total, 3)})
     cap = {"duration": round(video_total, 3), "segments": segments, "shots": pic, "words": captions,
+           **({"clock_id": c["clock"]["id"]} if c.get("clock") else {}),  # the text timing the picture was cut on
            **({"speakers": speakers_of(captions)} if speakers_of(captions) else {}),
            **({"leveling": leveling} if leveling else {})}
     pid = picture_id(cap)

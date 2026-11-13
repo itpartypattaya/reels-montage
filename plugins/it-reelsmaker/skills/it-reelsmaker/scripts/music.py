@@ -48,6 +48,7 @@ STYLES = ("groove", "pulse", "tension", "ambient")
 STOP_S = 0.45      # the tape-stop's slow-down before the stop marker
 BUTTON_S = 1.8     # the button's accent rings this long, then silence
 END_FADE_S = 0.25  # the music's own fade at the very end (the master adds none to code music)
+START_S = 0.015    # it eases in from silence: a kick at full scale on the first sample made the master's AAC overshoot
 # chord progressions per style (MIDI notes, one chord per bar); the seed picks one
 PROGRESSIONS = {
     "groove": [[[50, 53, 57, 60], [55, 59, 62, 65], [48, 52, 55, 59], [57, 60, 64, 67]],
@@ -210,13 +211,13 @@ def put(buf, x, at, pan=0.0, end=None):
     buf[1, i:j] += x * math.sin(a) * math.sqrt(2)
 
 
-def play(style, buf, rng, prog, beat, t0, t1, light=False):
-    """The style's pattern on the grid from t0 to t1 (seconds, on beats): light = the lighter part under reading."""
-    end = int(round(t1 * RATE))
-    k0 = int(round(t0 / beat))
-    k = k0
-    while k * beat < t1 - 1e-6:
-        at = k * beat
+def play(style, buf, rng, prog, beat, k0, k1, start=None, cut=None, light=False):
+    """The style's pattern on beats k0 .. k1 - 1 of the grid (by number, never by a rounded second: Codex review, a
+    beat at 8.654 s played before a button marker rounded to 8.667 s). start: the first event no earlier than this
+    second (a resume marker on its frame); cut: nothing sounds past this second. light = the part under reading."""
+    end = int(round(cut * RATE)) if cut is not None else None
+    for k in range(k0, k1):
+        at = k * beat if (start is None or k != k0) else max(k * beat, start)
         bar, pos = k // 4, k % 4
         ch = prog[bar % len(prog)]
         root = ch[0] - 12 if ch[0] >= 48 else ch[0]
@@ -254,10 +255,9 @@ def play(style, buf, rng, prog, beat, t0, t1, light=False):
                 if not light:
                     put(buf, riser(rng, beat * 8, 0.08), at, 0.1, end)
         else:  # ambient: swells and bells, no drums
-            if pos == 0 and bar % 2 == 0:
-                put(buf, pad(ch, beat * 8, 0.3, attack=beat * 2.5), at, 0, end)
+            if (pos == 0 and bar % 2 == 0) or k == k0:  # on its own first beat too: back at once after a resume
+                put(buf, pad(ch, beat * 8, 0.3, attack=beat * 2.5 if k != k0 or k0 == 0 else beat), at, 0, end)
                 put(buf, bell(ch[-1] + 12, beat * 4, 0.12 * v), at + beat * 0.02, 0.3, end)
-        k += 1
 
 
 def button(buf, rng, style, prog, at):
@@ -335,10 +335,13 @@ def resolve(dur, bpm, stop=None, resume=None, btn=None, pauses=(), blocks=None):
         if kb <= ka:
             raise MusicError(f"--pause {spec}: shorter than a beat ({beat:.2f} s at {bpm:g} bpm)")
         marks.append({"kind": "pause", "requested": round(a, 3), "at": ta, "beat": ka, "end_requested": round(b, 3),
-                      "end": tb})
-    times = sorted([(m["at"], m["kind"]) for m in marks] + [(m["end"], "pause end") for m in marks if m["kind"] == "pause"])
-    for (x, kx), (y, ky) in zip(times, times[1:]):
-        if y - x < beat - 1e-6 and not (kx == "pause" and ky == "pause end"):
+                      "end": tb, "end_beat": kb})
+    # closer than a beat = on the same beat, by number (two neighbouring beats rounded to frames may be 0.567 s apart at
+    # 104 bpm, a beat being 0.577 s: Codex review)
+    times = sorted([(m["beat"], m["at"], m["kind"]) for m in marks]
+                   + [(m["end_beat"], m["end"], "pause end") for m in marks if m["kind"] == "pause"])
+    for (bx, x, kx), (by_, y, ky) in zip(times, times[1:]):
+        if by_ - bx < 1 and not (kx == "pause" and ky == "pause end"):
             raise MusicError(f"{kx} at {x:g} s and {ky} at {y:g} s are closer than a beat ({beat:.2f} s at {bpm:g} "
                              f"bpm): move one, or pick another tempo")
     by = {m["kind"]: m for m in marks}
@@ -363,24 +366,32 @@ def compose(dur, bpm, style, seed, marks):
     by = {m["kind"]: m for m in marks if m["kind"] != "pause"}
     pauses = [(m["at"], m["end"]) for m in marks if m["kind"] == "pause"]
     stop, resume, btn = (by.get(k, {}).get("at") for k in ("stop", "resume", "button"))
+    ks, kr, kb = (by.get(k, {}).get("beat") for k in ("stop", "resume", "button"))
+    k_end = int(math.ceil(dur / beat - 1e-9))  # the beats that start inside the video
     first_end = stop if stop is not None else (btn if btn is not None else dur)
+    k1 = ks if ks is not None else (kb if kb is not None else k_end)
     buf = np.zeros((2, n + RATE))  # a second past the end: notes ring into it, then it is cut
-    play(style, buf, rng, prog, beat, 0.0, first_end + (STOP_S if stop is not None else 0))
+    play(style, buf, rng, prog, beat, 0, k1)
     active = [[0.0, first_end]]
+    heard = [(0, k1)]  # beat numbers heard: [from, to)
     silence = []
     if stop is not None:
-        tape_stop(buf, stop)
+        tape_stop(buf, min(stop, ks * beat))  # the beat on the stop itself never sounds
         if resume is not None:
             second_end = btn if btn is not None else dur
+            k2 = kb if kb is not None else k_end
             part = np.zeros_like(buf)
-            play(style, part, rng, prog, beat, resume, second_end, light=True)
+            play(style, part, rng, prog, beat, kr, k2, start=resume, cut=second_end, light=True)
             buf += part
             active.append([resume, second_end])
+            heard.append((kr, k2))
             silence.append({"from": stop, "to": resume, "why": "stop"})
         else:
             silence.append({"from": stop, "to": round(dur, 3), "why": "stop"})
-    for a, b in pauses:
-        i0, i1 = int(round(a * RATE)), int(round(b * RATE))
+    for m in [m for m in marks if m["kind"] == "pause"]:
+        a, b, ka, kb2 = m["at"], m["end"], m["beat"], m["end_beat"]
+        heard = [(x0, x1) for y0, y1 in heard for x0, x1 in ((y0, min(y1, ka)), (max(y0, kb2), y1)) if x1 > x0]
+        i0, i1 = int(round(min(a, ka * beat) * RATE)), int(round(min(b, kb2 * beat) * RATE))
         f = int(0.02 * RATE)
         buf[:, max(0, i0 - f):i0] *= np.linspace(1, 0, min(f, i0))
         buf[:, i0:i1] = 0
@@ -400,6 +411,8 @@ def compose(dur, bpm, style, seed, marks):
         button(buf, rng, style, prog, btn)
         silence.append({"from": round(min(dur, btn + BUTTON_S), 3), "to": round(dur, 3), "why": "button"})
     buf = buf[:, :n]
+    f = min(n, int(START_S * RATE))
+    buf[:, :f] *= np.linspace(0, 1, f)
     if btn is None and (stop is None or resume is not None):
         f = min(n, int(END_FADE_S * RATE))
         buf[:, n - f:] *= np.linspace(1, 0, f)
@@ -409,12 +422,10 @@ def compose(dur, bpm, style, seed, marks):
     buf *= 10 ** (PEAK_DB / 20) / peak
     pcm = np.round(buf.T * 32767).astype("<i2")
     beats = []
-    k = 0
-    while k * beat < dur - 1e-6:
-        t = round(round(k * beat * FPS) / FPS, 3)
-        if any(x0 - 1e-6 <= k * beat < x1 - 1e-6 for x0, x1 in active):
+    for k in range(k_end):  # heard by number, listed at the frame it lands on
+        if any(x0 <= k < x1 for x0, x1 in heard):
+            t = round(round(k * beat * FPS) / FPS, 3)
             beats.append({"n": k, "t": t, "bar": k // 4, "pos": k % 4, "strength": "strong" if k % 4 == 0 else "weak"})
-        k += 1
     return pcm, beats, [[round(a, 3), round(b, 3)] for a, b in active], sorted(silence, key=lambda s: s["from"])
 
 

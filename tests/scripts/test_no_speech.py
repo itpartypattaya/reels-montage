@@ -694,3 +694,126 @@ def test_doctor_names_numpy_for_the_music():
     data = json.loads(r.stdout)
     names = " ".join(x["name"] for x in data["checks"]) if isinstance(data, dict) else " ".join(x["name"] for x in data)
     assert "numpy" in names and "music.py" in names
+
+
+# --- the Codex review of 3794a93 (each one reproduces its finding) ---------------------------------------------------
+
+@needs_ffmpeg
+def test_a_block_whose_scene_is_skipped_or_pending_is_missing_from_the_screen(project):
+    # Codex P1: stage exports only ready scenes; a skipped or pending block passed validate as "present"
+    e = silent_project(project)
+    cut_and_init(project, e)
+    for status in ("skipped", "pending"):
+        p = plan(e)
+        p["inserts"][1]["status"] = status
+        p["inserts"][1]["fallback"] = "the person declined it"
+        write_json(e / "visual_plan.json", p)
+        code, out = validate(project)
+        assert code == 1 and "label" in out and "missing" in out, (status, out)
+
+
+@needs_ffmpeg
+def test_a_no_speech_render_with_some_sound_still_needs_its_music(project):
+    # Codex P1: a render with any sound (a B-roll's own audio) took the voice path and skipped the music checks
+    silent_master_project(project, {"source": "code"})
+    ffmpeg("-f", "lavfi", "-i", "color=c=blue:size=360x640:rate=30:duration=10", "-f", "lavfi", "-i",
+           "sine=f=500:d=10,volume=0.3", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", "-shortest",
+           project / "render.mp4")
+    r = run_script("master_audio.py", "render.mp4", "-o", "master.mp4", "--edit", "edit/s1", cwd=project, check=False)
+    assert r.returncode == 1 and "--music" in r.stdout, r.stdout
+    assert not (project / "master.mp4").exists()
+
+
+@needs_ffmpeg
+def test_a_rough_cut_cut_for_another_timing_of_the_same_length_is_stale(project):
+    # Codex P2: init and validate compared only the length; two blocks swapped keep it, the block: joins move
+    e = silent_project(project)
+    cut_and_init(project, e)
+    sc = json.loads((e / "script.json").read_text(encoding="utf-8"))
+    sc["blocks"][2], sc["blocks"][3] = sc["blocks"][3], sc["blocks"][2]
+    write_json(e / "script.json", sc)
+    run_script("visual_plan.py", "script", "edit/s1", cwd=project)
+    assert math.isclose(timing(e)["duration"], plan(e)["duration"], abs_tol=2e-3)  # the same length
+    r = run_script("visual_plan.py", "init", "edit/s1", "--no-speech", "--force", cwd=project, check=False)
+    assert r.returncode != 0 and "cut.py" in (r.stdout + r.stderr), r.stdout + r.stderr
+
+
+def test_markers_on_neighbouring_beats_are_a_beat_apart_whatever_the_frame_rounding(tmp_path):
+    # Codex P2: at 104 bpm beats 2 and 3 round to 1.167 and 1.733 s (0.567 s < a beat of 0.577 s): refused wrongly
+    out, r = music(tmp_path, "m", "--dur", "8", "--bpm", "104", "--style", "groove", "--stop", "1.154", "--resume",
+                   "1.731")
+    assert r.returncode == 0, r.stdout + r.stderr
+
+
+def test_the_beats_heard_are_the_beats_played_on_one_grid(tmp_path):
+    # Codex P2: active edges rounded to frames against unrounded beat times: a stopped beat was listed, a resumed one not
+    import numpy as np
+    out, r = music(tmp_path, "m", "--dur", "8", "--bpm", "104", "--style", "groove", "--stop", "1.154", "--resume",
+                   "3.462")
+    assert r.returncode == 0, r.stderr
+    b = beats_of(out)
+    ns = [x["n"] for x in b["beats"]]
+    assert 2 not in ns and 6 in ns, ns  # beat 2 is the stop, beat 6 the resume
+    _, x = read_wav(out)
+    res = next(m["at"] for m in b["markers"] if m["kind"] == "resume")
+    pre = x[int((res - 0.15) * 48000):int((res - 0.002) * 48000)]
+    assert np.abs(pre.astype(int)).max() == 0  # silent until the resume beat
+
+
+def test_ambient_comes_back_on_its_resume(tmp_path):
+    # Codex P2: the ambient's swell started only every 8 beats: after a resume it stayed silent up to 1.2 s
+    import numpy as np
+    out, r = music(tmp_path, "m", "--dur", "10", "--bpm", "100", "--style", "ambient", "--stop", "2.4", "--resume", "3.6")
+    assert r.returncode == 0, r.stderr
+    _, x = read_wav(out)
+    after = x[int(3.7 * 48000):int(4.6 * 48000)].astype(float) / 32768
+    assert float(np.sqrt(np.mean(after ** 2))) > 0.003
+
+
+@needs_node
+def test_the_series_logo_of_the_last_seconds_shows_over_the_scenes(tmp_path):
+    # Codex P2: a no-speech reel has scenes all along; the corner fading out under any scene hid the logo for good
+    series = KIT / "kit" / "series.ts"
+    code = ("const m = await import(process.argv[1]);"
+            "console.log(JSON.stringify([m.cornerFade({cornerFrom: 8.5}, 1), m.cornerFade({format: 'silent'}, 1),"
+            " m.cornerFade({}, 1), m.cornerFade({}, 0.25)]));")
+    r = subprocess.run(["node", "--input-type=module", "-e", code, series.as_uri()], capture_output=True, text=True,
+                       encoding="utf-8")
+    assert r.returncode == 0, r.stderr
+    assert json.loads(r.stdout) == [1, 1, 0, 0.75]
+    reel = (KIT / "ReelKit.tsx").read_text(encoding="utf-8")
+    assert "cornerFade(p, sceneActivity(p.scenes, frame, KIT_FPS))" in reel
+
+
+@needs_ffmpeg
+def test_code_music_starting_on_a_kick_masters_under_minus_1_after_the_aac(project):
+    # 2.4 after the review: the music began on a kick straight out of digital silence; with no fade of the master the
+    # AAC overshot at the file's start (true peak +1.3 dBFS, the acceptance failed). The track itself eases in.
+    d = 14.433
+    render(project / "render.mp4", d)
+    run_script("music.py", project / "music.wav", "--dur", d, "--bpm", "104", "--style", "groove", "--stop", "3.467",
+               "--resume", "5.2", "--button", "8.667", cwd=project)
+    # the two effects of the real video: a click on the hook's first line and a card slide on the label
+    ffmpeg("-f", "lavfi", "-i", "aevalsrc='(0.5*(2*random(0)-1)+0.5*sin(2*PI*2400*t))*exp(-160*t)':s=48000:d=0.03",
+           "-ac", "2", project / "click.wav")
+    ffmpeg("-f", "lavfi", "-i", "anoisesrc=c=pink:d=0.4:a=0.8:r=48000,bandpass=f=1500:w=1.2", "-ac", "2",
+           project / "slide.wav")
+    write_json(project / "sfx.json", {"sounds": [{"file": "click.wav", "at": 0.15, "gain_db": -12},
+                                                 {"file": "slide.wav", "at": 3.467, "gain_db": -9}]})
+    r = run_script("master_audio.py", "render.mp4", "-o", "master.mp4", "--music", "music.wav", "--sfx", "sfx.json",
+                   cwd=project, check=False)
+    assert r.returncode == 0, r.stdout + r.stderr
+    i, tp = lufs(project / "master.mp4")
+    assert abs(i + 14.0) <= 0.7 and tp <= -1.0 + 0.05, (i, tp)
+
+
+def test_the_music_eases_in_from_silence(tmp_path):
+    # the same finding measured on the WAV itself: its first millisecond must rise from silence (a 15 ms ease-in),
+    # not jump to a kick at full scale (the AAC of the master overshot there by 2.8 dB on the real video's sounds)
+    import numpy as np
+    out, r = music(tmp_path, "m", "--dur", "14.433", "--bpm", "104", "--style", "groove", "--stop", "3.467",
+                   "--resume", "5.2", "--button", "8.667")
+    assert r.returncode == 0, r.stderr
+    _, x = read_wav(out)
+    a = np.abs(x.astype(float))
+    assert a[:48].max() < 0.1 * a.max(), (a[:48].max(), a.max())
