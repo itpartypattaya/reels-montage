@@ -46,6 +46,11 @@ GRADIENT_SHARE = 0.06    # more of the filled background than this at over half 
 HOLE_MIN = 0.002            # an enclosed patch of background color is numbered from this share of the figure
 OUTLINE_SHARE = 0.6         # a drawing with a dark outline on this share of its edge is checked for open spots
 OUT_DIR = Path("assets") / "mascot"
+HEAD_MAX = 0.5             # the head is looked for in the top half of the neutral figure
+SHOULDER_GROWTH = 1.15     # the run widening by this past its narrowest row = the shoulders: the head ends there
+EYE_TO_MOUTH = 0.32        # the mouth this share of the head's height below the eyes (a guess, checked on the sheet)
+EYE_SPREAD = 0.2           # with no eyes found: each eye this share of the head's width from the middle
+MOUTH_WIDTH = 0.25         # the overlay mouth this share of the head's width
 
 
 def die(msg):
@@ -421,25 +426,85 @@ def figure_box(img, thr=40):
 
 
 def guess_head(img):
-    """Point between the eyes and head width on a neutral pose: the center of mass of the figure's top 30 %, the eye
-    line at 22 % of its height, the head's run of that row; the mouth at 34 %. A guess the agent checks."""
-    box = figure_box(img)
-    left, top, right, bottom = box
-    bh, bw = bottom - top, right - left
-    a = img.getchannel("A").load()
-    sx = sn = 0
-    for y in range(top, top + max(1, int(bh * 0.3))):
+    """The head of the neutral pose, a guess the agent checks on the sheet: walk down the figure's middle column from
+    its top, row by row, keeping the width of the opaque run on that column; the head is the stretch down to the
+    narrowest row before the run widens into the shoulders (or HEAD_MAX of the figure). The eyes are the dark spots
+    inside the face at mid-head, the mouth EYE_TO_MOUTH of the head below them.
+    -> {"anchor": point between the eyes, "hw": head width, "eyes": [left, right], "mouth": point}"""
+    left, top, right, bottom = figure_box(img)
+    fig_h = bottom - top
+    alpha = img.getchannel("A")
+    a = alpha.load()
+    # the middle column: where the figure's opaque mass is centered, so a raised arm on one side tips it little
+    cols = [0] * (right - left)
+    for y in range(top, bottom):
         for x in range(left, right):
             if a[x, y] > 40:
-                sx += x
-                sn += 1
-    hx = sx / sn if sn else (left + right) / 2
-    ey = top + 0.22 * bh
-    run = row_run(img, hx, ey)
-    hw = (run[1] - run[0]) if run else bw * 0.5
-    if run and not run[0] <= hx < run[1]:
-        hx = (run[0] + run[1]) / 2
-    return {"anchor": (hx, ey), "hw": hw, "mouth": (hx, top + 0.34 * bh)}
+                cols[x - left] += 1
+    mass = sum(cols)
+    mid = left + (sum(k * n for k, n in enumerate(cols)) / mass if mass else (right - left) / 2)
+    widths = []  # (y, run) down the middle column
+    y = top
+    while y < top + max(2, int(fig_h * HEAD_MAX)):
+        run = row_run(img, mid, y)
+        if run and run[0] <= mid < run[1]:
+            widths.append((y, run))
+        y += 1
+    if not widths:
+        return {"anchor": ((left + right) / 2, top + 0.25 * fig_h), "hw": (right - left) * 0.5, "eyes": None,
+                "mouth": ((left + right) / 2, top + 0.35 * fig_h)}
+    # down the skull the run widens, then narrows to the chin or the neck; the first widening past that narrowest
+    # row is the shoulders
+    wide_at, neck, narrow = 0, len(widths) - 1, None
+    for k, (_, (r_l, r_r)) in enumerate(widths):
+        w = r_r - r_l
+        if narrow is None:
+            if w >= widths[wide_at][1][1] - widths[wide_at][1][0]:
+                wide_at = k
+            elif w < 0.97 * (widths[wide_at][1][1] - widths[wide_at][1][0]):
+                narrow, neck = w, k
+        elif w < narrow:
+            narrow, neck = w, k
+        elif w > narrow * SHOULDER_GROWTH:
+            break
+    head_top, head_bot = widths[0][0], widths[neck][0]
+    l0, r0 = widths[wide_at][1]
+    hw, hx = r0 - l0, (l0 + r0) / 2
+    hh = max(1, head_bot - head_top)
+    eyes = dark_spots(img, (l0, r0), head_top + 0.3 * hh, head_top + 0.65 * hh, hx)
+    if eyes:
+        ax, ay = (eyes[0][0] + eyes[1][0]) / 2, (eyes[0][1] + eyes[1][1]) / 2
+    else:
+        ax, ay = hx, head_top + 0.5 * hh
+    return {"anchor": (ax, ay), "hw": hw, "eyes": eyes, "mouth": (ax, ay + EYE_TO_MOUTH * hh)}
+
+
+def dark_spots(img, run, y0, y1, cx):
+    """The two dark spots of a face (the eyes): in the rows y0..y1, inside the head's run with its outline left out,
+    the pixels much darker than the face's median, averaged on each side of cx. None when one side has none."""
+    l0, r0 = run
+    margin = max(2, round(0.12 * (r0 - l0)))
+    box = (round(l0 + margin), round(y0), round(r0 - margin), round(y1))
+    if box[2] - box[0] < 4 or box[3] - box[1] < 2:
+        return None
+    lum = img.convert("RGB").convert("L").crop(box)
+    alpha = img.getchannel("A").crop(box)
+    vals = sorted(v for v, al in zip(lum.getdata(), alpha.getdata()) if al > 200)
+    if not vals:
+        return None
+    cut = vals[len(vals) // 2] * 0.55
+    sides = {-1: [0.0, 0.0, 0], 1: [0.0, 0.0, 0]}
+    w = box[2] - box[0]
+    for k, (v, al) in enumerate(zip(lum.getdata(), alpha.getdata())):
+        if al > 200 and v < cut:
+            x, y = box[0] + k % w, box[1] + k // w
+            s = sides[-1 if x < cx else 1]
+            s[0] += x
+            s[1] += y
+            s[2] += 1
+    if not sides[-1][2] or not sides[1][2]:
+        return None
+    return [(s[0] / s[2], s[1] / s[2]) for s in (sides[-1], sides[1])]
 
 
 def row_run(img, x, y, thr=40):
@@ -776,10 +841,10 @@ def cmd_atlas(a):
     atlas = pack(items)
 
     # eyes and mouth: neutral's guess, carried to every pose through its head
-    ex = 0.18 * hw
-    n_eyes = [(head["anchor"][0] - ex, head["anchor"][1]), (head["anchor"][0] + ex, head["anchor"][1])]
+    ex = EYE_SPREAD * hw
+    n_eyes = head.get("eyes") or [(head["anchor"][0] - ex, head["anchor"][1]), (head["anchor"][0] + ex, head["anchor"][1])]
     n_mouth = head["mouth"]
-    mouth_w = max(4, round(0.22 * hw * g))
+    mouth_w = max(4, round(MOUTH_WIDTH * hw * g))
     rig_poses = {}
     notes = []
     for it in items:

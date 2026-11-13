@@ -481,3 +481,17 @@ def test_flat_border_with_a_gradient_inside_is_refused(brand, tmp_path):
     Image.alpha_composite(glow, character(bg=(0, 0, 0, 0))).convert("RGB").save(src)
     r = run_atlas(brand, src, check=False)
     assert r.returncode != 0 and "transparent PNG" in r.stderr
+
+
+def test_the_first_guess_finds_the_drawn_eyes():
+    # the guess the agent starts from (rig.json "eyes", checked on the sheet) lands on the eyes as drawn, at two sizes:
+    # the eye line from the face itself, not from a share of the whole figure's height (raised shoulders, long legs)
+    import mascot_atlas
+    for s in (1.0, 0.8):
+        g = mascot_atlas.guess_head(character("neutral", s=s, bg=(0, 0, 0, 0)))
+        cx, ey = CELL[0] / 2, 170 - 5 * s
+        assert g["eyes"], s
+        (x1, y1), (x2, y2) = g["eyes"]
+        assert abs(x1 - (cx - 18 * s)) <= 3 and abs(x2 - (cx + 18 * s)) <= 3, (s, g["eyes"])
+        assert abs(y1 - ey) <= 4 and abs(y2 - ey) <= 4, (s, g["eyes"])
+        assert abs(g["hw"] - 104 * s) <= 0.08 * 104 * s, (s, g["hw"])

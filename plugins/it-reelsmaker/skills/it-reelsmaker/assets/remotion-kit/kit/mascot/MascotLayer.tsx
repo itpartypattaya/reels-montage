@@ -6,6 +6,7 @@
 import React from "react";
 import { Easing, interpolate, useCurrentFrame, useVideoConfig } from "remotion";
 import type { MascotFrame, MascotModule } from "./types";
+import { breath } from "./rig";
 import { atlasMascot, type AtlasRig } from "./AtlasMascot";
 
 /** One entry of the plan: it holds from frame f until the next entry (stage writes an entry only where a value changes). */
@@ -27,6 +28,7 @@ export type MascotProps = {
 const TALK_MIN = 0.08;
 const IN_FRAMES = 10;
 const OUT_FRAMES = 8;
+const RISE = 24; // px: the mascot rises this much as it fades in
 const clamp = { extrapolateLeft: "clamp", extrapolateRight: "clamp" } as const;
 
 // one atlas module per rig object: the props do not change during a render, the module is made once
@@ -81,7 +83,7 @@ export const MascotLayer: React.FC<{ mascot?: MascotProps | null; modules: Recor
     interpolate(frame, [f0, f0 + IN_FRAMES], [0, 1], { ...clamp, easing: Easing.out(Easing.cubic) }),
     interpolate(frame, [f1 - OUT_FRAMES, f1], [1, 0], clamp),
   );
-  const lift = (1 - a) * 24 + Math.sin(t * 2.1) * 2 * mascot.scale; // the entrance rise and the idle breath
+  const lift = (1 - a) * RISE + breath(t, 2 * mascot.scale); // the entrance rise and the idle breath
   const { width, height, anchor } = mod.box;
   return (
     <div data-rk="mascot" style={{ position: "absolute", left: 0, top: 0, width, height, opacity: a, transformOrigin: "0 0",

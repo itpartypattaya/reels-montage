@@ -5,6 +5,7 @@
 // A pose change is a frame switch: a picture has no in-between drawings to interpolate.
 // The kit reads no files itself: the stage puts rig.json's content into the props (props.mascot.rig) and copies
 // atlas.png into public/ (props.mascot.atlas); the layer calls atlasMascot(rig, atlas) once.
+import type React from "react";
 import { Img, staticFile } from "remotion";
 
 // The mascot contract: kit/mascot/types.ts (the module made here is a MascotModule the layer places).
@@ -44,6 +45,37 @@ const SWITCH = 0.5; // the frame switches halfway through a pose change
 const POP = 0.03; // the most a pose shrinks while k overshoots (0.97 -> 1 as it settles)
 const TONGUE_COLOR = "#d9707f";
 
+/** The overlay mouth: a lens whose lower lip drops with the opening (the upper one barely moves, as in speech), in
+ *  the drawing's line color, with a tongue in its lower half once it opens wide. */
+const OpenMouth: React.FC<{ x: number; y: number; width: number; open: number; ink: string }> = ({ x, y, width, open, ink }) => {
+  const half = (width / 2) * (1 - 0.1 * open);
+  const drop = width * (0.12 + 0.4 * open);
+  const lift = drop * 0.25;
+  const lens = `M ${-half} 0 Q 0 ${-lift} ${half} 0 Q 0 ${drop} ${-half} 0 Z`;
+  const tw = half * 0.5;
+  const tongue = `M ${-tw} ${drop * 0.35} Q 0 ${drop * 0.18} ${tw} ${drop * 0.35} Q 0 ${drop * 0.85} ${-tw} ${drop * 0.35} Z`;
+  return (
+    <g transform={`translate(${x} ${y})`}>
+      <path d={lens} fill={ink} />
+      {open > TONGUE ? <path d={tongue} fill={TONGUE_COLOR} /> : null}
+    </g>
+  );
+};
+
+/** A shut eye over a drawn open one: a patch of the face color hiding it, and the lid's line as a downward arc. */
+const ShutEye: React.FC<{ x: number; y: number; gap: number; skin: string; ink: string }> = ({ x, y, gap, skin, ink }) => {
+  const w = gap * 0.4;
+  const h = gap * 0.44;
+  const r = w * 0.85;
+  return (
+    <g transform={`translate(${x} ${y})`}>
+      <rect x={-w} y={-h} width={2 * w} height={2 * h} rx={Math.min(w, h)} fill={skin} />
+      <path d={`M ${-r} 0 A ${r} ${r * 0.55} 0 0 0 ${r} 0`} fill="none" stroke={ink} strokeWidth={Math.max(2, gap * 0.06)}
+        strokeLinecap="round" />
+    </g>
+  );
+};
+
 // A path inside public/ (the stage copies the atlas there), or a full address as it is.
 const fileSrc = (p: string) => (/^[a-z][a-z0-9+.-]*:/i.test(p) ? p : staticFile(p.replace(/^\/+/, "")));
 
@@ -70,14 +102,9 @@ export const atlasMascot = (rig: AtlasRig, atlasSrc?: string): AtlasMascotModule
     const scale = 1 - Math.min(POP, over * 0.3);
     // The layer mirrors facing -1; a one-sided picture is turned back so it is never shown mirrored.
     const unmirror = f.facing === -1 && !rig.symmetric;
-    const mw = p.mouthW;
     const [mx, my] = at(p.mouth);
-    const mrx = (mw / 2) * (1 - 0.15 * f.open);
-    const mry = mw * (0.07 + 0.25 * f.open);
     const eyes = p.eyes.map(at);
-    const gap = eyes.length > 1 ? Math.hypot(eyes[1][0] - eyes[0][0], eyes[1][1] - eyes[0][1]) : mw * 1.6;
-    const lrx = gap * 0.42;
-    const lry = gap * 0.46;
+    const gap = eyes.length > 1 ? Math.hypot(eyes[1][0] - eyes[0][0], eyes[1][1] - eyes[0][1]) : p.mouthW * 1.6;
     return (
       <div
         style={{
@@ -90,34 +117,16 @@ export const atlasMascot = (rig: AtlasRig, atlasSrc?: string): AtlasMascotModule
           transformOrigin: `${ax}px ${ay}px`,
         }}
       >
-        <div style={{ position: "absolute", left: ox, top: oy, width: cw, height: ch, overflow: "hidden" }}>
-          <Img
-            src={file}
-            style={{ position: "absolute", left: -cx, top: -cy, width: rig.width, height: rig.height, maxWidth: "none" }}
-          />
-        </div>
+        {/* the frame: the atlas at its own size, shifted so the frame's corner sits at the box position */}
+        <Img
+          src={file}
+          style={{ position: "absolute", left: ox, top: oy, width: cw, height: ch, maxWidth: "none",
+            objectFit: "none", objectPosition: `${-cx}px ${-cy}px` }}
+        />
         {mouthOn || lids ? (
           <svg width={bw} height={bh} style={{ position: "absolute", left: 0, top: 0, overflow: "visible" }}>
-            {mouthOn ? (
-              <g transform={`translate(${mx} ${my})`}>
-                <ellipse rx={mrx} ry={mry} fill={p.ink} />
-                {f.open > TONGUE ? <ellipse cy={mry * 0.45} rx={mrx * 0.55} ry={mry * 0.4} fill={TONGUE_COLOR} /> : null}
-              </g>
-            ) : null}
-            {lids
-              ? eyes.map(([ex, ey], i) => (
-                  <g key={i} transform={`translate(${ex} ${ey})`}>
-                    <ellipse rx={lrx} ry={lry} fill={p.skin} />
-                    <path
-                      d={`M ${-lrx * 0.9} 0 Q 0 ${lry * 0.35} ${lrx * 0.9} 0`}
-                      fill="none"
-                      stroke={p.ink}
-                      strokeWidth={Math.max(2, gap * 0.06)}
-                      strokeLinecap="round"
-                    />
-                  </g>
-                ))
-              : null}
+            {mouthOn ? <OpenMouth x={mx} y={my} width={p.mouthW} open={f.open} ink={p.ink} /> : null}
+            {lids ? eyes.map(([ex, ey], i) => <ShutEye key={i} x={ex} y={ey} gap={gap} skin={p.skin} ink={p.ink} />) : null}
           </svg>
         ) : null}
       </div>

@@ -5,9 +5,9 @@ drawn in code: `mascot_atlas.py atlas` cuts the poses out of the picture into on
 shows the pose of the moment, opens the mouth to your recorded narration and blinks. Placement, timing and the mouth
 track are the mascot engine's (the drawn mascot uses the same ones); this file covers the picture.
 
-The approach comes from [skill-multik](https://github.com/artemiimillier/skill-multik) (MIT): a sheet of poses cut
-into an atlas, guessed eyes and mouth, an overlay mouth and eyelid, optional talk and blink frames. Two things work
-differently here: the background is removed by a fill from each cell's border instead of a color key over the whole
+How it works: a sheet of poses is cut into an atlas, the eyes and mouth are guessed on the face, an overlay mouth and
+eyelid are drawn over the picture, and drawn talk and blink frames are used when you have them. Two things matter
+most: the background is removed by a fill from each cell's border instead of a color key over the whole
 picture (which also took white eyes and white highlights on a white background), and every pose is placed by its head,
 not by its silhouette.
 
@@ -54,12 +54,14 @@ What it does:
    character touching the background (a white glove with no outline) goes with the background: an outline open
    there is marked with an exclamation mark on the sheet and warned about. A border of one color around a
    background that shades inward (a glow, a vignette) is refused like a gradient.
-3. **The head places the poses.** On `neutral` the point between the eyes and the head width are guessed (the center
-   of mass of the figure's top, the eye line at ~22 % of its height). Every other pose's head is found by matching
+3. **The head places the poses.** On `neutral` the point between the eyes and the head width are guessed: down the
+   figure's middle column the head is the stretch from the top to its narrowest row before the shoulders, and the eyes
+   are the dark spots inside the face at mid-head. Every other pose's head is found by matching
    neutral's head, its scale is taken from its width at the eye line (measured as on neutral), and the pose is
    scaled and moved so its head lands on the same point of the shared box: a raised
    arm changes the outline, not the head. Talk and blink frames are aligned to their pose's head the same way.
-4. **Starting guesses**: eyes on the eye line, the mouth at ~34 % of the figure's height, its width from the head, the
+4. **Starting guesses**: the eyes found on the face (or set apart by a fifth of the head's width when none are found),
+   the mouth a third of the head's height below them, its width a quarter of the head's, the
    skin color from a ring around the mouth, the line color from the darkest lines.
 
 ## The check sheet: before the first render

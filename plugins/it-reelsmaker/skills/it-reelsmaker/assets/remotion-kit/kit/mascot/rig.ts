@@ -2,14 +2,17 @@
 // two segments, the idle breath. Plain math, no React: a brand's module imports what it needs.
 import type { MascotFrame } from "./types";
 
-export const rad = (d: number) => (d * Math.PI) / 180;
+const DEG = Math.PI / 180;
+/** Degrees → radians. */
+export const rad = (d: number) => d * DEG;
 export const mix = (a: number, b: number, k: number) => a + (b - a) * k;
 export const clamp01 = (k: number) => Math.max(0, Math.min(1, k));
 
-/** Angle a → b by the shortest arc (350° → 10° turns 20°, not 340°), degrees. */
+/** Angle a → b by the shortest arc (350° → 10° turns 20°, not 340°), degrees: the signed turn is read from the
+ *  direction of b seen from a (atan2 of the difference's sine and cosine), so any number of full turns drops out. */
 export const angMix = (a: number, b: number, k: number) => {
-  const d = ((((b - a) % 360) + 540) % 360) - 180;
-  return a + d * k;
+  const turn = Math.atan2(Math.sin((b - a) * DEG), Math.cos((b - a) * DEG)) / DEG;
+  return a + turn * k;
 };
 
 /** A pose as named numbers; the keys listed in `angles` (degrees) blend by the shortest arc, the rest linearly. k may
@@ -34,18 +37,23 @@ export const poseAt = <T extends PoseNums>(poses: Record<string, T>, f: MascotFr
 /** An arm of two segments from the shoulder s: a1 — the upper arm's angle, a2 — the forearm's (degrees, 0 = right,
  *  90 = down, SVG's y axis). → the elbow and the hand. */
 export type Arm = { a1: number; a2: number };
-export const armPoints = (s: [number, number], arm: Arm, l1: number, l2: number) => {
-  const e: [number, number] = [s[0] + Math.cos(rad(arm.a1)) * l1, s[1] + Math.sin(rad(arm.a1)) * l1];
-  const h: [number, number] = [e[0] + Math.cos(rad(arm.a2)) * l2, e[1] + Math.sin(rad(arm.a2)) * l2];
-  return { elbow: e, hand: h };
+type Pt = [number, number];
+/** The point `len` away from p in the direction `deg`. */
+const step = (p: Pt, deg: number, len: number): Pt => [p[0] + len * Math.cos(deg * DEG), p[1] + len * Math.sin(deg * DEG)];
+export const armPoints = (s: Pt, arm: Arm, l1: number, l2: number) => {
+  const elbow = step(s, arm.a1, l1);
+  return { elbow, hand: step(elbow, arm.a2, l2) };
 };
 /** The arm as an SVG path (stroke it with round caps and joins). */
-export const armPath = (s: [number, number], arm: Arm, l1: number, l2: number) => {
+export const armPath = (s: Pt, arm: Arm, l1: number, l2: number) => {
   const { elbow, hand } = armPoints(s, arm, l1, l2);
-  return `M${s[0]} ${s[1]} L${elbow[0]} ${elbow[1]} L${hand[0]} ${hand[1]}`;
+  return "M " + [s, elbow, hand].map((q) => q.join(" ")).join(" L ");
 };
-/** The other side's arm: the angles mirrored around the vertical. */
-export const mirrorArm = (a: Arm): Arm => ({ a1: 180 - a.a1, a2: 180 - a.a2 });
+/** The other side's arm: each direction reflected in the vertical axis (its x flips, its y stays), kept in 0..360. */
+const reflect = (deg: number) => (((180 - deg) % 360) + 360) % 360;
+export const mirrorArm = (a: Arm): Arm => ({ a1: reflect(a.a1), a2: reflect(a.a2) });
 
-/** The idle breath, px in the box: a slow rise and fall (background motion, SKILL.md section 4). */
-export const breath = (t: number, amp = 3) => Math.sin(t * 2.1) * amp;
+/** The idle breath, px in the box: a slow rise and fall, one breath every BREATH_S seconds (background motion,
+ *  SKILL.md section 4). */
+export const BREATH_S = 3.2;
+export const breath = (t: number, amp = 3) => amp * Math.sin((2 * Math.PI * t) / BREATH_S);

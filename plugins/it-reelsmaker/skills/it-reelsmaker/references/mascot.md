@@ -1,6 +1,6 @@
 # The brand mascot: a character drawn in code, animated to your recording
 
-A small character in the brand's colors stands in the lower left of the video, opens its mouth to your recorded narration, blinks, breathes and gestures on chosen words (points at a scene, shows a palm, thinks, celebrates). It is drawn in code as a Remotion component; nothing is generated. The idea of a vector hero whose mouth follows the loudness of the voice comes from [skill-multik](https://github.com/artemiimillier/skill-multik) (MIT); the contract, the checks and the drawings here are this plugin's own.
+A small character in the brand's colors stands in the lower left of the video, opens its mouth to your recorded narration, blinks, breathes and gestures on chosen words (points at a scene, shows a palm, thinks, celebrates). It is drawn in code as a Remotion component; nothing is generated: the mouth follows the loudness of your own voice.
 
 **When to offer it.** Only when the brand already has a mascot (`brand.json → mascot`, `reelcfg.py show` prints it) or the person asks for one. It is a menu item (SKILL.md section 1), off by default. It suits videos where the speaker is not on screen: scenes over your recorded narration, or voice-over footage. A mascot beside a live speaker, several characters, and a mouth timed by syllables with no recording are not part of it.
 

@@ -2,6 +2,14 @@
 
 What changed in IT Reelsmaker, written for the people who use it. The newest version is on top. The skill shows a short “What's new” note from this file once, on the first edit after an update.
 
+## 1.29.2
+
+- **The first guess of a character's eyes lands on the drawn eyes.** `mascot_atlas.py` now finds the head as the
+  stretch above the shoulders and the eyes as the dark spots of the face, instead of a fixed share of the figure's
+  height; you correct less in `rig.json`.
+- **Kit 1.18.1** (`kit.py update`): the mascot's helpers, its breath and the atlas mascot's overlay mouth and eyelid
+  are drawn anew; the mouth's lower lip now drops with the opening. Nothing else changes in your videos.
+
 ## 1.29.0
 
 - **A voice-over over your own shots.** A voice note recorded on the phone (`.ogg`, `.opus`, `.m4a`, `.wav`, `.mp3`)
