@@ -45,6 +45,7 @@ MOUTH_VERSION = 3   # mouth.json by an older mascot.py (one axis, or levels of a
 MOUTH_LEAD = 1      # frames: mouth.json moves the mouth this much before the sound (mascot.py mouth)
 TALK_MIN = 0.08     # an opening under this reads as a closed mouth (the kit's `talking`)
 MOUTH_STEP = 0.25   # the most the opening moves from one frame to the next (mascot.py mouth; kept where speaks cuts it)
+TALK_FRAME = 0.3    # a picture mascot shows its drawn talk frame from this opening (OPEN_FRAME in kit/mascot/AtlasMascot.tsx)
 W, H = 1080, 1920
 
 
@@ -321,6 +322,21 @@ def paced(vals, step=MOUTH_STEP):
         out.append(cur)
     for f in range(len(out) - 2, -1, -1):
         out[f] = min(out[f], out[f + 1] + step)
+    return no_lone(out)
+
+
+def no_lone(vals):
+    """No frame alone: a shut frame between two open ones opens to the lower of them (the mouth does not blink shut
+    between two syllables), and a frame alone on its side of TALK_FRAME takes its neighbours' side, the nearer of
+    their values (a picture mascot's drawn talk frame does not flash for one frame). Neighbours a step away stay a
+    step away."""
+    out = list(vals)
+    for f in range(1, len(out) - 1):
+        a, c = out[f - 1], out[f + 1]
+        if out[f] == 0 and a > 0 and c > 0:
+            out[f] = min(a, c)
+        if (a >= TALK_FRAME) == (c >= TALK_FRAME) != (out[f] >= TALK_FRAME):
+            out[f] = max(a, c) if out[f] >= TALK_FRAME else min(a, c)
     return out
 
 

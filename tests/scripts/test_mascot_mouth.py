@@ -164,8 +164,10 @@ def test_on_a_tight_cut_a_picture_mascots_talk_frame_never_flashes_for_one_frame
     import re
     m, info = tight_cut(project, "tight", f0=f0, scale=scale, seed=seed)
     # the atlas shows its drawn talk frame from OPEN_FRAME: no frame alone on either side of it
+    import mascot_plan as vm
     at = float(re.search(r"const OPEN_FRAME = ([0-9.]+)", (KIT / "kit" / "mascot" / "AtlasMascot.tsx")
                          .read_text(encoding="utf-8")).group(1))
+    assert at == vm.TALK_FRAME  # the plan's copy of the kit's threshold
     talk = [x >= at for x in m["open"]]
     flashes = [f for f in range(1, len(talk) - 1) if talk[f - 1] == talk[f + 1] != talk[f]]
     assert not flashes, flashes
@@ -301,6 +303,14 @@ def test_a_speaking_span_that_cuts_into_speech_does_not_make_the_mouth_jump():
     o = [[x for x in fr if x["f"] <= f][-1]["open"] for f in range(60)]
     assert all(abs(o[f] - o[f - 1]) <= 0.25 + 1e-9 for f in range(1, 60)), o
     assert max(o) == 1.0 and o[30] == 0, o  # it still opens fully inside a span, and is shut after the last one
+    # a span of three frames: the mouth opens and closes at that pace, and a picture mascot's talk frame (from
+    # OPEN_FRAME) does not flash for a single frame
+    m["speaks"] = [[0.2, 0.3]]
+    fr = vm.frames_of(m, plan, {"brand_tone": {"mascot": "calm"}}, geo, [1.0] * 60, 30, None, [0.5] * 60)
+    o = [[x for x in fr if x["f"] <= f][-1]["open"] for f in range(60)]
+    talk = [x >= vm.TALK_FRAME for x in o]
+    assert all(abs(o[f] - o[f - 1]) <= 0.25 + 1e-9 for f in range(1, 60)), o
+    assert not [f for f in range(1, 59) if talk[f - 1] == talk[f + 1] != talk[f]], o[:12]
 
 
 def test_the_plan_carries_the_width_only_while_it_speaks():

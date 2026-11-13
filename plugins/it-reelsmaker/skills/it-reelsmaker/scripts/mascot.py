@@ -49,7 +49,7 @@ LEVELS = (0.0, 0.25, 0.5, 0.75, 1.0)
 WIDE_STEPS = 4  # the width in quarters: 0, 0.25, 0.5, 0.75, 1
 HOLD = 2  # frames: a width reached inside speech holds this long at least
 NUCLEUS = 0.25  # an opening from here up is a vowel's: the width's centre is measured on these frames
-TALK_FRAME = 0.3  # a picture mascot shows its drawn talk frame from this opening (OPEN_FRAME in kit/mascot/AtlasMascot.tsx)
+TALK_FRAME = vm.TALK_FRAME  # a picture mascot shows its drawn talk frame from this opening
 # the noise floor of a track with no pauses: the quietest SHORT_PCT of its SHORT_S windows (a stop's closure, the
 # breath between two words of a tight cut: a few tens of ms each, far more than this share of any speech); digital
 # silence (an edit's gap, a generated track) reads as SILENT_DB, so the gate stays at MIN_DB there
