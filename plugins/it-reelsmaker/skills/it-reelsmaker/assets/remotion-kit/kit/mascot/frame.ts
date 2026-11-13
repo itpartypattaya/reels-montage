@@ -4,13 +4,15 @@
 import type { MascotFrame } from "./types";
 
 /** One entry of the plan (visual_plan.py stage): it holds from frame f until the next entry, written only where a value
- *  changes. lid and since came later: a plan without them still plays (the lid from blink, the switch from k). */
+ *  changes. lid, since and wide came later: a plan without them still plays (the lid from blink, the switch from k,
+ *  a neutral width). */
 export type MascotPlanFrame = {
   f: number;
   pose: string;
   prev: string;
   k: number;
   open: number;
+  wide?: number; // 0..1 the mouth round .. wide (a plan staged before it: neutral)
   blink: boolean;
   lid?: number; // 0..1 how shut the eyes are
   since?: number; // frames since the pose change began, while it eases (absent once it has settled)
@@ -44,6 +46,7 @@ export const frameOf = (e: MascotPlanFrame, t: number, facing: 1 | -1): MascotFr
   prevPose: e.prev,
   k: e.k,
   open: e.open,
+  wide: typeof e.wide === "number" ? e.wide : 0.5,
   talking: e.open > TALK_MIN,
   blink: e.blink,
   lid: typeof e.lid === "number" ? e.lid : e.blink ? 1 : 0,

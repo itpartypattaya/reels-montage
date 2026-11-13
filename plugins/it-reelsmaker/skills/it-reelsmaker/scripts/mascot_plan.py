@@ -41,6 +41,8 @@ EASE_FRAMES, BOUNCE_FRAMES = 12, 14
 BLINK_SHAPE = (0.5, 1.0, 1.0, 0.5)
 DOUBLE_SHARE, DOUBLE_GAP_S = 0.2, 0.27
 CHANGE_CLEAR_S = 0.5  # a planned blink keeps this far from the blink that hides a pose change
+MOUTH_VERSION = 2   # mouth.json by an older mascot.py (one axis, no width) is stale
+MOUTH_LEAD = 1      # frames: mouth.json moves the mouth this much before the sound (mascot.py mouth)
 TALK_MIN = 0.08     # an opening under this reads as a closed mouth (the kit's `talking`)
 W, H = 1080, 1920
 
@@ -131,6 +133,8 @@ def load_mouth(e, fps=30):
     m = load_json(e / "mouth.json", None)
     if not isinstance(m, dict) or not isinstance(m.get("open"), list):
         return None, "no mouth.json"
+    if m.get("version") != MOUTH_VERSION or not isinstance(m.get("wide"), list) or len(m["wide"]) != len(m["open"]):
+        return m, "mouth.json was measured by an older mascot.py (no mouth width): measure it again"
     src = Path(m.get("source") or "")
     src = src if src.is_absolute() else e / src
     if not m.get("explicit") and voice_track(e) and voice_track(e).resolve() != src.resolve():
@@ -307,9 +311,11 @@ def speaking(m, plan, vend):
     return [(t0, min(t1, vend))] if vend > t0 else []
 
 
-def frames_of(m, plan, s, geo, opens, fps, speaks=None):
-    """The per-frame plan the kit plays: entries {f, pose, prev, k, open, blink, lid[, since][, facing]}, each holding
-    until the next one (an entry is written only where a value changes). lid 0..1: how shut the eyes are; blink: at
+def frames_of(m, plan, s, geo, opens, fps, speaks=None, wides=None):
+    """The per-frame plan the kit plays: entries {f, pose, prev, k, open, wide, blink, lid[, since][, facing]}, each
+    holding
+    until the next one (an entry is written only where a value changes). wide 0..1: the mouth round .. wide, 0.5
+    where it does not speak; lid 0..1: how shut the eyes are; blink: at
     least half shut (a module that draws only open or shut eyes); since: the frames since a pose change began, while
     it eases (absent once it has settled; the atlas swaps its pictures by it)."""
     t0, t1 = span(m, plan)
@@ -340,9 +346,15 @@ def frames_of(m, plan, s, geo, opens, fps, speaks=None):
             since = f - fc if f - fc < n_ease else None
         else:
             pose, prev, k, mir = start, start, 1.0, False
-        o = opens[f] if 0 <= f < len(opens) and any(a - 1e-9 <= t < b for a, b in sp) else 0.0
+        # the spans are the sound's: frame f shows the window of frame g = f + MOUTH_LEAD (mouth.json moved it early),
+        # which speaks when it overlaps a span; whole frames, so no sum of seconds lands a frame off
+        g = f + MOUTH_LEAD
+        talks = 0 <= f < len(opens) and any(g + 1 > a * fps + 1e-6 and g < b * fps - 1e-6 for a, b in sp)
+        o = opens[f] if talks else 0.0
+        w = wides[f] if talks and wides is not None and f < len(wides) and o > 0 else 0.5
         lid = lids.get(f, 0.0)
-        e = {"pose": pose, "prev": prev, "k": round(k, 3), "open": round(float(o), 3), "blink": lid >= 0.5,
+        e = {"pose": pose, "prev": prev, "k": round(k, 3), "open": round(float(o), 3), "wide": round(float(w), 3),
+             "blink": lid >= 0.5,
              "lid": round(lid, 3)}
         if since is not None:
             e["since"] = since
@@ -538,6 +550,7 @@ def props_of(e, plan, s, doc, brand, bdir, staged, fps=30, rem=None):
     if sp and (problem or not mouth):
         return None, f"{problem or 'no mouth.json'}: run mascot.py mouth edit/{Path(e).name} first"
     opens = (mouth or {}).get("open") or []
+    wides = (mouth or {}).get("wide") or None
     band = subtitle_band(plan, s, doc)
     t0, t1 = span(m, plan)
     x, y, sc = placement(m, geo, band, ui_safe_of(s, doc), bool(full_scenes(plan, t0, t1)))
@@ -546,7 +559,7 @@ def props_of(e, plan, s, doc, brand, bdir, staged, fps=30, rem=None):
            **{k: sm[k] for k in ("rig", "atlas") if sm.get(k)},
            **({"rig": rig} if rig is not None else {}),
            "x": x, "y": y, "scale": sc, "facing": facing, "from": t0, "to": t1,
-           "frames": frames_of(m, plan, s, geo, opens, fps, sp)}
+           "frames": frames_of(m, plan, s, geo, opens, fps, sp, wides)}
     ch = changes(m, geo)
     box = union([rect(x, y, sc, geo, facing)] + ([rect(x, y, sc, geo, -facing)] if any(c[3] for c in ch) else []))
     out["top"] = box[1]  # a full scene's text ends SCENE_GAP above it while the mascot is on (SceneLayer.tsx)

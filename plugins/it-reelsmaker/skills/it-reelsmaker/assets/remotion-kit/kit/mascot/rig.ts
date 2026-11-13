@@ -55,6 +55,33 @@ export const armPath = (s: Pt, arm: Arm, l1: number, l2: number) => {
 const reflect = (deg: number) => (((180 - deg) % 360) + 360) % 360;
 export const mirrorArm = (a: Arm): Arm => ({ a1: reflect(a.a1), a2: reflect(a.a2) });
 
+/** The pose's own mouth, the expression the speech is drawn over: its width and how far its middle sits below the
+ *  corners (px; > 0 a smile, < 0 a frown, 0 a straight line). */
+export type MouthBase = { width: number; curve: number };
+export type MouthShape = { d: string; filled: boolean; width: number; height: number };
+const SHUT = 0.05; // an opening under this is drawn as the expression's line
+/** The mouth for a frame, around its centre (0, 0) on the line through its corners: shut, the expression's line
+ *  (stroke it); open, a shape whose corners stay at the expression's height, its upper lip curved exactly like the
+ *  expression, its lower lip dropped by `open` (fill it). `wide` 1 (an "ee") makes it wider and flatter, 0 (an "oo")
+ *  narrower and taller; at 0.5 the corners stay where the expression put them. Corners, then the upper lip to the
+ *  right corner, then the lower lip back. */
+export const mouthPath = (base: MouthBase, open: number, wide: number): MouthShape => {
+  const o = clamp01(open);
+  const w = clamp01(wide);
+  // the width moves with `wide` only as far as the mouth is open: shut or neutral, the corners are the expression's
+  const half = (base.width / 2) * (o <= SHUT ? 1 : 1 + 0.4 * (w - 0.5) * o);
+  const cu = 2 * base.curve; // the upper lip keeps the expression's curve (a quadratic curve reaches half its control)
+  if (o <= SHUT) return { d: `M ${-half} 0 Q 0 ${cu} ${half} 0`, filled: false, width: 2 * half, height: Math.abs(base.curve) };
+  const drop = Math.max(2, base.width * o * mix(0.75, 0.42, w));
+  const cl = Math.max(cu + 4, 2 * (base.curve + drop));
+  return {
+    d: `M ${-half} 0 Q 0 ${cu} ${half} 0 Q 0 ${cl} ${-half} 0 Z`,
+    filled: true,
+    width: 2 * half,
+    height: (cl - Math.min(0, cu)) / 2,
+  };
+};
+
 /** The idle breath, px in the box: a slow rise and fall, one breath every BREATH_S seconds (background motion,
  *  SKILL.md section 4). */
 export const BREATH_S = 3.2;

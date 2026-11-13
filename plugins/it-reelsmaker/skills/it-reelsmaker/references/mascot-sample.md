@@ -1,13 +1,13 @@
 # Sample mascot drawn in code: Pip
 
-One complete mascot module for the contract in `references/mascot.md`, as a starting point for a brand's own character: a rounded note with two dot eyes, a mouth and two arms of two segments, in the brand's colors. It shows the conventions every drawn mascot follows: `box` and `poses` as literals (the scripts read them), the box holding every pose with the arms raised, the anchor between the eyes, poses as a table of numbers blended by `rig.ts`, the mouth from `f.open`, the eyelids from `f.lid`, no text, no outline, no shadow, no randomness.
+One complete mascot module for the contract in `references/mascot.md`, as a starting point for a brand's own character: a rounded note with two dot eyes, a mouth and two arms of two segments, in the brand's colors. It shows the conventions every drawn mascot follows: `box` and `poses` as literals (the scripts read them), the box holding every pose with the arms raised, the anchor between the eyes, poses as a table of numbers blended by `rig.ts`, the mouth from `f.open` and `f.wide` over the pose's smile (`mouthPath`), the eyelids from `f.lid`, no text, no outline, no shadow, no randomness.
 
 Copy it into the person's Remotion project as `src/mascot/<Name>.tsx`, change `acme` to the brand's slug, then make it the brand's own: the body's shape, the proportions, the eyes, what each pose does. Every brand gets its own figure; this one is only the pattern. Register it: `brand.py mascot <slug> --drawn src/mascot/<Name>.tsx --symmetric` (Pip mirrors well) and `brand.py stage <slug> --remotion <dir>`; check the types with `npx tsc`.
 
 ```tsx
 import brand from "../brands/acme.json";
 import type { MascotBox, MascotFrame } from "../kit/mascot/types";
-import { armPath, mix, poseAt } from "../kit/mascot/rig";
+import { armPath, mix, mouthPath, poseAt } from "../kit/mascot/rig";
 
 // Pip: a rounded note with two arms, drawn in code in the brand's colors. The box holds every pose, arms included.
 export const box: MascotBox = { width: 520, height: 480, anchor: [260, 190] };
@@ -43,8 +43,8 @@ export const render = (f: MascotFrame) => {
   const ex = 30 + p.lookX;
   const ey = 190 + p.lookY;
   const mouthY = 262 + p.lookY * 0.5;
-  const mw = mix(52, 38, f.open);
-  const mh = 6 + 34 * f.open;
+  // the pose's own mouth (its smile) is the base the speech opens: Pip talks and keeps smiling
+  const mouth = mouthPath({ width: 46, curve: 8 * p.smile }, f.open, f.wide);
   const winkR = f.pose === "wink" && f.k > 0.5;
   return (
     <svg width={520} height={480} viewBox="0 0 520 480" style={{ overflow: "visible" }}>
@@ -66,12 +66,8 @@ export const render = (f: MascotFrame) => {
             <line x1={260 + ex - 12} y1={ey - 34 - p.brow * 6} x2={260 + ex + 14} y2={ey - 32 - p.brow * 6} />
           </g>
         ) : null}
-        {f.open > 0.05 ? (
-          <ellipse cx={260 + p.lookX * 0.6} cy={mouthY} rx={mw / 2} ry={mh / 2} fill={INK} />
-        ) : (
-          <path d={`M${237 + p.lookX * 0.6} ${mouthY - 4} Q${260 + p.lookX * 0.6} ${mouthY - 4 + 16 * p.smile} ${283 + p.lookX * 0.6} ${mouthY - 4}`}
-            stroke={INK} strokeWidth={6} fill="none" strokeLinecap="round" />
-        )}
+        <path transform={`translate(${260 + p.lookX * 0.6} ${mouthY - 4})`} d={mouth.d} fill={mouth.filled ? INK : "none"}
+          stroke={INK} strokeWidth={6} strokeLinecap="round" strokeLinejoin="round" />
       </g>
     </svg>
   );

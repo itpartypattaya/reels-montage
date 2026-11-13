@@ -1,7 +1,7 @@
 // The mascot from a ready character picture: the PNG atlas that scripts/mascot_atlas.py cuts from the brand's own
 // illustration (references/mascot-atlas.md). One <Img> of the whole atlas, cropped to the current pose's frame.
-// Mouth: the pose's talk frame when it has one, else an ellipse in the drawing's line color (a tongue when it opens
-// wide). Blink: the pose's blink frame, or an eyelid in the skin color with a lash arc (over the talk frame too), half
+// Mouth: the pose's talk frame when it has one, else an ellipse in the drawing's line color, wider or rounder with the
+// voice (a tongue when it opens wide). Blink: the pose's blink frame, or an eyelid in the skin color with a lash arc (over the talk frame too), half
 // lowered on the blink's half-shut frames. A pose change is a swap of pictures under shut eyes (the plan blinks over
 // it), with a two-frame cross-fade: a picture has no in-between drawings to interpolate.
 // The kit reads no files itself: the stage puts rig.json's content into the props (props.mascot.rig) and copies
@@ -50,9 +50,10 @@ const TONGUE_COLOR = "#d9707f";
  *  the drawing's line color, with a tongue in its lower half once it opens wide. The lens reaches 0.5·drop at its
  *  middle (a quadratic curve peaks at half its control point); the tongue stays inside: ±half·0.5 at 0.3·drop,
  *  where the lens is ±half·0.64 wide, down to 0.45·drop at its middle. */
-const OpenMouth: React.FC<{ x: number; y: number; width: number; open: number; ink: string }> = ({ x, y, width, open, ink }) => {
-  const half = (width / 2) * (1 - 0.1 * open);
-  const drop = width * (0.12 + 0.4 * open);
+const OpenMouth: React.FC<{ x: number; y: number; width: number; open: number; wide: number; ink: string }> = ({ x, y, width, open, wide, ink }) => {
+  // wide 1 (an "ee") wider and flatter, 0 (an "oo") narrower and taller
+  const half = (width / 2) * (1 - 0.1 * open) * (0.8 + 0.35 * wide);
+  const drop = width * (0.12 + 0.4 * open) * (1.25 - 0.45 * wide);
   const lift = drop * 0.25;
   const lens = `M ${-half} 0 Q 0 ${-lift} ${half} 0 Q 0 ${drop} ${-half} 0 Z`;
   const tw = half * 0.5;
@@ -127,7 +128,7 @@ export const atlasMascot = (rig: AtlasRig, atlasSrc?: string): AtlasMascotModule
         ) : null}
         {mouthOn || lids ? (
           <svg width={bw} height={bh} style={{ position: "absolute", left: 0, top: 0, overflow: "visible" }}>
-            {mouthOn ? <OpenMouth x={mx} y={my} width={p.mouthW} open={f.open} ink={p.ink} /> : null}
+            {mouthOn ? <OpenMouth x={mx} y={my} width={p.mouthW} open={f.open} wide={f.wide} ink={p.ink} /> : null}
             {lids ? eyes.map(([ex, ey], i) => <ShutEye key={i} x={ex} y={ey} gap={gap} lid={eyesNow.overlay} skin={p.skin} ink={p.ink} />) : null}
           </svg>
         ) : null}
