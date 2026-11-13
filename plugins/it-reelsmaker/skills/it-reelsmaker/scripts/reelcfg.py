@@ -57,7 +57,11 @@ KNOWN = set(SETTING_KEYS_BOOL) | {"brand", "style", "subtitles", "intensity", "b
                                   "format", "window", "label", "subtitles_at",  # format: "framed" (window, label, subtitles_at) or "full"
                                   "profile", "content_format",  # the video's goal and its form (references/profiles.md)
                                   "workflow",  # stops and questions (SKILL.md, section 6)
-                                  "voice"}  # on_camera | off_camera (reels_common.VOICE_MODES)
+                                  "voice",  # on_camera | off_camera | none (reels_common.VOICE_MODES)
+                                  # the no-speech reel's sound and a series' marks (references/no-speaker.md, music.md)
+                                  "music", "rubric", "corner_last_s"}
+MUSIC_SOURCES = ("code", "own", "app", "none")  # music.py | a licensed track | a track in the app | no music on purpose
+MUSIC_KEYS = ("source", "style", "bpm", "seed", "markers", "file")
 WORKFLOWS = ("quick", "standard", "full")
 # what a series preset does not carry: values measured on this video's frames, a one-off permission to go past the
 # brand tone (review 2026-10-18: it became the series' rule), the plan's own copies, and the finish (kept apart)
@@ -242,11 +246,43 @@ def cmd_preset(a):
         print("the settings snapshot in visual_plan.json is updated")
 
 
+def music_sets(over, old):
+    """music.<key>=<value> sets one field of reel.json -> music (merged over the video's own); the music's answers are
+    checked: where it comes from, a style music.py has, a tempo it plays."""
+    dotted = {k: over.pop(k) for k in [k for k in over if k.startswith("music.")]}
+    if dotted:
+        m = dict(over.get("music") or (old if isinstance(old, dict) else {}) or {})
+        for k, v in dotted.items():
+            m[k[len("music."):]] = v
+        over["music"] = m
+    m = over.get("music")
+    if m is None:
+        return
+    if not isinstance(m, dict):
+        sys.exit('not saved: music is an object: {"source": "code", "style": "groove", "bpm": 104, "markers": {...}}')
+    bad = [k for k in m if k not in MUSIC_KEYS]
+    if bad:
+        sys.exit(f"not saved: music.{bad[0]}: the fields are {', '.join(MUSIC_KEYS)}")
+    if m.get("source") is not None and m["source"] not in MUSIC_SOURCES:
+        sys.exit(f"not saved: music.source {m['source']!r}: code (music.py), own (a licensed track), app (a track in "
+                 f"the app when publishing) or none (no music, on purpose)")
+    if m.get("style") is not None:
+        from music import STYLES
+        if m["style"] not in STYLES:
+            sys.exit(f"not saved: music.style {m['style']!r} (music.py has {', '.join(STYLES)})")
+    if m.get("bpm") is not None:
+        from vp_script import BPM_RANGE
+        if not (isinstance(m["bpm"], (int, float)) and BPM_RANGE[0] <= m["bpm"] <= BPM_RANGE[1]):
+            sys.exit(f"not saved: music.bpm {m['bpm']!r}: {BPM_RANGE[0]}-{BPM_RANGE[1]}")
+
+
 def cmd_save(a):
     over = parse_sets(a.set)
     if "finish" in over:
         sys.exit("not saved: finish is the series preset's ending (reelcfg.py preset use); a video's own ending is set "
                  "with visual_plan.py stage --card / --sting / --corner")
+    e0 = edit_dir(a.edit, create=True)
+    music_sets(over, (load_json(e0 / "reel.json", {}) or {}).get("music"))
     known = KNOWN | set(addon_keys("SETTING_KEYS_BOOL")) | set(addon_keys("SETTING_KEYS"))
     for k in over:
         if k not in known:

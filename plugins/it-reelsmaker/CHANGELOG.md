@@ -2,6 +2,35 @@
 
 What changed in IT Reelsmaker, written for the people who use it. The newest version is on top. The skill shows a short “What's new” note from this file once, on the first edit after an update.
 
+## 1.30.0
+
+- **A video without speech.** No voice at all: your silent shots, or a person on screen who does not speak, and the
+  brief's text on screen, word for word. Put the text into `script.json` (one block per line of the brief, with its
+  role: hook, label, translation, punchline...); `visual_plan.py script` times each block exactly as long as it takes
+  to read, `cut.py` lays the clips under the blocks (`"from": "block:label"`), and `visual_plan.py init --no-speech`
+  makes one scene per block. `validate` fails a word changed in the text, a block left out or shown twice.
+- **Sounds and music are always asked about** for such a video: effects on the events, and music composed in code,
+  your own licensed track, or a track picked in the app when publishing (then the video gets its sounds and the
+  report reminds you to pick the track).
+- **Music composed in code: `music.py`.** A track of exactly the video's length (the end card included), in four
+  styles that differ in instruments, rhythm and density (groove, pulse, tension, ambient without a marked beat), with
+  the tape stopping on a turn in the text, coming back lighter under the reading, and a "button" accent on the
+  punchline followed by silence for the reaction. The same request gives the same file; `--seed` gives another
+  arrangement. Its `beats.json` says which WAV it belongs to, where the beats are and which silences are meant; scenes
+  can land on beats (`--at beat:N`, `marker:button`), and reading always wins over the grid. Needs numpy
+  (`doctor.py` checks it).
+- **The master keeps −14 LUFS after the sound effects** (with music, the mix used to come out louder after the
+  effects), refuses music made for another length or another file, and refuses a licensed track that ends before a
+  video without speech. The code music's own silences are not "music ran out".
+- **Series marks:** a rubric label at the top (`reel.json -> rubric`) and the corner logo for the last seconds only
+  (`corner_last_s`), kept by a series preset together with the voice and the music.
+- A video without speech may end on its punchline, held for the reaction, with no call to action. A clip slowed under
+  ×0.75 gets a warning (the frames repeat).
+- **Kit 1.19.0** (`kit.py update`): the format comes in the props by name, the rubric label, the corner logo from a
+  given second.
+- New guide: `references/music.md`; the video without speech in `references/no-speaker.md`, its templates in
+  `references/structure.md`.
+
 ## 1.29.1
 
 - **No camera? The agent now offers it.** Ask for a video without filming and it asks one question: scenes over

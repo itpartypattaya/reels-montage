@@ -26,6 +26,7 @@ export { MediaOn, Sampled, TextProbe, useMedia } from "./kit/Sample";
 export type { Sample } from "./kit/Sample";
 import { breakLines, fitSize, useFontsReady } from "./kit/Phrase";
 import { WHIP_BLUR, cameraAt, driftZoom, fitCamera, picShots } from "./kit/anchor";
+import { cornerOn, rubricOn, scenesOnlyOf } from "./kit/series";
 import type { Cam, Shot } from "./kit/anchor";
 import { CalloutLayer } from "./kit/Callout";
 import type { CalloutSpec } from "./kit/Callout";
@@ -62,6 +63,10 @@ export type ReelKitProps = {
   camera?: Shot[] | null;
   hook?: { text: string; until: number } | null;
   corner?: boolean; // brand mark in the corner
+  cornerFrom?: number | null; // the corner mark only from this second (reel.json → corner_last_s: the last N seconds of a series)
+  // the video's format (visual_plan.py stage): "silent" — a no-speech reel over its own picture; absent — guessed as before
+  format?: string | null;
+  rubric?: { text: string; from?: number | null; to?: number | null } | null; // a series' caps label at the top (reel.json → rubric)
   cornerTop?: number; // its top over the video (default 236); export: a paid ad's safe zone top (references/profiles.md)
   endCard?: { line1?: string; line2?: string; seconds?: number } | null; // no line1: a logo sting (logo with the tagline)
   scenes?: SceneSpec[] | null; // designed scenes (visual_plan.py stage --props → scenes); absent — the video renders as before
@@ -265,8 +270,9 @@ export const Corner: React.FC<{ p: ReelKitProps }> = ({ p }) => {
   const frame = useCurrentFrame();
   const src = cornerLogo(p);
   // stays while the end card's field fades in over it (STING_IN), as the subtitles do
-  if (!p.corner || !src || frame >= p.captions.duration * KIT_FPS + (p.endCard ? STING_IN : 0)) return null;
-  const a = interpolate(frame, [4, 16], [0, 1], { ...clamp, easing: easeOut }) * (1 - sceneActivity(p.scenes, frame, KIT_FPS)); // fades out during a scene
+  if (!src || !cornerOn(p, frame, KIT_FPS, p.endCard ? STING_IN : 0)) return null;
+  const f0 = Math.round((p.cornerFrom ?? 0) * KIT_FPS); // the series' logo for the last seconds fades in there
+  const a = interpolate(frame - f0, [4, 16], [0, 1], { ...clamp, easing: easeOut }) * (1 - sceneActivity(p.scenes, frame, KIT_FPS)); // fades out during a scene
   if (a <= 0) return null;
   // “framed”: on the field above the window, in the label's row (no room there — no mark)
   const g = p.framed ? framedGeometry(p.framed) : null;
@@ -274,6 +280,21 @@ export const Corner: React.FC<{ p: ReelKitProps }> = ({ p }) => {
   if (size < 56) return null;
   return <Img src={staticFile(src)} style={{ position: "absolute", right: 140, top: g ? g.win.y - 12 - size : p.cornerTop ?? CORNER_TOP, width: size, height: size,
     objectFit: "contain", opacity: 0.9 * a }} />;
+};
+
+/** A series' rubric: a light caps plate at the top (y 228, under the app's top bar), from..to; the scenes keep below it. */
+export const Rubric: React.FC<{ p: ReelKitProps; font: string }> = ({ p, font }) => {
+  const frame = useCurrentFrame();
+  if (!rubricOn(p, frame, KIT_FPS) || !p.rubric) return null;
+  const f0 = Math.round((p.rubric.from ?? 0) * KIT_FPS);
+  const f1 = Math.round((p.rubric.to ?? p.captions.duration) * KIT_FPS);
+  const a = Math.min(interpolate(frame - f0, [0, 8], [0, 1], { ...clamp, easing: easeOut }), interpolate(f1 - frame, [0, 6], [0, 1], clamp));
+  const c = p.brand.colors;
+  return (
+    <div data-rk="rubric" style={{ position: "absolute", left: 60, top: 228, maxWidth: 840, padding: "8px 18px", borderRadius: 10,
+      backgroundColor: alpha(c.light || "#FFFFFF", 0.92), color: c.primary, fontFamily: font, fontWeight: 600, fontSize: 28,
+      letterSpacing: "0.2em", textTransform: "uppercase", whiteSpace: "nowrap", overflow: "hidden", opacity: a }}>{p.rubric.text}</div>
+  );
 };
 
 export const EndCard: React.FC<{ p: ReelKitProps; look: Look; fonts: { heading: string; body: string } }> = ({ p, look, fonts }) => {
@@ -360,10 +381,11 @@ const ReelKitFrame: React.FC<ReelKitProps> = (p) => {
       {offCamera ? null : shadeLayer}
       <Hook p={p} look={look} font={fonts.heading} />
       <Corner p={p} />
-      <SceneLayer scenes={p.scenes} brand={p.brand} look={look} words={p.captions.words} scenesOnly={!p.video} pictureShots={picShots(p.captions)} sceneTone={p.sceneTone}
+      <SceneLayer scenes={p.scenes} brand={p.brand} look={look} words={p.captions.words} scenesOnly={scenesOnlyOf(p)} pictureShots={picShots(p.captions)} sceneTone={p.sceneTone}
         framed={g ? sceneBox(g) : null}
         textBottom={offCamera && p.subtitles !== "none" ? (p.subtitlesTop ?? 1290) - VOICE_SUB_GAP : null} />
       {offCamera ? shadeLayer : null}
+      <Rubric p={p} font={fonts.body} />
       <MascotLayer mascot={p.mascot} modules={MASCOTS} />
       {!g && p.video ? (
         <CalloutLayer callouts={p.callouts} brand={p.brand} look={look} fonts={fonts} bt={bt} camera={p.camera}

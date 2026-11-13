@@ -5,6 +5,7 @@
 
 Required (exit code 1 if missing): Python 3.9+, ffmpeg and ffprobe with libx264 and the loudnorm filter.
 Recommended: Pillow (contact sheets, covers, logos), Node.js 18+ and a Remotion project (graphics and render).
+Optional: numpy (music.py, music composed in code for a no-speech reel).
 Optional, per feature: faster-whisper and its model (transcribe.py), OpenCV and the YuNet face model (faces.py),
 rembg and its model (matte.py), libvpx-vp9 in ffmpeg (cut-out figure with alpha).
 Nothing is installed or downloaded by this script: it only prints the commands.
@@ -24,6 +25,7 @@ INSTALL = {
     "ffmpeg": {"windows": "winget install Gyan.FFmpeg", "macos": "brew install ffmpeg", "linux": "sudo apt install ffmpeg"},
     "node": {"windows": "winget install OpenJS.NodeJS.LTS", "macos": "brew install node", "linux": "sudo apt install nodejs npm"},
     "pillow": f"{PY} -m pip install Pillow",
+    "numpy": f"{PY} -m pip install numpy",
     "opencv": f"{PY} -m pip install opencv-python-headless",
     "faster-whisper": f"{PY} -m pip install faster-whisper",
     "whisper-model": f"{PY} -c \"from faster_whisper import download_model; download_model('medium')\"",
@@ -80,6 +82,7 @@ def check_ffmpeg():
 
 def check_python_packages():
     add("Pillow", "recommended", has_module("PIL"), "", INSTALL["pillow"])
+    add("numpy (music.py: music composed in code)", "optional", has_module("numpy"), "", INSTALL["numpy"])
     add("OpenCV (faces.py; track.py: callouts that follow an object)", "optional", has_module("cv2"), "", INSTALL["opencv"])
     fw = has_module("faster_whisper")
     # the model itself is not looked up: its download cache belongs to another tool, and the plugin reads no other

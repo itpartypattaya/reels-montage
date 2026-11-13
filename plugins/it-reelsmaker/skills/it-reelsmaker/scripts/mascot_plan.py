@@ -147,7 +147,7 @@ def voice_end(e, plan, mouth):
 def subtitle_band(plan, s, doc=None):
     """[top, bottom] of the subtitle band the mascot keeps clear of, or None without subtitles. One place to ask:
     the band the last stage recorded, else the layout's."""
-    if plan.get("format") == "scenes-only" or str(s.get("subtitles") or "") == "none":
+    if plan.get("format") in ("scenes-only", "silent") or str(s.get("subtitles") or "") == "none":  # no subtitles
         return None
     if plan.get("subtitles_band"):
         return list(plan["subtitles_band"])

@@ -27,6 +27,21 @@ def copy_voice(e, rem, name):
         print(f"voice: {src} -> public/{name}/voice.wav" + (" (updated)" if dt else ""))
 
 
+def series_marks(props, s, plan):
+    """A series' marks over the video (reel.json, kept by a preset): the rubric label at the top (a string: the whole
+    rough cut; {text, from, to}: those seconds) and the corner logo for the last N seconds (corner_last_s)."""
+    r = s.get("rubric")
+    D = float(plan["duration"])
+    if isinstance(r, str) and r.strip():
+        props["rubric"] = {"text": r.strip(), "from": 0.0, "to": D}
+    elif isinstance(r, dict) and str(r.get("text") or "").strip():
+        props["rubric"] = {"text": str(r["text"]).strip(), "from": float(r.get("from") or 0.0),
+                           "to": float(r["to"]) if r.get("to") is not None else D}
+    n = s.get("corner_last_s")
+    if props.get("corner") and isinstance(n, (int, float)) and not isinstance(n, bool) and n > 0:
+        props["cornerFrom"] = round(max(0.0, D - float(n)), 3)
+
+
 def cmd_export(a):
     e = edit_dir(a.edit)
     errs, _ = cmd_validate(a, quiet=True)
@@ -146,7 +161,8 @@ def cmd_export(a):
         if voice:
             copy_voice(e, rem, name)
         lang = plan["settings"].get("subtitles_lang")
-        subs_cap = None if (only and not voice) or not lang else subtitles_in(e, lang)
+        silent = plan.get("format") == "silent"  # a no-speech reel: its text is in the scenes, there are no subtitles
+        subs_cap = None if (only and not voice) or silent or not lang else subtitles_in(e, lang)
         # the speech words stay in captions (scenes land on them, the render length is its duration); a translation
         # goes only to the subtitles
         props = {"video": "" if only else f"{name}/video.mp4",
@@ -193,7 +209,7 @@ def cmd_export(a):
             if not mode:
                 warn(f"subtitles '{props['subtitles']}': the kit draws accent, plate and typewriter; accent is used")
             props["subtitles"] = mode or "accent"
-        if not only or voice:  # faces.py audit checks the render against the band it really has
+        if (not only or voice) and not silent:  # faces.py audit checks the render against the band it really has
             # the kit draws at most two lines (Subtitles.tsx): the band is the mode's two-line block from the top, above
             # the UI (T4: the band said 1250-1430 while a three-line phrase reached 1455)
             h = SUB_BLOCK_H.get(props["subtitles"], band[1] - band[0])
@@ -241,10 +257,13 @@ def cmd_export(a):
             props["cover"] = cover  # the cover is a separate still composition, not in the video's timeline
         if only and not voice:
             props["subtitles"], props["drift"] = "none", False
+        elif silent:  # the format for the kit by name (kit/series.ts), never guessed from the video; no subtitles
+            props["format"], props["subtitles"] = "silent", "none"
         elif voice:
             props["drift"] = False
         if voice_mode(s) != "on_camera":  # the kit keeps the subtitles over full scenes (off_camera); absent: on camera
             props["voiceMode"] = voice_mode(s)
+        series_marks(props, s, plan)
         if scenes:
             print(f"scenes: {len(scenes)} in props.scenes; subtitles hidden in {len(hide)} window(s)")
         if plan.get("mascot"):  # the brand mascot: props.mascot, its box kept clear (references/mascot.md)

@@ -134,7 +134,7 @@ def no_footage(plan):
 
 
 def format_label(plan):
-    return "'scenes + voice'" if (plan or {}).get("format") == "scenes-voice" else "'scenes only'"
+    return {"scenes-voice": "'scenes + voice'", "silent": "'no speech'"}.get((plan or {}).get("format"), "'scenes only'")
 
 
 def ensure_plan(e):
@@ -375,6 +375,25 @@ def resolve_at(at, plan, cap):
         if len(hits) < nth:
             sys.exit(f"the word '{target}' occurs {len(hits)} time(s), #{nth} is needed")
         return round(hits[nth - 1]["start"], 3)
+    # a no-speech reel (validate keeps the copies in the plan): a text block, a beat or a marker of the code music
+    m = re.fullmatch(r"(block|beat|marker):(.+)", at)
+    if m:
+        kind, ref = m.groups()
+        if kind == "block":
+            b = next((x for x in plan.get("script_timing") or [] if x["id"] == ref), None)
+            if not b:
+                sys.exit(f"no text block {ref!r} in the plan (script.json timed, visual_plan.py validate copies it)")
+            return round(b["start"], 3)
+        music = plan.get("music") or {}
+        if kind == "beat":
+            beats = music.get("beats") or []
+            if not ref.isdigit() or not 1 <= int(ref) <= len(beats):  # the n-th heard beat, from 1 (as word:...#n)
+                sys.exit(f"beat:{ref}: the music has {len(beats)} heard beat(s), numbered from 1 (beats.json)")
+            return round(beats[int(ref) - 1], 3)
+        marks = music.get("markers") or {}
+        if ref not in marks:
+            sys.exit(f"marker:{ref}: the music's markers are {', '.join(marks) or 'none'} (beats.json)")
+        return round(marks[ref], 3)
     return float(at)
 
 

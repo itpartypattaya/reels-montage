@@ -173,6 +173,12 @@ head with a stretch of voice-over; a text ending after the voice): the same fold
 `ranges` as usual and the picture in `picture` blocks, built by one `cut.py` run; color per place, strangers marked and
 hidden (a blocking check), the speaker's rules held only over the speaker: `references/no-speaker.md`.
 
+**A no-speech reel** (no voice at all: silent shots or a person who does not speak, the brief's text on screen, sounds
+and music): `reel.json -> voice: none`; the brief's text word for word in `edit/<id>/script.json`, timed by its reading
+(`visual_plan.py script`), the clips in `picture` blocks on those blocks, `visual_plan.py init --no-speech`; the sounds
+and the music are always asked about (music composed in code by `music.py`, an own track, or one picked in the app):
+`references/no-speaker.md`, `references/music.md`.
+
 **Workflow** (`reel.json → workflow`, `reelcfg.py save edit/<id> --set workflow=…`, the project default `standard`) sets how often the person is asked before the master. Asked for “quickly”, “as usual”, or a series → `quick`; a new brand, an ad or a first video for a client → `standard` or `full`.
 
 | `workflow` | Asks | Stops before the master |
@@ -184,7 +190,7 @@ hidden (a blocking check), the speaker's rules held only over the speaker: `refe
 ### Step 0. Brand, style, subtitles, inserts — the first `AskUserQuestion`
 - **A series** (“the next one like last week”): `reelcfg.py preset use <name> edit/<id>` writes the series' answers, then ask only what the preset lacks. A preset is made from a finished video, `reelcfg.py preset save <name> --from edit/<id>`: its settings and its ending (corner logo, end card or sting with the card's lines), which `visual_plan.py stage` draws until the video's own stage changes it; the hook and measured values stay per video.
 - **Profile and format** (section 5; opt-in). A paid ad (an ad, a promoted post with a budget) → `reelcfg.py save edit/<id> --set profile=ad`, no question. The person asks for a profile or its rules (“as a promo”, “with the checklist”) → save it, `--set profile=… content_format=…`. Otherwise no profile in any workflow: name the format in the plan as a guide for length and graphics, and don't save it. In `full`, one separate question in step 0: “no profile” first, then the 2–3 likely profiles (`references/profiles.md`, “Choosing it”). The profile's defaults (intensity, scene tone, memes) stay under the brand tone: `reelcfg.py show` says what it held back; a brand's own tone for a profile is the owner's once-saved decision (`brand.py tone <slug> <preset> --profile <id>`), not a per-video `tone_override`.
-- **No footage** (“a video without filming”, “I don't want to be on camera”, a promo, an audio file only): one question, “scenes + your voice: record it on a phone (m4a, wav, mp3), an explainer of up to ~70 s” · “your voice over your own silent shots or photos (`references/no-speaker.md`)” · “scenes only: a promo of 15–25 s with music or sounds”; an audio file brought along with no footage is the first one, with silent shots the second (`references/scenes.md`).
+- **No footage** (“a video without filming”, “I don't want to be on camera”, a promo, an audio file only): one question, “scenes + your voice: record it on a phone (m4a, wav, mp3), an explainer of up to ~70 s” · “your voice over your own silent shots or photos (`references/no-speaker.md`)” · “scenes only: a promo of 15–25 s with music or sounds”; an audio file brought along with no footage is the first one, with silent shots the second (`references/scenes.md`). Silent shots and a text but no voice at all: the no-speech reel, with its sound question (sounds on events + music composed in code, an own track, or one picked in the app; `references/no-speaker.md`).
 - **Brand.** If it is clear from the prompt, the folder or the project defaults (`settings.brand`), take its profile; otherwise offer the 3 most recent saved brands, and a new one via “Other” (name and colors). Read the brand's `rules.md` and its video guide `guide.md` (if set) before any graphics.
 - **Style.** The kit's styles with the recommendation for this video first and a one-line explanation; a custom one only when asked for or the brand's default (section 3).
 - **Subtitle mode.**
@@ -363,7 +369,7 @@ Each only if the brief chose it; numbers, layouts, risks and which ones are not 
 An `{{ASSETS_DIR}}` folder with sounds, music, icons and memes, used through a catalog (sound start, loudness, background, brand verdict, overview sheets, a meme annotation; `library_catalog.py --dir {{ASSETS_DIR}}`), not by browsing files: `references/library.md`. In every video:
 - sound effects: only for what is seen, no more than one every 2–3 s, placed by the start of the sound, not of the file, one frame after the picture, 12–18 dB below voice peaks; no library → short sounds synthesized in code with ffmpeg (recipes in `references/library.md`);
 - icons: flat pictograms; service logos only when the service is named; `{{FORBIDDEN_IMAGES}}`, celebrities and film stills are a no; one at a time, 180–320 px, not on the face;
-- **music: license first** ⟨YOURS: `{{ACCOUNT_TYPE}}`⟩: a burned-in track needs a commercial license; the safe default is a render without music and a track picked in the app when publishing.
+- **music: license first** ⟨YOURS: `{{ACCOUNT_TYPE}}`⟩: a burned-in track needs a commercial license; the safe default is a render without music and a track picked in the app when publishing, or music composed in code for this video (`music.py`, yours, `references/music.md`).
 
 ## 12. Audio mastering — every video
 
@@ -439,7 +445,8 @@ Several agents at once in one editing folder are normal: write JSON (video setti
 | `references/profiles.md` | step 0 and before showing the draft: the video's profile and content format, their defaults under the brand tone, the brand's own tone for a profile, each profile's checklist with sources |
 | `references/structure.md` | step 3a: start, middle and ending mechanics (teaser, slow start, proof first, beat before the payoff, re-hook, payoff with a hold, callback, loop), how to offer them, a 20–30 s video in beats |
 | `references/examples.md` | steps 5, 9 and 10: what the cut plan, the self-review notes and the delivery report look like |
-| `references/no-speaker.md` | step 0 and 6 when the voice is not a person speaking in the frame: a voice-over over clips and photos, a talking head with a voice-over stretch, the `picture` block, color per place, strangers, the two-track contract (sound and picture apart) |
+| `references/no-speaker.md` | step 0 and 6 when the voice is not a person speaking in the frame: a voice-over over clips and photos, a talking head with a voice-over stretch, the no-speech reel (script.json, its timing, the sound question), the `picture` block, color per place, strangers, the two-track contract (sound and picture apart) |
+| `references/music.md` | music composed in code (`music.py`): styles, markers, the WAV, `beats.json`, how the plan and the master use it |
 | `references/longform.md` | a long recording → a series of clips: the brief, transcript or subtitles, reading by parts, the cards, the checks, the list, extract, the framed camera proposal, cost and limits |
 | `references/playbook.md` | before the plan and at delivery: measurement vs taste, trust levels, the project playbook cards, conflicts, “Supports”, learning from a guide or a video, turning corrections into rules |
 | `references/pitfalls.md` | something went wrong in steps 6–9: symptom → cause → what to do |

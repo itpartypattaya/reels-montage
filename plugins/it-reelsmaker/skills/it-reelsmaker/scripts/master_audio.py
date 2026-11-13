@@ -335,7 +335,12 @@ def music_start(a):
 def master_no_voice(a, tmp, D, why):
     """A render without sound (the "scenes only" format): loudnorm fails on silence (measured_I = −inf).
     Without --music and --sfx: skipped with a message, the file is copied as is; with --music: the music is mastered
-    to −14 LUFS; scene sounds (--sfx) go onto the music, or onto silence, NO_VOICE_BELOW dB under its peak."""
+    to −14 LUFS; scene sounds (--sfx) go onto the music, or onto silence, NO_VOICE_BELOW dB under its peak.
+    A no-speech reel (its folder's reel.json -> voice: none): the music the brief chose must be there and cover the
+    video (no_speech_music); with music, the mix after the scene sounds is brought to −14 LUFS again."""
+    code_music = no_speech_music(a, D)
+    if code_music is False:
+        return 1
     if not a.music and not sfx_sounds(a):
         # the silent track a render may carry is left out: the tag says "no sound track", and --check of a file with
         # a silent track fell through to the loudness measurement, which fails on silence (Codex review)
@@ -359,9 +364,10 @@ def master_no_voice(a, tmp, D, why):
                   f"(take a longer track or start earlier: --music-start)")
         fade = min(1.2, mlen)
         duck = duck_filter(getattr(a, "ducks", []), D)
+        # music made in code (beats.json) has its own start, stops, button and end: the master's fades would eat them
+        fades = "" if code_music else f"afade=t=in:d=0.5,afade=t=out:st={max(0, mlen - fade):.3f}:d={fade:.3f},"
         run(["ffmpeg", "-y", "-hide_banner", "-ss", f"{start:.3f}", "-t", f"{D:.3f}", "-i", a.music, "-af",
-             f"afade=t=in:d=0.5,afade=t=out:st={max(0, mlen - fade):.3f}:d={fade:.3f},apad=whole_dur={D:.3f}"
-             + (f",{duck}" if duck else ""), "-ar", "48000", "-ac", "2", mcut])
+             f"{fades}apad=whole_dur={D:.3f}" + (f",{duck}" if duck else ""), "-ar", "48000", "-ac", "2", mcut])
         loudnorm_2pass(mcut, final, "", TARGET)
         print(f"{why}: no voice; the music from {start:.2f} s of the track, at {TARGET:.0f} LUFS")
         ref = peak_db(final)
@@ -372,10 +378,15 @@ def master_no_voice(a, tmp, D, why):
         ref = -1.0
     if sfx_sounds(a):
         mixed = mix_sfx(a, tmp, D, base=final, ref=ref, below=NO_VOICE_BELOW)
-        # sounds that meet in phase add up over 0 dBFS: a limiter under the true-peak ceiling, as on the voice chain
-        final = os.path.join(tmp, "final_limited.wav")
-        run(["ffmpeg", "-y", "-hide_banner", "-i", mixed, "-af", f"alimiter=limit={10 ** ((TP - 0.5) / 20):.3f}:level=false",
-             "-c:a", "pcm_s16le", final])
+        if a.music:  # the sounds add loudness to the music: the whole mix back to −14 LUFS, the true peak under −1.5
+            final = os.path.join(tmp, "final_mix.wav")
+            loudnorm_2pass(mixed, final, "", TARGET)
+            print(f"music + scene sounds: the mix brought back to {TARGET:.0f} LUFS")
+        else:
+            # sounds that meet in phase add up over 0 dBFS: a limiter under the true-peak ceiling, as on the voice chain
+            final = os.path.join(tmp, "final_limited.wav")
+            run(["ffmpeg", "-y", "-hide_banner", "-i", mixed, "-af", f"alimiter=limit={10 ** ((TP - 0.5) / 20):.3f}:level=false",
+                 "-c:a", "pcm_s16le", final])
     # --check reads the tag: the same rule as here. With music the master needs -14 LUFS: a tag the input carries
     # (a silent master made earlier) is cleared, or ffmpeg copies it over and --check skips the loudness (Codex review)
     tag = (["-metadata", "comment="] if master_tag(a.input) else []) if a.music else ["-metadata", f"comment={TAG_NO_VOICE}"]
@@ -385,10 +396,125 @@ def master_no_voice(a, tmp, D, why):
     if not a.music:  # a few accents over silence are not a −14 LUFS track; the true peak still counts
         print("scene sounds only: the −14 LUFS check does not apply (add music in the app when publishing, or a "
               "licensed track via --music); the true peak and the durations are checked")
+        if no_speech_dir(a) and reel_music(no_speech_dir(a)).get("source") == "app":
+            print("REMINDER: this no-speech reel takes its music in the app: pick the track when publishing (the "
+                  "scenes were not timed to it)")
     code = report(*acceptance(a.output, D, loudness=bool(a.music)))
     if not a.cover:
         print("file:", a.output + ("" if not code else " — do not publish it; deal with the failure first"))
     return code
+
+
+def no_speech_dir(a):
+    """The video's folder (--edit, else the folder of --cover) when it is a no-speech reel (reel.json -> voice: none,
+    or its plan's format silent), else None."""
+    for d in ([Path(a.edit)] if getattr(a, "edit", None) else []) + ([Path(a.cover).parent] if getattr(a, "cover", None) else []):
+        try:
+            reel = json.load(open(d / "reel.json", encoding="utf-8"))
+        except (OSError, ValueError):
+            reel = {}
+        try:
+            plan = json.load(open(d / "visual_plan.json", encoding="utf-8"))
+        except (OSError, ValueError):
+            plan = {}
+        if (isinstance(reel, dict) and reel.get("voice") == "none") or (isinstance(plan, dict)
+                                                                         and plan.get("format") == "silent"):
+            return d
+    return None
+
+
+def reel_music(d):
+    """reel.json -> music of a video folder ({} when absent)."""
+    try:
+        m = json.load(open(Path(d) / "reel.json", encoding="utf-8")).get("music")
+    except (OSError, ValueError, AttributeError):
+        m = None
+    return m if isinstance(m, dict) else {}
+
+
+def beats_for(a):
+    """The beats.json of --music (music made in code): <music>.beats.json, else beats.json next to it naming it.
+    -> (path, document) or (None, None) for a track that has none (a licensed track)."""
+    m = Path(a.music)
+    for f in (m.with_suffix(".beats.json"), m.parent / "beats.json"):
+        try:
+            doc = json.load(open(f, encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        if isinstance(doc, dict) and str(doc.get("wav") or "") == m.name:
+            return f, doc
+    return None, None
+
+
+def silences(p, floor=-50.0, least=0.5):
+    """Stretches of silence in a sound file (ffmpeg silencedetect): [(from, to)], to = None up to the end."""
+    r = run(["ffmpeg", "-hide_banner", "-nostats", "-i", str(p), "-af", f"silencedetect=n={floor}dB:d={least}",
+             "-f", "null", "-"])
+    starts = [float(x) for x in re.findall(r"silence_start: (-?[\d.]+)", r.stderr)]
+    ends = [float(x) for x in re.findall(r"silence_end: (-?[\d.]+)", r.stderr)]
+    return [(x, ends[k] if k < len(ends) else None) for k, x in enumerate(starts)]
+
+
+def no_speech_music(a, D):
+    """A no-speech reel's music, checked before anything is written (references/music.md):
+    - the brief chose music (reel.json -> music.source code or own) and none is given: refused;
+    - music made in code: its beats.json must be this WAV's (the hash), its length the video's (the end card included,
+      it starts at 0), and its silences the ones it meant (stop, pause, button): anything else is missing music;
+    - a licensed track: it must last to the end of the video and not go silent before it (another stretch with
+      --music-start, a repeat agreed with the person, or a silence on purpose).
+    -> True: music made in code (no fades of the master), None: not a no-speech reel or a plain track, False: refused."""
+    d = no_speech_dir(a)
+    if d is None:
+        return None
+    src = reel_music(d).get("source")
+    if not a.music:
+        if src in ("code", "own"):
+            print(f"no-speech reel {d}: the brief chose music ({src}), but no --music is given: master with --music "
+                  f"{(d / 'music.wav').as_posix() if src == 'code' else '<the licensed track>'} (or set reel.json -> "
+                  f"music.source app / none). Nothing is written")
+            return False
+        if src is None:
+            print("⚠ no-speech reel: reel.json has no answer about the music (music.source code, own, app or none): "
+                  "mastered with the scene sounds only")
+        return None
+    f, b = beats_for(a)
+    if b is not None:
+        import hashlib
+        h = hashlib.sha256(Path(a.music).read_bytes()).hexdigest()
+        if h != b.get("wav_sha256"):
+            print(f"{f.name} belongs to another {Path(a.music).name} (its hash differs): the music was made again "
+                  f"without its beats, or the other way round: music.py --edit {d.as_posix()} again. Nothing is written")
+            return False
+        have = float(b.get("samples") or 0) / float(b.get("rate") or 48000)
+        if abs(have - D) > 1 / 30:
+            print(f"{Path(a.music).name} is {have:.3f} s, the video {D:.3f} s (its end card included): the code music "
+                  f"is made for the finished length: music.py --edit {d.as_posix()} again. Nothing is written")
+            return False
+        if music_start(a):
+            print("--music-start: music made in code starts at the video's 0 (its beats are the video's seconds): "
+                  "drop it. Nothing is written")
+            return False
+        meant = [(float(x["from"]), float(x["to"])) for x in b.get("silence") or []]
+        for x, y in silences(a.music):
+            y = D if y is None else y
+            if not any(m0 - 0.35 <= x and y <= m1 + 0.35 for m0, m1 in meant):
+                print(f"the code music is silent at {x:.2f}-{y:.2f} s, where beats.json has it playing: a damaged or "
+                      f"cut file: music.py --edit {d.as_posix()} again. Nothing is written")
+                return False
+        return True
+    start = music_start(a)
+    mlen = max(0.0, (dur(a.music, "a") or 0.0) - start)
+    if mlen < D - 0.05:
+        print(f"the music ends at {mlen:.1f} s of this no-speech reel, but the video is {D:.1f} s: the end would be "
+              f"silent. Take another stretch of the track (--music-start), a longer track, a repeat agreed with the "
+              f"person, or say the silence is meant (reel.json -> music.source none). Nothing is written")
+        return False
+    for x, y in silences(a.music):
+        if x - start < D - 0.6 and (y is None or y - start > D - 0.05):
+            print(f"the track goes silent at {x - start:.1f} s of the video and stays so to its end ({D:.1f} s): the end "
+                  f"would be silent; another stretch (--music-start) or a longer track. Nothing is written")
+            return False
+    return None
 
 
 def peak_db(p):
