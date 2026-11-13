@@ -416,14 +416,26 @@ def issues(e, plan, s, doc, brand, bdir, fps=30):
 
 # ── stage ──
 
-def atlas_rig(brand, bdir):
+def atlas_rig(brand, bdir, staged_mascot, rem):
     """rig.json of the brand's atlas mascot, its content: the kit reads no files while it renders (AtlasMascot.tsx), so
-    stage hands it the rig itself; the atlas image stays a path inside public/ (brand.py stage copies it)."""
+    stage hands it the rig itself. The rig and the atlas image go as one pair: the copy brand.py stage put in public/
+    next to the image, and the brand folder's rig must still be the same (an atlas cut again without brand.py stage
+    would put the new frames over the old image). -> (rig, None) or (None, why)"""
     m = (brand or {}).get("mascot") or {}
-    return load_json(brand_file(m.get("rig"), bdir), None)
+    src = load_json(brand_file(m.get("rig"), bdir), None) if bdir else None
+    if rem is None:  # no Remotion project known (a check outside stage): the brand's rig as it is
+        return src, None
+    staged = load_json(Path(rem) / "public" / str(staged_mascot.get("rig") or ""), None)
+    if not isinstance(staged, dict):
+        return None, (f"the staged atlas rig public/{staged_mascot.get('rig')} is missing: run brand.py stage "
+                      f"{brand.get('slug')} --remotion {rem}")
+    if src != staged:
+        return None, (f"the brand's atlas changed since brand.py stage (rig.json differs from the copy in public/): "
+                      f"run brand.py stage {brand.get('slug')} --remotion {rem}")
+    return staged, None
 
 
-def props_of(e, plan, s, doc, brand, bdir, staged, fps=30):
+def props_of(e, plan, s, doc, brand, bdir, staged, fps=30, rem=None):
     """props.mascot for the kit, or (None, why) when it cannot be staged."""
     m = plan.get("mascot")
     geo, why = geometry(brand, bdir)
@@ -433,6 +445,11 @@ def props_of(e, plan, s, doc, brand, bdir, staged, fps=30):
     if not isinstance(sm, dict) or sm.get("kind") != geo["kind"]:
         return None, (f"src/brands/{plan.get('brand')}.json has no {geo['kind']} mascot: run brand.py stage "
                       f"{plan.get('brand')} --remotion <Remotion project>")
+    rig = None
+    if geo["kind"] == "atlas":
+        rig, why = atlas_rig(brand, bdir, sm, rem)
+        if rig is None:
+            return None, why
     mouth, problem = load_mouth(e, fps)
     vend = voice_end(e, plan, mouth)
     sp = speaking(m, plan, vend)
@@ -445,7 +462,7 @@ def props_of(e, plan, s, doc, brand, bdir, staged, fps=30):
     facing = -1 if m.get("facing") == -1 else 1
     out = {"kind": sm["kind"], "module": sm.get("module") or plan.get("brand"),
            **{k: sm[k] for k in ("rig", "atlas") if sm.get(k)},
-           **({"rig": atlas_rig(brand, bdir)} if geo["kind"] == "atlas" else {}),
+           **({"rig": rig} if rig is not None else {}),
            "x": x, "y": y, "scale": sc, "facing": facing, "from": t0, "to": t1,
            "frames": frames_of(m, plan, s, geo, opens, fps, sp)}
     ch = changes(m, geo)
@@ -453,7 +470,7 @@ def props_of(e, plan, s, doc, brand, bdir, staged, fps=30):
     return out, box
 
 
-def stage_into(e, props, staged):
+def stage_into(e, props, staged, rem=None):
     """visual_plan.py stage: props.mascot, resolved against the subtitle band this stage recorded; its box goes into
     the plan's keep_clear, so memes, scenes and faces.py audit keep clear of it. Refuses (exit) what it cannot stage."""
     import sys
@@ -461,7 +478,7 @@ def stage_into(e, props, staged):
     plan = load_plan(e)
     s, _prov, doc, bdir, brand = current_settings(e, plan)
     mp, box = props_of(e, plan, {**s, "subtitles": props.get("subtitles")}, doc, brand, bdir, staged,
-                       (doc.get("scenes") or {}).get("fps", 30))
+                       (doc.get("scenes") or {}).get("fps", 30), rem)
     if not mp:
         sys.exit(f"mascot: {box}; the template props are not written")
     props["mascot"] = mp

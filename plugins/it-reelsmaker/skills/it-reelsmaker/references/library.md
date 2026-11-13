@@ -43,13 +43,13 @@ No more than one effect every 2–3 s. **Place by the start of the sound, not of
 
 Loud or game-like sounds (glitch, error, heavy hits, dice, chips) count as “caution”: only for the `bold` tone or an ironic moment. For a calm brand tone, 4–8 sounds per 30–60 s of video. Trim long tails to 0.3–0.8 s with a 50–100 ms fade. For repeated and calm moments, take sounds with no sharp ringing highs; a sound with an unknown license gives way to a similar CC0 one. In Remotion, trim the start of a file with `trimBefore` (in frames; `startFrom` is deprecated).
 
-**Craft** (starting values after [HyperFrames](https://github.com/heygen-com/hyperframes), Apache-2.0, and [skill-multik](https://github.com/artemiimillier/skill-multik), MIT; not yet checked on our videos):
+**Craft** (starting values after [HyperFrames](https://github.com/heygen-com/hyperframes), Apache-2.0; not yet checked on our videos):
 - **only what is seen sounds:** a click on a real tap, a whoosh on a cut or a big fast card, a pop on a badge or a number, a riser into an impact once, on the payoff. A sound with no event on screen is noise;
 - **the sound's attack lands one frame after the picture** (`at` = the event second + 1/fps; the file's sound start stays in `start`, and `master_audio.py` puts that point on `at` by itself, so do not subtract it again): the eye takes in the event first, and a sound even slightly ahead of the picture reads as out of sync;
 - **two or three takes of a repeated sound in turn:** the same whoosh on every cut is the surest sign of a template. Alternate files from the library, or vary a synthesized one (below: ±10–15 % in pitch and length);
 - a low hit below ~150 Hz is lost on a phone speaker: give it a click or a short noise on top, or take a brighter sound.
 
-**Sounds synthesized in code** (no files, no license questions; the alternative to the starter pack; frequencies and lengths after skill-multik, the ffmpeg recipes are ours). A short WAV per sound made with ffmpeg's `aevalsrc` / `anoisesrc` in the video's folder, then into `sfx.json` like any other file (its sound start is 0). The recipes below were checked to render; the levels differ, `master_audio.py` sets every effect under the voice anyway. Listen to each before use.
+**Sounds synthesized in code** (no files, no license questions; the alternative to the starter pack). A short WAV per sound made with ffmpeg's `aevalsrc` / `anoisesrc` in the video's folder, then into `sfx.json` like any other file (its sound start is 0). The recipes below were checked to render; the levels differ, `master_audio.py` sets every effect under the voice anyway. Listen to each before use.
 
 | Sound | Recipe |
 |---|---|
