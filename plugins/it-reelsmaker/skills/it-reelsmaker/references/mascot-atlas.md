@@ -112,7 +112,7 @@ pose of the moment.
 - **Pose change**: the plan blinks over it, and the pictures are swapped on its first two frames, while the eyes are
   shut: a two-frame cross-fade (the new picture half over the old, then the old half under the new, so the figure
   never turns see-through where both cover it), then the new one alone. No in-between
-  drawing. Only where the brand tone allows a bounce (the change overshoots) the new pose settles from 97 % to full
+  drawing. Only where the brand tone allows a bounce (the change clicks and swings, `settle`) the new pose settles from about 98 % to full
   size. A plan staged before this (no `since` in its frames) still switches halfway through the change.
 - **Mirror**: only a `symmetric` picture.
 

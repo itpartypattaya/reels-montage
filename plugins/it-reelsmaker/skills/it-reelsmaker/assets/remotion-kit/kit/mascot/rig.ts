@@ -2,6 +2,10 @@
 // two segments, the idle breath. Plain math, no React: a brand's module imports what it needs.
 import type { MascotFrame } from "./types";
 
+// the lags f.kLag holds, frames behind the change: 0 to LAG_TAIL (the same as frame.ts; no import: node runs this file
+// on its own in the tests)
+const LAG_TAIL = 4;
+
 const DEG = Math.PI / 180;
 /** Degrees → radians. */
 export const rad = (d: number) => d * DEG;
@@ -34,6 +38,24 @@ export const poseAt = <T extends PoseNums>(poses: Record<string, T>, f: MascotFr
   const to = poses[f.pose] ?? poses.neutral;
   const from = poses[f.prevPose] ?? poses.neutral;
   return poseMix(from, to, f.k, angles);
+};
+
+/** Overlapping action: the current pose with each channel on its own lag behind the change, frames (f.kLag): the eyes
+ *  with it (0), the head a frame later, the arms two, the hands and elbows three; clamped to 0..4; a key not in `lags`
+ *  moves with the change. A frame without kLag (settled, or a plan staged before): poseAt. */
+export const poseAtLagged = <T extends PoseNums>(poses: Record<string, T>, f: MascotFrame, lags: Partial<Record<keyof T, number>>,
+  angles: readonly string[] = []): T => {
+  if (!f.kLag) return poseAt(poses, f, angles);
+  const to = poses[f.pose] ?? poses.neutral;
+  const from = poses[f.prevPose] ?? poses.neutral;
+  const out: PoseNums = {};
+  for (const key of Object.keys(to)) {
+    const lag = Math.max(0, Math.min(LAG_TAIL, Math.round(lags[key as keyof T] ?? 0)));
+    const k = f.kLag[lag] ?? f.k;
+    const x = from[key] ?? to[key];
+    out[key] = angles.includes(key) ? angMix(x, to[key], k) : mix(x, to[key], k);
+  }
+  return out as T;
 };
 
 /** An arm of two segments from the shoulder s: a1 — the upper arm's angle, a2 — the forearm's (degrees, 0 = right,

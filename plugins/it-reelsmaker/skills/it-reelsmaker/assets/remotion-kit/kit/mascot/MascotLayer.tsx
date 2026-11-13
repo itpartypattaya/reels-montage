@@ -66,7 +66,7 @@ export const MascotLayer: React.FC<{ mascot?: MascotProps | null; modules: Recor
   const e = planAt(mascot.frames, frame);
   if (!e) return null;
   const t = frame / fps;
-  const f = frameOf(e, t, mascot.facing ?? 1);
+  const f = frameOf(e, t, mascot.facing ?? 1, mascot.frames, frame);
   const facing = f.facing;
   const a = Math.min(
     interpolate(frame, [f0, f0 + IN_FRAMES], [0, 1], { ...clamp, easing: Easing.out(Easing.cubic) }),
