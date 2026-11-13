@@ -108,4 +108,4 @@ music ran out". A licensed track under a no-speech reel must last to the end of 
 ## Words
 
 Say "composed in code" or "designed in code" (as the scenes): the music is written by the script, not taken from a
-model. The core never synthesizes speech.
+model.

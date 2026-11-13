@@ -2,6 +2,11 @@
 
 What changed in IT Reelsmaker, written for the people who use it. The newest version is on top. The skill shows a short “What's new” note from this file once, on the first edit after an update.
 
+## 1.36.1
+
+- **Wording.** The no-speaker and music guides no longer state that speech is never synthesized: with no voice,
+  the plugin offers a voice note recorded on the phone or a no-speech reel, as before.
+
 ## 1.36.0
 
 - **A series' corner logo shows at the end of a no-speech reel.** The logo of the last seconds (`corner_last_s`) was
