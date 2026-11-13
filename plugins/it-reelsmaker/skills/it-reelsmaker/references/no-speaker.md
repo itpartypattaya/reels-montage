@@ -5,8 +5,8 @@ narration over photos, or a talking head with a stretch of voice-over in the mid
 such a video; the second is the data contract every script follows (the sound track and the picture track apart).
 
 Here: the voice-over and the mixed video, then the **no-speech reel** (no voice at all: the text carries it, sounds
-and music always offered), then the data contract. Not here yet: **photo reels** with movement planned from the photo;
-until then a photo is a picture shot like a clip. A promo with no footage at all stays the "scenes only" format
+and music always offered), **photos** (upright by their EXIF tag, a subject to move to, no slideshow), then the data
+contract. A promo with no footage at all stays the "scenes only" format
 (`references/scenes.md`). No speech is ever synthesized: no voice -> the person records a voice note on the phone
 (`references/shooting.md`) or the video goes without speech.
 
@@ -186,6 +186,54 @@ on "no ceiling"), not by order.
 **Translation.** There are no subtitles and no `.srt`: a version in another language is a copy of `script.json` with
 the lines translated by the person (or checked by them), timed, cut and planned again.
 
+## Photos
+
+**When.** Photos are the picture of a voice-over or of a no-speech reel: a trip, an event, a product, a before and
+after. They go into `picture` blocks like clips (`"source": "<a photo>"`), with three things clips do not need.
+
+**Upright as the phone shows it.** A phone stores a photo as its sensor read it, plus an orientation tag (EXIF) that
+turns it upright. The scripts read the tag themselves and use the same upright photo everywhere: the contact sheet of
+`footage.py index`, the sizes in `footage_index.json` and in `cut.py`, the prepared shot and the face search. Some
+ffmpeg builds apply the tag and some do not: the scripts ask ffprobe and turn the photo themselves only when ffmpeg
+will not. `roi` and `focus` are always given on the upright photo, as it looks on the sheet. HEIC (an iPhone's default)
+is not read: export as JPEG (iPhone: Settings -> Camera -> Formats -> Most Compatible, or share as JPEG).
+
+**The subject: `roi`.** A photo shot may name what it is about:
+
+```json
+{"source": "team", "dur": 3.0, "move": "push", "roi": [0.18, 0.30, 0.62, 0.55], "what": "the team", "why": "the hero"}
+{"source": "group", "dur": 2.5, "move": "pan", "roi": "face"}
+```
+
+`[x0, y0, x1, y1]` are parts of the upright photo (0..1: read them off the contact sheet), `"face"` is the box around
+every face on the photo (a group as one box; it needs the face detector of `faces.py`, and no face found is an error
+asking for the numbers). The move then follows the subject:
+
+| `move` | with `roi` |
+|---|---|
+| `push` | from the whole 9:16 frame around the subject to the subject with some room around it: as deep as the photo's pixels allow (the deepest frame keeps at least the video's width in source pixels), never past x2, never shallower than the usual slow push-in |
+| `pull` | the push backwards: it opens from the subject to the place |
+| `still`, `none` | the whole 9:16 frame centered on the subject |
+| `pan` | left to right at the frame's height: along a wide subject from its left end to its right end (a group, a panorama: its height stays in frame), or across a subject that fits (all of it stays in frame) |
+
+The path is checked frame by frame in `cut.py` before anything is encoded: the subject stays in frame on every frame,
+and a subject wider than the whole 9:16 frame stops it with numbers ("the ROI is 3600x300 px and the whole frame of
+this 4000x3000 photo only 1688x3000 px") and the ways out: a pan, `"fit": "contain"`, a smaller ROI. Where the subject
+moves goes into `captions.json -> shots -> roi_path`: a `panel` or a `window` scene over the photo frames
+the subject (it wins over a measured face: it is the editor's choice), not a default face. Without `roi` a photo moves
+as before (`focus` and the usual slow push-in, pull or pan).
+
+**A small photo** (its whole 9:16 frame is narrower than 3/4 of the video's width: 600x800 for a 1080 px video) is
+shown whole on a blurred background, with a warning; `"fit": "cover"` fills the frame anyway, soft, also with a
+warning. A screenshot is a photo too: `contain` keeps it readable.
+
+**Not a slideshow.** A row of photos with one motion and one length reads as a slideshow. `cut.py` and
+`visual_plan.py validate` warn (the person decides) when three or more photos in a row have the same motion (`none`
+and `still` both stand), or four or more have no hero (none held 1.5 times the others' median or longer). A clip, a
+background or a scene between them breaks the row. A photo reel that means it passes: alternate the motion (push,
+still, pull, pan), give one photo, the hero, time and a push into its subject, cut on the words or the beats, and let
+scenes carry the text between the photos.
+
 ---
 
 # The two-track contract
@@ -243,6 +291,7 @@ One record per stretch of the finished rough cut with one continuous picture sou
 | `out_start`, `out_dur` | seconds | where the shot sits on the finished timeline; whole frames at the video's fps |
 | `move` | `none` \| `still` \| `push` \| `pull` \| `pan` | motion baked into the shot. `none`: the shot carries no motion of its own and the virtual camera may act on it (every copied shot). Anything else: the camera and the drift are off on this shot (one motion layer) |
 | `look` | string \| null | the look key applied to this shot's source (the place's own color, `sources.<name>.look`); `null` = the video's look |
+| `roi_path` | object | only on a photo shot with a `roi`: the path of its move (`photo_move.record`: `roi`, the first and last windows `from`, `to` in pixels of the upright photo, `n` frames, `size`, `out`); where the subject is on screen at any frame follows from it (`photo_move.screen_at`), and layout scenes over the shot frame it |
 
 Rules:
 
@@ -295,7 +344,7 @@ measured frames by rounding and invalidate every saved balance mark.
 `cut_id()` stays the fingerprint of the **sound** cut (duration, segments, words). The picture gets its own:
 
 - `picture_id` = a short hash of the duration and, per picture shot, `i, kind, source, src_start, src_end, speed,
-  out_start, out_dur, move, look`.
+  out_start, out_dur, move, look`, and `roi_path` where a shot has it (a cut without one keeps the hash it had).
 - Written to `captions.json → picture_id` **only when `shots` is not a plain copy** of the sound segments. When it is
   a copy, there is no `picture_id`, old and new rough cuts compare equal, and nothing changes for existing plans.
 - The visual plan stores the `picture_id` it was checked on next to `captions_id`. Absent on both sides = equal.

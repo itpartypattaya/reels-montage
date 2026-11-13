@@ -2,6 +2,24 @@
 
 What changed in IT Reelsmaker, written for the people who use it. The newest version is on top. The skill shows a short “What's new” note from this file once, on the first edit after an update.
 
+## 1.33.0
+
+- **Photo reels.** Photos under a voice-over or in a no-speech reel can name their subject: `"roi": [x0, y0, x1, y1]`
+  (read off the contact sheet) or `"roi": "face"` (every face on the photo, a group as one box). A push then ends on
+  the subject with room around it, as deep as the photo's pixels allow; a pull opens from it; a still frame centers
+  it; a pan travels along a group or a panorama. The whole move is checked frame by frame before anything is
+  encoded: a subject that cannot stay in frame stops `cut.py` with numbers and the ways out.
+- **A phone photo is upright everywhere.** A photo stored sideways or mirrored with an orientation tag looks the same
+  on the contact sheet, in the sizes, in the video and in the face search, whatever your ffmpeg does with the tag.
+  Before, the contact sheet could show it sideways while the video showed it upright, and a focus picked on the sheet
+  missed. HEIC is not read: export JPEG.
+- **Scenes frame the photo's subject.** A `panel` or `window` scene over a photo with a subject frames the subject,
+  not a default face.
+- **A small photo is shown whole** on a blurred background, with a warning, instead of being enlarged until it is
+  soft; `"fit": "cover"` keeps the old way.
+- **No slideshow.** `cut.py` and `validate` warn about three photos in a row with the same motion, or four with no
+  photo held longer than the rest.
+
 ## 1.32.0
 
 - **The mascot's mouth reads as speech.** Besides opening with the loudness of your voice, it gets wider on an “ee”

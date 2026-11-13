@@ -1076,7 +1076,157 @@ def probe(p):
             info["dur"] = float(d["format"]["duration"])
         except Exception:
             pass
+    if Path(p).suffix.lower() in IMAGE_EXT and info["w"] and photo_orientation(p) in TURNED:
+        info["w"], info["h"] = info["h"], info["w"]  # a phone photo stored sideways: its upright size
     return info
+
+
+# --- Photo orientation (EXIF): one upright photo everywhere ------------------------------------------------------
+# A phone stores a photo as its sensor read it and an orientation tag that turns it upright (1 upright, 2 mirrored,
+# 3 upside down, 4 mirrored upside down, 5-8 turned a quarter, 5 and 7 also mirrored). Some ffmpeg builds apply the tag
+# and some do not, Pillow never does by itself, OpenCV does: so the scripts read the tag themselves and turn the photo
+# the same way everywhere (the contact sheet, the sizes, the prepared shot, the face search).
+TURNED = (5, 6, 7, 8)  # the tags that swap width and height
+ORIENT_VF = {1: "", 2: "hflip", 3: "hflip,vflip", 4: "vflip", 5: "transpose=0", 6: "transpose=1", 7: "transpose=3",
+             8: "transpose=2"}  # ffmpeg filters that turn the stored pixels upright
+_ORIENT_PIL = {2: "FLIP_LEFT_RIGHT", 3: "ROTATE_180", 4: "FLIP_TOP_BOTTOM", 5: "TRANSPOSE", 6: "ROTATE_270",
+               7: "TRANSVERSE", 8: "ROTATE_90"}  # the same with Pillow
+
+
+def _tiff_orientation(t):
+    """The orientation tag (0x0112) of IFD0 of an EXIF (TIFF) block; 1 when it is missing or the block is broken."""
+    import struct
+    if len(t) < 8 or t[:2] not in (b"II", b"MM"):
+        return 1
+    e = "<" if t[:2] == b"II" else ">"
+    try:
+        if struct.unpack(e + "H", t[2:4])[0] != 42:
+            return 1
+        off = struct.unpack(e + "I", t[4:8])[0]
+        for k in range(struct.unpack(e + "H", t[off:off + 2])[0]):
+            q = off + 2 + 12 * k
+            tag, typ = struct.unpack(e + "HH", t[q:q + 4])
+            if tag == 0x0112:
+                v = struct.unpack(e + "H", t[q + 8:q + 10])[0] if typ == 3 else struct.unpack(e + "I", t[q + 8:q + 12])[0]
+                return v if 1 <= v <= 8 else 1
+    except (struct.error, IndexError):
+        return 1
+    return 1
+
+
+def _exif_block(b):
+    """The EXIF (TIFF) block of a JPEG (APP1), a PNG (eXIf) or a WebP (EXIF chunk); b"" when there is none."""
+    if b[:2] == b"\xff\xd8":
+        i = 2
+        while i + 4 <= len(b) and b[i] == 0xFF:
+            if b[i + 1] == 0xFF:  # fill bytes before a marker are allowed
+                i += 1
+                continue
+            m = b[i + 1]
+            if m in (0xD8, 0x01) or 0xD0 <= m <= 0xD7:
+                i += 2
+                continue
+            n = int.from_bytes(b[i + 2:i + 4], "big")
+            if m == 0xE1 and b[i + 4:i + 10] == b"Exif\x00\x00":
+                return b[i + 10:i + 2 + n]
+            if m == 0xDA or n < 2:  # the picture data starts: no EXIF before it
+                break
+            i += 2 + n
+        return b""
+    if b[:8] == bytes([137, 80, 78, 71, 13, 10, 26, 10]):  # the PNG signature
+        i = 8
+        while i + 8 <= len(b):
+            n, typ = int.from_bytes(b[i:i + 4], "big"), b[i + 4:i + 8]
+            if typ == b"eXIf":
+                return b[i + 8:i + 8 + n]
+            if typ == b"IEND":
+                break
+            i += 12 + n
+        return b""
+    if b[:4] == b"RIFF" and b[8:12] == b"WEBP":
+        i = 12
+        while i + 8 <= len(b):
+            typ, n = b[i:i + 4], int.from_bytes(b[i + 4:i + 8], "little")
+            if typ == b"EXIF":
+                d = b[i + 8:i + 8 + n]
+                return d[6:] if d[:6] == b"Exif\x00\x00" else d
+            i += 8 + n + (n & 1)
+    return b""
+
+
+_ORIENT_CACHE = {}
+
+
+def photo_orientation(p):
+    """The EXIF orientation of a photo (1-8); 1 for a photo without the tag, a broken or unreadable file."""
+    p = Path(p)
+    try:
+        st = p.stat()
+    except OSError:
+        return 1
+    key = (str(p.resolve()), st.st_mtime_ns, st.st_size)
+    if key not in _ORIENT_CACHE:
+        try:
+            _ORIENT_CACHE[key] = _tiff_orientation(_exif_block(p.read_bytes()))
+        except OSError:
+            _ORIENT_CACHE[key] = 1
+    return _ORIENT_CACHE[key]
+
+
+_TURNS_CACHE = {}
+
+
+def ffmpeg_turns(p):
+    """Does this ffmpeg turn the photo by its tag itself? Newer builds decode the tag into the frame's display matrix
+    and apply it (ffmpeg 9 does); older ones ignore it. Asked of ffprobe for the file, so no version number is guessed.
+    (Telling ffmpeg not to apply it, -noautorotate, is no way out: the matrix then travels into the output file and a
+    player turns the video instead.)"""
+    p = Path(p)
+    st = p.stat()
+    key = (str(p.resolve()), st.st_mtime_ns, st.st_size)
+    if key not in _TURNS_CACHE:
+        r = run(["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_frames", "-read_intervals", "%+#1",
+                 "-show_entries", "frame_side_data=side_data_type", "-of", "json", str(p)], check=False)
+        try:
+            frames = json.loads(r.stdout or "{}").get("frames") or []
+        except ValueError:
+            frames = []
+        _TURNS_CACHE[key] = any("matrix" in str(sd.get("side_data_type", "")).lower()
+                                for f in frames for sd in f.get("side_data_list") or [])
+    return _TURNS_CACHE[key]
+
+
+def photo_input(p):
+    """A photo as an ffmpeg input: (the options before its -i, the filter that turns it upright or ""). The filter is
+    given only when this ffmpeg does not apply the tag itself (ffmpeg_turns), so every version gives the same upright
+    picture; a photo without a tag gets nothing (the same command as before)."""
+    o = photo_orientation(p)
+    if o == 1 or ffmpeg_turns(p):
+        return [], ""
+    return [], ORIENT_VF[o]
+
+
+def upright_image(p):
+    """The photo upright as Pillow opens it (Pillow ignores the tag by itself)."""
+    from PIL import Image
+    im = Image.open(p)
+    o = photo_orientation(p)
+    if o == 1:
+        return im
+    im.load()
+    return im.transpose(getattr(Image.Transpose, _ORIENT_PIL[o]))
+
+
+def upright_size(p):
+    """(w, h) of the photo upright."""
+    try:
+        from PIL import Image
+        with Image.open(p) as im:
+            w, h = im.size
+    except ImportError:
+        info = probe(p)
+        return info["w"], info["h"]
+    return (h, w) if photo_orientation(p) in TURNED else (w, h)
 
 
 def media_kind(p):

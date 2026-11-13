@@ -557,6 +557,8 @@ def cmd_validate(a, quiet=False):
                 m = motions.get(x["id"]) if x.get("kind") == "callout" else None
                 if m and [x.get("anchor"), x.get("start"), x.get("dur")] == m["key"][:3]:
                     x["motion"] = m
+    from pic_track import pic_shots, slideshow_issues  # photos in a row that read as a slideshow
+    warns += slideshow_issues(pic_shots(load_json(e / "captions.json", {})))
     from mascot_plan import issues as mascot_issues  # the brand mascot (references/mascot.md)
     me, mw = mascot_issues(e, plan, s, doc, brand, bdir, (doc.get("scenes") or {}).get("fps", 30))
     errs += me

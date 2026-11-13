@@ -15,6 +15,9 @@ A picture shot: {i, kind, source, src_start, src_end, speed, out_start, out_dur,
   out_*      where the shot sits on the finished timeline
   move       "none" (no motion of its own: the virtual camera and the drift may act) | "still" | "push" | "pull" | "pan"
   look       the look applied to this shot's source, None = the video's look
+  roi_path   only on a photo shot with a subject (cut.json picture shot "roi"): the path of its move
+             (photo_move.record: the ROI and the first and last windows in photo pixels, the frames); where the subject
+             is on screen at any frame follows from it (photo_move.screen_at), and the scenes over the shot frame it
 
 Words used in code: "picture shots" (this track) and "camera shots" (camera.json): never a bare "shots".
 
@@ -71,7 +74,8 @@ def picture_id(cap):
     so a copy changes nothing for the plans made before the picture track."""
     if follows_sound(cap):
         return None
-    shots = [tuple(g.get(k) for k in SHOT_KEYS) for g in pic_shots(cap)]
+    shots = [tuple(g.get(k) for k in SHOT_KEYS) + ((("roi_path", repr(g["roi_path"])),) if g.get("roi_path")
+                                                   else ()) for g in pic_shots(cap)]
     return hashlib.sha1(repr(((cap or {}).get("duration"), shots)).encode()).hexdigest()[:12]
 
 
@@ -198,6 +202,48 @@ def on_graphic(shots, t):
     """A scene starting at second t is drawn on the style's background (a fill shot): it is the whole picture there."""
     g = shot_at(shots, t)
     return bool(g) and g.get("kind") == "fill"
+
+
+HERO = 1.5  # a photo held this many times the others' median is the row's hero
+
+
+def slideshow_issues(shots):
+    """Photos in a row that read as a slideshow -> [warning]: three or more with the same motion (none and still both
+    stand), four or more with no hero (none held HERO times the others' median). A clip, a background or a scene shot
+    between them breaks the row. A deliberate photo reel (alternating motion, one hero) gets none."""
+    out, run = [], []
+    rows = []
+    for g in sorted(shots or [], key=lambda x: x["out_start"]):
+        if g.get("kind") == "photo":
+            run.append(g)
+        else:
+            rows.append(run)
+            run = []
+    rows.append(run)
+    motion = lambda g: "stand still" if (g.get("move") or "none") in ("none", "still") else g["move"]  # noqa: E731
+    for row in (r for r in rows if r):
+        k = 0
+        while k < len(row):
+            j = k
+            while j + 1 < len(row) and motion(row[j + 1]) == motion(row[k]):
+                j += 1
+            if j - k + 1 >= 3:
+                out.append(f"slideshow: photo shots {row[k]['i']}-{row[j]['i']} ({j - k + 1} in a row) all "
+                           f"{motion(row[k])}, the same motion: alternate it (push, still, pull, pan) or put a clip or a "
+                           f"scene between them")
+            k = j + 1
+        if len(row) >= 4:
+            ds = [float(g["out_dur"]) for g in row]
+
+            def median(v):
+                v = sorted(v)
+                return (v[len(v) // 2] + v[(len(v) - 1) // 2]) / 2
+
+            if not any(d >= HERO * median(ds[:m] + ds[m + 1:]) - 1e-6 for m, d in enumerate(ds)):
+                out.append(f"slideshow: photo shots {row[0]['i']}-{row[-1]['i']} ({len(row)} photos) are each held "
+                           f"about as long ({min(ds):.1f}-{max(ds):.1f} s): give one of them, the hero, time ({HERO:g}x "
+                           f"the others or more) and a move into its subject")
+    return out
 
 
 def own_motion(g):
