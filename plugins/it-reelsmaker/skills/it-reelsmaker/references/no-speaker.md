@@ -238,7 +238,8 @@ padded with silence; `shots` end at 24.0 s; `captions.json → duration` is 24.0
 Every stretch of the timeline has a purpose, derived from `voice` and `shots` (never set by hand):
 
 - `speaker` — the person speaking is on screen: `voice = on_camera` and the shot is a `video` of the sound source at
-  the same source seconds as the sound segment.
+  the same source seconds as the sound segment, for its whole length: one sound segment holds the whole shot, at the
+  same speed, from the same second (another speed, or a shot running on past its segment, is `picture`).
 - `picture` — the main picture without a speaking face on screen: voice-over shots, silent shots, photos.
 - `graphic` — a designed scene *is* the picture: a `fill` shot, a full-screen scene over `picture` in a no-speech
   reel, the whole "scenes only" video.

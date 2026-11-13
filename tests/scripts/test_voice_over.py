@@ -421,6 +421,24 @@ MIXED = {"duration": 16.0,
          "words": []}
 
 
+def faster():
+    """MIXED with its last shot from the sound's own second, but played at x2: the picture runs ahead of the voice."""
+    c = json.loads(json.dumps(MIXED))
+    c["shots"][3].update(speed=2.0, src_end=22.0)
+    return c
+
+
+def past_its_piece():
+    """Two sound pieces (2-14 s, then 30-34 s of the source); one shot from 10 s runs on to 18 s across their join."""
+    seg = MIXED["segments"][0]
+    return {"duration": 16.0,
+            "segments": [dict(seg, src_end=14.0, out_dur=12.0),
+                         dict(seg, i=1, src_start=30.0, src_end=34.0, out_start=12.0, out_dur=4.0)],
+            "shots": [dict(MIXED["shots"][0], src_end=10.0, out_dur=8.0),
+                      dict(MIXED["shots"][0], i=1, src_start=10.0, src_end=18.0, out_start=8.0, out_dur=8.0)],
+            "words": []}
+
+
 def test_every_stretch_has_a_purpose_derived_from_the_voice_and_the_picture():
     import pic_track as pt
     assert pt.purposes(MIXED, "on_camera") == [(0.0, 4.0, "speaker"), (4.0, 10.0, "picture"), (10.0, 12.0, "graphic"),
@@ -429,6 +447,10 @@ def test_every_stretch_has_a_purpose_derived_from_the_voice_and_the_picture():
     moved = json.loads(json.dumps(MIXED))
     moved["shots"][3]["src_start"], moved["shots"][3]["src_end"] = 30.0, 34.0
     assert pt.purposes(moved, "on_camera")[3][2] == "picture"
+    # review of PR #50: the same file from the same second at another speed drifts off the voice at once, and a shot
+    # that runs on past the end of its sound piece shows other seconds than the ones heard: neither is the speaker
+    assert pt.purposes(faster(), "on_camera")[3][2] == "picture"
+    assert pt.purposes(past_its_piece(), "on_camera")[1][2] == "picture"
     # the voice off camera: nobody speaks in the frame
     assert [p for _, _, p in pt.purposes(MIXED, "off_camera")] == ["picture", "picture", "graphic", "picture"]
     # a cut made before the picture track: all of it is the speaker
@@ -449,7 +471,8 @@ def test_the_kit_derives_the_same_purposes(tmp_path):
     moved = json.loads(json.dumps(MIXED))
     moved["shots"][3]["src_start"] = 30.0
     cases = [[MIXED, "on_camera"], [MIXED, "off_camera"], [moved, "on_camera"],
-             [{"duration": 16.0, "segments": MIXED["segments"]}, None]]
+             [{"duration": 16.0, "segments": MIXED["segments"]}, None], [faster(), "on_camera"],
+             [past_its_piece(), "on_camera"]]
     data = tmp_path / "cases.json"
     data.write_text(json.dumps(cases), encoding="utf-8")
     code = ("const m = await import(process.argv[1]); const fs = await import('node:fs');"

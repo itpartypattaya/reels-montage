@@ -33,9 +33,11 @@ export const ownMotion = (g: DriftSegment | PictureShot | null | undefined): boo
 export type Purpose = "speaker" | "picture" | "graphic";
 type SoundSegment = DriftSegment & { source?: string | null; src_start?: number; speed?: number };
 const SYNC = 1 / 30 + 0.002;
+// one sound segment holds the whole shot, at the same speed, from the same source second (pic_track.is_speaking)
 const speaking = (g: PictureShot, segments: SoundSegment[]): boolean =>
   (g.kind ?? "video") === "video" && segments.some((s) => s.source === g.source
-    && g.out_start >= s.out_start - 1e-6 && g.out_start < s.out_start + s.out_dur - 1e-6
+    && g.out_start >= s.out_start - 1e-6 && g.out_start + g.out_dur <= s.out_start + s.out_dur + 1e-6
+    && Math.abs((s.speed || 1) - (g.speed || 1)) <= 1e-6
     && Math.abs((s.src_start ?? 0) + (g.out_start - s.out_start) * (s.speed || 1) - (g.src_start ?? 0)) <= SYNC);
 export const picturePurposes = (captions: { segments?: SoundSegment[] | null; shots?: PictureShot[] | null },
   voiceMode?: string | null): { start: number; end: number; purpose: Purpose }[] => {

@@ -130,17 +130,21 @@ SYNC = 1.0 / 30 + 0.002  # s: a shot of the sound source within a frame of its s
 
 
 def is_speaking(g, segments):
-    """The shot is the sound source's own video at the seconds of its sound (lips in sync with the voice)."""
+    """The shot is the sound source's own video at the seconds of its sound for its whole length (lips in sync with
+    the voice): one sound segment holds the whole shot, at the same speed, from the same source second. Another speed
+    drifts off the voice at once; a shot that runs on past its segment's end shows seconds that are not heard (review
+    of PR #50: such a shot counted as the speaker and slipped past the strangers check)."""
     if g.get("kind", "video") != "video":
         return False
+    gs = g.get("speed") or 1.0
     for s in segments or []:
         if s.get("source") != g.get("source"):
             continue
         a, d = s["out_start"], s["out_dur"]
-        if not a - 1e-6 <= g["out_start"] < a + d - 1e-6:
+        if not (a - 1e-6 <= g["out_start"] and g["out_start"] + g["out_dur"] <= a + d + 1e-6):
             continue
         sp = s.get("speed") or 1.0
-        if abs(s["src_start"] + (g["out_start"] - a) * sp - g["src_start"]) <= SYNC:
+        if abs(sp - gs) <= 1e-6 and abs(s["src_start"] + (g["out_start"] - a) * sp - g["src_start"]) <= SYNC:
             return True
     return False
 
