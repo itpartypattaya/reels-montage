@@ -32,7 +32,7 @@ const POSE: Record<string, P> = {
 };
 const ANGLES = ["la1", "la2", "ra1", "ra2"] as const;
 
-const C = brand.colors as Record<string, string>;
+const C = brand.colors as unknown as Record<string, string>; // via unknown: a profile with `colors.extra` (nested) type-checks too
 const BODY = C.primary;
 const LIMB = C.accent ?? C.primary;
 const INK = "#1B1B1F"; // the features: dark on a light or saturated body; a very dark body takes a light ink

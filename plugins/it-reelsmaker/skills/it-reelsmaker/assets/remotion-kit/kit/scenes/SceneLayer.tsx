@@ -169,14 +169,23 @@ const clampStage = (s: SceneSpec, b: number[], zone: Stage, name: string): Stage
   return { x, y, w, h };
 };
 
+/** px: a full scene's text ends this far above the brand mascot standing under it (mascot_plan.SCENE_GAP). */
+export const MASCOT_TEXT_GAP = 40;
+
 /** The scene's zone. area — the “framed” text area (the window, ReelKit framedGeometry): a box is clipped to it, an
  *  overlay without a box takes its top, a full scene fills it. textBottom — the voice is off camera and the subtitles stay
- *  on over this full scene: its text ends at this y (visual_plan.py voice_stage, validate refuses a box below it). */
-export const sceneStage = (s: SceneSpec, mode: SceneMode, area?: Stage | null, textBottom?: number | null): Stage => {
-  const above = textBottom != null && mode === "full" && !area && !s.hide_subtitles;
-  const zone = above ? { ...SAFE_STAGE, h: Math.max(1, Math.min(SAFE_STAGE.h, (textBottom ?? 0) - SAFE_STAGE.y)) } : SAFE_STAGE;
-  if (s.box && s.box.length === 4 && mode !== "panel") return clampStage(s, s.box, area ?? zone, area ? "the framed window" : above ? "the zone above the subtitles" : "the safe zone");
-  if (above) return { x: 60, y: 250, w: 900, h: Math.max(1, Math.min(1200, (textBottom ?? 0) - 250)) };
+ *  on over this full scene: its text ends at this y (visual_plan.py voice_stage, validate refuses a box below it).
+ *  mascotTop — the brand mascot is on screen during this scene: a full scene's text also ends MASCOT_TEXT_GAP above the
+ *  top of its box (props.mascot.top; mascot_plan.py leaves that zone at least 540 px, validate refuses less). */
+export const sceneStage = (s: SceneSpec, mode: SceneMode, area?: Stage | null, textBottom?: number | null, mascotTop?: number | null): Stage => {
+  const subs = textBottom != null && !s.hide_subtitles ? textBottom : null;
+  const byMascot = mascotTop != null ? mascotTop - MASCOT_TEXT_GAP : null;
+  const bottom = subs != null && byMascot != null ? Math.min(subs, byMascot) : subs ?? byMascot;
+  const above = bottom != null && mode === "full" && !area;
+  const zone = above ? { ...SAFE_STAGE, h: Math.max(1, Math.min(SAFE_STAGE.h, (bottom ?? 0) - SAFE_STAGE.y)) } : SAFE_STAGE;
+  const zoneName = bottom != null && bottom === byMascot ? "the zone above the mascot" : "the zone above the subtitles";
+  if (s.box && s.box.length === 4 && mode !== "panel") return clampStage(s, s.box, area ?? zone, area ? "the framed window" : above ? zoneName : "the safe zone");
+  if (above) return { x: 60, y: 250, w: 900, h: Math.max(1, Math.min(1200, (bottom ?? 0) - 250)) };
   if (area) return mode === "overlay" ? { x: area.x, y: area.y, w: area.w, h: Math.min(600, area.h) } : { ...area };
   switch (mode) {
     case "overlay":
@@ -203,7 +212,7 @@ const flashes = (s: SceneSpec, bt: ResolvedTone, words: Word[], fps: number, sce
 };
 
 const SceneFrame: React.FC<{ spec: SceneSpec; brand: Brand; look: Look; fonts: { heading: string; body: string }; bt: ResolvedTone;
-  words: Word[]; scenesOnly: boolean; framed?: SceneFrameBox | null; textBottom?: number | null }> = (p) => {
+  words: Word[]; scenesOnly: boolean; framed?: SceneFrameBox | null; textBottom?: number | null; mascotTop?: number | null }> = (p) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
   const s = p.spec;
@@ -218,7 +227,7 @@ const SceneFrame: React.FC<{ spec: SceneSpec; brand: Brand; look: Look; fonts: {
     return null;
   }
   if (MODES[s.type] && !MODES[s.type].includes(s.mode)) warnOnce(`mode-${s.id}`, `kit: scene ${s.id} (${s.type}) — mode ${s.mode} is not one of ${MODES[s.type].join("/")}`);
-  const stage = sceneStage(s, mode, fb?.area, p.textBottom);
+  const stage = sceneStage(s, mode, fb?.area, p.textBottom, p.mascotTop);
   const shell: SceneCtx["shell"] =
     mode === "panel" || (mode === "overlay" && CARD_TYPES.includes(s.type)) ? "card" : mode === "overlay" && PLATE_TYPES.includes(s.type) ? "plates" : "field";
   // slogan: the style's field when brand.looks[style].field is set, and the primary field in the "brand" style (accent on
@@ -307,9 +316,11 @@ const SceneFrame: React.FC<{ spec: SceneSpec; brand: Brand; look: Look; fonts: {
 /** Scene layer. words — speech words (captions.words): the “on a pause — cut” rule and slogan words landing on their spoken words.
  *  sceneTone — the video's scene tone (props.sceneTone): for scenes without their own tone. framed — the “framed” text area
  *  and window (ReelKit framedGeometry): scenes stay inside the window. textBottom — the voice is off camera: a full scene's
- *  text ends at this y, above the subtitles that stay on (ReelKit: subtitlesTop − VOICE_SUB_GAP). */
+ *  text ends at this y, above the subtitles that stay on (ReelKit: subtitlesTop − VOICE_SUB_GAP). mascotTop — the brand
+ *  mascot's box top and its time on screen (props.mascot): a full scene it shares the frame with ends its text above it. */
 export const SceneLayer: React.FC<{ scenes?: SceneSpec[] | null; brand: Brand; look: Look; words?: Word[]; scenesOnly?: boolean;
-  sceneTone?: string | null; framed?: SceneFrameBox | null; textBottom?: number | null; pictureShots?: PictureShot[] | null }> = (p) => {
+  sceneTone?: string | null; framed?: SceneFrameBox | null; textBottom?: number | null; pictureShots?: PictureShot[] | null;
+  mascotTop?: { top: number; from: number; to: number } | null }> = (p) => {
   const { fps } = useVideoConfig();
   const fonts = useLookFonts(p.look);
   const bt = withRollTone(resolveBrandTone(p.brand), p.sceneTone);
@@ -321,7 +332,8 @@ export const SceneLayer: React.FC<{ scenes?: SceneSpec[] | null; brand: Brand; l
           <Sequence from={Math.round(s.start * fps)} durationInFrames={Math.max(1, Math.round(s.dur * fps))} layout="none">
             <div data-rk={`scene:${s.id}`} style={{ display: "contents" }}>
               <SceneFrame spec={s} brand={p.brand} look={p.look} fonts={fonts} bt={bt} words={p.words ?? []} scenesOnly={only}
-                framed={p.framed} textBottom={p.textBottom} />
+                framed={p.framed} textBottom={p.textBottom}
+                mascotTop={p.mascotTop && s.start < p.mascotTop.to && s.start + s.dur > p.mascotTop.from ? p.mascotTop.top : null} />
             </div>
           </Sequence>
           {flashes(s, bt, p.words ?? [], fps, only, !!p.framed).map((t) => <FlashAt key={String(s.id) + "-" + String(t)} t={t} brand={p.brand} />)}
