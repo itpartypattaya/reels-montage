@@ -10,6 +10,11 @@ has a "picture" block (or mixes a sound-only recording with videos). references/
                            {"source": "street"}]},
                 {"from": "end", "to": 24.0, "shots": [{"fill": true, "what": "the punchline's field", "why": "..."}]}]
 
+A photo shot may name its subject: "roi": [x0, y0, x1, y1] (parts of the upright photo) or "face" (the faces on it, a
+group as one box). Its move then follows the subject (photo_move.py: push ends on it, pull starts on it, still centers
+it, pan travels along it), the path is checked frame by frame before encoding, and where the subject is on screen goes
+into shots -> roi_path. A small photo is shown whole on a blurred background unless the shot says "fit": "cover".
+
 Times are seconds of the finished video, "start", "end" (the end of the sound) or "word:<text>#<n>" (the n-th time the
 word is said on the edit timeline: the picture cuts where it starts). Outside the blocks the picture is the sound
 source's own video at the seconds of its sound, as before; a sound-only recording there has no picture of its own: the
@@ -26,6 +31,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+import photo_move
 from pic_track import MOVES, copy_shot
 from reels_common import IMAGE_EXT, run, warn
 
@@ -72,6 +78,16 @@ def blocks_of(raw, sources):
                 raise PictureError(f"picture[{k}] shot {j}: move {sh.get('move')!r} (one of {', '.join(MOVES)})")
             if (sh.get("fit") or "cover") not in FITS:
                 raise PictureError(f"picture[{k}] shot {j}: fit {sh.get('fit')!r} (cover or contain)")
+            roi = sh.get("roi")
+            if roi is not None:
+                if kind_of(sources[name]) != "photo":
+                    raise PictureError(f"picture[{k}] shot {j}: roi is for a photo shot ({name!r} is a video): frame a "
+                                       f"clip with focus")
+                if roi != "face" and not (isinstance(roi, list) and len(roi) == 4
+                                          and all(isinstance(v, (int, float)) and not isinstance(v, bool) and 0 <= v <= 1
+                                                  for v in roi) and roi[0] < roi[2] and roi[1] < roi[3]):
+                    raise PictureError(f'picture[{k}] shot {j}: roi {roi!r}: [x0, y0, x1, y1], parts of the upright '
+                                       f'photo from 0 to 1 with x0 < x1 and y0 < y1, or "face"')
             fo = sh.get("focus", [0.5, 0.5])
             if not (isinstance(fo, list) and len(fo) == 2 and all(isinstance(v, (int, float)) and 0 <= v <= 1 for v in fo)):
                 raise PictureError(f"picture[{k}] shot {j}: focus is [x, y], each 0..1")
@@ -217,6 +233,67 @@ def _uncovered(a, b, covered):
     return out
 
 
+DETECT_LONG = 960  # the face search looks at the upright photo with this long side (as faces.py at source geometry)
+
+
+def face_roi(path, label):
+    """roi "face": the box around every face found on the upright photo, as parts of it. No face, or no detector, is an
+    error asking for the numbers (never a guessed subject)."""
+    import tempfile
+    import faces
+    from reels_common import upright_image
+    im = upright_image(path).convert("RGB")
+    w, h = im.size
+    k = DETECT_LONG / max(w, h)
+    small = im.resize((max(1, round(w * k)), max(1, round(h * k))))
+    with tempfile.TemporaryDirectory() as td:
+        f = Path(td) / "photo.png"
+        small.save(f)
+        found = faces.detect([f])
+    ask = 'give the subject as numbers: "roi": [x0, y0, x1, y1], parts of the upright photo'
+    if found is None:
+        raise PictureError(f'{label}: "roi": "face" needs the face detector (faces.py, see the warning above): {ask}')
+    boxes = found[0] if found else []
+    if not boxes:
+        raise PictureError(f'{label}: no face was found on {Path(path).name} for "roi": "face": {ask}')
+    sw, sh = small.size
+    x0 = min(b[0] for b in boxes)
+    y0 = min(b[1] for b in boxes)
+    x1 = max(b[0] + b[2] for b in boxes)
+    y1 = max(b[1] + b[3] for b in boxes)
+    return (max(0.0, x0 / sw), max(0.0, y0 / sh), min(1.0, x1 / sw), min(1.0, y1 / sh))
+
+
+def photo_shot(c, sh, n, label, name, sv):
+    """A photo shot's fit, its ROI's path and the warnings: (fields to add to its record). The path is planned here,
+    before anything is encoded: an ROI that cannot stay in frame stops cut.py with numbers."""
+    info = sv.get("info") or {}
+    size = (info.get("w"), info.get("h"))
+    if not all(size):
+        return {}
+    out = geometry(c)
+    fit, warns = photo_move.fit_for(size, out, sh.get("fit"))
+    roi = sh.get("roi")
+    if roi == "face":
+        roi = face_roi(sv["path"], label)
+    if roi is not None and fit == "contain":
+        warns.append("the roi is not used: the photo is shown whole (fit contain)")
+    try:
+        path = photo_move.plan(size, out, n, sh.get("move") or "none", roi, fit)
+    except photo_move.PhotoError as x:
+        raise PictureError(f"{label} ({name}, {Path(sv['path']).name}): {x}")
+    bad = photo_move.check(path) if path is not None else []
+    if bad:  # every frame of the path, before anything is encoded
+        raise PictureError(f"{label} ({name}, {Path(sv['path']).name}): the {path['move']} cannot keep the ROI: "
+                           f"{bad[0]}; a still frame, \"fit\": \"contain\" or a smaller ROI")
+    rec = {"_fit": fit, "_roi": None, "_warnings": warns}
+    if path is not None:
+        rec["_roi"] = tuple(roi)
+        rec["_warnings"] = warns + path["warnings"]
+        rec["roi_path"] = photo_move.record(path)
+    return rec
+
+
 def block_shot(c, sh, n, label):
     """One shot of a picture block (n frames) -> its picture-track record."""
     F = c["fps"]
@@ -231,7 +308,7 @@ def block_shot(c, sh, n, label):
     move = sh.get("move") or "none"
     if kind_of(sv) == "photo":
         return {"kind": "photo", "source": name, "src_start": 0.0, "src_end": d, "speed": 1.0, "move": move,
-                "look": sv.get("look_id"), **base}
+                "look": sv.get("look_id"), **base, **photo_shot(c, sh, n, label, name, sv)}
     start, speed = float(sh.get("start", 0.0)), float(sh.get("speed", 1.0))
     src_dur = float((sv.get("info") or {}).get("dur") or 0.0)
     have = max(0.0, (src_dur - start) / speed)
@@ -246,7 +323,8 @@ def block_shot(c, sh, n, label):
 def public(shots):
     """The shots as captions.json and edl.json keep them: the picture-track fields only (pic_track.SHOT_KEYS)."""
     from pic_track import SHOT_KEYS
-    return [{k: g.get(k) for k in SHOT_KEYS} for g in shots]
+    return [{**{k: g.get(k) for k in SHOT_KEYS}, **({"roi_path": g["roi_path"]} if g.get("roi_path") else {})}
+            for g in shots]
 
 
 def describe(shots, c):
@@ -263,7 +341,7 @@ def describe(shots, c):
 
 def geometry(c):
     """The video's size: the sound sources' video as cut.py scales it (they were checked to agree), else 1080x1920."""
-    for r in c["ranges"]:
+    for r in c.get("ranges") or []:
         sv = c["sources"][r["source"]]
         if kind_of(sv) == "video":
             return (1080, 1920) if sv["scale"] else (sv["info"]["w"], sv["info"]["h"])
@@ -321,7 +399,7 @@ def build(c, e, segments, shots, total_video, level=True):
             try:
                 footage.prepare(sv["path"], out, nf / F, g["src_start"] if g["kind"] == "video" else 0.0, g["_fit"],
                                 g["_focus"], g["speed"], look=sv.get("look") or c, strict=True, size=(w, h), fps=F,
-                                move=g["move"])
+                                move=g["move"], roi=g.get("_roi"))
             except footage.ShortSource as x:
                 sys.exit(f"cut.json picture shot {g['i']}: {x}")
         files.append(out)

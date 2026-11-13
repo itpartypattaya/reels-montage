@@ -43,9 +43,11 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from reels_common import (IMAGE_EXT, VIDEO_EXT, brand_file, edit_dir, editing_json, effective, library_dirs, load_config,
-                          load_json, online, probe, project_root, rel, run, save_json, score, utf8_stdio, warn)
+                          load_json, online, photo_input, probe, project_root, rel, run, save_json, score,
+                          upright_image, upright_size, utf8_stdio, warn)
 from cut import extract_path, load_cut, look_chain, lut_inputs
 from pic_track import MOVES  # a picture shot's own motion (cut.json picture)
+import photo_move  # noqa: E402  the path of a photo shot with an ROI (cut.json picture shots -> roi)
 
 NO_FOOTAGE = "no footage in any enabled source"  # plan-search's skip reason: --retry looks for these again
 MAX_PAD_S = 0.5  # how much a short source may be stretched with a freeze frame (tpad clone); more -> other footage
@@ -317,9 +319,18 @@ def cmd_providers(a):
               f"{'' if used else ' (not used in this video: off in the settings or not in the list)'}")
 
 
+def photo_facts(p):
+    """A photo's upright size (the EXIF orientation applied) for footage_index.json; no duration."""
+    try:
+        w, h = upright_size(p)
+    except Exception:
+        w = h = None
+    return {"w": w, "h": h, "dur": None}
+
+
 def file_facts(p, info=None):
-    """Size, duration and frame size of a file for footage_index.json."""
-    info = info or (probe(p) if p.suffix.lower() in VIDEO_EXT else {"w": None, "h": None, "dur": None})
+    """Size, duration and frame size of a file for footage_index.json (a photo upright)."""
+    info = info or (probe(p) if p.suffix.lower() in VIDEO_EXT else photo_facts(p))
     return {"w": info.get("w"), "h": info.get("h"), "dur": round(info["dur"], 2) if info.get("dur") else None,
             "size_mb": round(p.stat().st_size / 1e6, 1)}
 
@@ -347,7 +358,7 @@ def cmd_index(a):
     T, rows, facts = 160, [], {}
     for n, p in enumerate(files):
         r = rel(p, project)
-        info = probe(p) if p.suffix.lower() in VIDEO_EXT else {"w": None, "h": None, "dur": None}
+        info = probe(p) if p.suffix.lower() in VIDEO_EXT else photo_facts(p)
         meta = file_facts(p, info)
         facts[r] = meta
         strip = Image.new("RGB", (T * 3, int(T * 16 / 9) + 18), (30, 30, 30))
@@ -359,7 +370,7 @@ def cmd_index(a):
                          "-vf", f"scale={T}:-2", tmp])
                     im = Image.open(tmp).convert("RGB")
                 else:
-                    im = Image.open(p).convert("RGB")
+                    im = upright_image(p).convert("RGB")  # as the phone shows it and as prepare() uses it
                 im.thumbnail((T, int(T * 16 / 9)))
                 strip.paste(im, (k * T, 0))
             except Exception:
@@ -504,7 +515,7 @@ class ShortSource(ValueError):
     """The source is too short for the insert: take other footage or a smaller --in."""
 
 
-MOVE_Z = 0.06  # how far a push, a pull or a pan zooms over the shot
+MOVE_Z = photo_move.MOVE_Z  # how far a push, a pull or a pan zooms over the shot (one number for both modules)
 
 
 def move_zoompan(move, n, w, h, fps, fx, fy):
@@ -524,7 +535,7 @@ def move_zoompan(move, n, w, h, fps, fx, fy):
 
 
 def prepare(src, out, dur, start=0.0, fit="cover", focus=(0.5, 0.5), speed=1.0, lut=None, lut_strength=0.7, grade=None,
-            look=None, strict=False, size=(1080, 1920), fps=30, move=None):
+            look=None, strict=False, size=(1080, 1920), fps=30, move=None, roi=None):
     """Any video or photo source -> 1080×1920, 30 fps, yuv420p, no audio, exactly dur seconds.
     fit/focus/grade work for both video and photos (grade: before the LUT). look: the rough cut's look (cut.py
     load_cut: correct, lut, lut_mix, grade), applied by cut.py's own look_chain; it replaces lut/lut_strength.
@@ -532,9 +543,11 @@ def prepare(src, out, dur, start=0.0, fit="cover", focus=(0.5, 0.5), speed=1.0, 
     larger one raises ShortSource; the result's length is checked after ffmpeg.
     strict (a picture shot of cut.json, cut_picture.py): no freeze at all (any shortfall raises ShortSource), the
     video's own size and fps, and the motion is the shot's move (MOVES): none/still keep the frame standing, a photo
-    included; push, pull and pan move it. Without strict (B-roll) everything stays as above: a photo always pushes in."""
+    included; push, pull and pan move it. Without strict (B-roll) everything stays as above: a photo always pushes in.
+    roi (strict, a photo, cover): the shot's subject, [x0, y0, x1, y1] of the upright photo: the move follows
+    photo_move.plan(). A photo is always taken upright by its EXIF tag (reels_common.photo_input)."""
     if strict:
-        return prepare_shot(src, out, dur, start, fit, focus, speed, look, size, fps, move or "none")
+        return prepare_shot(src, out, dur, start, fit, focus, speed, look, size, fps, move or "none", roi)
     src, out = Path(src), Path(out)
     out.parent.mkdir(parents=True, exist_ok=True)
     is_img = src.suffix.lower() in IMAGE_EXT
@@ -542,16 +555,18 @@ def prepare(src, out, dur, start=0.0, fit="cover", focus=(0.5, 0.5), speed=1.0, 
     n = round(dur * 30)
     if is_img:
         # photo -> a clip with a slow push-in; cover: crop and push in towards focus, contain: the whole photo on a blurred background
+        pre_in, turn = photo_input(src)  # upright by its EXIF tag whatever ffmpeg itself does with it
+        head0 = f"[0:v]{turn}," if turn else "[0:v]"
         if fit == "cover":
             zp = f"zoompan=z='1+0.06*on/{n}':x='(iw-iw/zoom)*{fx}':y='(ih-ih/zoom)*{fy}':d={n}:s=1080x1920:fps=30"
-            body = (f"[0:v]scale=1296:2304:force_original_aspect_ratio=increase:flags=lanczos,"
+            body = (f"{head0}scale=1296:2304:force_original_aspect_ratio=increase:flags=lanczos,"
                     f"crop=1296:2304:(iw-1296)*{fx}:(ih-2304)*{fy},{zp}")
         else:
             zp = f"zoompan=z='1+0.03*on/{n}':x='(iw-iw/zoom)/2':y='(ih-ih/zoom)/2':d={n}:s=1080x1920:fps=30"
-            body = (f"[0:v]format=rgba,split[f][g];[g]scale=1296:2304:force_original_aspect_ratio=increase,crop=1296:2304,"
+            body = (f"{head0}format=rgba,split[f][g];[g]scale=1296:2304:force_original_aspect_ratio=increase,crop=1296:2304,"
                     f"boxblur=30:3,eq=brightness=-0.08[bg];[f]scale=1296:2304:force_original_aspect_ratio=decrease:flags=lanczos[fg];"
                     f"[bg][fg]overlay=(W-w)/2:(H-h)/2,{zp}")
-        inputs = ["-i", src]
+        inputs = [*pre_in, "-i", src]
     else:
         pad = 0.0
         src_dur = probe(src).get("dur")
@@ -604,7 +619,7 @@ def usable(src_dur, start, speed):
 
 
 def prepare_shot(src, out, dur, start=0.0, fit="cover", focus=(0.5, 0.5), speed=1.0, look=None, size=(1080, 1920),
-                 fps=30, move="none"):
+                 fps=30, move="none", roi=None):
     """prepare(strict=True): one picture shot of cut.json at the video's size and fps, exactly round(dur * fps) frames,
     no freeze frame, the shot's own move (MOVES). The color is the look of the shot's place (cut.py look_chain)."""
     src, out = Path(src), Path(out)
@@ -623,14 +638,24 @@ def prepare_shot(src, out, dur, start=0.0, fit="cover", focus=(0.5, 0.5), speed=
         if fit == "cover":
             return (f"{head}scale={bw}:{bh}:force_original_aspect_ratio=increase:flags=lanczos,"
                     f"crop={bw}:{bh}:(iw-{bw})*{fx}:(ih-{bh})*{fy}")
+        fg = f"scale={bw}:{bh}:force_original_aspect_ratio=decrease:flags=lanczos"
+        if is_img:  # a small photo is not blown up past MAX_UP of its own size: smaller, sharp, on the blurred field
+            pw, ph = upright_size(src)
+            cap = photo_move.MAX_UP * bw / w  # MAX_UP on the screen = this many px of the working frame per photo px
+            if min(bw / pw, bh / ph) > cap:
+                fg = f"scale={2 * round(pw * cap / 2)}:{2 * round(ph * cap / 2)}:flags=lanczos"
         return (f"{head}split[f][g];[g]scale={bw}:{bh}:force_original_aspect_ratio=increase,crop={bw}:{bh},"
-                f"boxblur=30:3,eq=brightness=-0.08[bg];[f]scale={bw}:{bh}:force_original_aspect_ratio=decrease:"
-                f"flags=lanczos[fg];[bg][fg]overlay=(W-w)/2:(H-h)/2")
+                f"boxblur=30:3,eq=brightness=-0.08[bg];[f]{fg}[fg];[bg][fg]overlay=(W-w)/2:(H-h)/2")
 
+    path = photo_move.plan(upright_size(src), (w, h), n, move, roi, fit) if is_img and roi is not None else None
     if is_img:
-        inputs = ["-loop", "1", "-framerate", str(fps), "-t", f"{(n + 1) / fps:.4f}", "-i", src]
-        body = framing("[0:v]format=rgb24,")
-        body += f",fps={fps}" + (f",{zp.replace('zoompan=', 'zoompan=d=1:', 1)}" if zp else "")
+        pre_in, turn = photo_input(src)  # upright by its EXIF tag whatever ffmpeg itself does with it
+        inputs = [*pre_in, "-loop", "1", "-framerate", str(fps), "-t", f"{(n + 1) / fps:.4f}", "-i", src]
+        if path is not None:
+            body = roi_body(path, turn, w, h, fps)
+        else:
+            body = framing(f"[0:v]{turn},format=rgb24," if turn else "[0:v]format=rgb24,")
+            body += f",fps={fps}" + (f",{zp.replace('zoompan=', 'zoompan=d=1:', 1)}" if zp else "")
     else:
         info = probe(src)
         src_dur = info.get("dur")
@@ -659,6 +684,41 @@ def prepare_shot(src, out, dur, start=0.0, fit="cover", focus=(0.5, 0.5), speed=
         raise ShortSource(f"{out.name}: {info.get('dur') or 0:.2f} s after preparing instead of {dur:.2f} s: take "
                           f"another clip or a shorter shot")
     return info
+
+
+def roi_body(p, turn, w, h, fps):
+    """The filter chain of a photo shot that follows its ROI's path (photo_move.plan): the upright photo cut to the part
+    the path crosses, enlarged so a window is 2w wide (half-pixel steps, no shake), then a zoom (zoompan: a straight
+    line from the first window to the last) or a pan (a moving crop), down to w x h."""
+    import math
+    sw, sh = p["size"]
+    (ax, ay, aw, ah), (bx, by, bw, bh) = p["start"], p["end"]
+    last = max(1, p["n"] - 1)
+    up = f"[0:v]{turn + ',' if turn else ''}format=rgb24"
+    if p["kind"] == "pan":  # equal windows: the part both cross, enlarged, and a crop that moves across it
+        ux0, uy0 = max(0, math.floor(min(ax, bx))), max(0, math.floor(min(ay, by)))
+        ux1, uy1 = min(sw, math.ceil(max(ax + aw, bx + bw))), min(sh, math.ceil(max(ay + ah, by + bh)))
+        k = 2 * w / aw
+        ew, eh = 2 * round((ux1 - ux0) * k / 2), 2 * round((uy1 - uy0) * k / 2)
+        kx, ky = ew / (ux1 - ux0), eh / (uy1 - uy0)  # the scale actually applied (the size is rounded to even)
+        x = f"{(ax - ux0) * kx:.4f}+{(bx - ax) * kx:.4f}*n/{last}"
+        y = f"{(ay - uy0) * ky:.4f}+{(by - ay) * ky:.4f}*n/{last}"
+        return (f"{up},crop={ux1 - ux0}:{uy1 - uy0}:{ux0}:{uy0},scale={ew}:{eh}:flags=lanczos,fps={fps},"
+                f"crop={2 * w}:{2 * h}:x='min({ew - 2 * w},max(0,{x}))':y='min({eh - 2 * h},max(0,{y}))',"
+                f"scale={w}:{h}:flags=lanczos")
+    gx, gy, gw, gh = p["start"] if aw >= bw else p["end"]  # the larger window holds the whole path
+    # whole pixels around the window, never inside it: a rounded crop could shave the ROI's edge (review of phase 3)
+    cx0, cy0 = max(0, math.floor(gx + 1e-6)), max(0, math.floor(gy + 1e-6))
+    cx1, cy1 = min(sw, math.ceil(gx + gw - 1e-6)), min(sh, math.ceil(gy + gh - 1e-6))
+    crop = f"crop={cx1 - cx0}:{cy1 - cy0}:{cx0}:{cy0}"
+    if p["kind"] == "still":
+        return f"{up},{crop},scale={w}:{h}:flags=lanczos,fps={fps}"
+    sx, sy = 2 * w / (cx1 - cx0), 2 * h / (cy1 - cy0)  # enlarged px per photo px
+    wexp = f"({aw * sx:.4f}+{(bw - aw) * sx:.4f}*on/{last})"  # the window's width in the enlarged part
+    x = f"{(ax - cx0) * sx:.4f}+{(bx - ax) * sx:.4f}*on/{last}"
+    y = f"{(ay - cy0) * sy:.4f}+{(by - ay) * sy:.4f}*on/{last}"
+    return (f"{up},{crop},scale={2 * w}:{2 * h}:flags=lanczos,fps={fps},"
+            f"zoompan=d=1:z='{2 * w}/{wexp}':x='{x}':y='{y}':s={w}x{h}:fps={fps}")
 
 
 def resolve_lut(arg, brand, brand_dir, project):

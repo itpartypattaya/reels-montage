@@ -918,6 +918,12 @@ def main():
         cut_voice.background_warnings(c)
     if shots is not None:
         print(cut_picture.describe(shots, c))
+        for g in shots:
+            for m in g.get("_warnings") or []:
+                warn(f"picture shot {g['i']} ({g['source']}): {m}")
+        from pic_track import slideshow_issues
+        for m in slideshow_issues(cut_picture.public(shots)):
+            warn(m)
         slow = [g for g in shots if g["kind"] == "video" and not g.get("_copy") and g["speed"] < SLOW_MIN - 1e-9]
         if slow:  # frames are repeated, not interpolated: under x0.75 the motion stutters (references/no-speaker.md)
             warn(f"picture shot(s) {', '.join(str(g['i']) for g in slow)} slowed below x{SLOW_MIN:g}: the frames repeat "

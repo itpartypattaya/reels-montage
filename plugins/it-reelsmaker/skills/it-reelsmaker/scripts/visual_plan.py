@@ -100,7 +100,7 @@ from vp_scenes import (CHAT_FROM, COVER_MODES, EXPERIMENTAL_MODES, EXPERIMENTAL_
                        RUBRIC_BOX, SCENE_SOUNDS, SCENE_SOURCES, SCENE_TYPES, SPEAKER_WINDOW, SPLIT_BOX, UNDER_RUBRIC, SPLIT_CAM, VOICE_SUB_GAP,
                        WINDOW_SCENE_BOX, add_scene, subtitle_band_off_camera, voice_stage, check_scenes, default_box, experimental, faces_seen,
                        hidden_windows, hides_subtitles, layout_frames, overlay_slots, scene_box_issues, scene_export,
-                       scene_face, scene_keep_entries, scene_text, scene_timeline, scene_tone, scenes_only_cover,
+                       roi_face, scene_face, scene_keep_entries, scene_text, scene_timeline, scene_tone, scenes_only_cover,
                        text_frames, text_full_on, text_zone, tone_issues, window_issues, without_own, word_times)  # noqa: F401
 from vp_defects import (COVER_PAD, INSERT_IN, cmd_accept, defect_issues, hidden_span, hides_face, load_defects,
                         same_defect, stranger_issues)  # noqa: F401

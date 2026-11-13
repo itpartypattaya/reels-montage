@@ -915,9 +915,28 @@ def hidden_windows(plan):
     return [[h["start"], h["end"]] for h in plan.get("hide_subtitles") or []]
 
 
+def roi_face(e, sc):
+    """The subject of a photo shot under the scene's middle (captions.json shots -> roi_path) where it is on screen
+    then, [x, y, w, h]; None when the picture there has no ROI."""
+    from photo_move import screen_at
+    from pic_track import pic_shots
+    cap = load_json(Path(e) / "captions.json", {}) or {}
+    mid = sc["start"] + sc["dur"] / 2
+    for g in pic_shots(cap):
+        r = g.get("roi_path")
+        if r and g["out_start"] - 1e-6 <= mid < g["out_start"] + g["out_dur"]:
+            t = (mid - g["out_start"]) / g["out_dur"] if g["out_dur"] else 0.0
+            return [round(v) for v in screen_at(r, t)]
+    return None
+
+
 def scene_face(e, sc):
-    """The speaker's face over the scene's interval from faces.json (the 1080x1920 rough cut): the median of the
+    """What a layout scene frames over the scene's interval: the subject of a photo with an ROI (the editor's choice
+    wins over a measured face), else the speaker's face from faces.json (the 1080x1920 rough cut): the median of the
     largest face in each sample. No measurement -> None (the kit uses its default face)."""
+    roi = roi_face(e, sc)
+    if roi is not None:
+        return roi
     import faces as fc
     data = fc.load(e)
     if not data or "samples" not in data:
