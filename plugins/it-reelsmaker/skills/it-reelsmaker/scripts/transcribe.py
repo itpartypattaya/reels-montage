@@ -446,9 +446,11 @@ def cmd_rate(a):
     import speech_mask as sm
     e = edit_dir(a.edit)
     cap = load_json(e / "captions.json")
-    if not cap or not (e / "final.mp4").exists():
-        sys.exit(f"{e}: no captions.json or final.mp4: build the rough cut first (cut.py)")
-    envelope, hf = sm.load_envs(str(e / "final.mp4"))
+    # a narration cut (a sound-only recording, cut_voice.py) is voice.wav, not final.mp4 (Codex review of PR #43)
+    sound = e / str(((cap or {}).get("voice") or {}).get("file") or "voice.wav") if (cap or {}).get("voice") else e / "final.mp4"
+    if not cap or not sound.exists():
+        sys.exit(f"{e}: no captions.json or {sound.name}: build the rough cut first (cut.py)")
+    envelope, hf = sm.load_envs(str(sound))
     sdb = sm.smax(envelope)
     srt = sorted(x for x in sdb if x > -90)
     thr = min(-30.0, (srt[int(len(srt) * 0.95)] if srt else -20) - 20)

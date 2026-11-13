@@ -817,3 +817,73 @@ def test_the_music_eases_in_from_silence(tmp_path):
     _, x = read_wav(out)
     a = np.abs(x.astype(float))
     assert a[:48].max() < 0.1 * a.max(), (a[:48].max(), a.max())
+
+
+@needs_node
+def test_the_series_logo_of_the_last_seconds_is_drawn_above_the_scenes(tmp_path):
+    # Codex P2 on PR #57: cornerFade() kept the series' logo at full opacity, but the kit drew it BEFORE the scene layer,
+    # so the punchline's opaque field (split: the top 900 px; full: the whole frame) covered it all the same. A logo
+    # that stays over the scenes (a series' last seconds, a no-speech reel) is drawn above them; the corner logo of a
+    # talking head still fades out under a scene, below it, as before.
+    series = KIT / "kit" / "series.ts"
+    code = ("const m = await import(process.argv[1]);"
+            "console.log(JSON.stringify([m.cornerAbove({cornerFrom: 8.5}), m.cornerAbove({format: 'silent'}),"
+            " m.cornerAbove({}), m.cornerAbove({cornerFrom: null})]));")
+    r = subprocess.run(["node", "--input-type=module", "-e", code, series.as_uri()], capture_output=True, text=True,
+                       encoding="utf-8")
+    assert r.returncode == 0, r.stderr
+    assert json.loads(r.stdout) == [True, True, False, False]
+    reel = (KIT / "ReelKit.tsx").read_text(encoding="utf-8")
+    frame = reel[reel.index("<SceneLayer scenes={p.scenes}") - 400:]
+    scene = frame.index("<SceneLayer scenes={p.scenes}")
+    below = frame.index("{cornerAbove(p) ? null : <Corner p={p} />}")
+    above = frame.index("{cornerAbove(p) ? <Corner p={p} /> : null}")
+    assert below < scene < above
+    assert frame.count("<Corner p={p} />") == 2
+
+
+def staged_project(project, reel=None):
+    """A no-speech reel cut, planned and ready to stage (a Remotion folder with the brand's files)."""
+    e = silent_project(project, reel=reel)
+    cut_and_init(project, e)
+    rem = project / "reels"
+    (rem / "src").mkdir(parents=True)
+    write_json(rem / "package.json", {"name": "reels"})
+    run_script("brand.py", "stage", "acme", "--remotion", rem, cwd=project)
+    return e, rem
+
+
+def stage(project, rem, *flags):
+    return run_script("visual_plan.py", "stage", "edit/s1", "--remotion", rem, "--props", rem / "props.json", *flags,
+                      cwd=project, check=False)
+
+
+@needs_ffmpeg
+def test_changing_the_ending_after_the_music_names_the_music_for_that_ending_and_it_stages(project):
+    # Codex P2 on PR #57: music made for the video with its sting; then the sting is taken off. stage refused the old
+    # track (right), but the music.py command it named read the OLD ending from the plan and made the same length
+    # again: the next stage failed the same way, round and round. The refusal now names the music for the ending asked
+    # for, music.py makes that length, and the stage goes through and records the new ending.
+    e, rem = staged_project(project, reel={"music": {"source": "code", "style": "groove", "bpm": 100}})
+    assert stage(project, rem, "--sting").returncode == 0
+    assert plan(e)["end_card"]["seconds"] == 2.6
+    run_script("music.py", "--edit", "edit/s1", cwd=project)  # made for the video with its sting
+    d = timing(e)["duration"]
+    (_, _, rate, n), _ = read_wav(e / "music.wav")
+    assert n == round((d + 2.6) * rate)
+    r = stage(project, rem, "--no-end")
+    assert r.returncode != 0
+    assert "music.py --edit edit/s1 --end none" in r.stdout + r.stderr, r.stdout + r.stderr
+    run_script("music.py", "--edit", "edit/s1", "--end", "none", cwd=project)
+    (_, _, rate, n), _ = read_wav(e / "music.wav")
+    assert n == round(d * rate)
+    r = stage(project, rem, "--no-end")
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert not (plan(e).get("end_card") or {}).get("seconds")
+    # and back: a sting asked for again names the music with the sting's length
+    r = stage(project, rem, "--sting")
+    assert r.returncode != 0 and "music.py --edit edit/s1 --end sting" in r.stdout + r.stderr, r.stdout + r.stderr
+    run_script("music.py", "--edit", "edit/s1", "--end", "sting", cwd=project)
+    (_, _, rate, n), _ = read_wav(e / "music.wav")
+    assert n == round((d + 2.6) * rate)
+    assert stage(project, rem, "--sting").returncode == 0

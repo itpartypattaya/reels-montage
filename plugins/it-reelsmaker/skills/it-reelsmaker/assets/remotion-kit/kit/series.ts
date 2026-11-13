@@ -25,7 +25,13 @@ export const cornerOn = (p: SeriesProps, frame: number, fps: number, tail = 0): 
 /** The corner logo under a scene: it fades out (1 - activity), except a series' logo of the last seconds or a
  *  no-speech reel, where scenes run all along and would hide it for good (Codex review). */
 export const cornerFade = (p: Pick<SeriesProps, "cornerFrom" | "format">, activity: number): number =>
-  p.cornerFrom != null || p.format === "silent" ? 1 : 1 - activity;
+  cornerAbove(p) ? 1 : 1 - activity;
+
+/** A corner logo that stays over the scenes is drawn ABOVE the scene layer: under it, a scene's opaque field (a split
+ *  slogan's top, a full scene) would cover it however opaque the logo is (Codex review of PR #57). The corner of a
+ *  talking head stays below the scenes and fades out under them, as before. */
+export const cornerAbove = (p: Pick<SeriesProps, "cornerFrom" | "format">): boolean =>
+  p.cornerFrom != null || p.format === "silent";
 
 /** The rubric label's window, from..to (to: the end of the rough cut). */
 export const rubricOn = (p: SeriesProps, frame: number, fps: number): boolean => {

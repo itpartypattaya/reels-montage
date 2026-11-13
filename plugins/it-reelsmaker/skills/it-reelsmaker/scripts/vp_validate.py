@@ -165,7 +165,7 @@ def voice_issues(e, plan, s, callouts):
     return out
 
 
-def silent_issues(e, plan, s, tail=0.0):
+def silent_issues(e, plan, s, tail=0.0, end=None):
     """The no-speech reel (format silent, reel.json -> voice: none): the scenes are the script's text word for word,
     each block once, at its timing; music made in code belongs to its WAV and the video's length. -> (errors, warnings)."""
     if plan.get("format") != "silent":
@@ -181,7 +181,7 @@ def silent_issues(e, plan, s, tail=0.0):
     x, y = script_issues(e, plan)
     errs += x
     warns += y
-    x, y, _ = beats_issues(e, plan, tail)
+    x, y, _ = beats_issues(e, plan, tail, end)
     errs += x
     warns += y
     src = (s.get("music") if isinstance(s.get("music"), dict) else {}).get("source")
@@ -328,7 +328,7 @@ def cmd_validate(a, quiet=False):
     fr = None if only else framed_at(e)
     errs += [f"reel.json: {m}" for m in framed_issues(load_json(e / "reel.json", {}) or {})]
     errs += voice_issues(e, plan, s, callouts)
-    se, sw = silent_issues(e, plan, s, tail)
+    se, sw = silent_issues(e, plan, s, tail, end_now(a, plan)[0] or "none")  # music.py --end takes this ending
     errs += se
     warns += sw
     if not only:

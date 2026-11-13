@@ -459,14 +459,15 @@ def edit_request(a):
     """--edit edit/<id>: the length with the end card, reel.json -> music, the markers on script.json's blocks."""
     from types import SimpleNamespace
     from reels_common import edit_dir, load_config, load_json
-    from vp_core import end_tail
+    from vp_core import END_CARD_S, end_tail
     e = edit_dir(a.edit)
     cap = load_json(e / "captions.json") or {}
     plan = load_json(e / "visual_plan.json") or {}
     base = float(plan.get("duration") or cap.get("duration") or 0)
     if not base:
         sys.exit(f"no rough cut in {e}: the music is made for the finished length (cut.py first)")
-    tail = end_tail(SimpleNamespace(cmd="music"), plan)
+    # --end: the ending the next stage asks for (none / card / sting); without it, the one the last stage recorded
+    tail = (END_CARD_S if a.end in ("card", "sting") else 0.0) if a.end else end_tail(SimpleNamespace(cmd="music"), plan)
     s = load_config(e)[0]
     m = s.get("music") if isinstance(s.get("music"), dict) else {}
     if m.get("source") not in (None, "code"):
@@ -510,6 +511,9 @@ def main():
     ap.add_argument("out", nargs="?", help="the WAV to write (its beats.json goes next to it); with --edit: none")
     ap.add_argument("--edit", help="edit/<id>: the video's length, reel.json -> music, script.json's blocks")
     ap.add_argument("--dur", type=float, help="the video's length in seconds (the end card included)")
+    ap.add_argument("--end", choices=("none", "card", "sting"),
+                    help="with --edit: the ending the next stage asks for (stage --no-end / --card / --sting); default: "
+                         "the one the last stage recorded")
     ap.add_argument("--bpm", type=float, help=f"tempo {BPM_RANGE[0]}-{BPM_RANGE[1]} (default 104)")
     ap.add_argument("--style", choices=STYLES)
     ap.add_argument("--seed", type=int, help="another arrangement of the same request (default 1)")

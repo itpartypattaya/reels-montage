@@ -18,7 +18,9 @@ python scripts/music.py out/try.wav --dur 15.4 --bpm 104 --style pulse --stop 3.
 ```
 
 `--edit` writes `edit/<id>/music.wav` and `edit/<id>/beats.json`. Its length is the finished video's: `captions.json
--> duration` plus the end card or sting the stage adds (2.6 s). The answers come from `reel.json -> music`:
+-> duration` plus the end card or sting the last stage recorded (2.6 s); `--end none|card|sting` makes it for the
+ending the next stage asks for instead (`stage --no-end` / `--card` / `--sting`: a stage that changes the ending names
+this command). The answers come from `reel.json -> music`:
 
 ```json
 {"music": {"source": "code", "style": "groove", "bpm": 104, "seed": 1,
@@ -90,7 +92,7 @@ ended it. The same version of the algorithm, the same parameters and the same se
 - Scenes may be placed by `--at beat:N` (the N-th heard beat, from 1), `--at marker:button` or `--at block:<id>`.
 - `visual_plan.py validate` reads `edit/<id>/beats.json`: it must belong to `music.wav` (the hash), last as long as
   the video with its end card, and its markers must serve blocks of the script at their present times; otherwise run
-  `music.py --edit` again.
+  `music.py --edit` again (with `--end`, when the stage changes the ending: its refusal names the command).
 - "Beat" (`references/scenes.md`): music made in code counts as burned-in music with rights.
 
 ## The master

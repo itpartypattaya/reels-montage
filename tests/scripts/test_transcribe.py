@@ -178,3 +178,29 @@ def test_snip_language_as_faster_whisper_takes_it(tmp_path):
     write_json(tmp_path / "transcripts" / "A.json", {"language_code": "eng", "words": []})
     assert transcribe.snip_language(None, tmp_path, "A.MOV") == "en"
     assert transcribe.snip_language("ru-RU", tmp_path, "A.MOV") == "ru"
+
+
+@needs_ffmpeg
+def test_rate_measures_a_narration_cut_on_its_voice_wav(project):
+    # Codex P2 on PR #43: a cut of a sound-only recording writes edit/<id>/voice.wav, not final.mp4 (cut_voice.py), and
+    # rate refused it with "build the rough cut first": the speech rate of a narration could not be measured at all
+    from conftest import ffmpeg, make_speech, write_json
+    e = project / "edit" / "n1"
+    make_speech(project / "speech.wav", [(0.2, 1.2), (2.2, 2.7)], 3.0)
+    e.mkdir(parents=True)
+    ffmpeg("-i", project / "speech.wav", "-ar", "48000", "-ac", "2", "-c:a", "pcm_s16le", e / "voice.wav")
+    write_json(e / "captions.json", {"duration": 3.0, "voice": {"file": "voice.wav", "rate": 48000, "fps": 30},
+                                     "segments": [
+        {"i": 0, "source": "front", "out_start": 0.0, "out_dur": 2.0, "beat": "one"},
+        {"i": 1, "source": "side", "out_start": 2.0, "out_dur": 1.0, "beat": "two"}], "words": [
+        {"text": "banana", "start": 0.2, "end": 0.7, "seg": 0}, {"text": "papaya,", "start": 0.7, "end": 1.2, "seg": 0},
+        {"text": "мама", "start": 2.2, "end": 2.7, "seg": 1}]})
+    assert not (e / "final.mp4").exists()
+    r = run_script("transcribe.py", "rate", "edit/n1", "--json", cwd=project)
+    doc = json.loads(r.stdout.strip().splitlines()[-1])
+    front, side = doc["sources"]["front"], doc["sources"]["side"]
+    assert front["vowels"] == 6 and 0.95 <= front["speech_s"] <= 1.15 and 5.2 <= front["rate"] <= 6.3
+    assert side["vowels"] == 2 and 0.45 <= side["speech_s"] <= 0.65
+    (e / "voice.wav").unlink()  # the narration's file is gone: the message names it, not final.mp4
+    r = run_script("transcribe.py", "rate", "edit/n1", cwd=project, check=False)
+    assert r.returncode != 0 and "voice.wav" in r.stdout + r.stderr
