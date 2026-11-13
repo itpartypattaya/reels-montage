@@ -4,10 +4,11 @@ Read this when the voice of the video is not a person speaking in the frame: a v
 narration over photos, or a talking head with a stretch of voice-over in the middle. The first part is how to edit
 such a video; the second is the data contract every script follows (the sound track and the picture track apart).
 
-Not here yet: the **no-speech reel** (no voice at all, the text carries it, sounds and music always offered) and
-**photo reels** with movement planned from the photo; until then a photo is a picture shot like a clip, and a video
-with no voice is the "scenes only" format (`references/scenes.md`). No speech is ever synthesized: no voice -> the
-person records a voice note on the phone (`references/shooting.md`) or the video goes without speech.
+Here: the voice-over and the mixed video, then the **no-speech reel** (no voice at all: the text carries it, sounds
+and music always offered), then the data contract. Not here yet: **photo reels** with movement planned from the photo;
+until then a photo is a picture shot like a clip. A promo with no footage at all stays the "scenes only" format
+(`references/scenes.md`). No speech is ever synthesized: no voice -> the person records a voice note on the phone
+(`references/shooting.md`) or the video goes without speech.
 
 ## Voice-over and the mixed video
 
@@ -88,6 +89,102 @@ its sound.
 
 **Profiles.** With `voice: off_camera`, "said" in a checklist means said in the narration, and "the speaker in frame"
 does not apply; `review` (a place or a product, often voice-over) uses everything above.
+
+## The no-speech reel
+
+**When.** There is no voice at all: silent wide shots or a person on screen who does not speak, and the brief's text
+carries the video ("phrase -> translation -> punchline", a question and cards one by one, a short series). The person
+calls it a video without speech; `reel.json -> voice: none`. The clock is the text: each block is on screen as long as
+it takes to read, so a 7-10 s idea of the brief often becomes 13-18 s, and that is right.
+
+**Step 0, in addition to the usual brief** (always, not only when it applies):
+- **Sounds and music, always asked.** Sound effects on the events (yes by default: `references/library.md`) and the
+  music: music composed in code (recommended when there is no track of one's own: `references/music.md`), one's own
+  licensed track burned in, or a track picked in the app when publishing (then the video is built with its sounds and
+  no music, and the report says to pick the track). "No sound at all" only as an explicit answer. Save it:
+  `reelcfg.py save edit/<id> --set voice=none music.source=code music.style=groove` (`own`, `app`, `none`).
+- **The text, word for word.** The brief's lines are not shortened, "improved" or translated by the agent: they go into
+  `script.json` as they are (spelling included). The open question is only which block is which role.
+- The person on screen: only on the hook, or all along? May strangers be shown (as for voice-over, above)?
+
+**The script.** `edit/<id>/script.json`: one block per piece of text on screen, in order, with a stable id and a role
+(`hook`, `setup`, `label`, `translation`, `point`, `punchline`, `cta`):
+
+```json
+{"blocks": [
+  {"id": "hook", "role": "hook", "lines": ["The ad says:", "no income ceiling"], "mode": "overlay"},
+  {"id": "label", "role": "label", "lines": ["TRANSLATING:"]},
+  {"id": "translation", "role": "translation", "lines": ["We don't know yet what you will earn."]},
+  {"id": "punchline", "role": "punchline", "lines": ["But sell a lot,", "and you will earn a lot"], "hold": 1.0}]}
+```
+
+A block is a text scene: its role gives the type (`hook`, `label` -> hook; `setup`, `translation` -> quote; `point`,
+`punchline` -> slogan; `cta` -> cta), or set `type` (hook, quote, slogan, contrast, cta), `variant`, `mode`, `box`,
+`tone`, `label`, `accent`, `transition` (a cut by default: the texts hand over at the join), `hold` (seconds the block stays after its reading: the punchline's
+reaction), `what`, `why`. A list, a stat or a chat is a scene of its own (`visual_plan.py add`), not a block.
+**The clips stay on screen by default:** a block's scene lies over the picture (`overlay`), or above it with the
+picture in the lower window where its type has no overlay (a slogan: `split`). `"mode": "full"` (the style's field
+covers the frame) only where the block should be graphics alone ("the person only on the hook, then graphics"):
+blocks back to back in `full` hide every frame of the footage. **Line breaks are layout, the words are the brief's:**
+break a long line into two or three in `lines` (about 28 characters each), never change a word; one 50-character line
+comes out small.
+
+**The timing.** `visual_plan.py script edit/<id> [--bpm 104]` gives each block exactly the length its scene needs: the
+reading floor counted from the frame when the whole text is on screen and the entrance is over, until the text starts
+to leave (the plan check counts it the same way), plus `hold`; the blocks back to back, whole frames. With `--bpm` each
+block runs on to the next beat of the music, never shorter. It writes `script.json -> timing` with the text's
+fingerprint: an edit of the text after it stops `cut.py`, `music.py` and `validate` until the script is timed again.
+
+**The cut list.** No `ranges` (nothing is spoken), only picture blocks; their times may name the text blocks:
+
+```json
+{"fps": 30,
+ "sources": {"office": {"file": "IMG_1042.MOV", "strangers": []},
+             "sunset": {"file": "VID_0723.mp4", "strangers": [], "look": {"correct": "colorchannelmixer=rr=1.12:bb=0.90"}}},
+ "picture": [
+   {"from": "start", "to": "block:label", "shots": [{"source": "office", "start": 2.0, "speed": 0.8, "what": "the person at the window", "why": "the hook"}]},
+   {"from": "block:label", "to": "block:translation", "shots": [{"fill": true, "what": "the style's field", "why": "the label alone"}]},
+   {"from": "block:translation", "to": "end", "shots": [{"source": "sunset", "start": 44.0, "speed": 0.8, "what": "the sunset", "why": "no ceiling"}]}]}
+```
+
+`block:<id>` is where that block starts (`block:<id>:end` where it ends), `end` the end of the text. The whole video
+must be covered: a stretch with no picture is an error with its seconds (a `fill` shot is the style's background, for
+a stretch drawn only with scenes). Each place keeps its own color (`sources.<name>.look`, `balance.py --ref` on a white
+object: an office and a sunset never share one balance). A calm slow-down is x0.8; under x0.75 the frames repeat
+visibly (a warning). `cut.py edit/<id>` writes `final.mp4` of exactly the text's length (with a silent sound track),
+`captions.json` with no speech (`segments: []`, `words: []`, the picture shots) and `edl.json` with no sound to check.
+
+**The plan.** `visual_plan.py init edit/<id> --no-speech` makes one scene per block, word for word, at its timing
+(`format: "silent"`). `validate` fails a scene whose text is not the script's, a block left out or shown twice, a
+scene moved off its timing or shortened, and a script edited after it was timed. Over the picture of a no-speech reel
+the speaker's rules do not hold (the insert budget, the full hook's 1.5 s, two full scenes in a row, the brand tone's
+ceiling of full scenes); reading, the brand tone's flashes and transitions, faces under text, strangers and "no
+slideshow" do. The video may **end on its punchline**, held for the reaction, with no CTA: the script's last block
+(role `punchline` or `cta`) may hold the last 2 s. `stage` passes the format to the kit by name (`props.format`), no
+subtitles, the empty captions with the picture shots.
+
+**The sound.** Effects on the events (`sfx.json`, `references/library.md`), then the music: `music.py --edit edit/<id>`
+after the stage chose the ending (the music's length includes the end card), listened to before the render.
+`master_audio.py <render> -o <master> --music edit/<id>/music.wav --edit edit/<id> --cover edit/<id>/cover.jpg`:
+-14 +-0.7 LUFS and the true peak under -1 dBFS after the effects, checked on the finished file; the music must cover
+the video (its own silences after the button or in a pause are meant); a licensed track that ends early is an error;
+`music.source: app` masters the effects and says to pick the track when publishing. A sound under CC BY: name its
+author in the report and in `caption.txt`.
+
+**A series.** A preset (`reelcfg.py preset save <name> --from edit/<id>`) keeps `voice`, `music` (style, tempo,
+markers by block role), the rubric label at the top (`reel.json -> rubric`: a string for the whole video, or `{"text",
+"from", "to"}`; a light plate at y 228-288: `init --no-speech` puts overlay boxes below it, `validate` fails a box
+under it) and the corner logo for the last seconds only (`corner_last_s: 1.5` with `stage --corner`). It never
+carries the clips, their windows, their color or the text: each video has its own `script.json` and `cut.json`.
+Structures that work: "setup -> label turn -> translation -> punchline with a hold", "the person only on the hook,
+then graphics", "a question -> cards one by one" (`references/structure.md`).
+
+**Footage that does not work** (look at the contact sheet): a hand-held shaky clip, a person turning to the camera, a
+dark clip, the app's intro or outro at the end of a phone clip, the same take twice. Pick the shot by meaning (a sunset
+on "no ceiling"), not by order.
+
+**Translation.** There are no subtitles and no `.srt`: a version in another language is a copy of `script.json` with
+the lines translated by the person (or checked by them), timed, cut and planned again.
 
 ---
 
@@ -262,8 +359,8 @@ Every stretch of the timeline has a purpose, derived from `voice` and `shots` (n
 | lips moving under someone else's voice: a self-check item | — | yes | — |
 
 The "scenes only" format is the case where every stretch is `graphic`: the rules it switches off are the
-`speaker`-only rows. The ending rule is a structure rule, not the face's: it holds everywhere (the no-speech reel will
-decide its own ending). The table is one dictionary, `pic_track.RULES`; the purposes are derived by
+`speaker`-only rows. The ending rule is a structure rule, not the face's: it holds everywhere; a no-speech reel may end on
+the script's last block (its punchline, held for the reaction). The table is one dictionary, `pic_track.RULES`; the purposes are derived by
 `pic_track.purposes()` in Python and `picturePurposes()` in the kit (`kit/anchor.ts`) from the same props
 (`captions.shots`, `voiceMode`), and a scene that starts on a `fill` shot is timed as in "scenes only" on both sides
 (`on_graphic` / `onGraphic`: cuts instead of smooth transitions). One test checks both sides on the same data. Where a

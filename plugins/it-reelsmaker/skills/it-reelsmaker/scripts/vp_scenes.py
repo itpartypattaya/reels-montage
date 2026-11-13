@@ -11,6 +11,7 @@ from vp_core import (HEADROOM_BAND, HEADROOM_MIN, SCENE_MODES, STATUSES, TRANSIT
                      near_match, no_footage, norm_words, overlap, plan_duration, read_need, resolve_at)
 from vp_camera import (camera_at, camera_view, plan_camera)
 from pic_track import on_graphic, over_speaker, pic_shots, purposes
+from vp_script import ENDING_ROLES
 
 
 # --- Designed scenes ---------------------------------------------------------------------------------------
@@ -37,6 +38,8 @@ SCENE_SOUNDS = ["card", "type", "tap", "hit", "paper", "bell", "none"]  # bell: 
 CHAT_FROM = ["me", "them", "system"]
 INTERACTIONS = ["tap", "type", "cursor", "swipe"]
 COVER_MODES = ("full", "split", "panel", "window")  # scenes that cover the speaker's frame: they count toward coverage
+RUBRIC_BOX = [60, 228, 900, 60]       # a series' rubric label (kit Rubric: y 228, a 28 px caps plate)
+UNDER_RUBRIC = [60, 300, 900, 625]    # an overlay box that starts below it
 SPLIT_BOX = [60, 220, 900, 660]          # split: the scene on top, y 220-880
 SPLIT_CAM = [0.56, 540.0, 107.143]       # split: the speaker x0.56 centered, top of the video at y 900: the "camera" for the rough cut's faces
 WINDOW_SCENE_BOX = [60, 250, 900, 700]   # window: the scene content above the speaker's window
@@ -496,6 +499,8 @@ def check_scenes(e, plan, s, doc, brand, fdata, cap, scenes, brolls, memes, tail
     fps = conf.get("fps", 30)
     only = plan.get("format") == "scenes-only"
     nofoot = no_footage(plan)  # the scenes are the whole picture ("scenes only", "scenes + voice")
+    silent = plan.get("format") == "silent"  # a no-speech reel: the scenes are its script's text over the picture
+    last_block = max((x for x in scenes if x.get("script")), key=lambda x: x["start"], default={}).get("script")
     framed = None if nofoot else framed_at(e)
     D = plan.get("duration") or 0.0
     tones = {k: v for k, v in (doc.get("scene_tones") or {}).items() if not k.startswith("_")}
@@ -736,6 +741,14 @@ def check_scenes(e, plan, s, doc, brand, fdata, cap, scenes, brolls, memes, tail
                                             f"label: the field joins the text area) or give it more of the window's "
                                             f"headroom; {FRAMED_HOOK_MIN} px is the floor inside the window"
                                             if framed else "the hook rule is 92-120 px: a taller box, or fewer lines"))
+        rub = s.get("rubric")
+        if rub and mode in ("overlay", "window") and typ != "cover":  # the series' label sits over every scene's top
+            r0, r1 = ((float(rub.get("from") or 0), float(rub["to"]) if rub.get("to") is not None else D)
+                      if isinstance(rub, dict) else (0.0, D))
+            box = sc.get("box") or default_box(mode)
+            if sc["start"] < r1 and sc["start"] + sc["dur"] > r0 and fc.inter(box, RUBRIC_BOX):
+                E(sc, f"box {box} lies under the rubric label (y {RUBRIC_BOX[1]}-{RUBRIC_BOX[1] + RUBRIC_BOX[3]}, "
+                      f"reel.json -> rubric): start it at y {UNDER_RUBRIC[1]} or lower (--box, or box in script.json)")
         if voice_band and mode == "full" and typ != "cover" and not hides_subtitles(sc, s):
             box = sc.get("box") or voice_stage(voice_band)
             # the text ends VOICE_SUB_GAP above the subtitles (Codex review: a box down to 1270 or under the band passed
@@ -772,7 +785,9 @@ def check_scenes(e, plan, s, doc, brand, fdata, cap, scenes, brolls, memes, tail
             if overlap(x, b) > 0.05:
                 W(x, f"at the same time as B-roll {b['id']}: a scene over B-roll, check it with a still frame")
         final = conf.get("final_s", 2.0)
-        if x["start"] + x["dur"] > D + tail - final + 1e-6 and x.get("type") not in ("cta", "outro"):
+        # a no-speech reel may end on its punchline, held for the reaction, with no CTA (the script's last block)
+        ending = silent and x.get("script") and x.get("script") == last_block and x.get("role") in ENDING_ROLES
+        if x["start"] + x["dur"] > D + tail - final + 1e-6 and x.get("type") not in ("cta", "outro") and not ending:
             E(x, f"in the last {final} s only cta is allowed (the ending and the call to action), but this is {x.get('type')}"
                  + (f" (the video ends at {D + tail:.2f} s with the {tail} s end card or sting)" if tail else ""))
     fulls = [x for x in tl if x.get("mode") == "full"]
@@ -786,10 +801,16 @@ def check_scenes(e, plan, s, doc, brand, fdata, cap, scenes, brolls, memes, tail
                 errs.append(f"{x['id']} and {y['id']}: two full scenes in a row (gap {max(gap, 0):.1f} s < {gap_need} s): "
                             f"the face disappears for too long")
                 bad.update((x["id"], y["id"]))
-    hooks = [settled[x["id"]] for x in tl if x.get("type") == "hook" and x["id"] in settled]
+    if silent:  # the punchline's hold for the reaction is not reading time
+        ends = {x["id"] for x in tl if x.get("role") in ENDING_ROLES}
+        settled = {k: v for k, v in settled.items() if k not in ends}
+    # the video's hook: a hook scene; in a no-speech reel the script's hook block (its label may be drawn as a hook, and
+    # a 9-word hook line is a quote): 2.4 found the one-word label compared as the hook
+    is_hook = (lambda x: x.get("role") == "hook") if silent else (lambda x: x.get("type") == "hook")
+    hooks = [settled[x["id"]] for x in tl if is_hook(x) and x["id"] in settled]
     # a scene held no longer than its own reading floor needs is not a rival: an 8-word CTA needs 2.4 s whatever the hook
     # gets (T1 warned "hook 1.70 s < CTA 2.40 s" for exactly that)
-    others = [v for k, v in settled.items() if k not in {x["id"] for x in tl if x.get("type") == "hook"}
+    others = [v for k, v in settled.items() if k not in {x["id"] for x in tl if is_hook(x)}
               and v > needs.get(k, 0.0) + 0.1]
     if hooks and others and max(hooks) + 1e-6 < max(others):
         warns.append(f"the hook is settled for {max(hooks):.2f} s, less than another scene ({max(others):.2f} s, longer than "
