@@ -196,8 +196,11 @@ after. They go into `picture` blocks like clips (`"source": "<a photo>"`), with 
 turns it upright. The scripts read the tag themselves and use the same upright photo everywhere: the contact sheet of
 `footage.py index`, the sizes in `footage_index.json` and in `cut.py`, the prepared shot and the face search. Some
 ffmpeg builds apply the tag and some do not: the scripts ask ffprobe and turn the photo themselves only when ffmpeg
-will not. `roi` and `focus` are always given on the upright photo, as it looks on the sheet. HEIC (an iPhone's default)
-is not read: export as JPEG (iPhone: Settings -> Camera -> Formats -> Most Compatible, or share as JPEG).
+will not. `roi` and `focus` are always given on the upright photo, as it looks on the sheet. HEIC and HEIF (an iPhone's
+default) are read through an upright JPEG the scripts make once in `_footage_index/heic/` (ffmpeg 7.1 or newer joins
+the photo's tiles and turns it); a scene given a HEIC gets that JPEG. An older ffmpeg, or a photo cut off mid-copy, is
+a stop with the photo's name: export it as JPEG (iPhone: Settings -> Camera -> Formats -> Most Compatible, or share as
+JPEG).
 
 **The subject: `roi`.** A photo shot may name what it is about:
 

@@ -33,7 +33,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import photo_move
 from pic_track import MOVES, copy_shot
-from reels_common import IMAGE_EXT, run, warn
+from reels_common import PHOTO_EXT, run, warn
 
 FITS = ("cover", "contain")
 BLACK = "black"  # the fill shot in final.mp4: the scenes drawn over it are its picture
@@ -45,7 +45,7 @@ class PictureError(ValueError):
 
 def kind_of(sv):
     """A cut.json source as a picture: "photo", "video" or "audio" (a sound-only file: no picture)."""
-    if Path(sv["path"]).suffix.lower() in IMAGE_EXT:
+    if Path(sv["path"]).suffix.lower() in PHOTO_EXT:
         return "photo"
     return "audio" if (sv.get("info") or {}).get("w") is None else "video"
 

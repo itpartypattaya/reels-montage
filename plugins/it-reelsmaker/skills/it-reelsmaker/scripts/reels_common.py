@@ -31,6 +31,8 @@ def voice_mode(s):
     """reel.json -> voice of the settings: on_camera when it is missing."""
     return (s or {}).get("voice") or "on_camera"
 IMAGE_EXT = {".png", ".jpg", ".jpeg", ".webp"}
+HEIF_EXT = {".heic", ".heif"}  # an iPhone's default photo: read through its upright JPEG (photo_file)
+PHOTO_EXT = IMAGE_EXT | HEIF_EXT  # a photo of the footage
 GIF_EXT = {".gif"}
 
 
@@ -1041,7 +1043,13 @@ ANALYSIS_AF = "aresample=16000:async=1:first_pts=0"
 
 
 def probe(p):
-    """w, h, dur, fps, has_audio, vcodec, pix_fmt (the phone rotation tag applied)."""
+    """w, h, dur, fps, has_audio, vcodec, pix_fmt (the phone rotation tag applied; a HEIC: of its upright JPEG, an
+    unreadable one: nothing known)."""
+    if Path(p).suffix.lower() in HEIF_EXT:
+        try:
+            p = photo_file(p)
+        except UnreadablePhoto:
+            return {"w": None, "h": None, "dur": None, "fps": None, "has_audio": False, "vcodec": None, "pix_fmt": None}
     r = run(["ffprobe", "-v", "error", "-show_streams", "-show_format", "-of", "json", str(p)], check=False)
     try:
         d = json.loads(r.stdout or "{}")
@@ -1196,10 +1204,63 @@ def ffmpeg_turns(p):
     return _TURNS_CACHE[key]
 
 
+class UnreadablePhoto(ValueError):
+    """A HEIC this ffmpeg cannot read (broken, or an ffmpeg older than 7.1); the message says what to do."""
+
+
+_HEIF_CACHE = {}
+
+
+def photo_file(p):
+    """The file the scripts read for a photo: the photo itself; for a HEIC or HEIF (an iPhone's default) its upright
+    JPEG, made once by ffmpeg into _footage_index/heic/ of the project (named by the photo's path, time and size, so
+    an edited photo is made again). An iPhone stores a photo as a grid of tiles, often on its side with HEIF's own
+    rotation: ffmpeg 7.1 and newer join the tiles and turn the picture, and refuse any filter on the HEIC itself
+    ("Simple and complex filtering cannot be used together"), so nothing else reads the HEIC. An older ffmpeg reads
+    one tile, or nothing: that is refused (UnreadablePhoto), never shown as the photo."""
+    p = Path(p)
+    if p.suffix.lower() not in HEIF_EXT:
+        return p
+    st = p.stat()
+    key = (str(p.resolve()), st.st_mtime_ns, st.st_size)
+    if key in _HEIF_CACHE and _HEIF_CACHE[key].is_file():
+        return _HEIF_CACHE[key]
+    import hashlib
+    tag = hashlib.sha1("|".join(map(str, key)).encode("utf-8")).hexdigest()[:10]
+    out = project_root() / "_footage_index" / "heic" / f"{p.stem}-{tag}.jpg"
+    if not out.is_file():
+        way = (f"{p.name}: {{}}; export it as JPEG (iPhone: Settings -> Camera -> Formats -> Most Compatible, or "
+               f"share it as JPEG) or use ffmpeg 7.1 or newer")
+        r = run(["ffprobe", "-v", "error", "-show_entries", "stream=index:stream_group=index", "-of", "json", str(p)],
+                check=False)
+        try:
+            d = json.loads(r.stdout or "{}")
+        except ValueError:
+            d = {}
+        streams = d.get("streams") or []
+        if r.returncode != 0 or not streams:
+            raise UnreadablePhoto(way.format("this ffmpeg cannot read the photo, it may be cut off or broken (ffmpeg: " +
+                                             ((r.stderr or "").strip().splitlines() or ["no picture in it"])[-1] + ")"))
+        if len(streams) > 1 and not d.get("stream_groups"):  # tiles with no grid joining them: one tile is not it
+            raise UnreadablePhoto(way.format("this ffmpeg reads its tiles but cannot join them into the photo"))
+        out.parent.mkdir(parents=True, exist_ok=True)
+        tmp = out.with_name(out.stem + ".part.jpg")
+        r = run(["ffmpeg", "-v", "error", "-y", "-i", str(p), "-frames:v", "1", "-q:v", "1", "-map_metadata", "-1",
+                 str(tmp)], check=False)
+        if r.returncode != 0 or not tmp.is_file() or tmp.stat().st_size == 0:
+            tmp.unlink(missing_ok=True)
+            raise UnreadablePhoto(way.format("this ffmpeg cannot read the photo, it may be cut off or broken (ffmpeg: " +
+                                             ((r.stderr or "").strip().splitlines() or ["no picture in it"])[-1] + ")"))
+        os.replace(tmp, out)
+    _HEIF_CACHE[key] = out
+    return out
+
+
 def photo_input(p):
     """A photo as an ffmpeg input: (the options before its -i, the filter that turns it upright or ""). The filter is
     given only when this ffmpeg does not apply the tag itself (ffmpeg_turns), so every version gives the same upright
-    picture; a photo without a tag gets nothing (the same command as before)."""
+    picture; a photo without a tag gets nothing (the same command as before). A HEIC: give photo_file(p) to -i."""
+    p = photo_file(p)
     o = photo_orientation(p)
     if o == 1 or ffmpeg_turns(p):
         return [], ""
@@ -1209,6 +1270,7 @@ def photo_input(p):
 def upright_image(p):
     """The photo upright as Pillow opens it (Pillow ignores the tag by itself)."""
     from PIL import Image
+    p = photo_file(p)
     im = Image.open(p)
     o = photo_orientation(p)
     if o == 1:
@@ -1219,6 +1281,7 @@ def upright_image(p):
 
 def upright_size(p):
     """(w, h) of the photo upright."""
+    p = photo_file(p)
     try:
         from PIL import Image
         with Image.open(p) as im:
@@ -1231,7 +1294,7 @@ def upright_size(p):
 
 def media_kind(p):
     ext = Path(p).suffix.lower()
-    return "video" if ext in VIDEO_EXT else "image" if ext in IMAGE_EXT else "gif" if ext in GIF_EXT else None
+    return "video" if ext in VIDEO_EXT else "image" if ext in PHOTO_EXT else "gif" if ext in GIF_EXT else None
 
 
 # --- Word search (any language, no libraries) ----------------------------------------------------------------
