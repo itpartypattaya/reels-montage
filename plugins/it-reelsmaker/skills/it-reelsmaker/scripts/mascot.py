@@ -55,16 +55,28 @@ def read_mono(src):
         sr = int(json.loads(r.stdout or "{}")["streams"][0]["sample_rate"])
     except (KeyError, IndexError, ValueError, TypeError):
         sys.exit(f"{src}: no audio track")
+    # 16-bit samples in this machine's own byte order, so they load into an array as they are
+    fmt = "s16le" if sys.byteorder == "little" else "s16be"
     p = subprocess.run(["ffmpeg", "-v", "error", "-i", str(src), "-map", "0:a:0", "-ac", "1",
-                        "-af", "aresample=async=1:first_pts=0", "-ar", str(sr), "-f", "s16le", "-acodec", "pcm_s16le",
+                        "-af", "aresample=async=1:first_pts=0", "-ar", str(sr), "-f", fmt, "-acodec", "pcm_" + fmt,
                         "-"], capture_output=True)
     if p.returncode != 0:
         sys.exit(f"{src}: ffmpeg could not read the audio: {p.stderr.decode('utf-8', 'replace')[-400:]}")
-    a = array("h")
-    a.frombytes(p.stdout[: len(p.stdout) // 2 * 2])
-    if sys.byteorder == "big":
-        a.byteswap()
+    data = p.stdout
+    a = array("h", data[: len(data) - len(data) % a_item()])
     return a, sr
+
+
+def a_item():
+    return array("h").itemsize
+
+
+def level_of(seg):
+    """The RMS of int16 samples, 0..1 of full scale."""
+    if not seg:
+        return 0.0
+    power = math.fsum(v * v for v in seg) / len(seg)
+    return math.sqrt(power) / 32768.0
 
 
 def pct(vals, q):
@@ -79,7 +91,7 @@ def envelope(a, sr, fps, words=None):
     for f in range(n):
         i0, i1 = jround(f * sr / float(fps)), min(len(a), jround((f + 1) * sr / float(fps)))
         seg = a[i0:i1]
-        rms.append(math.sqrt(sum(x * x for x in seg) / len(seg)) / 32768.0 if len(seg) else 0.0)
+        rms.append(level_of(seg))
     db = [20 * math.log10(max(v, 1e-9)) for v in rms]
     inw = None
     if words:

@@ -359,6 +359,143 @@ def test_an_atlas_mascot_reaches_the_kit_with_its_rig(project):
     assert isinstance(mp["rig"], dict) and mp["rig"]["poses"]["palm"]["cell"] == [400, 0, 400, 520]
     assert mp["rig"]["anchor"] == [200, 170] and mp["rig"]["symmetric"] is False
     layer = (CORE.parent / "assets" / "remotion-kit" / "kit" / "mascot" / "MascotLayer.tsx").read_text(encoding="utf-8")
-    assert 'from "./AtlasMascot"' in layer and "atlasMascot(" in layer
+    assert 'from "./AtlasMascot"' in layer
+    body = layer[layer.index("export const mascotModule"):]
+    body = body[: body.index("\n};") + 3]
+    # kind "drawn" from the registry; past it, an atlas with a rig makes (and returns) the atlas module, nothing else
+    assert 'if (p.kind === "drawn") return modules[p.module] ?? null;' in body
+    assert body.count("return null") == 1 and "m = atlasMascot(p.rig, p.atlas);" in body
+    assert body.replace("\r", "").rstrip().endswith("return m;\n};")
+    # one module per rig AND image: the cache key is the atlas path (two images with one rig object get two modules)
+    assert 'const key = p.atlas ?? "";' in body and "byImage.get(key)" in body and "byImage.set(key, m)" in body
     atlas = (CORE.parent / "assets" / "remotion-kit" / "kit" / "mascot" / "AtlasMascot.tsx").read_text(encoding="utf-8")
     assert 'from "./types"' in atlas and "export type MascotFrame" not in atlas
+
+
+@needs_ffmpeg
+def test_an_atlas_rebuilt_after_brand_stage_is_refused(project):
+    # the rig and the atlas image reach the kit as one staged pair: an atlas cut again in the brand folder without
+    # brand.py stage would put the new rig's frames over the old image (wrong crops), so stage refuses it by name
+    e, rem = mascot_project(project)
+    d = project / "brands" / "acme" / "assets" / "mascot"
+    pose = {"cell": [0, 0, 400, 520], "offset": [0, 0], "eyes": [[170, 160], [230, 160]], "mouth": [200, 230],
+            "mouthW": 40, "skin": "#f2c9a0", "ink": "#222222"}
+    rig = {"atlas": "atlas.png", "width": 800, "height": 520, "symmetric": True, "box": [400, 520],
+           "anchor": [200, 170], "poses": {"neutral": pose, "palm": {**pose, "cell": [400, 0, 400, 520]}}}
+    write_json(d / "rig.json", rig)
+    (d / "atlas.png").write_bytes(b"\x89PNG\r\n\x1a\n")
+    run_script("brand.py", "mascot", "acme", "--atlas", "assets/mascot/rig.json", cwd=project)
+    run_script("mascot.py", "plan", "edit/4821", "--pose", "word:resume#1=palm", cwd=project)
+    run_script("mascot.py", "mouth", "edit/4821", cwd=project)
+    run_script("brand.py", "stage", "acme", "--remotion", rem, cwd=project)
+    (e / "final.mp4").write_bytes(b"a rough cut")
+    rig["poses"]["palm"]["cell"] = [0, 520, 400, 520]  # cut again: the atlas grew a row
+    rig["height"] = 1040
+    write_json(d / "rig.json", rig)
+    r = run_script("visual_plan.py", "stage", "edit/4821", "--remotion", rem, "--props", rem / "props.json",
+                   cwd=project, check=False)
+    assert r.returncode != 0 and "brand.py stage" in (r.stdout + r.stderr), r.stdout + r.stderr
+    run_script("brand.py", "stage", "acme", "--remotion", rem, cwd=project)
+    run_script("visual_plan.py", "stage", "edit/4821", "--remotion", rem, "--props", rem / "props.json", cwd=project)
+    mp = json.loads((rem / "props.json").read_text(encoding="utf-8"))["mascot"]
+    assert mp["rig"]["poses"]["palm"]["cell"] == [0, 520, 400, 520] and mp["rig"]["height"] == 1040
+
+
+# ── the mascot and the text of full scenes (scenes over a voice, a promo) ──
+# Requirement: in a video with no speaker on screen the scenes are full and the mascot stands in the same lower part of
+# the frame, so a full scene's text must end above the mascot (the kit's zone from y 250 down to the mascot's top minus
+# a gap), and that zone must stay tall enough to read: the automatic placement leaves it at least FULL_TEXT_MIN px, a
+# placement by hand that leaves less is a validate error naming the scene (before, validate only warned and textcheck
+# found the text on the mascot after the board was rendered), and the stage hands the kit the mascot's top.
+
+def voice_scenes_project(project):
+    e, rem = mascot_project(project, {"voice": "off_camera"})
+    cap = json.loads((e / "captions.json").read_text(encoding="utf-8"))
+    cap["voice"] = {"file": "voice.wav", "rate": 48000, "fps": 30}  # what cut.py stamps on a cut narration
+    write_json(e / "captions.json", cap)
+    run_script("visual_plan.py", "init", "edit/4821", "--scenes-voice", cwd=project)
+    run_script("visual_plan.py", "add", "edit/4821", "--kind", "scene", "--type", "slogan", "--at", "5.0",
+               "--dur", "4.0", "--lines", "Remember", "this", "--source", "speech", "--source-ref", "5.0",
+               "--what", "slogan", "--why", "the main thought of the video", cwd=project)
+    run_script("mascot.py", "mouth", "edit/4821", cwd=project)
+    return e, rem
+
+
+@needs_ffmpeg
+def test_the_auto_placed_mascot_leaves_the_full_scene_text_room_to_read(project):
+    import mascot_plan as vm
+    e, rem = voice_scenes_project(project)
+    run_script("mascot.py", "plan", "edit/4821", "--auto-place", cwd=project)
+    r = validate(project, e)
+    assert "error: mascot" not in r.stdout, r.stdout
+    run_script("brand.py", "stage", "acme", "--remotion", rem, cwd=project)
+    run_script("visual_plan.py", "stage", "edit/4821", "--remotion", rem, "--props", rem / "props.json", cwd=project)
+    mp = json.loads((rem / "props.json").read_text(encoding="utf-8"))["mascot"]
+    box = [k["box"] for k in load_plan(e)["keep_clear"] if k.get("mascot")][0]
+    # the kit gets the mascot's top (where a full scene's text ends, minus the gap) and it is the kept box's top
+    assert mp.get("top") == box[1], (mp, box)
+    # the full scene's text keeps y 250 .. top - gap, at least FULL_TEXT_MIN px tall
+    assert box[1] - vm.SCENE_GAP - 250 >= vm.FULL_TEXT_MIN, box
+    # and the mascot is still as big as that room allows, not shrunk to nothing
+    assert box[3] >= 380, box
+
+
+@needs_ffmpeg
+def test_a_mascot_placed_by_hand_into_the_full_scene_text_is_an_error(project):
+    e, rem = voice_scenes_project(project)
+    # 400x520 box, anchor (200, 170): at y 860 its top is 690 (its bottom 1210 clears the band at 1250 - 30), the
+    # scene text would get 250..650, 400 px
+    run_script("mascot.py", "plan", "edit/4821", "--at", "260,860", "--scale", "1", cwd=project)
+    r = validate(project, e)
+    assert r.returncode == 1, r.stdout
+    err = [ln for ln in r.stdout.splitlines() if ln.startswith("error: mascot") and "c01" in ln]
+    assert err and "text" in err[0], r.stdout
+    # a scene outside the mascot's time on screen is not its business
+    run_script("mascot.py", "plan", "edit/4821", "--at", "260,860", "--scale", "1", "--from", "10", cwd=project)
+    r = validate(project, e)
+    assert not [ln for ln in r.stdout.splitlines() if ln.startswith("error: mascot") and "c01" in ln], r.stdout
+
+
+@needs_ffmpeg
+def test_a_full_scene_box_reaching_down_onto_the_mascot_is_an_error(project):
+    e, rem = voice_scenes_project(project)
+    run_script("mascot.py", "plan", "edit/4821", "--auto-place", cwd=project)
+    run_script("visual_plan.py", "add", "edit/4821", "--kind", "scene", "--type", "slogan", "--at", "12.0",
+               "--dur", "4.0", "--lines", "Speed", "matters", "--source", "speech", "--source-ref", "12.0",
+               "--box", "60,700,900,500", "--what", "low slogan", "--why", "the main thought of the video", cwd=project)
+    r = validate(project, e)
+    err = [ln for ln in r.stdout.splitlines() if ln.startswith("error: mascot") and "c02" in ln]
+    assert r.returncode == 1 and err, r.stdout
+    # the kit cuts every full scene's box at the mascot's top minus the gap, wherever it stands across the frame
+    # (Codex review): a box beside the mascot or ending inside the gap above it is cut too, so it is an error as well
+    import mascot_plan as vm
+    run_script("brand.py", "stage", "acme", "--remotion", rem, cwd=project)
+    run_script("visual_plan.py", "remove", "edit/4821", "c02", cwd=project)
+    run_script("visual_plan.py", "stage", "edit/4821", "--remotion", rem, "--props", rem / "props.json", cwd=project)
+    top = json.loads((rem / "props.json").read_text(encoding="utf-8"))["mascot"]["top"]
+    for k, (at, box) in enumerate([(17.0, f"560,{top + 20},380,300"),             # beside it, below its top
+                                   (22.0, f"60,250,900,{top - 250 - 20}")]):       # ends inside the 40 px gap
+        run_script("visual_plan.py", "add", "edit/4821", "--kind", "scene", "--type", "slogan", "--at", str(at),
+                   "--dur", "4.0", "--lines", "Speed", "matters", "--source", "speech", "--source-ref", str(at),
+                   "--box", box, "--what", f"box {k}", "--why", "the main thought of the video", cwd=project)
+    r = validate(project, e)
+    errs = [ln for ln in r.stdout.splitlines() if ln.startswith("error: mascot")]
+    assert r.returncode == 1 and any("box [560, " in ln for ln in errs), r.stdout   # beside it
+    assert any("box [60, 250, 900, " in ln for ln in errs), r.stdout                # inside the gap
+    assert vm.SCENE_GAP == 40
+
+
+def test_the_kit_ends_full_scene_text_above_the_mascot_with_the_plans_gap():
+    # Requirement: the kit ends a full scene's text at the y the plan check assumes: the same gap above the mascot's
+    # top, the top handed over in props.mascot, and only for the scenes on screen while the mascot is
+    import re
+    from conftest import CORE
+    import mascot_plan as vm
+    kit = CORE.parent / "assets" / "remotion-kit"
+    reel = (kit / "ReelKit.tsx").read_text(encoding="utf-8")
+    layer = (kit / "kit" / "scenes" / "SceneLayer.tsx").read_text(encoding="utf-8")
+    gap = re.search(r"export const MASCOT_TEXT_GAP = (\d+);", layer)
+    assert gap and int(gap.group(1)) == vm.SCENE_GAP
+    assert "mascotTop={p.mascot && p.mascot.top != null" in reel
+    assert "s.start < p.mascotTop.to && s.start + s.dur > p.mascotTop.from ? p.mascotTop.top : null" in layer
+    assert "sceneStage(s, mode, fb?.area, p.textBottom, p.mascotTop)" in layer

@@ -299,7 +299,7 @@ def test_t7_framed_is_drawn_by_the_kit():
     # scenes, B-roll and subtitles inside the window
     assert reel.count("framed={g ? sceneBox(g) : null}") == 2 and reel.count("{...subArea}") == 2
     layer = code("kit/scenes/SceneLayer.tsx")
-    assert "sceneStage(s, mode, fb?.area, p.textBottom)" in layer and "clampStage(s, s.box, area ?? zone" in layer
+    assert "sceneStage(s, mode, fb?.area, p.textBottom, p.mascotTop)" in layer and "clampStage(s, s.box, area ?? zone" in layer
     assert "(scenesOnly || framed) && LAYOUT.includes(s.mode)" in layer
     subs = code("kit/Subtitles.tsx")
     assert "const bottom = area ? Math.min(SUB_BOTTOM, area.y + area.h) : SUB_BOTTOM;" in subs and "left: -clip.x" in subs

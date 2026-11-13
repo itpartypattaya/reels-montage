@@ -26,7 +26,7 @@ When the plan is built, spans get `scene:*` hints. A hint is a prompt to think, 
 
 A scene is **not needed** when the face and intonation matter more (a personal story, a punchline), when other graphics are already on screen, or when a card is enough.
 
-**Phrase → picture** for `word` and per-video scenes (ideas, not rules; after [skill-multik](https://github.com/artemiimillier/skill-multik), MIT): “don't do X” → X struck through twice and pushed to a corner; “it does it by itself” → a checklist that ticks 0/3 → 3/3 on the spoken items; “it checks” → a magnifier passing over the item, then a stamp; a number → a counter (`stat`); the call to action → the action itself (`cta`). Only when the speech names it, and within the brand tone.
+**Phrase → picture** for `word` and per-video scenes (ideas, not rules): “don't do X” → X struck through twice and pushed to a corner; “it does it by itself” → a checklist that ticks 0/3 → 3/3 on the spoken items; “it checks” → a magnifier passing over the item, then a stamp; a number → a counter (`stat`); the call to action → the action itself (`cta`). Only when the speech names it, and within the brand tone.
 
 ## Scene catalog
 

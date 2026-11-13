@@ -31,6 +31,24 @@ What changed in IT Reelsmaker, written for the people who use it. The newest ver
 - New guide: `references/music.md`; the video without speech in `references/no-speaker.md`, its templates in
   `references/structure.md`.
 
+## 1.29.3
+
+- **The mascot no longer stands on the scene text.** In scenes over your voice and in a promo, every scene fills the
+  frame and the mascot stands in its lower part: the kit now ends a full scene's text 40 px above the mascot, the
+  automatic placement leaves that text at least 540 px, and the plan check says so before the render when a mascot
+  placed by hand (or a scene's own box) leaves less. Found on a first real render: the check only warned, and the
+  text check found the words on the mascot after the storyboard.
+- **The sample mascot type-checks for every brand**, also one with extra colors in its profile.
+- **Kit 1.18.2** (`kit.py update`): full scenes keep their text above the mascot. Nothing else changes in your videos.
+
+## 1.29.2
+
+- **The first guess of a character's eyes lands on the drawn eyes.** `mascot_atlas.py` now finds the head as the
+  stretch above the shoulders and the eyes as the dark spots of the face, instead of a fixed share of the figure's
+  height; you correct less in `rig.json`.
+- **Kit 1.18.1** (`kit.py update`): the mascot's helpers, its breath and the atlas mascot's overlay mouth and eyelid
+  are drawn anew; the mouth's lower lip now drops with the opening. Nothing else changes in your videos.
+
 ## 1.29.1
 
 - **No camera? The agent now offers it.** Ask for a video without filming and it asks one question: scenes over

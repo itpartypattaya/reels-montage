@@ -1,0 +1,22 @@
+name: release-checks
+
+# Runs on every change, text-only ones included: README, CHANGELOG and docs are what the catalog reads.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  release-checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - name: Directory rules (sizes, Cyrillic, providers and network in the core)
+        run: python tools/check_release.py

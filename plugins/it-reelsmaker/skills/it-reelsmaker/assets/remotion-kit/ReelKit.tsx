@@ -383,7 +383,8 @@ const ReelKitFrame: React.FC<ReelKitProps> = (p) => {
       <Corner p={p} />
       <SceneLayer scenes={p.scenes} brand={p.brand} look={look} words={p.captions.words} scenesOnly={scenesOnlyOf(p)} pictureShots={picShots(p.captions)} sceneTone={p.sceneTone}
         framed={g ? sceneBox(g) : null}
-        textBottom={offCamera && p.subtitles !== "none" ? (p.subtitlesTop ?? 1290) - VOICE_SUB_GAP : null} />
+        textBottom={offCamera && p.subtitles !== "none" ? (p.subtitlesTop ?? 1290) - VOICE_SUB_GAP : null}
+        mascotTop={p.mascot && p.mascot.top != null && p.mascot.frames?.length ? { top: p.mascot.top, from: p.mascot.from, to: p.mascot.to } : null} />
       {offCamera ? shadeLayer : null}
       <Rubric p={p} font={fonts.body} />
       <MascotLayer mascot={p.mascot} modules={MASCOTS} />

@@ -481,3 +481,68 @@ def test_flat_border_with_a_gradient_inside_is_refused(brand, tmp_path):
     Image.alpha_composite(glow, character(bg=(0, 0, 0, 0))).convert("RGB").save(src)
     r = run_atlas(brand, src, check=False)
     assert r.returncode != 0 and "transparent PNG" in r.stderr
+
+
+def test_the_first_guess_finds_the_drawn_eyes():
+    # the guess the agent starts from (rig.json "eyes", checked on the sheet) lands on the eyes as drawn, at two sizes:
+    # the eye line from the face itself, not from a share of the whole figure's height (raised shoulders, long legs)
+    import mascot_atlas
+    for s in (1.0, 0.8):
+        g = mascot_atlas.guess_head(character("neutral", s=s, bg=(0, 0, 0, 0)))
+        cx, ey = CELL[0] / 2, 170 - 5 * s
+        assert g["eyes"], s
+        (x1, y1), (x2, y2) = g["eyes"]
+        assert abs(x1 - (cx - 18 * s)) <= 3 and abs(x2 - (cx + 18 * s)) <= 3, (s, g["eyes"])
+        assert abs(y1 - ey) <= 4 and abs(y2 - ey) <= 4, (s, g["eyes"])
+        assert abs(g["hw"] - 104 * s) <= 0.08 * 104 * s, (s, g["hw"])
+
+
+def _eyes_near(g, cx, ey, dx, tol=3):
+    assert g["eyes"], g
+    (x1, y1), (x2, y2) = g["eyes"]
+    assert abs(x1 - (cx - dx)) <= tol and abs(x2 - (cx + dx)) <= tol, g["eyes"]
+    assert abs(y1 - ey) <= tol + 1 and abs(y2 - ey) <= tol + 1, g["eyes"]
+
+
+def test_the_first_guess_skips_a_hand_above_the_head_and_a_thick_outline():
+    # a hand raised right over the head's middle is not the head; a heavy outline around the face is not an eye
+    from PIL import ImageDraw
+    import mascot_atlas
+    im = character("neutral", bg=(0, 0, 0, 0), size=(300, 460), dy=60)
+    d = ImageDraw.Draw(im)
+    d.ellipse((150 - 16, 140 - 76 - 46, 150 + 16, 140 - 76 - 14), fill=INK + (255,))  # a fist over the head
+    d.ellipse((150 - 12, 140 - 76 - 42, 150 + 12, 140 - 76 - 18), fill=GLOVE + (255,))
+    _eyes_near(mascot_atlas.guess_head(im), 150, 225, 18)
+    # the same character with an outline three times as thick around the head
+    im = character("neutral", bg=(0, 0, 0, 0))
+    d = ImageDraw.Draw(im)
+    d.ellipse((150 - 60, 170 - 60, 150 + 60, 170 + 60), outline=INK + (255,), width=12)
+    _eyes_near(mascot_atlas.guess_head(im), 150, 165, 18)
+
+
+def test_a_figure_with_no_neck_is_an_unsure_guess():
+    # a blob that only widens from top to bottom has no head outline to find: the guess says it is unsure (the atlas
+    # command then asks for --head) instead of putting the eyes on the body
+    from PIL import Image, ImageDraw
+    import mascot_atlas
+    im = Image.new("RGBA", (300, 400), (0, 0, 0, 0))
+    d = ImageDraw.Draw(im)
+    d.polygon([(150, 20), (260, 380), (40, 380)], fill=INK + (255,))
+    d.polygon([(150, 30), (250, 372), (50, 372)], fill=SKIN + (255,))
+    assert mascot_atlas.guess_head(im)["sure"] is False
+    assert mascot_atlas.guess_head(character("neutral", bg=(0, 0, 0, 0)))["sure"] is True
+
+
+def test_the_first_guess_finds_black_eyes_on_a_dark_face():
+    # a dark-skinned character with plain black eyes (no whites): the face is not taken for the outline
+    from PIL import Image, ImageDraw
+    import mascot_atlas
+    im = Image.new("RGBA", (300, 400), (0, 0, 0, 0))
+    d = ImageDraw.Draw(im)
+    d.rounded_rectangle((91, 211, 209, 374), radius=30, fill=(10, 10, 10, 255))  # the body under the head
+    d.rounded_rectangle((95, 215, 205, 370), radius=27, fill=SHIRT + (255,))
+    d.ellipse((150 - 52, 170 - 52, 150 + 52, 170 + 52), fill=(10, 10, 10, 255))
+    d.ellipse((150 - 48, 170 - 48, 150 + 48, 170 + 48), fill=(65, 50, 40, 255))
+    for ex in (-18, 18):
+        d.ellipse((150 + ex - 7, 165 - 9, 150 + ex + 7, 165 + 9), fill=(5, 5, 5, 255))
+    _eyes_near(mascot_atlas.guess_head(im), 150, 165, 18)
