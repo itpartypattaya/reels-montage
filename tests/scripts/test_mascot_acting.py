@@ -10,9 +10,13 @@ Requirements:
   blink in five is a double blink; the blinks come every 2.6-4.6 s; the same video gets the same blinks every time;
 - a module written before the eyelid had degrees still sees its yes/no blink, on the frames the lids are at least
   half shut;
-- the kit: the atlas shows the old picture on the change's first frame, the new one half over the old on the second,
-  the old one half under the new on the third, then the new one alone; a plan written before this (no lid, no since)
-  still plays: the lid follows the old yes/no blink and the picture switches halfway through the change.
+- at a lower frame rate a blink keeps its four frames (the swap needs both shut ones) and the two blinks of a double
+  blink never run into one: two open frames between them at least;
+- the kit: the atlas swaps its pictures only while the eyes are shut: the new picture half over the old on the
+  change's first frame, the old one half under the new on the second, then the new one alone; a pose with a drawn
+  blink frame shows it half over the open picture on the half-shut frames and alone on the shut ones; a plan written
+  before this (no lid, no since) still plays: the lid follows the old yes/no blink and the picture switches halfway
+  through the change.
 """
 import json
 import subprocess
@@ -62,8 +66,8 @@ def runs(frames):
 def test_a_pose_change_is_hidden_by_a_blink_shut_where_the_picture_swaps():
     fr = plan_frames([(2.0, "palm")])  # frame 60
     assert [lid(fr[f]) for f in range(57, 65)] == [0, 0, 0.5, 1, 1, 0.5, 0, 0]
-    # the frames the atlas swaps on (since 0 and 1) are the shut ones; since is set on the change's first frames only
-    assert [fr[f].get("since") for f in range(59, 64)] == [None, 0, 1, 2, None]
+    # the frames the atlas swaps on (since 0 and 1) are the shut ones; since counts while the change eases (12 frames)
+    assert [fr[f].get("since") for f in range(59, 74)] == [None] + list(range(12)) + [None, None]
     assert fr[61]["pose"] == "palm" and fr[61]["prev"] == "neutral"
 
 
@@ -121,6 +125,18 @@ def test_about_every_fifth_blink_is_double_and_the_rhythm_stays_human():
     assert len(set(round(g, 1) for g in gaps)) > 8  # uneven, not one fixed beat
 
 
+@pytest.mark.parametrize("fps", [15, 25])
+def test_at_a_lower_frame_rate_a_blink_keeps_its_frames_and_double_blinks_stay_apart(fps):
+    fr = plan_frames([(2.0, "palm")], dur=600.0, fps=fps, vid="rhythm")
+    rs = runs(fr)
+    assert all(lids == [0.5, 1, 1, 0.5] for _, lids in rs), [x for x in rs if x[1] != [0.5, 1, 1, 0.5]][:3]
+    fc = round(2.0 * fps)
+    assert lid(fr[fc]) == 1 and lid(fr[fc + 1]) == 1
+    gaps = [b[0] - (a[0] + len(a[1])) for a, b in zip(rs, rs[1:])]
+    assert min(gaps) >= 2, min(gaps)
+    assert sum(1 for g in gaps if g < 0.4 * fps) > 10  # the double blinks are still there
+
+
 def test_the_blinks_are_the_same_for_the_same_video():
     # a safeguard the plan relies on (no randomness between renders), already true before the change
     assert plan_frames([(2.0, "palm")], vid="a") == plan_frames([(2.0, "palm")], vid="a")
@@ -148,16 +164,29 @@ def run_kit(code, data):
 
 @needs_node
 def test_the_atlas_swaps_its_pictures_under_the_shut_eyes():
-    entries = [{"f": 60 + i, "pose": "palm", "prev": "neutral", "k": k, "open": 0, "blink": True, "lid": 1, "since": i}
-               for i, k in enumerate((0, 0.23, 0.42))]
-    entries.append({"f": 63, "pose": "palm", "prev": "neutral", "k": 0.58, "open": 0, "blink": False, "lid": 0})
+    # the entries the plan writes for a change on frame 60 (the test above checks them): shut, shut, half shut
+    entries = [{"f": 60 + i, "pose": "palm", "prev": "neutral", "k": k, "open": 0, "blink": True, "lid": v, "since": i}
+               for i, (k, v) in enumerate(((0, 1), (0.23, 1), (0.42, 0.5)))]
+    entries.append({"f": 72, "pose": "palm", "prev": "neutral", "k": 1, "open": 0, "blink": False, "lid": 0})
     code = ("const m = await import(process.argv[1]); const es = JSON.parse(process.argv[2]);"
             "console.log(JSON.stringify(es.map((e) => m.switchLayers(m.frameOf(e, e.f / 30, 1)))));")
     got = run_kit(code, entries)
-    assert got == [[{"pose": "neutral", "opacity": 1}],
-                   [{"pose": "neutral", "opacity": 1}, {"pose": "palm", "opacity": 0.5}],
+    assert got == [[{"pose": "neutral", "opacity": 1}, {"pose": "palm", "opacity": 0.5}],
                    [{"pose": "neutral", "opacity": 0.5}, {"pose": "palm", "opacity": 1}],
+                   [{"pose": "palm", "opacity": 1}],
                    [{"pose": "palm", "opacity": 1}]]
+    # two pictures only on the frames whose eyes are shut
+    assert [len(g) > 1 for g in got] == [e["lid"] == 1 for e in entries]
+
+
+@needs_node
+def test_a_drawn_blink_frame_shows_half_over_the_open_picture_on_the_half_shut_frames():
+    code = ("const m = await import(process.argv[1]); const cs = JSON.parse(process.argv[2]);"
+            "console.log(JSON.stringify(cs.map((c) => m.atlasEyes(...c))));")
+    got = run_kit(code, [[0, True, False], [0.5, True, False], [1, True, False], [0.5, False, False],
+                         [1, True, True]])
+    assert got == [{"sprite": 0, "overlay": 0}, {"sprite": 0.5, "overlay": 0}, {"sprite": 1, "overlay": 0},
+                   {"sprite": 0, "overlay": 0.5}, {"sprite": 0, "overlay": 1}]
 
 
 @needs_node

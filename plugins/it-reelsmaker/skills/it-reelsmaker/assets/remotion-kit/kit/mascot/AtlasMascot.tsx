@@ -11,7 +11,7 @@ import { Img, staticFile } from "remotion";
 
 // The mascot contract: kit/mascot/types.ts (the module made here is a MascotModule the layer places).
 import type { MascotFrame, MascotModule, MascotRender } from "./types";
-import { switchLayers } from "./frame";
+import { atlasEyes, switchLayers } from "./frame";
 
 // rig.json as mascot_atlas.py writes it: rectangles [x, y, w, h] and points in atlas px; offset places a pose's
 // frame in the shared box so that its head lands on the shared anchor; talk/blink frames have the pose's size.
@@ -98,14 +98,15 @@ export const atlasMascot = (rig: AtlasRig, atlasSrc?: string): AtlasMascotModule
     const p = rig.poses[name] ?? rig.poses[f.pose] ?? fallback;
     if (!p) return null;
     const talkFrame = f.talking && f.open >= OPEN_FRAME && p.talk ? p.talk : null;
-    // a drawn blink frame shows while the lids are at least half shut; without one the overlay lid follows `lid`
-    const blinkFrame = f.lid >= 0.5 && !talkFrame && p.blink ? p.blink : null;
-    const [cx, cy, cw, ch] = talkFrame ?? blinkFrame ?? p.cell;
+    const eyesNow = atlasEyes(f.lid, !!p.blink, !!talkFrame);
+    const blinkFrame = eyesNow.sprite > 0 && p.blink ? p.blink : null;
+    const halfBlink = blinkFrame !== null && eyesNow.sprite < 1;
+    const [cx, cy, cw, ch] = talkFrame ?? (blinkFrame && !halfBlink ? blinkFrame : null) ?? p.cell;
     const [ox, oy] = p.offset;
     // a pose's points are atlas px of its cell; in the box they move with the frame's offset
     const at = (q: Pt): Pt => [ox + q[0] - p.cell[0], oy + q[1] - p.cell[1]];
     const mouthOn = f.talking && !p.talk && f.open > 0.08;
-    const lids = f.lid > 0 && !blinkFrame && p.eyes.length > 0;
+    const lids = eyesNow.overlay > 0 && p.eyes.length > 0;
     const [mx, my] = at(p.mouth);
     const eyes = p.eyes.map(at);
     const gap = eyes.length > 1 ? Math.hypot(eyes[1][0] - eyes[0][0], eyes[1][1] - eyes[0][1]) : p.mouthW * 1.6;
@@ -117,10 +118,17 @@ export const atlasMascot = (rig: AtlasRig, atlasSrc?: string): AtlasMascotModule
           style={{ position: "absolute", left: ox, top: oy, width: cw, height: ch, maxWidth: "none",
             objectFit: "none", objectPosition: `${-cx}px ${-cy}px` }}
         />
+        {halfBlink && blinkFrame ? (
+          <Img
+            src={file}
+            style={{ position: "absolute", left: ox, top: oy, width: blinkFrame[2], height: blinkFrame[3], maxWidth: "none",
+              objectFit: "none", objectPosition: `${-blinkFrame[0]}px ${-blinkFrame[1]}px`, opacity: eyesNow.sprite }}
+          />
+        ) : null}
         {mouthOn || lids ? (
           <svg width={bw} height={bh} style={{ position: "absolute", left: 0, top: 0, overflow: "visible" }}>
             {mouthOn ? <OpenMouth x={mx} y={my} width={p.mouthW} open={f.open} ink={p.ink} /> : null}
-            {lids ? eyes.map(([ex, ey], i) => <ShutEye key={i} x={ex} y={ey} gap={gap} lid={f.lid} skin={p.skin} ink={p.ink} />) : null}
+            {lids ? eyes.map(([ex, ey], i) => <ShutEye key={i} x={ex} y={ey} gap={gap} lid={eyesNow.overlay} skin={p.skin} ink={p.ink} />) : null}
           </svg>
         ) : null}
       </div>

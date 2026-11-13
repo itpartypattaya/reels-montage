@@ -105,11 +105,12 @@ width in the atlas.
 pose of the moment.
 - **Mouth**: the pose's talk frame from a medium opening; without one, an ellipse in the line color sized by the
   opening, a tongue when it opens wide.
-- **Blink**: the pose's blink frame while the lids are at least half shut; without one (and over a talk frame), an
-  eyelid in the skin color with a lash arc, lowered halfway on the blink's half-shut frames.
-- **Pose change**: the plan blinks over it, and the pictures are swapped while the eyes are shut: the old picture on
-  the change's first frame, then a two-frame cross-fade (the new picture half over the old, then the old half under
-  the new, so the figure never turns see-through where both cover it), then the new one alone. No in-between
+- **Blink**: the pose's blink frame, shown half over the open picture on the blink's half-shut frames and alone on
+  the shut ones; without one (and over a talk frame), an eyelid in the skin color with a lash arc, lowered halfway
+  on the half-shut frames.
+- **Pose change**: the plan blinks over it, and the pictures are swapped on its first two frames, while the eyes are
+  shut: a two-frame cross-fade (the new picture half over the old, then the old half under the new, so the figure
+  never turns see-through where both cover it), then the new one alone. No in-between
   drawing. Only where the brand tone allows a bounce (the change overshoots) the new pose settles from 97 % to full
   size. A plan staged before this (no `since` in its frames) still switches halfway through the change.
 - **Mirror**: only a `symmetric` picture.

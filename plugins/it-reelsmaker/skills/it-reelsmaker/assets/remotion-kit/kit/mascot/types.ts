@@ -13,7 +13,7 @@ export type MascotFrame = {
   talking: boolean;     // inside a speaking span and open > 0.08
   blink: boolean;       // eyes shut on this frame (lid ≥ 0.5): for a module that draws only open or shut eyes
   lid: number;          // 0..1 how shut the eyes are: a blink goes 0.5, 1, 1, 0.5 (and hides every pose change)
-  since?: number;       // frames since the current pose change began, set on its first frames only (0, 1, 2)
+  since?: number;       // frames since the current pose change began, while it eases (absent once it has settled)
   facing: 1 | -1;       // -1 = mirrored horizontally (MascotLayer mirrors; the module may ignore it)
 };
 export type MascotRender = (f: MascotFrame) => React.ReactNode; // returns SVG/HTML inside the box

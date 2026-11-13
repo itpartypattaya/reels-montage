@@ -13,7 +13,7 @@ export type MascotPlanFrame = {
   open: number;
   blink: boolean;
   lid?: number; // 0..1 how shut the eyes are
-  since?: number; // frames since the pose change began, on its first frames only (0, 1, 2)
+  since?: number; // frames since the pose change began, while it eases (absent once it has settled)
   facing?: 1 | -1;
 };
 
@@ -51,15 +51,24 @@ export const frameOf = (e: MascotPlanFrame, t: number, facing: 1 | -1): MascotFr
   facing: e.facing ?? facing,
 });
 
-/** The pictures of a picture mascot on this frame, bottom first: a pose change is a swap under shut eyes, the old
- *  picture on the change's first frame, a two-frame cross-fade (the new one half over the old, then the old one half
- *  under the new: the figure never goes see-through where both cover it), then the new one alone. */
+/** The eyes of a picture mascot's pose on this frame: `sprite` the opacity of its drawn blink frame over the picture
+ *  (1: it replaces it), `overlay` how far the overlay eyelid is lowered (0: none). A drawn blink frame shows half over
+ *  the open picture while the lids are half shut (the same drawing, aligned: the eyes read half closed), alone when
+ *  they are shut; without one, or over a drawn talk frame, the overlay lid follows the lid. */
+export const atlasEyes = (lid: number, hasBlinkFrame: boolean, talkFrame: boolean) => {
+  if (lid <= 0) return { sprite: 0, overlay: 0 };
+  if (hasBlinkFrame && !talkFrame) return { sprite: Math.min(1, lid), overlay: 0 };
+  return { sprite: 0, overlay: Math.min(1, lid) };
+};
+
+/** The pictures of a picture mascot on this frame, bottom first: a pose change is a swap under the eyes the plan
+ *  shuts on its first two frames, a two-frame cross-fade (the new one half over the old, then the old one half under
+ *  the new: the figure never goes see-through where both cover it), then the new one alone. */
 export type SwitchLayer = { pose: string; opacity: number };
 export const switchLayers = (f: MascotFrame): SwitchLayer[] => {
   if (f.pose === f.prevPose) return [{ pose: f.pose, opacity: 1 }];
   if (f.since === undefined) return [{ pose: f.k < SWITCH ? f.prevPose : f.pose, opacity: 1 }];
-  if (f.since <= 0) return [{ pose: f.prevPose, opacity: 1 }];
-  if (f.since === 1) return [{ pose: f.prevPose, opacity: 1 }, { pose: f.pose, opacity: 0.5 }];
-  if (f.since === 2) return [{ pose: f.prevPose, opacity: 0.5 }, { pose: f.pose, opacity: 1 }];
+  if (f.since <= 0) return [{ pose: f.prevPose, opacity: 1 }, { pose: f.pose, opacity: 0.5 }];
+  if (f.since === 1) return [{ pose: f.prevPose, opacity: 0.5 }, { pose: f.pose, opacity: 1 }];
   return [{ pose: f.pose, opacity: 1 }];
 };

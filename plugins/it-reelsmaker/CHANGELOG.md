@@ -8,10 +8,11 @@ What changed in IT Reelsmaker, written for the people who use it. The newest ver
   shut, shut, half shut) instead of snapping shut for three frames, and about one blink in five is a double blink.
   The pace stays human, every 2.6–4.6 s, and the same video gets the same blinks at every render.
 - **A pose change of a picture mascot no longer looks like a jump cut.** The mascot blinks over every pose change,
-  and the picture is swapped while its eyes are shut, with a two-frame cross-fade. A drawn mascot blinks over its
+  and the picture is swapped with a two-frame cross-fade while its eyes are shut; a drawn blink frame now
+  shows half over the open picture on the half-shut frames. A drawn mascot blinks over its
   pose changes too. A planned blink keeps half a second away from that one, so it never blinks twice in a row.
-- **Kit 1.19.0** (`kit.py update`): the mascot's frame gets `lid` (how shut the eyes are) and `since` (the first frames
-  of a pose change). A mascot module written before keeps working: it still gets `blink`, now on the frames the lids
+- **Kit 1.19.0** (`kit.py update`): the mascot's frame gets `lid` (how shut the eyes are) and `since` (the frames since a
+  pose change began, while it eases). A mascot module written before keeps working: it still gets `blink`, now on the frames the lids
   are at least half shut. Draw half-shut eyes from `f.lid` to use the softer blink (the sample shows how).
 
 ## 1.29.2
