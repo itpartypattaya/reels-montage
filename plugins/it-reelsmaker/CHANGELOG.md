@@ -2,6 +2,16 @@
 
 What changed in IT Reelsmaker, written for the people who use it. The newest version is on top. The skill shows a short “What's new” note from this file once, on the first edit after an update.
 
+## 1.28.2
+
+- **No camera? The agent now offers it.** Ask for a video without filming and it asks one question: scenes over
+  your voice recorded on a phone, or a promo of scenes only. “A video from my voice note” starts the skill too.
+- **The brand mascot is offered where it fits:** in a video with no speaker on screen, a brand without a mascot
+  sees one item marked new (drawn in your colors, or your own character picture brought to life); never at the
+  premium tone, off unless you choose it. A new brand's summary mentions it in one line.
+- **A first run says what the plugin can do** in three lines, the no-camera videos included. After an update
+  across several versions, “What's new” shows the headline of each version instead of the first four points.
+
 ## 1.28.1
 
 - **Kit 1.17.1** (`kit.py update`): the kit's type check passes again (1.28.0 left an unused import in
