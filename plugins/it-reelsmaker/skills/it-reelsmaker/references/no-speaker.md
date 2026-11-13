@@ -5,7 +5,8 @@ narration over photos, or a talking head with a stretch of voice-over in the mid
 such a video; the second is the data contract every script follows (the sound track and the picture track apart).
 
 Here: the voice-over and the mixed video, then the **no-speech reel** (no voice at all: the text carries it, sounds
-and music always offered), **photos** (upright by their EXIF tag, a subject to move to, no slideshow), then the data
+and music always offered), **is the footage usable** (`picture.py scan`: hints about shaky, dark, tail, talking and
+stranger stretches), **photos** (upright by their EXIF tag, a subject to move to, no slideshow), then the data
 contract. A promo with no footage at all stays the "scenes only" format
 (`references/scenes.md`). No voice -> the person records a voice note on the phone (`references/shooting.md`) or
 the video goes without speech.
@@ -180,12 +181,67 @@ carries the clips, their windows, their color or the text: each video has its ow
 Structures that work: "setup -> label turn -> translation -> punchline with a hold", "the person only on the hook,
 then graphics", "a question -> cards one by one" (`references/structure.md`).
 
-**Footage that does not work** (look at the contact sheet): a hand-held shaky clip, a person turning to the camera, a
-dark clip, the app's intro or outro at the end of a phone clip, the same take twice. Pick the shot by meaning (a sunset
-on "no ceiling"), not by order.
+**Footage that does not work** (look at the contact sheet, and `picture.py scan` below): a hand-held shaky clip, a
+person turning to the camera, a dark clip, the app's intro or outro at the end of a phone clip, the same take twice.
+Pick the shot by meaning (a sunset on "no ceiling"), not by order.
 
 **Translation.** There are no subtitles and no `.srt`: a version in another language is a copy of `script.json` with
 the lines translated by the person (or checked by them), timed, cut and planned again.
+
+## Is the footage usable: `picture.py scan`
+
+**When.** Before picking the shots of a voice-over or a no-speech reel, on the clips the person brought (and again on
+the video's own sources once the rough cut exists). It gives **hints only**: each one a candidate with its reason and
+the status "unchecked". It excludes nothing and changes no project file; the agent looks at each candidate on the clip
+and the contact sheet, and the person decides.
+
+```bash
+python scripts/picture.py scan footage/                      # every clip of a folder
+python scripts/picture.py scan IMG_2210.MOV --window 30-75   # one stretch of a long clip
+python scripts/picture.py scan --edit edit/<id>              # the video's picture sources, with its own seconds
+```
+
+| Kind | What it means | What to do |
+|---|---|---|
+| `shake` | the camera jitters: a clip from the hand, a bumped tripod | take a steadier stretch; no slow push on top of it |
+| `restless` | the camera stands, but the whole picture moves unevenly: people fidgeting, waves, leaves (a softer hint: a close talking head is restless all along) | under text or a slow push, a quieter stretch if there is one |
+| `tail` | an editing app's ending: a cut near the end, then black, a frozen frame or another picture to the end | end the shot before it |
+| `black`, `freeze` | black frames, a frozen picture elsewhere | start or end the shot outside them |
+| `dark`, `bright` | a dark stretch; an overexposed one (a large share clipped white) | another stretch, or the place's own `look` for a dark one |
+| `speech` | speech-like sound in the clip's own sound; "speaking to the camera?" when a face faces it | under a voice-over the lips would not match: another shot, or a stretch where the mouth is not seen |
+| `turn` | a face turns to the camera after looking away | another take (a person who turns around reads as looking at the viewer) |
+| `faces` | more faces than the clip usually has | strangers? see below |
+
+**Not assessed is said, not skipped.** The motion of a picture with too little detail (a clear sky, a wall,
+darkness), the turn of a face too small to judge (a wide shot), turns and strangers without the face model, speech in
+a clip without sound: each is listed as "not assessed" with its seconds. Faces smaller than about 2 % of the frame are
+not found at all at the default 480 px: for a wide shot with people far away scan again with `--size 960` (about
+3.5 times longer), and still look by eye.
+
+**Strangers.** A `faces` candidate is the person's question, not a mark: after a look, `sources.<name>.strangers`
+gets `[[from, to], ...]` (or `"ok"` when they may be shown), as above. A marked stretch is hidden only by an opaque full
+scene (or a replacing B-roll, a cutaway) over its whole window, 0.25 s before and after, entering and leaving by a
+cut; a panel or a window over it does not hide it. With `--edit` each candidate also carries `in_reel`: the seconds of
+the finished video where that stretch of the clip is on screen, through each picture shot's `start` and `speed`, once
+per shot when a clip is used twice; a `faces` candidate there has `hide_from` / `hide_to` with the margin. The report
+goes to `edit/<id>/picture_scan.json`.
+
+**How it measures** (so a hint can be weighed): one ffmpeg run per clip decodes 15 frames a second at 480 px on the
+long side straight into the script (no frame is written as an image), so a 4K clip costs its decoding and little
+memory; the measurements are kept in `<project>/_picture_scan/` by the file's path, size and time, and a second scan
+reads them (`--fresh` measures again); a 1080p clip takes about two thirds of its length, a 4K one about its length.
+The shake is the high-frequency part of the camera's frame-to-frame shift (phase correlation, the median of 3 x 3
+blocks of the frame): a smooth pan, a walk with the camera, an object moving across a still shot are not shake;
+`restless` is the same measure over the whole frame, when the camera stands. Speech is the voice band's level rising and falling at the syllable rate; a pool or the wind is steady. The
+head turn is `defects.py`'s measure.
+
+**Calibrated** on 13 phone and camera clips, 25 minutes: tripods (an office, a high window with a person walking
+in front of it, a pool, a two-person interview in profile), a tripod bumped for a few seconds, hand-held stairs, a
+pan, a walk on a beach, a sky over the sea, a talking head. The hand-held stairs are flagged all along and the bumped
+tripod at its bumps; no tripod gets a `shake`. The camera of a tripod jitters under 0.012 % of the frame, a walk
+following someone 0.03 %, hand-held stairs 0.06-0.4 % (the threshold 0.04 %). `restless` (0.016 % over 2 s) also
+fires on waves and on a gesturing talking head: weigh it. An app's black outro was found to the frame where it
+starts; speech was found in an interview and a talking head and not in wind or the sea; far faces need `--size 960`.
 
 ## Photos
 

@@ -159,7 +159,7 @@ def cmd_accept(a):
 # detector only suggests candidates for the marks; the marks are the person's.
 def stranger_issues(e, plan, s, doc, cap):
     """-> [error] for the strangers of the picture sources of edit/<id>."""
-    from pic_track import purposes
+    from pic_track import purposes, to_out
     from reels_common import voice_mode
     cut = load_json(Path(e) / "cut.json", {}) or {}
     srcs = cut.get("sources") or {}
@@ -193,11 +193,10 @@ def stranger_issues(e, plan, s, doc, cap):
             if g["kind"] == "photo":
                 w0, w1 = g["out_start"], g["out_start"] + g["out_dur"]
             else:
-                x, y = max(float(a), g["src_start"]), min(float(b), g["src_end"])
-                if y <= x:
+                w = to_out(g, a, b)
+                if not w:
                     continue
-                sp = g.get("speed") or 1.0
-                w0, w1 = g["out_start"] + (x - g["src_start"]) / sp, g["out_start"] + (y - g["src_start"]) / sp
+                w0, w1 = w
             p0, p1 = max(0.0, w0 - COVER_PAD), min(D, w1 + COVER_PAD)
             by = [i for i in live if hidden_span(i, s, doc, cap)[0] <= p0 + 1e-6 and hidden_span(i, s, doc, cap)[1] >= p1 - 1e-6]
             if any(i.get("status") == "ready" for i in by):

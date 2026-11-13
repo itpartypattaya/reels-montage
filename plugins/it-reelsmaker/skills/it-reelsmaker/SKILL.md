@@ -172,7 +172,8 @@ File layout per video: `{{PROJECT_ROOT}}/edit/<id>/` with `cut.json`, `reel.json
 head with a stretch of voice-over; a text ending after the voice): the same folder and `cut.json`, the sound cut by
 `ranges` as usual and the picture in `picture` blocks, built by one `cut.py` run; color per place, strangers marked and
 hidden (a blocking check), the speaker's rules held only over the speaker; a photo's subject (`roi`) for its move, no
-slideshow: `references/no-speaker.md`.
+slideshow: `references/no-speaker.md`. Before picking the shots, `picture.py scan <clips>` lists hints (shake, a
+restless picture, an app's tail, dark, talking, a turn to the camera, strangers?): each unchecked, look and decide.
 
 **A no-speech reel** (no voice at all: silent shots or a person who does not speak, the brief's text on screen, sounds
 and music): `reel.json -> voice: none`; the brief's text word for word in `edit/<id>/script.json`, timed by its reading
@@ -446,7 +447,7 @@ Several agents at once in one editing folder are normal: write JSON (video setti
 | `references/profiles.md` | step 0 and before showing the draft: the video's profile and content format, their defaults under the brand tone, the brand's own tone for a profile, each profile's checklist with sources |
 | `references/structure.md` | step 3a: start, middle and ending mechanics (teaser, slow start, proof first, beat before the payoff, re-hook, payoff with a hold, callback, loop), how to offer them, a 20–30 s video in beats |
 | `references/examples.md` | steps 5, 9 and 10: what the cut plan, the self-review notes and the delivery report look like |
-| `references/no-speaker.md` | step 0 and 6 when the voice is not a person speaking in the frame: a voice-over over clips and photos, a talking head with a voice-over stretch, the no-speech reel (script.json, its timing, the sound question), the `picture` block, photos (EXIF, `roi`, no slideshow), color per place, strangers, the two-track contract (sound and picture apart) |
+| `references/no-speaker.md` | step 0 and 6 when the voice is not a person speaking in the frame: a voice-over over clips and photos, a talking head with a voice-over stretch, the no-speech reel (script.json, its timing, the sound question), the `picture` block, is the footage usable (`picture.py scan` hints), photos (EXIF, `roi`, no slideshow), color per place, strangers, the two-track contract (sound and picture apart) |
 | `references/music.md` | music composed in code (`music.py`): styles, markers, the WAV, `beats.json`, how the plan and the master use it |
 | `references/longform.md` | a long recording → a series of clips: the brief, transcript or subtitles, reading by parts, the cards, the checks, the list, extract, the framed camera proposal, cost and limits |
 | `references/playbook.md` | before the plan and at delivery: measurement vs taste, trust levels, the project playbook cards, conflicts, “Supports”, learning from a guide or a video, turning corrections into rules |

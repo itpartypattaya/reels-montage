@@ -110,6 +110,28 @@ def maps_source_time(g):
     return g.get("kind", "video") not in CONVENTIONAL
 
 
+def to_out(g, a, b):
+    """(from, to) seconds of the finished video where the source seconds a..b of a video shot are on screen, or None
+    when the shot does not show them: through the shot's own start and speed."""
+    x, y = max(float(a), g["src_start"]), min(float(b), g["src_end"])
+    if y <= x:
+        return None
+    sp = g.get("speed") or 1.0
+    return g["out_start"] + (x - g["src_start"]) / sp, g["out_start"] + (y - g["src_start"]) / sp
+
+
+def source_windows(shots, source, a, b):
+    """[(shot i, from, to)]: every place in the finished video where the seconds a..b of the source are on screen; a
+    source used twice is on screen twice. Video shots only (a photo's seconds are conventional)."""
+    out = []
+    for g in sorted(shots, key=lambda x: x["out_start"]):
+        if g.get("source") == source and maps_source_time(g):
+            w = to_out(g, a, b)
+            if w:
+                out.append((g.get("i"), *w))
+    return out
+
+
 # --- the purpose of each stretch and where each rule applies (references/no-speaker.md) -----------------------------
 # speaker  the person speaking is on screen: the voice is on camera and the shot is the sound source's own video at
 #          the seconds of its sound
