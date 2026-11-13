@@ -110,6 +110,7 @@ REPLAY = 0.2     # s: two pieces of one source overlapping by more than this rep
 GAP_MAX = 1.0    # s: a gap this short between two pieces of one run is a removed pause, not a dropped line
 KEEP_CHARS = 48  # characters: a keep phrase longer than this may not fit two subtitle lines (Plate, Accent): named
 JOIN_REPEAT = 3  # words: an identical run this long in two adjacent pieces is a take said twice (repeats_at_joins)
+SLOW_MIN = 0.75  # a picture shot slowed further repeats its frames visibly (no interpolation in the core)
 
 
 def resolve(p, project, e):
@@ -165,8 +166,21 @@ def load_cut(e, project, speed_arg=None):
         s, t = validate_range(r, sources[src], fps, f"range {k}")
         ranges.append({"source": src, "start": s, "end": t, "beat": r.get("beat", ""),
                        "speaker": speaker_of(r), "speakers": speaker_switches(r, k)})
-    if not ranges:
+    silent = no_speech(e)  # reel.json -> voice: none: the text is the clock, the picture is all there is
+    if silent and ranges:
+        sys.exit("cut.json: ranges are the sound of a voice, but reel.json -> voice is none (a no-speech reel): remove "
+                 "the ranges, or set the voice (reelcfg.py save edit/<id> --set voice=on_camera)")
+    if not ranges and not silent:
         sys.exit("cut.json: no ranges")
+    clock = None
+    if silent:
+        from vp_script import timing_of
+        _, tm = timing_of(e)  # a missing or stale timing stops here: visual_plan.py script
+        from vp_script import clock_id
+        clock = {"duration": tm["duration"], "id": clock_id(tm),
+                 "blocks": {b["id"]: (b["start"], b["start"] + b["dur"]) for b in tm["blocks"]}}
+        if not cut.get("picture"):
+            sys.exit('cut.json: a no-speech reel needs picture blocks (the clips over the text): "picture": [...]')
     import cut_picture
     try:
         picture = cut_picture.blocks_of(cut.get("picture"), sources)
@@ -222,7 +236,14 @@ def load_cut(e, project, speed_arg=None):
             "retime": word_fixes(cut.get("retime"), "retime", ("start", "end"), sources), "extract": extras,
             "keep": word_fixes(cut.get("keep"), "keep", ("words",), sources),
             "level": cut.get("level", True) is not False, "audio_only": audio,
-            "picture": picture, "own_picture": bool(picture or mixed)}
+            "picture": picture, "own_picture": bool(picture or mixed), "clock": clock}
+
+
+def no_speech(e):
+    """reel.json -> voice: none (a preset writes its answers there too): a no-speech reel. The file alone is read, so
+    a talking-head cut prints nothing new and needs no brand."""
+    reel = load_json(e / "reel.json", {}) or {}
+    return isinstance(reel, dict) and reel.get("voice") == "none"
 
 
 def norm_look(look, e, project, label="look"):
@@ -561,6 +582,8 @@ def timeline(c, words, said=None):
             said += texts
         frames += n
         offset = frames / fps
+    if not c["ranges"] and c.get("clock"):  # a no-speech reel: no sound, the timed text is the clock
+        return [], [], c["clock"]["duration"]
     return segments, captions, offset
 
 
@@ -895,6 +918,10 @@ def main():
         cut_voice.background_warnings(c)
     if shots is not None:
         print(cut_picture.describe(shots, c))
+        slow = [g for g in shots if g["kind"] == "video" and not g.get("_copy") and g["speed"] < SLOW_MIN - 1e-9]
+        if slow:  # frames are repeated, not interpolated: under x0.75 the motion stutters (references/no-speaker.md)
+            warn(f"picture shot(s) {', '.join(str(g['i']) for g in slow)} slowed below x{SLOW_MIN:g}: the frames repeat "
+                 f"and the motion stutters; x0.8 is the usual calm slow-down")
         if round(video_total * c["fps"]) > round(total * c["fps"]):
             print(f"  the picture runs {video_total - total:.3f} s past the sound: silence to {video_total:.3f} s")
         bare = [g for g in shots if g["kind"] == "fill" and g.get("_copy")]
@@ -978,6 +1005,7 @@ def build_own_picture(c, e, segments, captions, shots, total, video_total, level
                                            "speed": g["speed"], "beat": g["beat"]} for g in segments],
                                "shots": pic, "total_duration_s": round(video_total, 3)})
     cap = {"duration": round(video_total, 3), "segments": segments, "shots": pic, "words": captions,
+           **({"clock_id": c["clock"]["id"]} if c.get("clock") else {}),  # the text timing the picture was cut on
            **({"speakers": speakers_of(captions)} if speakers_of(captions) else {}),
            **({"leveling": leveling} if leveling else {})}
     pid = picture_id(cap)
@@ -986,6 +1014,11 @@ def build_own_picture(c, e, segments, captions, shots, total, video_total, level
     if problems:
         print("final.mp4 check FAILED: " + "; ".join(problems))
         sys.exit(1)
+    if not segments:  # a no-speech reel: nothing spoken to check at the edges
+        print(f"final.mp4 ready: {round(video_total, 3)} s ({len(pic)} picture shots, no speech: the text is the clock); "
+              f"captions.json (no words), edl.json written. Next: python scripts/visual_plan.py init edit/{e.name} "
+              f"--no-speech")
+        return
     print(f"final.mp4 ready: {round(video_total, 3)} s ({len(pic)} picture shots over {round(total, 3)} s of sound); "
           f"captions.json, edl.json written. Next: python scripts/speech_mask.py --edl {(e / 'edl.json').as_posix()}")
 

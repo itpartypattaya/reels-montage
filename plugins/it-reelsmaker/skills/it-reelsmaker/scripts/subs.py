@@ -181,6 +181,10 @@ def subs_file(e, lang):
 
 def load_cap(e):
     cap = load_json(e / "captions.json")
+    if cap and not cap.get("words") and (e / "script.json").is_file():  # a no-speech reel: nothing is spoken
+        sys.exit(f"{e.name} is a no-speech reel: there are no subtitles and no .srt to make; its text is in the scenes: "
+                 f"a version in another language is a copy of script.json with the lines translated (then "
+                 f"visual_plan.py script, cut.py and init --no-speech for that copy)")
     if not cap or not cap.get("words"):
         sys.exit(f"no words in {e / 'captions.json'}: subtitles come after the rough cut (cut.py)")
     return cap

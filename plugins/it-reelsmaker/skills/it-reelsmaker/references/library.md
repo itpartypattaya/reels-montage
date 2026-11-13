@@ -65,6 +65,8 @@ Run each as `ffmpeg -f lavfi -i "<recipe>" -ac 2 edit/<id>/sfx/<name>.wav`. A ch
 
 **Music: license first.** ⟨YOURS: `{{ACCOUNT_TYPE}}`⟩. An Instagram business account only has access to the royalty-free Meta Sound Collection library in the app, and a track burned into the video must have a **commercial** license. Commercial tracks, slowed/reverb versions of other people's songs, files from download sites: do not burn them in. A safe default: render without music and pick the track in the app when publishing. A “check license” verdict is not a permission: open the track's page and check commercial use and attribution; a license written for one platform's audio library must be read separately for other platforms.
 
+**Music composed in code** (a whole track of the video's length with its beats, for a no-speech reel or any video without a track of its own): `scripts/music.py`, its styles, markers and `beats.json` are in `references/music.md`. The short sounds above stay here.
+
 ## Music in the mix
 
 **Music, if burned in** (not yet verified in a finished video; listen to the whole master before delivery):

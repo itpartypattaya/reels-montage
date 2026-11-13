@@ -94,12 +94,21 @@ def picture_sources(c):
     return [n for n in c["sources"] if n in used and not any(r["source"] == n for r in c.get("ranges") or [])]
 
 
-def _anchor(v, words, fps, end_frames, label):
-    """A block's or shot's time -> a frame of the finished video."""
+def _anchor(v, words, fps, end_frames, label, clock=None):
+    """A block's or shot's time -> a frame of the finished video. clock: a no-speech reel's timed text blocks
+    ("block:<id>" is where that block starts, "block:<id>:end" where it ends)."""
     if v == "start":
         return 0
     if v == "end":
         return end_frames
+    if isinstance(v, str) and v.startswith("block:"):
+        bid, _, edge = v[6:].partition(":")
+        blocks = (clock or {}).get("blocks") or {}
+        if bid not in blocks or edge not in ("", "end"):
+            raise PictureError(f"{label}: {v!r}: " + (f"no text block {bid!r} in script.json ({', '.join(blocks)})"
+                                                      if blocks else "block:<id> names a text block of a no-speech "
+                                                                     "reel (script.json)"))
+        return round(blocks[bid][1 if edge else 0] * fps)
     if isinstance(v, str) and v.startswith("word:"):
         from vp_core import resolve_at
         try:
@@ -124,8 +133,8 @@ def resolve(c, segments, words, total):
     sec = lambda f: round(f / F, 3)  # noqa: E731
     blocks = []
     for k, b in enumerate(blocks_of(c.get("picture"), c["sources"])):
-        f0 = _anchor(b["from"], words, F, S, f"picture[{k}] from")
-        f1 = _anchor(b["to"], words, F, S, f"picture[{k}] to")
+        f0 = _anchor(b["from"], words, F, S, f"picture[{k}] from", c.get("clock"))
+        f1 = _anchor(b["to"], words, F, S, f"picture[{k}] to", c.get("clock"))
         if f1 <= f0:
             raise PictureError(f"picture[{k}]: its end ({sec(f1)} s) is not after its start ({sec(f0)} s)")
         blocks.append((f0, f1, k, b))
@@ -133,6 +142,15 @@ def resolve(c, segments, words, total):
     for (a0, a1, ka, _), (b0, b1, kb, _) in zip(blocks, blocks[1:]):
         if b0 < a1:
             raise PictureError(f"picture[{ka}] ({sec(a0)}-{sec(a1)} s) and picture[{kb}] ({sec(b0)}-{sec(b1)} s) overlap")
+    if c.get("clock"):  # a no-speech reel: the picture is all there is, from 0 to the end of the text
+        for f0, f1, k, _ in blocks:
+            if f1 > S:
+                raise PictureError(f'picture[{k}] runs past the end of the text ({sec(S)} s): end it at "end"')
+        gaps = _uncovered(0, S, sorted((f0, f1) for f0, f1, _, _ in blocks))
+        if gaps:
+            raise PictureError("the picture leaves " + ", ".join(f"{sec(x)}-{sec(y)} s" for x, y in gaps)
+                               + ' uncovered: a no-speech reel has nothing else on screen; add a shot, or a '
+                                 '{"fill": true} shot for a stretch drawn only with scenes')
     for n, (f0, f1, k, _) in enumerate(blocks):
         if f0 > S:
             raise PictureError(f"picture[{k}] starts at {sec(f0)} s, after the sound ends ({sec(S)} s): the gap would "
@@ -147,7 +165,7 @@ def resolve(c, segments, words, total):
         for j, sh in enumerate(b["shots"]):
             label = f"picture[{k}] shot {j}"
             if "until" in sh:
-                end = _anchor(sh["until"], words, F, S, f"{label} until")
+                end = _anchor(sh["until"], words, F, S, f"{label} until", c.get("clock"))
             elif "dur" in sh:
                 end = cur + round(float(sh["dur"]) * F)
             elif j == len(b["shots"]) - 1:
@@ -262,6 +280,13 @@ def build(c, e, segments, shots, total_video, level=True):
     clips = e / "clips"
     clips.mkdir(exist_ok=True)
     parts = []
+    frames = round(total_video * F)
+    n = round(frames / F * cut_voice.RATE)
+    sound = clips / "sound.wav"
+    leveling = None
+    if not segments:  # a no-speech reel: a silent track of the picture's length (the master adds music and sounds)
+        run(["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", f"anullsrc=r={cut_voice.RATE}:cl=stereo", "-af",
+             f"atrim=end_sample={n}", "-c:a", "pcm_s16le", sound])
     for g in segments:
         out = clips / f"voice_{g['i']:02d}.wav"
         sv = c["sources"][g["source"]]
@@ -272,12 +297,10 @@ def build(c, e, segments, shots, total_video, level=True):
             run(["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-t", f"{g['_n'] / F:.15g}", "-i",
                  "anullsrc=r=48000:cl=stereo", "-c:a", "pcm_s16le", out])
         parts.append(out)
-    joined, leveling = cut_voice.join_pieces(e, parts, segments, level)
-    frames = round(total_video * F)
-    n = round(frames / F * cut_voice.RATE)
-    sound = clips / "sound.wav"
-    run(["ffmpeg", "-v", "error", "-y", "-i", joined, "-af", f"apad=whole_len={n},atrim=end_sample={n}",
-         "-c:a", "pcm_s16le", "-ar", str(cut_voice.RATE), "-ac", "2", sound])
+    if segments:
+        joined, leveling = cut_voice.join_pieces(e, parts, segments, level)
+        run(["ffmpeg", "-v", "error", "-y", "-i", joined, "-af", f"apad=whole_len={n},atrim=end_sample={n}",
+             "-c:a", "pcm_s16le", "-ar", str(cut_voice.RATE), "-ac", "2", sound])
     w, h = geometry(c)
     files = []
     for g in shots:
