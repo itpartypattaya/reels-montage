@@ -9,9 +9,11 @@ export const mix = (a: number, b: number, k: number) => a + (b - a) * k;
 export const clamp01 = (k: number) => Math.max(0, Math.min(1, k));
 
 /** Angle a → b by the shortest arc (350° → 10° turns 20°, not 340°), degrees: the signed turn is read from the
- *  direction of b seen from a (atan2 of the difference's sine and cosine), so any number of full turns drops out. */
+ *  direction of b seen from a (atan2 of the difference's sine and cosine), so any number of full turns drops out.
+ *  Exactly opposite directions turn by −180° (counterclockwise on screen), whichever way the angles are written. */
 export const angMix = (a: number, b: number, k: number) => {
-  const turn = Math.atan2(Math.sin((b - a) * DEG), Math.cos((b - a) * DEG)) / DEG;
+  let turn = Math.atan2(Math.sin((b - a) * DEG), Math.cos((b - a) * DEG)) / DEG;
+  if (turn > 180 - 1e-9) turn -= 360;
   return a + turn * k;
 };
 

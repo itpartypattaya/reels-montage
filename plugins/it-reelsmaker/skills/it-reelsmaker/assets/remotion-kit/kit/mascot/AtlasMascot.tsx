@@ -46,14 +46,16 @@ const POP = 0.03; // the most a pose shrinks while k overshoots (0.97 -> 1 as it
 const TONGUE_COLOR = "#d9707f";
 
 /** The overlay mouth: a lens whose lower lip drops with the opening (the upper one barely moves, as in speech), in
- *  the drawing's line color, with a tongue in its lower half once it opens wide. */
+ *  the drawing's line color, with a tongue in its lower half once it opens wide. The lens reaches 0.5·drop at its
+ *  middle (a quadratic curve peaks at half its control point); the tongue stays inside: ±half·0.5 at 0.3·drop,
+ *  where the lens is ±half·0.64 wide, down to 0.45·drop at its middle. */
 const OpenMouth: React.FC<{ x: number; y: number; width: number; open: number; ink: string }> = ({ x, y, width, open, ink }) => {
   const half = (width / 2) * (1 - 0.1 * open);
   const drop = width * (0.12 + 0.4 * open);
   const lift = drop * 0.25;
   const lens = `M ${-half} 0 Q 0 ${-lift} ${half} 0 Q 0 ${drop} ${-half} 0 Z`;
   const tw = half * 0.5;
-  const tongue = `M ${-tw} ${drop * 0.35} Q 0 ${drop * 0.18} ${tw} ${drop * 0.35} Q 0 ${drop * 0.85} ${-tw} ${drop * 0.35} Z`;
+  const tongue = `M ${-tw} ${drop * 0.3} Q 0 ${drop * 0.16} ${tw} ${drop * 0.3} Q 0 ${drop * 0.6} ${-tw} ${drop * 0.3} Z`;
   return (
     <g transform={`translate(${x} ${y})`}>
       <path d={lens} fill={ink} />

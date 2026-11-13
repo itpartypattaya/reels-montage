@@ -47,6 +47,8 @@ HOLE_MIN = 0.002            # an enclosed patch of background color is numbered 
 OUTLINE_SHARE = 0.6         # a drawing with a dark outline on this share of its edge is checked for open spots
 OUT_DIR = Path("assets") / "mascot"
 HEAD_MAX = 0.5             # the head is looked for in the top half of the neutral figure
+HAND_MAX = 0.12             # a piece of the middle column shorter than this share of the figure is a hand, not the head
+OUTLINE_LUMA = 90           # an outline pixel: darker than this, from the head's edge inward
 SHOULDER_GROWTH = 1.15     # the run widening by this past its narrowest row = the shoulders: the head ends there
 EYE_TO_MOUTH = 0.32        # the mouth this share of the head's height below the eyes (a guess, checked on the sheet)
 EYE_SPREAD = 0.2           # with no eyes found: each eye this share of the head's width from the middle
@@ -427,14 +429,15 @@ def figure_box(img, thr=40):
 
 def guess_head(img):
     """The head of the neutral pose, a guess the agent checks on the sheet: walk down the figure's middle column from
-    its top, row by row, keeping the width of the opaque run on that column; the head is the stretch down to the
-    narrowest row before the run widens into the shoulders (or HEAD_MAX of the figure). The eyes are the dark spots
-    inside the face at mid-head, the mouth EYE_TO_MOUTH of the head below them.
-    -> {"anchor": point between the eyes, "hw": head width, "eyes": [left, right], "mouth": point}"""
+    its top, row by row, keeping the width of the opaque run on that column (a short piece of the column above the
+    head, a raised hand, is passed over); the head is the stretch down to the narrowest row before the run widens into
+    the shoulders. The eyes are the dark spots inside the face at mid-head, the mouth EYE_TO_MOUTH of the head below.
+    A figure whose outline never narrows has no head to find this way: "sure" is False and the atlas command asks for
+    --head. -> {"anchor": point between the eyes, "hw": head width, "eyes": [left, right] or None, "mouth": point,
+    "sure": bool}"""
     left, top, right, bottom = figure_box(img)
     fig_h = bottom - top
-    alpha = img.getchannel("A")
-    a = alpha.load()
+    a = img.getchannel("A").load()
     # the middle column: where the figure's opaque mass is centered, so a raised arm on one side tips it little
     cols = [0] * (right - left)
     for y in range(top, bottom):
@@ -443,66 +446,92 @@ def guess_head(img):
                 cols[x - left] += 1
     mass = sum(cols)
     mid = left + (sum(k * n for k, n in enumerate(cols)) / mass if mass else (right - left) / 2)
-    widths = []  # (y, run) down the middle column
-    y = top
-    while y < top + max(2, int(fig_h * HEAD_MAX)):
+    # the column's opaque stretches from the top; the first one long enough to be a head
+    stretches, cur = [], []
+    for y in range(top, bottom):
         run = row_run(img, mid, y)
         if run and run[0] <= mid < run[1]:
-            widths.append((y, run))
-        y += 1
+            cur.append((y, run))
+        elif cur:
+            stretches.append(cur)
+            cur = []
+    if cur:
+        stretches.append(cur)
+    widths = next((s for s in stretches if len(s) >= HAND_MAX * fig_h), stretches[0] if stretches else [])
+    widths = widths[: max(2, int(fig_h * HEAD_MAX))]  # the head is in the first half of the figure's height at most
+    fallback = {"anchor": ((left + right) / 2, top + 0.15 * fig_h), "hw": (right - left) * 0.5, "eyes": None,
+                "mouth": ((left + right) / 2, top + 0.25 * fig_h), "sure": False}
     if not widths:
-        return {"anchor": ((left + right) / 2, top + 0.25 * fig_h), "hw": (right - left) * 0.5, "eyes": None,
-                "mouth": ((left + right) / 2, top + 0.35 * fig_h)}
+        return fallback
     # down the skull the run widens, then narrows to the chin or the neck; the first widening past that narrowest
     # row is the shoulders
-    wide_at, neck, narrow = 0, len(widths) - 1, None
-    for k, (_, (r_l, r_r)) in enumerate(widths):
-        w = r_r - r_l
+    def width(k):
+        return widths[k][1][1] - widths[k][1][0]
+    wide_at, neck, narrow, shoulders = 0, len(widths) - 1, None, False
+    for k in range(len(widths)):
+        w = width(k)
         if narrow is None:
-            if w >= widths[wide_at][1][1] - widths[wide_at][1][0]:
+            if w >= width(wide_at):
                 wide_at = k
-            elif w < 0.97 * (widths[wide_at][1][1] - widths[wide_at][1][0]):
+            elif w < 0.97 * width(wide_at):
                 narrow, neck = w, k
         elif w < narrow:
             narrow, neck = w, k
         elif w > narrow * SHOULDER_GROWTH:
+            shoulders = True
             break
+    if narrow is None:  # it only widened: no head outline to go by
+        return fallback
     head_top, head_bot = widths[0][0], widths[neck][0]
     l0, r0 = widths[wide_at][1]
     hw, hx = r0 - l0, (l0 + r0) / 2
     hh = max(1, head_bot - head_top)
-    eyes = dark_spots(img, (l0, r0), head_top + 0.3 * hh, head_top + 0.65 * hh, hx)
+    eyes = dark_spots(img, mid, head_top + 0.3 * hh, head_top + 0.65 * hh, hx)
     if eyes:
         ax, ay = (eyes[0][0] + eyes[1][0]) / 2, (eyes[0][1] + eyes[1][1]) / 2
     else:
         ax, ay = hx, head_top + 0.5 * hh
-    return {"anchor": (ax, ay), "hw": hw, "eyes": eyes, "mouth": (ax, ay + EYE_TO_MOUTH * hh)}
+    return {"anchor": (ax, ay), "hw": hw, "eyes": eyes, "mouth": (ax, ay + EYE_TO_MOUTH * hh),
+            "sure": shoulders or narrow < 0.8 * hw}
 
 
-def dark_spots(img, run, y0, y1, cx):
-    """The two dark spots of a face (the eyes): in the rows y0..y1, inside the head's run with its outline left out,
-    the pixels much darker than the face's median, averaged on each side of cx. None when one side has none."""
-    l0, r0 = run
-    margin = max(2, round(0.12 * (r0 - l0)))
-    box = (round(l0 + margin), round(y0), round(r0 - margin), round(y1))
-    if box[2] - box[0] < 4 or box[3] - box[1] < 2:
+def dark_spots(img, col, y0, y1, cx):
+    """The two dark spots of a face (the eyes) in the rows y0..y1: on each row, inside the head's run through the
+    column col with its outline left out (the dark pixels from each edge inward, however thick), the pixels much darker
+    than the face; averaged on each side of cx. None when one side has too few."""
+    lum = img.convert("RGB").convert("L").load()
+    a = img.getchannel("A").load()
+    rows = range(max(0, round(y0)), min(img.height, round(y1) + 1))
+    face = []
+    inner = {}
+    for y in rows:
+        run = row_run(img, col, y)
+        if not run:
+            continue
+        l, r = run[0], run[1] - 1
+        while l < r and lum[l, y] < OUTLINE_LUMA:
+            l += 1
+        while r > l and lum[r, y] < OUTLINE_LUMA:
+            r -= 1
+        l, r = l + 2, r - 2
+        if r - l < 4:
+            continue
+        inner[y] = (l, r)
+        face.extend(lum[x, y] for x in range(l, r + 1) if a[x, y] > 200)
+    if not face:
         return None
-    lum = img.convert("RGB").convert("L").crop(box)
-    alpha = img.getchannel("A").crop(box)
-    vals = sorted(v for v, al in zip(lum.getdata(), alpha.getdata()) if al > 200)
-    if not vals:
-        return None
-    cut = vals[len(vals) // 2] * 0.55
+    face.sort()
+    cut = face[len(face) // 2] * 0.55
     sides = {-1: [0.0, 0.0, 0], 1: [0.0, 0.0, 0]}
-    w = box[2] - box[0]
-    for k, (v, al) in enumerate(zip(lum.getdata(), alpha.getdata())):
-        if al > 200 and v < cut:
-            x, y = box[0] + k % w, box[1] + k // w
-            s = sides[-1 if x < cx else 1]
-            s[0] += x
-            s[1] += y
-            s[2] += 1
-    if not sides[-1][2] or not sides[1][2]:
+    for y, (l, r) in inner.items():
+        for x in range(l, r + 1):
+            if a[x, y] > 200 and lum[x, y] < cut:
+                s = sides[-1 if x < cx else 1]
+                s[0] += x
+                s[1] += y
+                s[2] += 1
+    need = max(3, len(face) // 400)
+    if sides[-1][2] < need or sides[1][2] < need:
         return None
     return [(s[0] / s[2], s[1] / s[2]) for s in (sides[-1], sides[1])]
 
@@ -772,6 +801,10 @@ def cmd_atlas(a):
                 "mouth": (anchor[0], anchor[1] + (g0["mouth"][1] - g0["anchor"][1]) * hw * k / g0["hw"])}
     else:
         head = guess_head(neutral["out"])
+        if not head["sure"]:
+            warn(f"{neutral['label']} (neutral): no head outline found (the figure never narrows below its top): the "
+                 f"poses are placed by a rough guess; check the cross on rig-check.png and give the head with --head X,Y,W "
+                 f"(sheet pixels: the point between the eyes, the head width)")
     hw = head["hw"]
     if hw < 12:
         die("the head of neutral was not found (narrower than 12 px): give it with --head X,Y,W")

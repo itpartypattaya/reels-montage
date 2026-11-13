@@ -359,6 +359,41 @@ def test_an_atlas_mascot_reaches_the_kit_with_its_rig(project):
     assert isinstance(mp["rig"], dict) and mp["rig"]["poses"]["palm"]["cell"] == [400, 0, 400, 520]
     assert mp["rig"]["anchor"] == [200, 170] and mp["rig"]["symmetric"] is False
     layer = (CORE.parent / "assets" / "remotion-kit" / "kit" / "mascot" / "MascotLayer.tsx").read_text(encoding="utf-8")
-    assert 'from "./AtlasMascot"' in layer and "atlasMascot(" in layer
+    assert 'from "./AtlasMascot"' in layer
+    body = layer[layer.index("export const mascotModule"):]
+    body = body[: body.index("\n};") + 3]
+    # kind "drawn" from the registry; past it, an atlas with a rig makes (and returns) the atlas module, nothing else
+    assert 'if (p.kind === "drawn") return modules[p.module] ?? null;' in body
+    assert body.count("return null") == 1 and "m = atlasMascot(p.rig, p.atlas);" in body
+    assert body.replace("\r", "").rstrip().endswith("return m;\n};")
     atlas = (CORE.parent / "assets" / "remotion-kit" / "kit" / "mascot" / "AtlasMascot.tsx").read_text(encoding="utf-8")
     assert 'from "./types"' in atlas and "export type MascotFrame" not in atlas
+
+
+@needs_ffmpeg
+def test_an_atlas_rebuilt_after_brand_stage_is_refused(project):
+    # the rig and the atlas image reach the kit as one staged pair: an atlas cut again in the brand folder without
+    # brand.py stage would put the new rig's frames over the old image (wrong crops), so stage refuses it by name
+    e, rem = mascot_project(project)
+    d = project / "brands" / "acme" / "assets" / "mascot"
+    pose = {"cell": [0, 0, 400, 520], "offset": [0, 0], "eyes": [[170, 160], [230, 160]], "mouth": [200, 230],
+            "mouthW": 40, "skin": "#f2c9a0", "ink": "#222222"}
+    rig = {"atlas": "atlas.png", "width": 800, "height": 520, "symmetric": True, "box": [400, 520],
+           "anchor": [200, 170], "poses": {"neutral": pose, "palm": {**pose, "cell": [400, 0, 400, 520]}}}
+    write_json(d / "rig.json", rig)
+    (d / "atlas.png").write_bytes(b"\x89PNG\r\n\x1a\n")
+    run_script("brand.py", "mascot", "acme", "--atlas", "assets/mascot/rig.json", cwd=project)
+    run_script("mascot.py", "plan", "edit/4821", "--pose", "word:resume#1=palm", cwd=project)
+    run_script("mascot.py", "mouth", "edit/4821", cwd=project)
+    run_script("brand.py", "stage", "acme", "--remotion", rem, cwd=project)
+    (e / "final.mp4").write_bytes(b"a rough cut")
+    rig["poses"]["palm"]["cell"] = [0, 520, 400, 520]  # cut again: the atlas grew a row
+    rig["height"] = 1040
+    write_json(d / "rig.json", rig)
+    r = run_script("visual_plan.py", "stage", "edit/4821", "--remotion", rem, "--props", rem / "props.json",
+                   cwd=project, check=False)
+    assert r.returncode != 0 and "brand.py stage" in (r.stdout + r.stderr), r.stdout + r.stderr
+    run_script("brand.py", "stage", "acme", "--remotion", rem, cwd=project)
+    run_script("visual_plan.py", "stage", "edit/4821", "--remotion", rem, "--props", rem / "props.json", cwd=project)
+    mp = json.loads((rem / "props.json").read_text(encoding="utf-8"))["mascot"]
+    assert mp["rig"]["poses"]["palm"]["cell"] == [0, 520, 400, 520] and mp["rig"]["height"] == 1040

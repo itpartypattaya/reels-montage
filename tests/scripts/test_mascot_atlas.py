@@ -495,3 +495,39 @@ def test_the_first_guess_finds_the_drawn_eyes():
         assert abs(x1 - (cx - 18 * s)) <= 3 and abs(x2 - (cx + 18 * s)) <= 3, (s, g["eyes"])
         assert abs(y1 - ey) <= 4 and abs(y2 - ey) <= 4, (s, g["eyes"])
         assert abs(g["hw"] - 104 * s) <= 0.08 * 104 * s, (s, g["hw"])
+
+
+def _eyes_near(g, cx, ey, dx, tol=3):
+    assert g["eyes"], g
+    (x1, y1), (x2, y2) = g["eyes"]
+    assert abs(x1 - (cx - dx)) <= tol and abs(x2 - (cx + dx)) <= tol, g["eyes"]
+    assert abs(y1 - ey) <= tol + 1 and abs(y2 - ey) <= tol + 1, g["eyes"]
+
+
+def test_the_first_guess_skips_a_hand_above_the_head_and_a_thick_outline():
+    # a hand raised right over the head's middle is not the head; a heavy outline around the face is not an eye
+    from PIL import ImageDraw
+    import mascot_atlas
+    im = character("neutral", bg=(0, 0, 0, 0), size=(300, 460), dy=60)
+    d = ImageDraw.Draw(im)
+    d.ellipse((150 - 16, 140 - 76 - 46, 150 + 16, 140 - 76 - 14), fill=INK + (255,))  # a fist over the head
+    d.ellipse((150 - 12, 140 - 76 - 42, 150 + 12, 140 - 76 - 18), fill=GLOVE + (255,))
+    _eyes_near(mascot_atlas.guess_head(im), 150, 225, 18)
+    # the same character with an outline three times as thick around the head
+    im = character("neutral", bg=(0, 0, 0, 0))
+    d = ImageDraw.Draw(im)
+    d.ellipse((150 - 60, 170 - 60, 150 + 60, 170 + 60), outline=INK + (255,), width=12)
+    _eyes_near(mascot_atlas.guess_head(im), 150, 165, 18)
+
+
+def test_a_figure_with_no_neck_is_an_unsure_guess():
+    # a blob that only widens from top to bottom has no head outline to find: the guess says it is unsure (the atlas
+    # command then asks for --head) instead of putting the eyes on the body
+    from PIL import Image, ImageDraw
+    import mascot_atlas
+    im = Image.new("RGBA", (300, 400), (0, 0, 0, 0))
+    d = ImageDraw.Draw(im)
+    d.polygon([(150, 20), (260, 380), (40, 380)], fill=INK + (255,))
+    d.polygon([(150, 30), (250, 372), (50, 372)], fill=SKIN + (255,))
+    assert mascot_atlas.guess_head(im)["sure"] is False
+    assert mascot_atlas.guess_head(character("neutral", bg=(0, 0, 0, 0)))["sure"] is True

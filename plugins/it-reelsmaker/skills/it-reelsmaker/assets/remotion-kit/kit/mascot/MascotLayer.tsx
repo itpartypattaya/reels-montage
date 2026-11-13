@@ -31,18 +31,24 @@ const OUT_FRAMES = 8;
 const RISE = 24; // px: the mascot rises this much as it fades in
 const clamp = { extrapolateLeft: "clamp", extrapolateRight: "clamp" } as const;
 
-// one atlas module per rig object: the props do not change during a render, the module is made once
-const atlasModules = new WeakMap<AtlasRig, MascotModule>();
+// one atlas module per rig object and atlas image: the props do not change during a render, the module is made once
+const atlasModules = new WeakMap<AtlasRig, Map<string, MascotModule>>();
 
 /** The module that draws this mascot: a drawn module from src/gen/mascots.ts, or the PNG atlas cut by mascot_atlas.py
  *  (AtlasMascot.tsx) from the rig's content and the atlas image in public/. */
 export const mascotModule = (p: MascotProps, modules: Record<string, MascotModule>): MascotModule | null => {
   if (p.kind === "drawn") return modules[p.module] ?? null;
   if (p.kind !== "atlas" || !p.rig || typeof p.rig !== "object" || !p.rig.poses) return null;
-  let m = atlasModules.get(p.rig);
+  let byImage = atlasModules.get(p.rig);
+  if (!byImage) {
+    byImage = new Map();
+    atlasModules.set(p.rig, byImage);
+  }
+  const key = p.atlas ?? "";
+  let m = byImage.get(key);
   if (!m) {
     m = atlasMascot(p.rig, p.atlas);
-    atlasModules.set(p.rig, m);
+    byImage.set(key, m);
   }
   return m;
 };
