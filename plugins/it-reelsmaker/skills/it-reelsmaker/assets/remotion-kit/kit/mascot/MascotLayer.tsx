@@ -1,16 +1,15 @@
 // The brand mascot on the video (references/mascot.md): plays props.mascot, the per-frame plan visual_plan.py stage
-// resolved (poses on words, the mouth from mouth.json, blinks, eased pose changes). The layer only places the module's
+// resolved (poses on words, the mouth from mouth.json, blinks, eased pose changes hidden by a blink). The layer only places the module's
 // drawing: its box anchor (the point between the eyes) at x, y, scaled, mirrored when facing is -1, a soft entrance and
 // exit, an idle breath. No outline and no shadow (the kit's rule: no shadows); a brand that wants a sticker outline draws
 // it in its own module. data-rk="mascot": textcheck.py measures the drawn figure and flags text over it.
 import React from "react";
 import { Easing, interpolate, useCurrentFrame, useVideoConfig } from "remotion";
-import type { MascotFrame, MascotModule } from "./types";
+import type { MascotModule } from "./types";
 import { breath } from "./rig";
+import { frameOf, planAt, type MascotPlanFrame } from "./frame";
 import { atlasMascot, type AtlasRig } from "./AtlasMascot";
 
-/** One entry of the plan: it holds from frame f until the next entry (stage writes an entry only where a value changes). */
-export type MascotPlanFrame = { f: number; pose: string; prev: string; k: number; open: number; blink: boolean; facing?: 1 | -1 };
 export type MascotProps = {
   kind: "drawn" | "atlas";
   module: string; // the brand slug: the key in src/gen/mascots.ts (drawn)
@@ -26,7 +25,6 @@ export type MascotProps = {
   top?: number; // the top of its box on screen, px: a full scene's text ends above it while it is on (SceneLayer.tsx)
 };
 
-const TALK_MIN = 0.08;
 const IN_FRAMES = 10;
 const OUT_FRAMES = 8;
 const RISE = 24; // px: the mascot rises this much as it fades in
@@ -54,22 +52,8 @@ export const mascotModule = (p: MascotProps, modules: Record<string, MascotModul
   return m;
 };
 
-/** The entry that holds on frame f (the last one with entry.f ≤ f), by binary search. */
-export const planAt = (frames: MascotPlanFrame[], f: number): MascotPlanFrame | null => {
-  let lo = 0;
-  let hi = frames.length - 1;
-  let got: MascotPlanFrame | null = null;
-  while (lo <= hi) {
-    const mid = (lo + hi) >> 1;
-    if (frames[mid].f <= f) {
-      got = frames[mid];
-      lo = mid + 1;
-    } else {
-      hi = mid - 1;
-    }
-  }
-  return got;
-};
+// the plan's entries and their frame: kit/mascot/frame.ts (plain math, tested with node)
+export { planAt, type MascotPlanFrame };
 
 export const MascotLayer: React.FC<{ mascot?: MascotProps | null; modules: Record<string, MascotModule> }> = ({ mascot, modules }) => {
   const frame = useCurrentFrame();
@@ -82,10 +66,8 @@ export const MascotLayer: React.FC<{ mascot?: MascotProps | null; modules: Recor
   const e = planAt(mascot.frames, frame);
   if (!e) return null;
   const t = frame / fps;
-  const facing = e.facing ?? mascot.facing ?? 1;
-  const f: MascotFrame = {
-    t, pose: e.pose, prevPose: e.prev, k: e.k, open: e.open, talking: e.open > TALK_MIN, blink: e.blink, facing,
-  };
+  const f = frameOf(e, t, mascot.facing ?? 1);
+  const facing = f.facing;
   const a = Math.min(
     interpolate(frame, [f0, f0 + IN_FRAMES], [0, 1], { ...clamp, easing: Easing.out(Easing.cubic) }),
     interpolate(frame, [f1 - OUT_FRAMES, f1], [1, 0], clamp),

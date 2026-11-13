@@ -19,7 +19,7 @@ A small character in the brand's colors stands in the lower left of the video, o
 
 ```ts
 export type MascotBox = { width: number; height: number; anchor: [number, number] }; // anchor = the point between the eyes, in box px
-export type MascotFrame = { t: number; pose: string; prevPose: string; k: number; open: number; talking: boolean; blink: boolean; facing: 1 | -1 };
+export type MascotFrame = { t: number; pose: string; prevPose: string; k: number; open: number; talking: boolean; blink: boolean; lid: number; since?: number; facing: 1 | -1 };
 export type MascotRender = (f: MascotFrame) => React.ReactNode; // returns SVG/HTML inside the box
 export type MascotModule = { box: MascotBox; poses: string[]; render: MascotRender };
 ```
@@ -34,7 +34,7 @@ export const render = (f: MascotFrame) => <svg width={520} height={480}>…</svg
 
 - **The box holds the whole figure in every pose,** arms raised and pointing included: the plan checks the box, scaled, against the subtitles and the UI zones, so an arm that leaves it can land on them unchecked.
 - **The anchor** is the point between the eyes: placement, scale and mirroring turn around it.
-- `render` returns the drawing for one frame, sized to the box (an `<svg>` of the box's size, or HTML of that size). It is a pure function of the frame: no state, no timers, no random numbers (the render must be the same every time). `k` is the eased progress from `prevPose` to `pose` (may pass 1 only where a bounce is allowed); `open` 0–1 is the mouth; `blink` closes the eyes; `facing` −1 means mirrored, and the layer already mirrors the whole box.
+- `render` returns the drawing for one frame, sized to the box (an `<svg>` of the box's size, or HTML of that size). It is a pure function of the frame: no state, no timers, no random numbers (the render must be the same every time). `k` is the eased progress from `prevPose` to `pose` (may pass 1 only where a bounce is allowed); `open` 0–1 is the mouth; `lid` 0–1 is how shut the eyes are (0 open, 0.5 half shut, 1 shut); `blink` is true where the lids are at least half shut, for a module that draws only open or shut eyes; `since` counts the frames since the pose change began while it eases (absent once it has settled); `facing` −1 means mirrored, and the layer already mirrors the whole box.
 - No text inside the mascot. No outline or drop shadow by default (the kit's rule); a sticker outline is part of the brand's own drawing if the brand wants one.
 
 **Poses.** The dictionary: `neutral` (rest, the start of every track), `talk` (a small open gesture while explaining), `point_left` and `point_right` (at something on that side of the screen), `point_up` (at something above), `palm` (presenting), `think`, `surprise`, `celebrate`, `shrug`, `wink`. A mascot needs `neutral`; a pose it lacks is drawn by its stand-in and validate says so: `point_right` ↔ `point_left` mirrored (only with `--symmetric`, else `palm`), `point_up` → `palm`, `palm` → `talk`, `think` → `talk`, `surprise` ↔ `celebrate`, `shrug` → `palm`, `talk` and `wink` → `neutral`, anything else → `neutral`. A mirrored stand-in turns the whole figure at the start of its change (a turn, not a blend): draw the pose itself when the mascot points right often.
@@ -45,7 +45,7 @@ export const render = (f: MascotFrame) => <svg width={520} height={480}>…</svg
 
 - **Simple shapes that read at 300–500 px tall on a phone:** one body shape, two dot or oval eyes, a mouth, two arms of two segments. Colors only from the brand profile (`import brand from "../brands/<slug>.json"`, `brand.colors`), never HEX values typed in, except a neutral ink for the features; a body that also reads over the video (check it on the board).
 - **Poses as numbers** (arm angles, gaze, tilt, brows, smile) in a table, blended with `kit/mascot/rig.ts`: `poseAt(POSES, f, angles)` blends the previous pose into the current one by `f.k`, the angles by the shortest arc (`angMix`); `armPath(shoulder, {a1, a2}, l1, l2)` draws an arm of two segments; `mirrorArm` gives the other side.
-- **The mouth** from `f.open`: closed (a smile line, its curve from the pose) below about 0.05, an opening that grows with `open` above it. **Blink** from `f.blink`.
+- **The mouth** from `f.open`: closed (a smile line, its curve from the pose) below about 0.05, an opening that grows with `open` above it. **The eyelids** from `f.lid`: the eye's height shrinks with it, so a blink passes through a half-shut eye (`f.blink` alone gives a harder blink).
 - **Its character from the brand's tone and audience,** not a copy of another brand's mascot or of the sample: the sample is there for the conventions only, and every brand gets its own figure.
 - Type-check it (`npx tsc` in the Remotion project), look at it on the storyboard (`board.py`), then register it (step 1 above).
 
@@ -57,11 +57,13 @@ export const render = (f: MascotFrame) => <svg width={520} height={480}>…</svg
 
 **The mouth** (`mascot.py mouth`): per frame of the kit's grid the RMS of the samples from `round(f·sr/fps)` to `round((f+1)·sr/fps)` (no drift over a minute); speech frames are 10 dB over the noise floor (measured between the words of `captions.json` when it has words, else on the quietest tenth of the track; with no pauses at all, −50 dBFS) and inside a word when there are words; the level is normalized by the 98th percentile of the speech frames only (silence and one loud click do not squash it), smoothed [1, 2, 1]/4, opened from 0.08 to fully at 0.63; every frame that is not speech is closed. `mouth.json` keeps the frame rate, the frame count (round half up, as the kit counts) and stamps of the track and of the words' times (a new transcript of the same audio makes it stale too).
 
-**`props.mascot`** (stage): `{kind, module, [rig, atlas], x, y, scale, facing, from, to, frames}` (an atlas: `rig` is the content of `rig.json`, `atlas` the image's path inside `public/`); `frames` are entries `{f, pose, prev, k, open, blink, [facing]}`, each holding until the next one, written only where a value changes; the kit's `MascotLayer` finds the entry of the frame and only plays it. The mouth is closed outside `speaks` and after the narration ends.
+**`props.mascot`** (stage): `{kind, module, [rig, atlas], x, y, scale, facing, from, to, frames}` (an atlas: `rig` is the content of `rig.json`, `atlas` the image's path inside `public/`); `frames` are entries `{f, pose, prev, k, open, blink, lid, [since], [facing]}`, each holding until the next one, written only where a value changes; the kit's `MascotLayer` finds the entry of the frame and only plays it. The mouth is closed outside `speaks` and after the narration ends.
 
 ## Motion
 
 - **A pose change** eases out over 12 frames (SKILL.md section 4). It overshoots (14 frames, a soft bounce) only when three things hold: the brand tone's `mascot` is `full`, its `overshoot` is true, and the scene tone at that moment is loud (`punchy`, `hype`, `parody`). So `tech` (`punchy` allowed, no bounce) never bounces.
+- **A blink hides every pose change** the viewer sees (another picture or a turn; a stand-in that draws the same pose has none): the lids are half shut on the frame before the change, shut on its first two frames, half shut on the next one. A picture mascot swaps its pictures on those shut frames (`references/mascot-atlas.md`).
+- **The blinks:** each one half shut, shut, shut, half shut (four frames at 30 fps, as long at a higher rate, never fewer than four frames), every 2.6–4.6 s, about one in five a double blink (the second 0.27 s after the first, two open frames between them at least); none closer than 0.5 s to the blink of a pose change; the same video gets the same blinks at every render.
 - **At most one pose change per 0.8 s** (an error), and none within 0.3 s of a scene's entrance or exit (a warning: two moves at once).
 - **The exception to “one animated element at a time”:** the blink, the breath and the mouth are the mascot's background motion and do not count; a gesture does, hence the rule above.
 - **Its entrance and exit:** a 10-frame rise and fade in, an 8-frame fade out.

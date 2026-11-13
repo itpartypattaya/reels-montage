@@ -1,15 +1,17 @@
 // The mascot from a ready character picture: the PNG atlas that scripts/mascot_atlas.py cuts from the brand's own
 // illustration (references/mascot-atlas.md). One <Img> of the whole atlas, cropped to the current pose's frame.
 // Mouth: the pose's talk frame when it has one, else an ellipse in the drawing's line color (a tongue when it opens
-// wide). Blink: the pose's blink frame, or an eyelid in the skin color with a lash arc (over the talk frame too).
-// A pose change is a frame switch: a picture has no in-between drawings to interpolate.
+// wide). Blink: the pose's blink frame, or an eyelid in the skin color with a lash arc (over the talk frame too), half
+// lowered on the blink's half-shut frames. A pose change is a swap of pictures under shut eyes (the plan blinks over
+// it), with a two-frame cross-fade: a picture has no in-between drawings to interpolate.
 // The kit reads no files itself: the stage puts rig.json's content into the props (props.mascot.rig) and copies
 // atlas.png into public/ (props.mascot.atlas); the layer calls atlasMascot(rig, atlas) once.
 import type React from "react";
 import { Img, staticFile } from "remotion";
 
 // The mascot contract: kit/mascot/types.ts (the module made here is a MascotModule the layer places).
-import type { MascotModule, MascotRender } from "./types";
+import type { MascotFrame, MascotModule, MascotRender } from "./types";
+import { atlasEyes, switchLayers } from "./frame";
 
 // rig.json as mascot_atlas.py writes it: rectangles [x, y, w, h] and points in atlas px; offset places a pose's
 // frame in the shared box so that its head lands on the shared anchor; talk/blink frames have the pose's size.
@@ -41,7 +43,6 @@ export type AtlasMascotModule = MascotModule & { symmetric: boolean };
 
 const OPEN_FRAME = 0.3; // a drawn talk frame is open or shut: it shows from this opening
 const TONGUE = 0.55; // the overlay mouth shows a tongue from this opening
-const SWITCH = 0.5; // the frame switches halfway through a pose change
 const POP = 0.03; // the most a pose shrinks while k overshoots (0.97 -> 1 as it settles)
 const TONGUE_COLOR = "#d9707f";
 
@@ -64,16 +65,20 @@ const OpenMouth: React.FC<{ x: number; y: number; width: number; open: number; i
   );
 };
 
-/** A shut eye over a drawn open one: a patch of the face color hiding it, and the lid's line as a downward arc. */
-const ShutEye: React.FC<{ x: number; y: number; gap: number; skin: string; ink: string }> = ({ x, y, gap, skin, ink }) => {
+/** An eyelid over a drawn open eye: a patch of the face color lowered over it by `lid` (0.5 half, 1 shut) and the lid's
+ *  line as a downward arc at its edge; shut, the patch hides the whole eye and the arc sits across its middle. */
+const ShutEye: React.FC<{ x: number; y: number; gap: number; lid: number; skin: string; ink: string }> = ({ x, y, gap, lid, skin, ink }) => {
   const w = gap * 0.4;
   const h = gap * 0.44;
   const r = w * 0.85;
+  const shut = lid >= 1;
+  const edge = shut ? 0 : -h + h * lid; // the lid's line: across the middle when shut, higher while half shut
+  const ph = shut ? 2 * h : edge + h;
   return (
     <g transform={`translate(${x} ${y})`}>
-      <rect x={-w} y={-h} width={2 * w} height={2 * h} rx={Math.min(w, h)} fill={skin} />
-      <path d={`M ${-r} 0 A ${r} ${r * 0.55} 0 0 0 ${r} 0`} fill="none" stroke={ink} strokeWidth={Math.max(2, gap * 0.06)}
-        strokeLinecap="round" />
+      <rect x={-w} y={-h} width={2 * w} height={ph} rx={Math.min(w, ph / 2)} fill={skin} />
+      <path d={`M ${-r} ${edge} A ${r} ${r * 0.55 * (shut ? 1 : lid)} 0 0 0 ${r} ${edge}`} fill="none" stroke={ink}
+        strokeWidth={Math.max(2, gap * 0.06)} strokeLinecap="round" />
     </g>
   );
 };
@@ -88,25 +93,54 @@ export const atlasMascot = (rig: AtlasRig, atlasSrc?: string): AtlasMascotModule
   const [bw, bh] = rig.box;
   const [ax, ay] = rig.anchor;
 
-  const render: MascotRender = (f) => {
-    const name = f.k < SWITCH ? f.prevPose : f.pose;
+  /** One pose's picture with its overlays (mouth, lids) at the given opacity. */
+  const picture = (name: string, f: MascotFrame, opacity: number, key: string) => {
     const p = rig.poses[name] ?? rig.poses[f.pose] ?? fallback;
     if (!p) return null;
     const talkFrame = f.talking && f.open >= OPEN_FRAME && p.talk ? p.talk : null;
-    const blinkFrame = f.blink && !talkFrame && p.blink ? p.blink : null;
-    const [cx, cy, cw, ch] = talkFrame ?? blinkFrame ?? p.cell;
+    const eyesNow = atlasEyes(f.lid, !!p.blink, !!talkFrame);
+    const blinkFrame = eyesNow.sprite > 0 && p.blink ? p.blink : null;
+    const halfBlink = blinkFrame !== null && eyesNow.sprite < 1;
+    const [cx, cy, cw, ch] = talkFrame ?? (blinkFrame && !halfBlink ? blinkFrame : null) ?? p.cell;
     const [ox, oy] = p.offset;
     // a pose's points are atlas px of its cell; in the box they move with the frame's offset
     const at = (q: Pt): Pt => [ox + q[0] - p.cell[0], oy + q[1] - p.cell[1]];
     const mouthOn = f.talking && !p.talk && f.open > 0.08;
-    const lids = f.blink && !blinkFrame && p.eyes.length > 0;
+    const lids = eyesNow.overlay > 0 && p.eyes.length > 0;
+    const [mx, my] = at(p.mouth);
+    const eyes = p.eyes.map(at);
+    const gap = eyes.length > 1 ? Math.hypot(eyes[1][0] - eyes[0][0], eyes[1][1] - eyes[0][1]) : p.mouthW * 1.6;
+    return (
+      <div key={key} style={{ position: "absolute", left: 0, top: 0, width: bw, height: bh, opacity }}>
+        {/* the frame: the atlas at its own size, shifted so the frame's corner sits at the box position */}
+        <Img
+          src={file}
+          style={{ position: "absolute", left: ox, top: oy, width: cw, height: ch, maxWidth: "none",
+            objectFit: "none", objectPosition: `${-cx}px ${-cy}px` }}
+        />
+        {halfBlink && blinkFrame ? (
+          <Img
+            src={file}
+            style={{ position: "absolute", left: ox, top: oy, width: blinkFrame[2], height: blinkFrame[3], maxWidth: "none",
+              objectFit: "none", objectPosition: `${-blinkFrame[0]}px ${-blinkFrame[1]}px`, opacity: eyesNow.sprite }}
+          />
+        ) : null}
+        {mouthOn || lids ? (
+          <svg width={bw} height={bh} style={{ position: "absolute", left: 0, top: 0, overflow: "visible" }}>
+            {mouthOn ? <OpenMouth x={mx} y={my} width={p.mouthW} open={f.open} ink={p.ink} /> : null}
+            {lids ? eyes.map(([ex, ey], i) => <ShutEye key={i} x={ex} y={ey} gap={gap} lid={eyesNow.overlay} skin={p.skin} ink={p.ink} />) : null}
+          </svg>
+        ) : null}
+      </div>
+    );
+  };
+
+  const render: MascotRender = (f) => {
+    if (!fallback) return null;
     const over = f.k > 1 ? f.k - 1 : f.k < 0 ? -f.k : 0;
     const scale = 1 - Math.min(POP, over * 0.3);
     // The layer mirrors facing -1; a one-sided picture is turned back so it is never shown mirrored.
     const unmirror = f.facing === -1 && !rig.symmetric;
-    const [mx, my] = at(p.mouth);
-    const eyes = p.eyes.map(at);
-    const gap = eyes.length > 1 ? Math.hypot(eyes[1][0] - eyes[0][0], eyes[1][1] - eyes[0][1]) : p.mouthW * 1.6;
     return (
       <div
         style={{
@@ -119,18 +153,7 @@ export const atlasMascot = (rig: AtlasRig, atlasSrc?: string): AtlasMascotModule
           transformOrigin: `${ax}px ${ay}px`,
         }}
       >
-        {/* the frame: the atlas at its own size, shifted so the frame's corner sits at the box position */}
-        <Img
-          src={file}
-          style={{ position: "absolute", left: ox, top: oy, width: cw, height: ch, maxWidth: "none",
-            objectFit: "none", objectPosition: `${-cx}px ${-cy}px` }}
-        />
-        {mouthOn || lids ? (
-          <svg width={bw} height={bh} style={{ position: "absolute", left: 0, top: 0, overflow: "visible" }}>
-            {mouthOn ? <OpenMouth x={mx} y={my} width={p.mouthW} open={f.open} ink={p.ink} /> : null}
-            {lids ? eyes.map(([ex, ey], i) => <ShutEye key={i} x={ex} y={ey} gap={gap} skin={p.skin} ink={p.ink} />) : null}
-          </svg>
-        ) : null}
+        {switchLayers(f).map((l, i) => picture(l.pose, f, l.opacity, `${i}:${l.pose}`))}
       </div>
     );
   };

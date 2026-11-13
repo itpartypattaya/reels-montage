@@ -1,6 +1,6 @@
 # Sample mascot drawn in code: Pip
 
-One complete mascot module for the contract in `references/mascot.md`, as a starting point for a brand's own character: a rounded note with two dot eyes, a mouth and two arms of two segments, in the brand's colors. It shows the conventions every drawn mascot follows: `box` and `poses` as literals (the scripts read them), the box holding every pose with the arms raised, the anchor between the eyes, poses as a table of numbers blended by `rig.ts`, the mouth from `f.open`, the blink from `f.blink`, no text, no outline, no shadow, no randomness.
+One complete mascot module for the contract in `references/mascot.md`, as a starting point for a brand's own character: a rounded note with two dot eyes, a mouth and two arms of two segments, in the brand's colors. It shows the conventions every drawn mascot follows: `box` and `poses` as literals (the scripts read them), the box holding every pose with the arms raised, the anchor between the eyes, poses as a table of numbers blended by `rig.ts`, the mouth from `f.open`, the eyelids from `f.lid`, no text, no outline, no shadow, no randomness.
 
 Copy it into the person's Remotion project as `src/mascot/<Name>.tsx`, change `acme` to the brand's slug, then make it the brand's own: the body's shape, the proportions, the eyes, what each pose does. Every brand gets its own figure; this one is only the pattern. Register it: `brand.py mascot <slug> --drawn src/mascot/<Name>.tsx --symmetric` (Pip mirrors well) and `brand.py stage <slug> --remotion <dir>`; check the types with `npx tsc`.
 
@@ -39,7 +39,7 @@ const INK = "#1B1B1F"; // the features: dark on a light or saturated body; a ver
 
 export const render = (f: MascotFrame) => {
   const p = poseAt(POSE, f, ANGLES);
-  const eyeH = f.blink ? 3 : 26;
+  const eyeH = mix(26, 3, f.lid); // f.lid: 0 open, 0.5 half shut, 1 shut
   const ex = 30 + p.lookX;
   const ey = 190 + p.lookY;
   const mouthY = 262 + p.lookY * 0.5;
