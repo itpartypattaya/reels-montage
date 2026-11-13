@@ -2,10 +2,26 @@
 
 What changed in IT Reelsmaker, written for the people who use it. The newest version is on top. The skill shows a short “What's new” note from this file once, on the first edit after an update.
 
-## 1.37.1
+## 1.38.1
 
 - **Wording.** With the online-sources add-on linked, the “no footage” question also names the add-on's own narration
   option, by the add-on's rules.
+
+## 1.38.0
+
+- **Is the footage usable? `picture.py scan` says where to look.** Before the shots of a voice-over or a no-speech
+  reel are picked, it scans the clips (a folder, one clip, `--window` for a stretch of a long one, or `--edit` for a
+  video's own sources) and lists hints: the camera shakes (a clip from the hand), the picture is restless though the
+  camera stands, an editing app's tail at the end, black or frozen frames, dark and overexposed stretches,
+  speech-like sound in the clip's own sound (lips that would not match a voice-over; "speaking to the camera" when a
+  face faces it), a face turning to the camera, more faces than usual (strangers?). Every hint has its reason and
+  the status "unchecked": nothing is excluded, no project file changes. What it could not judge is listed as not
+  assessed (a sky without detail, faces too small, no face model, no sound). With `--edit`, every hint also gets the
+  seconds of the finished video where that stretch is on screen (each shot's start and speed, a clip used twice is
+  on screen twice), and a strangers hint the window a full scene must hide. Frames are decoded at 480 px straight
+  into the script, no images on disk; measurements are kept, so a second scan is instant.
+  `references/no-speaker.md`, "Is the footage usable".
+- `defects.py`'s head turn measure is one function (`turn_state`) that the scan shares; its results do not change.
 
 ## 1.37.0
 
