@@ -120,11 +120,11 @@ def test_clean_edges_by_the_mask_when_transcript_times_touch(project):
 
 
 def test_history_needs_the_file_name_not_a_word_in_the_notes(project):
-    # T5: "tairai" the brand name in another video's notes counted as the same source tairai.mp4
+    # T5: a brand name in another video's notes counted as the same source <brand>.mp4
     write_json(project / "edit" / "0002" / "cut.json", {"sources": {"main": {"file": "sunrise.mp4"}}})
     (project / "edit" / "0003").mkdir()
     (project / "edit" / "0003" / "project.md").write_text(
-        "# 0003\nBrand `sunrise`, source IMG_0567.MOV, render sunrise-promo-2026-10-01.mp4\n", encoding="utf-8")
+        "# 0003\nBrand `sunrise`, source IMG_0102.MOV, render sunrise-promo-2026-10-01.mp4\n", encoding="utf-8")
     (project / "edit" / "0004").mkdir()
     (project / "edit" / "0004" / "project.md").write_text("# 0004\nSource: `sunrise.mp4`, cold open.\n", encoding="utf-8")
     write_json(project / "edit" / "0005" / "transcripts" / "sunrise_old.json", {"words": []})

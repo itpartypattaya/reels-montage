@@ -244,7 +244,7 @@ def test_t4_kit_fixes_are_in_the_source():
 
 
 def test_t6_kit_fixes_are_in_the_source():
-    # T6, a "scenes only" promo (kit 1.6.0, checked on stills and a render in edit/promo-hr24-test/verify/fix-*)
+    # T6, a "scenes only" promo (kit 1.6.0, checked on stills and a test render)
     code = lambda f: "\n".join(line.split("//")[0] for line in (KIT / f).read_text(encoding="utf-8").splitlines())
     reel = code("ReelKit.tsx")
     # the cover without video sat on the primary color, not the style's field the video's scenes use

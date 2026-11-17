@@ -311,7 +311,9 @@ def ensure_online():
 
 
 MAX_JSON = 20 << 20
-SECRET_HEADERS = {"authorization", "x-api-key", "x-key", "key", "xi-api-key"}
+# On a redirect to another origin only these headers go on: every other one may carry a key, and each provider names
+# its own (x-magnific-api-key and x-goog-api-key were missing from the old list of secret headers, 2026-11-17).
+FORWARD_HEADERS = {"user-agent", "accept", "accept-language"}
 SECRET_QUERY = {"key", "api_key", "apikey", "api-key", "x-api-key", "x-key", "token", "access_token", "authorization"}
 
 
@@ -345,7 +347,7 @@ class SafeRedirect(urllib.request.HTTPRedirectHandler):
         if changed and redirected is not None:
             for store in (redirected.headers, redirected.unredirected_hdrs):
                 for k in list(store):
-                    if k.lower() in SECRET_HEADERS:
+                    if k.lower() not in FORWARD_HEADERS:
                         del store[k]
         return redirected
 
@@ -418,6 +420,11 @@ def download(url, dest, headers=None, timeout=60):
                 if total > MAX_DL_MB << 20:
                     raise RuntimeError(f"the file is larger than {MAX_DL_MB} MB: stopped")
                 f.write(chunk)
+            # a dropped connection ends read() with b"" and no error: a stub is not saved as the file (a paid clip
+            # would then be taken from disk on every run). A chunked answer has no length to compare.
+            size = r.headers.get("Content-Length")
+            if size and size.strip().isdigit() and total != int(size):
+                raise RuntimeError(f"the download was cut off: {total} of {int(size)} bytes arrived; run it again")
         with file_lock(dest):
             tmp.replace(dest)
     finally:

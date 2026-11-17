@@ -162,6 +162,16 @@ def word_times(toks, words, t0, t1):
     return out
 
 
+def comment_word(sc, lines):
+    """A comment CTA's code word and how many lines form its head, as CtaAction.tsx picks them: interaction.text, else
+    the first quoted word, else the second line (the head is then the first line alone)."""
+    own = ((sc.get("interaction") or {}).get("text") or "").strip()
+    quoted = next((m.group(1) for m in (re.search(r"[«\"„“]([^»\"”]+)[»\"”]", x)
+                                        for x in lines) if m), None)
+    word = own or quoted or (lines[1] if len(lines) > 1 else "")
+    return word, len(lines) if (own or quoted) else 1
+
+
 def text_full_on(sc, typ, lines, tl, fps, words):
     """The frame (from the scene start) when the whole scene text is on screen and the entrance is over, as the scene
     kit draws it (kit/scenes/*.tsx): lines with a stagger, the typed hook, the number counter, the slogan and stack
@@ -199,10 +209,7 @@ def text_full_on(sc, typ, lines, tl, fps, words):
         if var == "tap":  # the head is the first line; the button (or the clarifier) comes in at lead + 6
             return lead + 6 + inF if (own or len(lines) > 1) else lead + inF
         if var == "comment":  # the head, the comment field at lead + 6, then the code word is typed (2 frames a character)
-            quoted = next((m.group(1) for m in (re.search(r"[\u00ab\"\u201e\u201c]([^\u00bb\"\u201d]+)[\u00bb\"\u201d]", x)
-                                                for x in lines) if m), None)
-            word = own or quoted or (lines[1] if len(lines) > 1 else "")
-            head = len(lines) if (own or quoted) else 1
+            word, head = comment_word(sc, lines)
             ti = it.get("t")
             t0 = (max(lead + inF + 4, jround((ti - sc["start"]) * fps)) if isinstance(ti, (int, float))
                   else lead + inF + 4)
@@ -622,6 +629,9 @@ def check_scenes(e, plan, s, doc, brand, fdata, cap, scenes, brolls, memes, tail
             E(sc, f"contrast: text.lines = [before, after], but there are {len(lines)} lines")
         if typ == "cta" and len(lines) > 2:
             E(sc, f"cta: 1-2 lines, but there are {len(lines)}")
+        if typ == "cta" and sc.get("variant") == "comment" and not comment_word(sc, lines)[0].strip():
+            E(sc, "cta comment: no code word to type: put it in quotes in a line, as a second line or in "
+                  "interaction.text (the kit cannot type an empty word)")
         if len((sc.get("why") or "").strip()) < 8:
             E(sc, "no 'why': a scene for the sake of a scene is not allowed")
         if not (sc.get("what") or "").strip():

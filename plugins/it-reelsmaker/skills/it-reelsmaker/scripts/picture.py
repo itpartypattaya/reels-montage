@@ -241,7 +241,12 @@ def face_detector(w, h):
             cv2.setLogLevel(2)  # errors only: the DNN backend's notes are not the person's business
         except Exception:
             pass
-        return cv2.FaceDetectorYN_create(str(fc.model_path()), "", (w, h), 0.6), None
+        m = str(fc.model_path())
+        if m.isascii():
+            return cv2.FaceDetectorYN_create(m, "", (w, h), 0.6), None
+        # OpenCV cannot open a non-ASCII path on Windows: the model is loaded from its bytes (reels_common.READ_FRAME)
+        import numpy as np
+        return cv2.FaceDetectorYN.create("onnx", np.fromfile(m, np.uint8), np.array([], np.uint8), (w, h), 0.6), None
     except Exception as ex:  # an old OpenCV without YuNet, a broken model file
         return None, f"OpenCV could not load the face model ({str(ex)[:120]})"
 

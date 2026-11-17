@@ -2,6 +2,16 @@
 
 What changed in IT Reelsmaker, written for the people who use it. The newest version is on top. The skill shows a short “What's new” note from this file once, on the first edit after an update.
 
+## 1.38.2
+
+- **Faces are found in a folder with a non-Latin name.** On Windows, OpenCV could not open a frame or the face model
+  in a folder with Cyrillic or other non-Latin letters (a user name like that puts the temp folder there), and every
+  frame read as “no face”: the video counted as a voice-over, text and subtitles could go over the face, and the
+  picture check said there was nothing to check. Frames and the model are now read from their bytes; a frame that
+  does not decode stops the check with its name instead of passing as empty.
+- **A comment CTA needs its code word.** `visual_plan.py validate` passed a comment CTA with one line, no quoted word
+  and no `interaction.text`, and the render stopped on that scene. It is now an error that says where to put the word.
+
 ## 1.38.1
 
 - **Wording.** With the online-sources add-on linked, the “no footage” question also names the add-on's own narration

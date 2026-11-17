@@ -281,6 +281,20 @@ def test_redirect_strips_credentials_and_query_keys(online):
         online.SafeRedirect(lambda u: "a.test" in u).redirect_request(req, None, 302, "Found", {}, "https://b.test/")
 
 
+def test_redirect_to_another_host_carries_no_provider_key(online):
+    # 2026-11-17 review: the strip list had Authorization, x-api-key, x-key, key and xi-api-key, but not the stock
+    # source's x-magnific-api-key or Gemini's x-goog-api-key: a 302 from the stock API to a CDN carried the key there.
+    # On an origin change only plain headers go on, whatever a provider calls its key.
+    keys = {"x-magnific-api-key": "secret", "x-goog-api-key": "secret", "X-Some-New-Provider-Token": "secret",
+            "xi-api-key": "secret", "Authorization": "Bearer secret"}
+    req = urllib.request.Request("https://api.magnific.com/v1/videos/1/download",
+                                 headers={**keys, "User-Agent": "it-reelsmaker", "Accept": "*/*"})
+    redirected = online.SafeRedirect().redirect_request(req, None, 302, "Found", {}, "https://cdn.example.test/v.mp4")
+    assert {k.lower() for k in redirected.headers} == {"user-agent", "accept"}
+    same = online.SafeRedirect().redirect_request(req, None, 302, "Found", {}, "https://api.magnific.com/v1/other")
+    assert same.get_header("X-magnific-api-key") == "secret"  # the same origin keeps the key
+
+
 def test_bounded_json_read(online, monkeypatch):
     monkeypatch.setattr(online, "MAX_JSON", 16)
     with pytest.raises(ValueError, match="20 MB"):
@@ -292,6 +306,8 @@ def test_unique_download_parts(online, tmp_path, monkeypatch):
     parts = []
     nested = [False]
     class Response(io.BytesIO):
+        headers = {}  # as an HTTP response has them: no Content-Length (a chunked answer)
+
         def read(self, n=-1):
             if not nested[0]:
                 nested[0] = True
@@ -304,6 +320,24 @@ def test_unique_download_parts(online, tmp_path, monkeypatch):
     assert len(set(parts)) == 2
     assert dest.read_bytes() == b"video"
     assert not list(tmp_path.glob("*.part"))
+
+
+def test_cut_off_download_is_not_saved_as_the_file(online, tmp_path, monkeypatch):
+    # 2026-11-17 review: when the connection dropped, read() returned b"" with no error and the stub was saved as the
+    # finished file; genfootage then took the paid clip from disk on every run and never downloaded it again
+    dest = tmp_path / "clip.mp4"
+
+    class Response(io.BytesIO):
+        headers = {"Content-Length": "1000"}
+
+    monkeypatch.setattr(online, "open_url", lambda *a, **kw: Response(b"x" * 10))
+    with pytest.raises(RuntimeError, match="10 of 1000 bytes"):
+        online.download("https://test/clip", dest)
+    assert not dest.exists()
+    assert not list(tmp_path.glob("*.part"))
+    Response.headers = {"Content-Length": "10"}  # the whole file arrives: it is saved
+    online.download("https://test/clip", dest)
+    assert dest.read_bytes() == b"x" * 10
 
 
 @pytest.mark.parametrize("state", ["submitting", "unknown"])

@@ -64,9 +64,9 @@ def test_brand_show_lists_the_brands_own_documents(project):
 
 def test_rule_goes_into_the_marked_revisions_section_in_any_language():
     import brand
-    text = "# Rules\n\n## Revisions (in my language)\n<!-- revisions -->\n- 2026-01-01: old\n\n## Documents\n- guide.md\n"
+    text = "# Rules\n\n## Revisions (in my language)\n<!-- revisions -->\n- 2026-01-01: old\n\n## Files\n- guide.md\n"
     out = brand.add_rule(text, "- 2026-02-02: new")
-    assert out.index("- 2026-02-02: new") < out.index("## Documents")
+    assert out.index("- 2026-02-02: new") < out.index("## Files")
     assert out.index("- 2026-01-01: old") < out.index("- 2026-02-02: new")
     assert out.count("## Rules from revisions") == 0
     plain = brand.add_rule("# Rules\n\n## Rules from revisions\n- a\n", "- b")
