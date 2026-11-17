@@ -8,11 +8,13 @@ Usage:
     python tools/check_release.py [--private-terms FILE]
 
 --private-terms: a local file (kept outside the repo) with one term per line that must not appear
-anywhere in the plugins: real brand names, people, private paths.
+anywhere in the public repository (every tracked file's name and content, plugins or not): real brand names,
+people, private paths.
 """
 import argparse
 import json
 import re
+import subprocess
 import sys
 from pathlib import Path
 
@@ -278,6 +280,33 @@ def check_plugin(pdir, private_terms):
                 errors.append(f"{rel}: missing {ref}")
 
 
+def check_repo_terms(private_terms):
+    """The whole public repository is published, not only plugins/: tests, docs, tools and the workflows too.
+    Every tracked file's name is checked, and the content of every tracked file outside plugins/ (check_plugin reads
+    the plugins' content). An image or a font is not read; a file that is not UTF-8 text is read with replacements."""
+    try:
+        out = subprocess.run(["git", "ls-files", "-z"], cwd=ROOT, capture_output=True, check=True).stdout
+    except (OSError, subprocess.CalledProcessError) as e:
+        errors.append(f"git ls-files failed ({e}): the repository was not checked for private terms")
+        return
+    tracked = [p for p in out.decode("utf-8").split("\0") if p]
+    if not tracked:
+        errors.append("git ls-files listed no files: the repository was not checked for private terms")
+        return
+    for rel in tracked:
+        name = rel.lower()
+        for term in private_terms:
+            if term.lower() in name:
+                errors.append(f"{rel}: private term {term!r} in the file name")
+        f = ROOT / rel
+        if rel.startswith("plugins/") or Path(rel).suffix.lower() in IMAGE_FONT_EXT or not f.is_file():
+            continue
+        text = f.read_text(encoding="utf-8", errors="replace").lower()
+        for term in private_terms:
+            if term.lower() in text:
+                errors.append(f"{rel}: private term {term!r}")
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--private-terms", type=Path)
@@ -287,6 +316,8 @@ def main():
         terms = [t.strip() for t in args.private_terms.read_text(encoding="utf-8").splitlines() if t.strip() and not t.startswith("#")]
     for pdir in sorted(p for p in PLUGINS.iterdir() if p.is_dir()):
         check_plugin(pdir, terms)
+    if terms:
+        check_repo_terms(terms)
     for w in warnings:
         print("WARN ", w)
     for e in errors:

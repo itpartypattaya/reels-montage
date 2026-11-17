@@ -2,6 +2,19 @@
 
 What changed in IT Reelsmaker Online. The newest version is on top.
 
+## 1.6.1
+
+- **No key follows a redirect to another host.** The headers dropped on a redirect to another origin were a list of
+  known key names, and the stock source's `x-magnific-api-key` and Gemini's `x-goog-api-key` were not on it. Now only
+  plain headers (User-Agent, Accept, Accept-Language) go on, whatever a provider calls its key.
+- **A cut-off download is not saved as the file.** When the connection dropped, the part that had arrived was saved
+  as the finished clip, and a generated (paid) clip was then taken from disk on every run. The size is now checked
+  against the server's `Content-Length`; a short file is an error and nothing is saved.
+- **A lost answer to `voice clone` does not lose the voice.** A timeout or a dropped connection after ElevenLabs had
+  made the voice ended in a traceback with no voice id, and running it again made a second clone. Now it says the
+  voice may be on the account and how to pick it up (`voice list`, then `voice use`); when the voice is made but the
+  local record fails, its id is printed.
+
 ## 1.6.0
 
 - **A narration in your own cloned voice (ElevenLabs).** `addon.py voice` reads the reel's script with your voice and

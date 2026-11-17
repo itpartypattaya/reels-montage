@@ -438,6 +438,28 @@ TONE_PRESETS = ["premium", "warm", "expert", "story", "tech", "friendly", "drive
 TONE_DEFAULT = "expert"
 BRAND_SCHEMA = 2  # 1 -> 2: brand tone (references/migrations.md)
 MEME_SIZES = ["s", "m", "l"]
+# The frame reader of the face detectors (faces.py, defects.py: they run OpenCV in a child Python). cv2.imread cannot
+# open a non-ASCII path on Windows and returns None, which read as "no face" on every frame: with a Cyrillic user name
+# the temp folder made every video "voice-over". The bytes are read by numpy and decoded by OpenCV instead. A frame
+# that is not there (ffmpeg made none past the end) is None; a file that is there and does not decode stops the run.
+# The model file has the same trap (a project folder in Cyrillic with a relative face_model): a non-ASCII path is
+# loaded from its bytes (OpenCV's buffer form), an ASCII one by name as before.
+READ_FRAME = r"""
+import numpy as np
+def load_detector(path, size, thr):
+    if path.isascii():
+        return cv2.FaceDetectorYN_create(path, '', size, thr)
+    return cv2.FaceDetectorYN.create('onnx', np.fromfile(path, np.uint8), np.array([], np.uint8), size, thr)
+def read_frame(p):
+    try:
+        buf = np.fromfile(p, np.uint8)
+    except FileNotFoundError:
+        return None
+    im = cv2.imdecode(buf, cv2.IMREAD_COLOR) if buf.size else None
+    if im is None:
+        sys.exit(f"OpenCV could not decode the frame {p}")
+    return im
+"""
 # The subtitle band, y in the 1080x1920 frame, one value for every script: cards, memes and scenes keep out of it
 # (visual_plan.py validate, meme_layout.py), faces.py checks faces against it (reel-defaults.json ->
 # meme_layout.subtitles_band overrides it). stage puts the subtitles' top at the measured chin + 30 px within

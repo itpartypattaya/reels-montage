@@ -47,7 +47,7 @@ import argparse, importlib.util, json, os, shutil, subprocess, sys, tempfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from reels_common import (CHECK_MARGIN, FACE_MARGIN, SUB_BAND, SUB_MAX_TOP, edit_dir, framed_at, framed_view,
+from reels_common import (CHECK_MARGIN, FACE_MARGIN, READ_FRAME, SUB_BAND, SUB_MAX_TOP, edit_dir, framed_at, framed_view,
                           load_json, probe, project_root, project_settings, run, save_json, ui_safe, utf8_stdio, warn)
 from pic_track import pic_shots, shot_at, source_changes  # noqa: E402
 
@@ -81,10 +81,11 @@ FILTER_V = 6         # 2: signs combined, "below a face" with a horizontal check
 
 DETECT = r"""
 import cv2, json, sys
-d = cv2.FaceDetectorYN_create(sys.argv[1], '', (320, 320), float(sys.argv[2]))
+""" + READ_FRAME + r"""
+d = load_detector(sys.argv[1], (320, 320), float(sys.argv[2]))
 out = []
 for p in json.load(sys.stdin):
-    im = cv2.imread(p)
+    im = read_frame(p)
     if im is None:
         out.append([]); continue
     h, w = im.shape[:2]

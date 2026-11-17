@@ -363,17 +363,17 @@ def test_a_long_cta_held_for_its_reading_floor_does_not_outrank_the_hook(project
 
 
 def test_camera_source_by_file_name_stem_or_key(tmp_path):
-    # T2: camera.json "source": "IMG_0983.MOV" (the documented form) failed the export: the rough cut's segments carry
+    # T2: camera.json "source": "IMG_0101.MOV" (the documented form) failed the export: the rough cut's segments carry
     # the cut.json source key ("front"), and the file name never matched it
     import visual_plan as vp
-    write_json(tmp_path / "cut.json", {"sources": {"front": {"file": "IMG_0983.MOV"}, "side": "IMG_1042.MOV"}})
+    write_json(tmp_path / "cut.json", {"sources": {"front": {"file": "IMG_0101.MOV"}, "side": "IMG_1042.MOV"}})
     cap = {"duration": 8.0, "segments": [
         {"i": 0, "source": "front", "src_start": 60.0, "src_end": 64.0, "out_start": 0.0, "out_dur": 4.0},
         {"i": 1, "source": "side", "src_start": 60.0, "src_end": 64.0, "out_start": 4.0, "out_dur": 4.0}]}
-    for source, t in (("IMG_0983.MOV", 1.0), ("IMG_1042", 5.0), ("front", 1.0), ("C:/footage/IMG_1042.MOV", 5.0)):
+    for source, t in (("IMG_0101.MOV", 1.0), ("IMG_1042", 5.0), ("front", 1.0), ("C:/footage/IMG_1042.MOV", 5.0)):
         write_json(tmp_path / "camera.json", {"shots": [{"src": 61.0, "source": source, "z": 1.1}]})
         assert vp.camera_shots(tmp_path, {"segments": []}, cap)[0]["t"] == t, source
-    assert not vp.same_source("IMG_0983.MOV", "side", vp.source_files(tmp_path))
+    assert not vp.same_source("IMG_0101.MOV", "side", vp.source_files(tmp_path))
 
 
 def test_hide_subs_reach_the_props_and_the_audit(project):
@@ -733,6 +733,23 @@ def promo_project(project, tone="cinematic"):
 
 def promo_add(project, *args, check=True):
     return run_script("visual_plan.py", "add", "edit/promo1", "--kind", "scene", *args, cwd=project, check=check)
+
+
+def test_cta_comment_without_a_code_word_is_an_error(project):
+    # 2026-11-17 review: a comment CTA of one line with no quoted word and no interaction.text passed validate, and the
+    # kit typed an empty word: interpolate(frame, [t0, t0]) has equal input points and the render stops on that scene
+    promo_project(project)
+    base = ("--type", "cta", "--variant", "comment", "--dur", "3.0", "--what", "the CTA", "--why", "the ending line")
+    promo_add(project, *base, "--at", "1.0", "--lines", "Comment below")
+    r = run_script("visual_plan.py", "validate", "edit/promo1", cwd=project, check=False)
+    assert "comment: no code word to type" in r.stdout, r.stdout
+    assert r.returncode != 0
+    run_script("visual_plan.py", "remove", "edit/promo1", "c01", cwd=project)
+    for lines in (["Comment the word", "PLAN"], ["Comment “PLAN” below"]):  # a second line or a quoted word
+        promo_add(project, *base, "--at", "1.0", "--lines", *lines)
+        r = run_script("visual_plan.py", "validate", "edit/promo1", cwd=project, check=False)
+        assert "no code word" not in r.stdout, (lines, r.stdout)
+        run_script("visual_plan.py", "remove", "edit/promo1", "c01", cwd=project)
 
 
 def test_scenes_only_refuses_a_mode_at_add_and_word_is_full(project):

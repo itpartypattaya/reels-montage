@@ -24,7 +24,7 @@ Files: edit/<id>/voice_script.json (the text, by blocks), voice_gen.json (plan, 
 voices.json next to the keys file (~/.config/it-reelsmaker/), never in the project. Key: ELEVENLABS_API_KEY.
 """
 import argparse, array, base64, datetime, difflib, hashlib, json, math, os, re, subprocess, sys, time, unicodedata
-import urllib.error, uuid, wave
+import http.client, urllib.error, uuid, wave
 from pathlib import Path
 
 try:  # the core's scripts folder is on sys.path when this runs through the core's addon.py
@@ -386,6 +386,12 @@ def cmd_clone(a):
             res = api_json("POST", "/v1/voices/add", key, body, content_type=ctype, timeout=180)
         except ApiError as ex:
             sys.exit(f"ElevenLabs did not clone the voice: {ex}")
+        except (OSError, ValueError, http.client.HTTPException) as ex:
+            # a timeout, a dropped connection, a cut or broken answer: the voice may be on the account already, and
+            # cloning again would make a second one (the plan has a voice limit)
+            sys.exit(f"the answer of ElevenLabs did not arrive ({ro.scrub(str(ex))[:160]}): the voice may have been "
+                     f"created on the account. Do not clone again: run `voice list`, and if the new voice is there, "
+                     f"`voice use <voice_id> --name {name} --consent own`")
     finally:
         if tmp.exists():
             for f in tmp.iterdir():
@@ -395,15 +401,20 @@ def cmd_clone(a):
                 tmp.parent.rmdir()
             except OSError:
                 pass
-    vid = res.get("voice_id")
+    vid = res.get("voice_id") if isinstance(res, dict) else None
     if not vid:
         sys.exit("ElevenLabs answered without a voice_id; check the account's voices (voice list)")
     need = bool(res.get("requires_verification") or res.get("library_voice_match"))
-    with ro.file_lock(ro.voices_file()):
-        doc = load_voices()
-        doc["voices"][name] = {"voice_id": vid, "name": name, "owner": "self", "consent": consent_record(),
-                               "created_by_addon": True, "verification": "required" if need else "ok", "added": now_iso()}
-        save_voices(doc)
+    try:
+        with ro.file_lock(ro.voices_file()):
+            doc = load_voices()
+            doc["voices"][name] = {"voice_id": vid, "name": name, "owner": "self", "consent": consent_record(),
+                                   "created_by_addon": True, "verification": "required" if need else "ok",
+                                   "added": now_iso()}
+            save_voices(doc)
+    except (OSError, ValueError) as ex:  # a busy lock, a broken voices.json: the voice is made, its id must not be lost
+        sys.exit(f"voice {name!r} cloned as {vid}, but it was not recorded here ({ex}); record it with "
+                 f"`voice use {vid} --name {name} --consent own`")
     print(f"voice {name!r} cloned: {vid}" + ("; ElevenLabs asks to verify it in the account before use" if need else ""))
 
 

@@ -184,7 +184,9 @@ def test_the_elevenlabs_key_goes_to_its_api_only_and_never_shows(voice, monkeypa
     req = urllib.request.Request("https://api.elevenlabs.io/v1/voices", headers={"xi-api-key": KEY})
     with pytest.raises(ValueError):
         ro.SafeRedirect(ok).redirect_request(req, None, 302, "Found", {}, "https://evil.test/steal")
-    assert "xi-api-key" in ro.SECRET_HEADERS
+    # without an allow-list the hop to another host goes through, and the key does not
+    moved = ro.SafeRedirect().redirect_request(req, None, 302, "Found", {}, "https://evil.test/steal")
+    assert "xi-api-key" not in {k.lower() for k in moved.headers}
     text = ro.scrub(f"headers {{'xi-api-key': '{KEY}'}} and xi-api-key: {KEY[:20]}zz and {KEY}")
     assert KEY not in text and KEY[:20] not in text
     assert "ELEVENLABS_API_KEY" in ro.known_keys()
@@ -229,6 +231,56 @@ def test_no_consent_no_voice_on_both_paths(voice, project, tmp_path):
     assert "--consent own" in str(code) and not voice.fake.log and not ro.voices_file().exists()
     code = call(voice, "clone", tmp_path / "x.mp3", "--name", "me", "--consent", "theirs", "--yes")
     assert "--consent own" in str(code) and not voice.fake.log
+
+
+def clone_with(voice, tmp_path, monkeypatch, answer):
+    """voice clone of one 90 s recording, with the add-voice request answered by `answer` (an exception is raised)."""
+    import reels_online as ro
+    rec = tmp_path / "me.wav"
+    ffmpeg("-f", "lavfi", "-i", "sine=f=220:d=90", "-ac", "1", rec)
+    monkeypatch.setattr(voice, "sample_problems", lambda files: ([], [], 90.0))  # the recording's checks are not tested here
+    fake = ro.open_url
+
+    def route(req, timeout, allowed=None):
+        if req.full_url.endswith("/v1/voices/add"):
+            voice.fake.log.append(("POST", "/v1/voices/add", None))
+            if isinstance(answer, Exception):
+                raise answer
+            return Resp(answer)
+        return fake(req, timeout, allowed)
+
+    monkeypatch.setattr(ro, "open_url", route)
+    return call(voice, "clone", rec, "--name", "me", "--consent", "own", "--yes")
+
+
+@needs_ffmpeg
+@pytest.mark.parametrize("failure", [TimeoutError("The read operation timed out"),
+                                     urllib.error.URLError(ConnectionResetError(10054, "reset by peer"))])
+def test_clone_answer_lost_on_the_way_says_how_to_find_the_voice(voice, project, tmp_path, monkeypatch, failure):
+    # 2026-11-17 review: only an HTTP error was caught. A timeout after ElevenLabs had made the voice ended in a
+    # traceback with no voice_id and no record, and the obvious "run it again" made a second clone (Starter has 10).
+    import reels_online as ro
+    code = clone_with(voice, tmp_path, monkeypatch, failure)
+    assert isinstance(code, str), code  # a message, not a traceback
+    assert "may have been created" in code and "voice list" in code and "voice use" in code
+    assert "me" not in (json.loads(ro.voices_file().read_text(encoding="utf-8"))["voices"]
+                        if ro.voices_file().exists() else {})
+
+
+@needs_ffmpeg
+def test_clone_keeps_the_voice_id_when_the_local_record_fails(voice, project, tmp_path, monkeypatch, capsys):
+    # the voice is made and paid for: a busy voices.json lock must not swallow its id
+    import contextlib
+    import reels_online as ro
+
+    @contextlib.contextmanager
+    def busy(path, timeout=30):
+        raise TimeoutError(f"busy file: {path}")
+        yield
+
+    monkeypatch.setattr(ro, "file_lock", busy)
+    code = clone_with(voice, tmp_path, monkeypatch, {"voice_id": VOICE_ID, "requires_verification": False})
+    assert isinstance(code, str) and VOICE_ID in code and "voice use" in code, code
 
 
 def test_a_voice_waiting_for_verification_is_blocked(voice, project, capsys):

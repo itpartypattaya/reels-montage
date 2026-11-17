@@ -44,7 +44,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from pic_track import pic_shots  # noqa: E402
-from reels_common import edit_dir, load_json, probe, save_json, utf8_stdio, warn  # noqa: E402
+from reels_common import READ_FRAME, edit_dir, load_json, probe, save_json, utf8_stdio, warn  # noqa: E402
 
 STEP = 0.1
 TURN = 0.3  # eye distances off the speaker's median: a head turned (nose sideways) or tilted down
@@ -61,11 +61,12 @@ SHARP_W = 96  # px: faces are resized to this width before the sharpness is meas
 
 DETECT = r"""
 import cv2, json, sys
-d = cv2.FaceDetectorYN_create(sys.argv[1], '', (320, 320), float(sys.argv[2]))
+""" + READ_FRAME + r"""
+d = load_detector(sys.argv[1], (320, 320), float(sys.argv[2]))
 W = int(sys.argv[3])
 out = []
 for p in json.load(sys.stdin):
-    im = cv2.imread(p)
+    im = read_frame(p)
     if im is None:
         out.append([]); continue
     h, w = im.shape[:2]
