@@ -98,7 +98,7 @@ from vp_camera import (camera_at, camera_off_on_moves, camera_shots, camera_view
                        same_source, source_files, src_to_out, subtitle_top, subtitles_in)  # noqa: F401
 from vp_scenes import (CHAT_FROM, COVER_MODES, EXPERIMENTAL_MODES, EXPERIMENTAL_SCENES, INTERACTIONS, JOIN_EMPTY_MAX,
                        RUBRIC_BOX, SCENE_SOUNDS, SCENE_SOURCES, SCENE_TYPES, SPEAKER_WINDOW, SPLIT_BOX, UNDER_RUBRIC, SPLIT_CAM, VOICE_SUB_GAP,
-                       WINDOW_SCENE_BOX, add_scene, subtitle_band_off_camera, voice_stage, check_scenes, default_box, experimental, faces_seen,
+                       WINDOW_SCENE_BOX, add_scene, subtitle_band_off_camera, voice_stage, check_scenes, comment_word, default_box, experimental, faces_seen,
                        hidden_windows, hides_subtitles, layout_frames, overlay_slots, scene_box_issues, scene_export,
                        roi_face, scene_face, scene_keep_entries, scene_text, scene_timeline, scene_tone, scenes_only_cover,
                        text_frames, text_full_on, text_zone, tone_issues, window_issues, without_own, word_times)  # noqa: F401
