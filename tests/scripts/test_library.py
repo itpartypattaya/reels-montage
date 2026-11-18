@@ -71,3 +71,21 @@ def test_memes_rights_and_strict_brand(project):
     write_json(project / "edit" / "4821" / "reel.json", {"brand": "acme"})
     r = run_script("memes.py", "search", "statue confusion", "--edit", "edit/4821", cwd=project)
     assert "shrug" in r.stdout and "facepalm" not in r.stdout.split("hidden")[0]
+
+
+@needs_pillow
+def test_rights_from_a_sidecar_added_later_are_taken_and_an_edit_is_kept(project):
+    # review 2026-11-17 #10: the first index wrote rights "unknown", and a sidecar added after it never got in
+    from PIL import Image
+    memes = project / "memes"
+    memes.mkdir()
+    for name in ("shrug", "facepalm"):
+        Image.new("RGB", (300, 300), (200, 200, 50)).save(memes / f"{name}.png")
+    run_script("memes.py", "index", cwd=project)
+    rights = lambda: {k: v["rights"] for k, v in json.loads((memes / "_index.json").read_text(encoding="utf-8")).items()}
+    assert rights() == {"shrug": "unknown", "facepalm": "unknown"}
+    run_script("memes.py", "change", "facepalm", "rights=cc", cwd=project)  # a hand edit wins over a sidecar
+    for name in ("shrug", "facepalm"):
+        write_json(memes / f"{name}.json", {"description": f"a statue {name}", "rights": "own"})
+    run_script("memes.py", "index", cwd=project)
+    assert rights() == {"shrug": "own", "facepalm": "cc"}

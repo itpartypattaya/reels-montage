@@ -406,17 +406,20 @@ def to_new_names(d):
     return d
 
 
-def parse_value(v):
+def parse_value(v, flag=False):
+    """A field=value from the command line: JSON when it reads as JSON (12, 0.5, true, ["a"], {...}), null clears the
+    field, anything else is text. A switch (flag) also takes yes/no, on/off, 1/0. Only a switch: "none" is a value of
+    voice and music.source, "no" a language code, 1 a number of seconds (review 2026-11-17)."""
     low = v.strip().lower()
-    if low in ("true", "yes", "on", "1"):
+    if flag and low in ("true", "yes", "on", "1"):
         return True
-    if low in ("false", "no", "off", "0"):
+    if flag and low in ("false", "no", "off", "0"):
         return False
-    if low in ("null", "none"):
+    if low == "null":
         return None
     try:
         return json.loads(v)
-    except Exception:
+    except ValueError:
         return v
 
 
@@ -430,7 +433,8 @@ def parse_sets(items):
         if k in RENAMED:
             warn(f"{k} is now {RENAMED[k]} (1.15): set as {RENAMED[k]}")
             k = RENAMED[k]
-        out[k] = parse_value(v)
+        out[k] = parse_value(v, flag=k in SETTING_KEYS_BOOL + ["tone_override"]
+                             + list(getattr(online(), "SETTING_KEYS_BOOL", None) or ()))
     return out
 
 

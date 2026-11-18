@@ -4,7 +4,7 @@ import filecmp, shutil, sys
 from pathlib import Path
 
 from reels_common import (CORNER_BOX, FRAMED_RADIUS, FRAMED_SUB_GAP, SUB_BLOCK_H, UI_SAFE, edit_dir, framed_at,
-                          framed_source, framed_sub_area, inside, load_json, safe_slug, save_json, voice_mode, warn)
+                          framed_source, framed_sub_area, inside, load_json, safe_slug, save_json, ui_safe, voice_mode, warn)
 from vp_core import (END_CARD_S, editing_plan, finish_of, load_plan, no_footage)
 from vp_camera import (camera_shots, subtitle_top, subtitles_in)
 from vp_scenes import (hidden_windows, scene_export, scene_keep_entries)
@@ -246,12 +246,26 @@ def cmd_export(a):
                       f"zone ends at y {z[3]}); check the chin on the render: faces.py audit")
                 top = lifted
                 props["subtitlesTop"] = top
+            zone = ui_safe()  # a project's taller app UI (meme_layout.safe.bottom): the block is lifted above it, the
+            # kit itself only keeps its subtitles above its own 420 px (review 2026-11-17 #14)
+            if fc.H - zone["bottom"] < low and not below:
+                low = fc.H - zone["bottom"]
+                if top + h > low:
+                    lifted = max(zone["top"], low - h)
+                    print(f"subtitles: lifted from y {top} to {lifted}: the project's UI zone starts at y {low} "
+                          f"(meme_layout.safe.bottom); check the chin on the render: faces.py audit")
+                    top = lifted
+                    props["subtitlesTop"] = top
             with editing_plan(e) as p2:
                 p2["subtitles_band"] = [top, min(low, top + h)]
         if s.get("subtitles_shade") is not None:
             props["subtitlesShade"] = float(s["subtitles_shade"])
         props["callouts"] = callouts  # callouts (kit/Callout.tsx); an older template ignores this prop
         props["scenes"] = scenes  # designed scenes (the scene kit, SceneSpec); an older template ignores this prop
+        if scenes and ui_safe()["bottom"] > UI_SAFE["bottom"]:
+            warn(f"the kit lays out its scenes above y {1920 - UI_SAFE['bottom']} (its own UI zone); this project's starts "
+                 f"at y {1920 - ui_safe()['bottom']} (meme_layout.safe.bottom): check the scenes' lower lines on the frames, "
+                 f"or give a scene a --box above it")
         props["sceneTone"] = s.get("scene_tone") or (s.get("brand_tone") or {}).get("scene_tone")
         if cover:
             props["cover"] = cover  # the cover is a separate still composition, not in the video's timeline

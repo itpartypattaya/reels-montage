@@ -131,3 +131,14 @@ def test_mascot_drawn_atlas_and_off_reach_the_remotion_project(project):
     assert (rem / "public" / "brands" / "acme" / "mascot" / "atlas.png").is_file()
     run_script("brand.py", "mascot", "acme", "--off", cwd=project)
     assert "mascot" not in brand_json(project)
+
+
+@needs_pillow
+def test_a_colour_of_digits_stays_a_colour(project):
+    # review 2026-11-17 #12: colors.accent=111111 was written as the number 111111 and `brand.py show` then crashed
+    run_script("brand.py", "new", "--name", "Acme", "--colors", "#0B3D2E,#F2C14E", "--slug", "acme", cwd=project)
+    run_script("brand.py", "change", "acme", "colors.accent=111111", "inserts.use_broll=0", cwd=project)
+    b = brand_json(project)
+    assert b["colors"]["accent"] == "#111111" and b["inserts"]["use_broll"] is False
+    r = run_script("brand.py", "show", "acme", cwd=project, check=False)
+    assert r.returncode == 0, r.stdout + r.stderr

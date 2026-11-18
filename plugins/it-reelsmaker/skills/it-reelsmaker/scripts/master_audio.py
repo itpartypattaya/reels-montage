@@ -224,6 +224,13 @@ def main():
         sys.exit(report(*acceptance(a.input, loudness=loud, sound=tag != TAG_NO_SOUND)))
     if not a.output:
         sys.exit("-o <output.mp4> is required")
+    if (a.drop_at is None) != (a.drop_in_track is None):
+        sys.exit("--drop-at and --drop-in-track go together: the second of the video and the second of the drop in the "
+                 "track (--find-drops)")
+    if a.drop_at is not None and a.drop_in_track < a.drop_at:
+        sys.exit(f"the track's drop ({a.drop_in_track:g} s) comes before the video moment ({a.drop_at:g} s): the music "
+                 f"would have to start {a.drop_at - a.drop_in_track:g} s into the video. Pick a later drop "
+                 f"(--find-drops) or an earlier moment")
     auto_sfx(a)
     if a.cover and not Path(a.cover).is_file():
         sys.exit(f"cover not found: {a.cover} (poster.py pick edit/<id> --render <render> -o edit/<id>/cover.jpg)")

@@ -2,6 +2,30 @@
 
 What changed in IT Reelsmaker, written for the people who use it. The newest version is on top. The skill shows a short “What's new” note from this file once, on the first edit after an update.
 
+## 1.39.0
+
+- **`--set voice=none` saves “no voice”.** Every `none`, `no`, `off`, `0` or `1` given with `--set` (and with
+  `brand.py change`) became empty, false or true, whatever the setting: `voice=none` and `music.source=none` saved no
+  choice, `subtitles_lang=no` (Norwegian) saved `false`, `corner_last_s=1` saved `true` and showed no corner logo, and
+  `colors.accent=111111` saved a number that `brand.py show` could not read. Now only an on/off setting (`use_*`,
+  `tone_override`) takes yes/no, on/off, 1/0; `null` clears a field; anything else is its value, a colour stays text.
+- **B-roll and memes placed by a word move with it.** After a rebuilt rough cut, scenes followed their words, while a
+  B-roll or a meme added with `--at word:…` stayed on the old second. They keep their word now, `--offset` too.
+- **Words with punctuation or accents are found.** `--at word:don't`, `word:50%` or `word:$100` found no word, and
+  letters outside the English and Russian alphabets (ü, é, ş) cut a word in two: a 4-word German hook was refused as
+  longer than 6 words and the reading time was wrong.
+- **Rights from a meme's sidecar added later are read.** The first `memes.py index` wrote `rights: unknown`, and a
+  `.json` next to the meme added after it never got in. A rights edit made with `memes.py change` still wins.
+- **A music drop that cannot land is refused.** `--drop-at` later than `--drop-in-track` started the track at 0 s and
+  put the drop seconds early with no word; one of the two flags alone was ignored. Both are errors now, nothing written.
+- **Subtitles stay above a taller app UI.** A project's own UI zone (`reel-defaults.json → meme_layout.safe`, a
+  taller bottom for TikTok) was read by the checks, while the subtitles were placed by the kit's 420 px. Stage now
+  lifts them above it; the kit's designed scenes keep their own zone, and stage says so when it differs.
+- **doctor checks what the scripts need from ffmpeg and Remotion.** Frame picks, the cover and the trackers pass
+  `-fps_mode`, which came in ffmpeg 5.1 (Ubuntu 22.04 has 4.4): doctor now names an older ffmpeg as missing. A
+  project on an older Remotion than the one the kit is checked with is named by doctor and by `kit.py update`, with the
+  command that updates it.
+
 ## 1.38.2
 
 - **Faces are found in a folder with a non-Latin name.** On Windows, OpenCV could not open a frame or the face model

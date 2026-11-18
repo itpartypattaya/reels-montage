@@ -107,7 +107,8 @@ def merge_index(idx, project, s, scanned):
                   "alpha": alpha})
         e["tags"] = sorted(set(e.get("tags", [])) | set(terms(p.stem)) | set(side.get("tags", [])))
         for k in ("description", "emotion", "use_when", "rights", "source", *CREDIT_KEYS):
-            if side.get(k) and not e.get(k):
+            # an edit (memes.py change) is kept; the "unknown" rights the first index wrote are not an edit
+            if side.get(k) and (not e.get(k) or (k == "rights" and e[k] == "unknown")):
                 e[k] = side[k]
         e.setdefault("description", "")
         e.setdefault("emotion", [])

@@ -205,6 +205,25 @@ def test_a_recut_of_the_same_length_is_followed_and_offsets_kept(project):
     assert abs(sc["start"] - (start0 + 0.5)) < 0.001  # moved with its word, the -0.2 offset kept
 
 
+def test_a_broll_placed_by_a_word_moves_with_it_in_a_recut(project):
+    # review 2026-11-17 #7: a B-roll or a meme added by a word kept no `at`, so a recut left it on the old second
+    e = plan_project(project, {"use_broll": True})
+    run_script("visual_plan.py", "init", "edit/4821", cwd=project)
+    run_script("visual_plan.py", "add", "edit/4821", "--kind", "broll", "--at", "word:resume#1", "--offset", "-0.1",
+               "--dur", "1.5", "--what", "hands with a resume", "--why", "illustrates the resume", "--source", "project",
+               cwd=project)
+    start0 = load_plan(e)["inserts"][0]["start"]
+    cap = captions()
+    for w in cap["words"]:  # the same length, the 2nd line 0.5 s later
+        if w["seg"] == 1:
+            w["start"], w["end"] = round(w["start"] + 0.5, 3), round(w["end"] + 0.5, 3)
+    write_json(e / "captions.json", cap)
+    r = run_script("visual_plan.py", "validate", "edit/4821", cwd=project, check=False)
+    b = load_plan(e)["inserts"][0]
+    assert abs(b["start"] - (start0 + 0.5)) < 0.001, r.stdout  # moved with its word, the -0.1 offset kept
+    assert b["at"] == "word:resume#1" and "placed by seconds" not in r.stdout, r.stdout
+
+
 def faces_json(e, box, dur=30.0):
     """A face measurement: the same face all through the video (faces.py format, already filtered)."""
     from faces import FILTER_V
@@ -301,6 +320,34 @@ def test_one_subtitle_band_for_faces_validate_and_the_render(project):
     assert h <= reels_common.SUB_BAND[1] - reels_common.SUB_BAND[0]
     assert load_plan(e)["subtitles_band"] == [top, top + h]
     assert faces.sub_band(e, rendered=True) == (top, top + h) and faces.sub_band(e) == reels_common.SUB_BAND
+
+
+def test_subtitles_keep_above_a_projects_taller_app_ui(project):
+    # review 2026-11-17 #14: a project's own UI zone (reel-defaults.json -> meme_layout.safe, a taller bottom for TikTok)
+    # was read by the checks, while stage put the subtitles by the kit's 420 px: they ran into the app's caption
+    import reels_common
+    e = plan_project(project, {"use_scenes": True})
+    write_json(project / reels_common.PROJECT_DEFAULTS, {"meme_layout": {"safe": {"bottom": 560}}})
+    run_script("visual_plan.py", "init", "edit/4821", cwd=project)
+    run_script("visual_plan.py", "add", "edit/4821", "--kind", "scene", "--type", "quote", "--mode", "split",
+               "--at", "word:remember#1", "--dur", "3.0", "--lines", "Remember this: speed wins",
+               "--source", "speech", "--what", "the key line", "--why", "the main idea", cwd=project)
+    faces_json(e, [380, 860, 260, 400])  # chin at 1260: the kit's top would be about 1300
+    v = run_script("visual_plan.py", "validate", "edit/4821", cwd=project, check=False)
+    assert next(i for i in load_plan(e)["inserts"] if i["kind"] == "scene")["status"] == "ready", v.stdout
+    rem = project / "reels"
+    (rem / "src").mkdir(parents=True)
+    write_json(rem / "package.json", {"name": "reels"})
+    run_script("brand.py", "stage", "acme", "--remotion", rem, cwd=project)
+    (e / "final.mp4").write_bytes(b"a rough cut")
+    r = run_script("visual_plan.py", "stage", "edit/4821", "--remotion", rem, "--props", rem / "props.json",
+                   "--force", cwd=project)
+    props = json.loads((rem / "props.json").read_text(encoding="utf-8"))
+    h = reels_common.SUB_BLOCK_H[props["subtitles"]]
+    assert props["subtitlesTop"] + h <= 1920 - 560, r.stdout
+    assert load_plan(e)["subtitles_band"] == [props["subtitlesTop"], 1920 - 560]
+    assert "meme_layout.safe.bottom" in r.stdout
+    assert "check the scenes' lower lines" in r.stderr  # the kit's scenes keep its own zone: said, not hidden
 
 
 def test_plan_editing_commands(project):
