@@ -8,7 +8,8 @@ What changed in IT Reelsmaker, written for the people who use it. The newest ver
   `brand.py change`) became empty, false or true, whatever the setting: `voice=none` and `music.source=none` saved no
   choice, `subtitles_lang=no` (Norwegian) saved `false`, `corner_last_s=1` saved `true` and showed no corner logo, and
   `colors.accent=111111` saved a number that `brand.py show` could not read. Now only an on/off setting (`use_*`,
-  `tone_override`) takes yes/no, on/off, 1/0; `null` clears a field; anything else is its value, a colour stays text.
+  `tone_override`) takes yes/no, on/off, 1/0; `null` clears a field; anything else is its value, a colour stays text, a list or an object of colours
+  (`colors.speakers='["#F7F9FB","#8FDCDD"]'`) stays JSON.
 - **B-roll and memes placed by a word move with it.** After a rebuilt rough cut, scenes followed their words, while a
   B-roll or a meme added with `--at word:…` stayed on the old second. They keep their word now, `--offset` too.
 - **Words with punctuation or accents are found.** `--at word:don't`, `word:50%` or `word:$100` found no word, and

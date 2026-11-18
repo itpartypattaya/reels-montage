@@ -142,3 +142,17 @@ def test_a_colour_of_digits_stays_a_colour(project):
     assert b["colors"]["accent"] == "#111111" and b["inserts"]["use_broll"] is False
     r = run_script("brand.py", "show", "acme", cwd=project, check=False)
     assert r.returncode == 0, r.stdout + r.stderr
+
+
+@needs_pillow
+def test_a_list_or_an_object_of_colours_stays_json(project):
+    # PR #68 review (Codex): the fix above kept every colors.* value as text, so the documented
+    # `brand.py change <slug> colors.speakers='["#F7F9FB","#8FDCDD"]'` (references/brands.md) saved one string, which
+    # the kit's subtitles cannot .filter(): a two-speaker render failed
+    run_script("brand.py", "new", "--name", "Acme", "--colors", "#0B3D2E,#F2C14E", "--slug", "acme", cwd=project)
+    run_script("brand.py", "change", "acme", 'colors.speakers=["#F7F9FB","#8FDCDD"]',
+               'colors.extra={"marker": "#F2C14E", "ink": "#111111"}', cwd=project)
+    run_script("brand.py", "change", "acme", "colors.extra.muted=222222", cwd=project)
+    c = brand_json(project)["colors"]
+    assert c["speakers"] == ["#F7F9FB", "#8FDCDD"]
+    assert c["extra"] == {"marker": "#F2C14E", "ink": "#111111", "muted": "#222222"}
