@@ -1,6 +1,8 @@
-// The video's format and a series' marks, as plain functions (no React): ReelKit reads them, the tests run them as is.
-// props.format (visual_plan.py stage) names the format: "silent" (a no-speech reel over its own picture), "scenes-only",
-// "scenes-voice"; an older props file without it falls back to "no video = scenes only", as before.
+// The video's format, a series' marks and a scene's frames, as plain functions (no React): ReelKit reads them, the tests
+// run them as is.
+// props.format names the format by name: visual_plan.py stage writes "silent" (a no-speech reel over its own picture);
+// "scenes-only" and "scenes-voice" are read when a props file gives them, and without a format a props file with no
+// video counts as scenes only (stage writes no video for those two).
 // props.rubric — the series' caps label at the top, from..to (seconds of the video; reel.json → rubric);
 // props.cornerFrom — the corner logo only from that second (reel.json → corner_last_s: the last N seconds).
 
@@ -12,6 +14,12 @@ export type SeriesProps = {
   cornerFrom?: number | null;
   rubric?: { text: string; from?: number | null; to?: number | null } | null;
 };
+
+/** A scene's frames as SceneLayer plays it: from round(start·fps), round(dur·fps) frames (at least one). The subtitles
+ *  hide in exactly these frames: counted in seconds, a scene at 1.01 s began on frame 30 and the subtitle hid from
+ *  frame 31, one frame of subtitle over the scene's field (review 2026-11-17 #36). */
+export const sceneFrames = (s: { start: number; dur: number }, fps: number): { from: number; frames: number } =>
+  ({ from: Math.round(s.start * fps), frames: Math.max(1, Math.round(s.dur * fps)) });
 
 /** The scenes are the whole picture (no rough cut on screen): every smooth transition is a cut, every mode is full. */
 export const scenesOnlyOf = (p: Pick<SeriesProps, "video" | "format">): boolean =>

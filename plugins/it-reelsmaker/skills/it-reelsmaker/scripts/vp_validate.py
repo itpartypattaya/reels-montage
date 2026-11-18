@@ -1,6 +1,6 @@
 """The visual plan's validate command and the video profile checks it runs. Part of visual_plan.py, with no command line
 of its own: the other scripts take these names from visual_plan."""
-import re
+import re, sys
 
 from reels_common import (CORNER_BOX, FRAMED_LABEL_UP, SUB_BLOCK_H, budget, edit_dir, effective, forbidden_hits,
                           framed_at, framed_issues, framed_source, load_json, locked, online, probe, save_json, voice_mode)
@@ -218,19 +218,35 @@ def follow_rough_cut(e, plan, cap, s, prov, doc, quiet=False):
     fresh = build_plan(e, cap, s, prov, doc)
     plan["duration"], plan["segments"] = fresh["duration"], fresh["segments"]
     plan["captions_id"] = cut_id(cap)
-    moved, by_seconds = [], []
+    moved, by_seconds, lost = [], [], []
+
+    def where(at, name):
+        """The new second of at, or None with the insert named in lost: a bare "the word occurs 0 times" did not say
+        which insert lost its word (review 2026-11-17 #24)."""
+        try:
+            return resolve_at(at, plan, cap)
+        except SystemExit as x:
+            lost.append(f"{name} ({at}: {x.code})")
+            return None
+
     for i in plan.get("inserts", []):
         at = str(i.get("at") or "")
         if at.startswith("word:") or re.fullmatch(r"s\d+", at):
-            t0 = round(resolve_at(at, plan, cap) + float(i.get("offset") or 0), 3)  # --offset is kept
-            if abs(t0 - i["start"]) > 0.001:
+            t0 = where(at, i["id"])
+            t0 = None if t0 is None else round(t0 + float(i.get("offset") or 0), 3)  # --offset is kept
+            if t0 is not None and abs(t0 - i["start"]) > 0.001:
                 moved.append(i["id"])
                 i["start"] = t0
         else:
             by_seconds.append(i["id"])
         for it in [x for x in (i.get("items") or []) if isinstance(x, dict)] + [i.get("interaction") or {}]:
             if str(it.get("at") or "").startswith("word:"):
-                it["t"] = round(resolve_at(str(it["at"]), plan, cap), 3)
+                t = where(str(it["at"]), f"{i['id']} item")
+                if t is not None:
+                    it["t"] = round(t, 3)
+    if lost:  # the plan is left as it was: nothing is saved half moved
+        sys.exit("the rough cut changed and these lost the word they are placed by: " + "; ".join(lost)
+                 + ". Place them on a word that is still said (visual_plan.py remove, then add --at) or remove them")
     from mascot_plan import follow as mascot_follow  # the mascot's poses on words (a lost word: validate names it)
     moved += [f"mascot {at}" for at in mascot_follow(plan, cap)]
     save_json(plan_path(e), plan)

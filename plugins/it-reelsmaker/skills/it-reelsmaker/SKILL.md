@@ -114,7 +114,7 @@ Choosing the style is **the first question, before any editing** (step 0): the s
 
 By default, subtitles cover all speech: videos are often watched without sound. “Selective” (the main phrase only) on request.
 
-- **“Bar”**: a 3–6 word phrase (≤ ~26 characters per line) on a `{{MARKER}}` marker bar; words are added as they are spoken. A punchline that must not read in two beats goes into `cut.json → keep`: it stays on one block in every mode, two lines if needed.
+- **“Bar”**: up to 4 words (≤ ~26 characters per line; the kit splits a longer phrase) on a `{{MARKER}}` marker bar; words are added as they are spoken. A punchline that must not read in two beats goes into `cut.json → keep`: it stays on one block in every mode, two lines if needed.
 - **“Accent”**: 2–3 words, `{{FONT_TEXT}}` 800, 64–72 px, the word being spoken in the style's accent color. Loud, for quick insights.
 - **“Typewriter”**: the whole phrase in 1–2 lines, 56 px (the kit); upcoming words at 30% opacity, spoken words appear as they are said, a caret (a thin bar in the accent color); color per speaker. Quieter and more premium, for skits and calm videos. Split by phrases and pauses (up to ~52 characters as a whole), not by a character limit.
 

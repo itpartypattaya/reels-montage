@@ -295,6 +295,11 @@ def safe_search(name, query, o):
         return []
     try:
         res = p.search(query, o)
+        # --min-dur for every source: the online ones ask the service, the project and the libraries returned videos
+        # shorter than asked, and the insert failed later (review 2026-11-17 #23); a photo holds any length
+        need = o.get("min_dur") or 0
+        res = [c for c in res if not (need and c.get("dur") and c["dur"] < need
+                                      and not (c.get("path") and Path(c["path"]).suffix.lower() in PHOTO_EXT))]
         return sorted(res, key=lambda c: -c["score"])
     except Exception as ex:
         warn(f"{name}: search error ({err_text(ex)}); skipping it, the edit continues")
@@ -398,6 +403,9 @@ def cmd_index(a):
             cur.setdefault("description", "")
             cur.setdefault("tags", [])
             cur.setdefault("exclude", False)
+    # 13 files made 3 sheets, 5 make 1: the 2 left over showed files no longer there (review 2026-11-17 #26)
+    for old in sheet_dir.glob(f"{prefix}sheet-*.jpg"):
+        old.unlink()
     for page in range(0, len(rows), 6):
         chunk = rows[page:page + 6]
         sheet = Image.new("RGB", (chunk[0].width * 2, chunk[0].height * ((len(chunk) + 1) // 2)), (0, 0, 0))

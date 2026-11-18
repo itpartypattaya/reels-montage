@@ -80,7 +80,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from reels_common import (CORNER_BOX, FRAMED_HOOK_MIN, FRAMED_LABEL_UP, FRAMED_RADIUS, FRAMED_SUB_GAP, MEME_SIZES, NUMBER_RE, SUB_BAND, SUB_BLOCK_H, SUB_MAX_TOP,
                           SUB_TOP_KIT, budget, cam_fit, edit_dir, editing_json, effective, forbidden_hits, framed_area, framed_sub_area,
                           framed_at, framed_issues, framed_source, framed_view, inside, load_config, load_json, locked,
-                          media_kind, online, parse_sets, probe, project_root, safe_slug, save_json, terms, ui_safe,
+                          media_kind, numbers, online, parse_sets, probe, project_root, safe_slug, save_json, terms, ui_safe,
                           ui_zone, utf8_stdio, warn, LINE_FACE_MARGIN, UI_SAFE)
 # The plan's code is in the vp_* modules; this file is the command line and keeps every one of their names,
 # because the other scripts and the tests take them from visual_plan. Each module imports what it uses by
@@ -339,12 +339,12 @@ def cmd_add(a):
         if a.source == "generated":
             ins["gen"] = {k: "" for k in GEN_FIELDS}
         if a.cam:
-            ins["cam"] = [float(x) for x in a.cam.split(",")]
+            ins["cam"] = numbers(a.cam, 3, "--cam")
         if a.covers:
             ins["covers"] = list(a.covers)
         if kind == "broll" and mode == "window":  # the window box: the given one or the first free slot
             if a.box:
-                ins["box"] = [int(float(x)) for x in a.box.split(",")]
+                ins["box"] = numbers(a.box, 4, "--box", int)
             else:
                 ins["box"] = next((b for b in WINDOW_SLOTS if not window_issues(e, plan, ins, b)), WINDOW_DEFAULT)
             for m in window_issues(e, plan, ins, ins["box"]):
@@ -501,18 +501,16 @@ def cmd_keep(a):
         return
     if a.start is None or a.end is None or not a.box or not a.what:
         sys.exit("keep-clear: --from, --to, --box and --what are needed (or --remove N)")
-    box = [int(x) for x in a.box.split(",")]
+    box = numbers(a.box, 4, "--box", int)
     entry = {"start": a.start, "end": a.end, "box": box, "what": a.what}
     if a.cam:  # the span's camera, so that validate checks the face where the viewer sees it
-        entry["cam"] = [float(x) for x in a.cam.split(",")]
+        entry["cam"] = numbers(a.cam, 3, "--cam")
     if a.matte:  # a presenter layer (matte.py place): coverage, its WebM copied by stage
         entry["matte"] = safe_slug(a.matte, "--matte", dots=True)
         if not (e / "matte" / f"{entry['matte']}.webm").exists():
             warn(f"no {e / 'matte' / (entry['matte'] + '.webm')}: stage has nothing to copy until matte.py cut makes it")
     if a.own_face:  # the presenter's own face on screen: not a no-go for its own layer
-        entry["own_face"] = [int(x) for x in a.own_face.split(",")]
-        if len(entry["own_face"]) != 4:
-            sys.exit("--own-face: x,y,w,h")
+        entry["own_face"] = numbers(a.own_face, 4, "--own-face", int)
     with locked(plan_path(e)):
         plan = load_json(plan_path(e))
         if plan is None:  # inserts are off and no plan was built: a plan without inserts is created (a graphics registry)
@@ -529,7 +527,7 @@ def cmd_keep(a):
     elif data:
         # the face where the viewer sees it: --cam for this zone, else camera.json at each sample's time (as validate
         # and the render audit see it; T4: keep-clear without --cam checked the box against the uncropped frame)
-        cam = [float(x) for x in a.cam.split(",")] if a.cam else None
+        cam = numbers(a.cam, 3, "--cam") if a.cam else None
         faces_, how_ = faces_seen(e, plan, data, a.start, a.end, cam, shots_ok=not cam)
         shots = how_ == "camera.json"
         hit = [b for b in faces_ if fc.inter(box, fc.grow(b, fc.MARGIN))]

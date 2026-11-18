@@ -205,7 +205,9 @@ def resolve(c, segments, words, total):
         n = round(g["out_dur"] * F)
         for x, y in _uncovered(a, a + n, covered):
             sp = g.get("speed") or 1.0
-            s0 = g["src_start"] + (x - a) / F * sp
+            # the segment's exact frame time (_s), not src_start rounded to ms: 38/30 = 1.26667 written as 1.267 began
+            # past frame 38, and the fps grid filled the first slot with a copy of frame 39 (review 2026-11-17 #17)
+            s0 = g.get("_s", g["src_start"]) + (x - a) / F * sp
             shot = copy_shot({**g, "src_start": round(s0, 3), "src_end": round(s0 + (y - x) / F * sp, 3),
                               "out_start": sec(x), "out_dur": sec(y - x)}, audio_only)
             sv = c["sources"].get(g["source"]) or {}

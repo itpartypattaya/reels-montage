@@ -742,11 +742,8 @@ def join(e, parts, segments, level=True):
     lst.write_text("".join(f"file '{p.name}'\n" for p in parts), encoding="utf-8")
     vtmp, atmp = clips / "video_only.mp4", clips / "audio_only.m4a"
     run(["ffmpeg", "-v", "error", "-y", "-f", "concat", "-safe", "0", "-i", lst, "-map", "0:v", "-c", "copy", vtmp])
-    ains = sum((["-i", p] for p in parts), [])
-    afc = "".join(f"[{k}:a]apad,atrim=0:{g['_n'] / g['_fps']:.15g},asetpts=PTS-STARTPTS[a{k}];" for k, g in enumerate(segments))
-    afc += "".join(f"[a{k}]" for k in range(len(parts))) + f"concat=n={len(parts)}:v=0:a=1[a]"
-    run(["ffmpeg", "-v", "error", "-y", *ains, "-filter_complex", afc, "-map", "[a]", "-c:a", "aac", "-b:a", "192k",
-         "-ar", "48000", atmp])
+    from cut_voice import join_audio  # in batches: ~190 segments in one run passed the Windows command-line limit
+    join_audio(clips, parts, [g["_n"] / g["_fps"] for g in segments], atmp, ["-c:a", "aac", "-b:a", "192k", "-ar", "48000"])
     report, audio = None, atmp
     if level:
         segs, t = [], 0.0

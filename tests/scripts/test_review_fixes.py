@@ -173,7 +173,9 @@ def test_audio_trim_uses_frame_duration(tmp_path, monkeypatch):
     assert abs(total - 100 / 30) < 1e-12
     (tmp_path / "clips").mkdir()
     calls = []
-    monkeypatch.setattr(cut, "run", lambda args, **kw: calls.append(args))
+    import cut_voice  # the sound join runs in cut_voice.join_audio (review 2026-11-17 #19)
+    for m in (cut, cut_voice):
+        monkeypatch.setattr(m, "run", lambda args, **kw: calls.append(args))
     parts = [tmp_path / "clips" / f"seg_{k:03}.mp4" for k in range(100)]
     cut.join(tmp_path, parts, segments)
     graph = calls[1][calls[1].index("-filter_complex") + 1]

@@ -355,7 +355,7 @@ const ReelKitFrame: React.FC<ReelKitProps> = (p) => {
   // subtitles are hidden on split/panel/window/full and slogan scenes (the scene text replaces them) and on hide_subtitles —
   // this duplicates the export's hideSubtitles, which does no harm
   const offCamera = p.voiceMode === "off_camera";
-  const hide = [...(p.hideSubtitles ?? []), ...sceneHideIntervals(p.scenes, offCamera)];
+  const hide = [...(p.hideSubtitles ?? []), ...sceneHideIntervals(p.scenes, offCamera, KIT_FPS)];
   // the last phrase and the darkening stay under the end card while its field fades in, then the card covers them
   // (T4: they vanished when the speech ended, on the second frame of the logo sting's 8-frame fade: a visible step)
   const tail = p.endCard ? STING_IN / KIT_FPS : 0;

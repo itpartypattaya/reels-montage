@@ -31,6 +31,7 @@ import { Ui } from "./Ui";
 import { CtaAction } from "./CtaAction";
 import { FlashAt } from "../LightFlash";
 import { onGraphic } from "../anchor";
+import { sceneFrames } from "../series";
 import type { PictureShot } from "../anchor";
 
 const BY_TYPE: Record<string, React.FC<{ c: SceneCtx }>> = {
@@ -140,10 +141,10 @@ export const speakerRectAt = (scenes: SceneSpec[] | null | undefined, frame: num
 /** Intervals without subtitles — the same rule as visual_plan.py hides_subtitles: every mode except overlay, and slogan always;
  *  hook, quote and list in overlay — yes by default (they repeat or replace the speech); an explicit hide_subtitles: false keeps the subtitles.
  *  offCamera (props.voiceMode "off_camera"): the narration's subtitles stay on over every scene; only hide_subtitles: true hides them. */
-export const sceneHideIntervals = (scenes?: SceneSpec[] | null, offCamera = false): [number, number][] =>
+export const sceneHideIntervals = (scenes: SceneSpec[] | null | undefined, offCamera: boolean, fps: number): [number, number][] =>
   playableScenes(scenes).filter((s) => offCamera ? s.hide_subtitles === true : s.mode !== "overlay" || s.type === "slogan" ||
     (s.hide_subtitles ?? (s.type === "hook" || s.type === "quote" || s.type === "list")))
-    .map((s) => [s.start, s.start + s.dur] as [number, number]);
+    .map((s) => { const f = sceneFrames(s, fps); return [f.from / fps, (f.from + f.frames) / fps] as [number, number]; });
 
 /** 0..1 — how much the frame is taken by a scene (the corner mark fades out over 6 frames so it does not overlap the scene). */
 export const sceneActivity = (scenes: SceneSpec[] | null | undefined, frame: number, fps: number): number => {
@@ -329,7 +330,7 @@ export const SceneLayer: React.FC<{ scenes?: SceneSpec[] | null; brand: Brand; l
     <>
       {list.map((s) => { const only = !!p.scenesOnly || onGraphic(p.pictureShots ?? [], s.start); return (
         <React.Fragment key={s.id}>
-          <Sequence from={Math.round(s.start * fps)} durationInFrames={Math.max(1, Math.round(s.dur * fps))} layout="none">
+          <Sequence from={sceneFrames(s, fps).from} durationInFrames={sceneFrames(s, fps).frames} layout="none">
             <div data-rk={`scene:${s.id}`} style={{ display: "contents" }}>
               <SceneFrame spec={s} brand={p.brand} look={p.look} fonts={fonts} bt={bt} words={p.words ?? []} scenesOnly={only}
                 framed={p.framed} textBottom={p.textBottom}

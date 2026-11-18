@@ -394,7 +394,10 @@ def resolve_at(at, plan, cap):
         if ref not in marks:
             sys.exit(f"marker:{ref}: the music's markers are {', '.join(marks) or 'none'} (beats.json)")
         return round(marks[ref], 3)
-    return float(at)
+    try:
+        return float(at)
+    except ValueError:  # a typo was a traceback (review 2026-11-17 #28)
+        sys.exit(f"--at {at}: seconds, s<N> (a span), word:<word>[#n], block:<id>, beat:<n> or marker:<name>")
 
 
 def norm_words(text):

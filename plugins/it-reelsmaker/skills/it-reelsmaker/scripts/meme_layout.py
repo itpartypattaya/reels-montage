@@ -63,7 +63,9 @@ def slot_box(slot, w, h, L):
     mid = round((top + low) / 2)
     x = {"left": left, "right": right, "center": round((left + W - s["right"] - 20 - w) / 2)}
     y = {"top": top, "mid": mid, "low": low}
-    vert, horiz = slot.split("-")
+    vert, _, horiz = slot.partition("-")
+    if vert not in y or horiz not in x:  # a typo was a traceback (review 2026-11-17 #28)
+        sys.exit(f"--slot {slot}: one of {', '.join(L['slots'])} or auto")
     return [x[horiz], y[vert], w, h]
 
 

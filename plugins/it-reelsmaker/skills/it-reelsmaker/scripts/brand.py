@@ -579,10 +579,15 @@ def cmd_rule(a):
 
 
 def set_path(obj, path, value):
-    keys = path.split(".")
-    for k in keys[:-1]:
-        obj = obj.setdefault(k, {})
-    obj[keys[-1]] = value
+    parts = path.split(".")
+    for n, k in enumerate(parts[:-1]):
+        if obj.get(k) is None:  # an empty field ("lut": null) takes an object: lut.hald=... failed on it (review #30)
+            obj[k] = {}
+        elif not isinstance(obj[k], dict):
+            field = ".".join(parts[:n + 1])
+            sys.exit(f"{field} is {obj[k]!r}, not an object: set it whole, not {path}")
+        obj = obj[k]
+    obj[parts[-1]] = value
 
 
 def cmd_change(a):

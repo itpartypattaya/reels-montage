@@ -93,16 +93,32 @@ def encode_piece(c, g, out):
          "-af", af, "-c:a", "pcm_s16le", "-ar", str(RATE), "-ac", "2", out])
 
 
+WAV = ["-c:a", "pcm_s16le", "-ar", str(RATE), "-ac", "2"]
+JOIN_BATCH = 64  # inputs per ffmpeg run: each costs ~170 characters of the command line, Windows allows 32767
+
+
+def join_audio(clips, parts, lengths, out, codec):
+    """The audio of parts joined in order, each padded/trimmed to its length (s), into out (codec: ffmpeg's output
+    arguments). More than JOIN_BATCH parts are joined in batches into exact WAVs first: one run with ~190 inputs went
+    past the Windows command-line limit and the cut failed (review 2026-11-17 #19)."""
+    if len(parts) > JOIN_BATCH:
+        starts = range(0, len(parts), JOIN_BATCH)
+        batches = [clips / f"join_{len(parts)}_{k:03d}.wav" for k in range(len(starts))]
+        for b, p in zip(starts, batches):
+            join_audio(clips, parts[b:b + JOIN_BATCH], lengths[b:b + JOIN_BATCH], p, WAV)
+        parts, lengths = batches, [sum(lengths[b:b + JOIN_BATCH]) for b in starts]
+    ains = sum((["-i", p] for p in parts), [])
+    afc = "".join(f"[{k}:a]apad,atrim=0:{d:.15g},asetpts=PTS-STARTPTS[a{k}];" for k, d in enumerate(lengths))
+    afc += "".join(f"[a{k}]" for k in range(len(parts))) + f"concat=n={len(parts)}:v=0:a=1[a]"
+    run(["ffmpeg", "-v", "error", "-y", *ains, "-filter_complex", afc, "-map", "[a]", *codec, out])
+
+
 def join_pieces(e, parts, segments, level):
     """The pieces joined in order (each padded/trimmed to its frames), leveled (level.py) -> the narration WAV and the
     leveling report (None without leveling)."""
     clips = e / "clips"
-    ains = sum((["-i", p] for p in parts), [])
-    afc = "".join(f"[{k}:a]apad,atrim=0:{g['_n'] / g['_fps']:.15g},asetpts=PTS-STARTPTS[a{k}];" for k, g in enumerate(segments))
-    afc += "".join(f"[a{k}]" for k in range(len(parts))) + f"concat=n={len(parts)}:v=0:a=1[a]"
     joined = clips / "voice_joined.wav"
-    run(["ffmpeg", "-v", "error", "-y", *ains, "-filter_complex", afc, "-map", "[a]", "-c:a", "pcm_s16le",
-         "-ar", str(RATE), "-ac", "2", joined])
+    join_audio(clips, parts, [g["_n"] / g["_fps"] for g in segments], joined, WAV)
     if not level:
         return joined, None
     segs, t = [], 0.0

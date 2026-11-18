@@ -50,7 +50,7 @@ The kit draws them, but none is checked in a finished video yet (review 2026-10-
 edits), so they are not in the menus (SKILL.md section 10). The agent offers one only where the content clearly asks
 for it: `ui` when the product itself is shown, `chat` when a message thread is retold, `word` for an abstract idea with
 nothing to show, `panel` for a choppy take, `split` or `window` when a scene needs the frame and the face must stay.
-`visual_plan.py scene` and `md` say “experimental” next to such a scene or mode, so the person sees it before the
+`visual_plan.py add --kind scene` and `md` say “experimental” next to such a scene or mode, so the person sees it before the
 “yes”; look at its storyboard frame before the full render. A scene's default mode is the first one of its row in the
 catalog (a slogan is `full`); an experimental mode is set with `--mode`.
 
