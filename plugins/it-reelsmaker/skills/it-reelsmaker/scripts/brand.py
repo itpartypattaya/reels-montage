@@ -39,7 +39,7 @@ import argparse, contextlib, datetime, hashlib, json, os, re, shutil, sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from reels_common import (BRAND_SCHEMA, SKILL, TONE_PRESETS, migrate_brand, brand_file, brand_roots, editing_json, find_brand, inside, list_brands,
+from reels_common import (BRAND_SCHEMA, SETTING_KEYS_BOOL, SKILL, TONE_PRESETS, migrate_brand, brand_file, brand_roots, editing_json, find_brand, inside, list_brands,
                           parse_value, project_root, safe_slug, save_json, save_text, tone_rules, tone_summary, utf8_stdio, warn)
 
 TODAY = datetime.date.today().isoformat()
@@ -594,10 +594,16 @@ def cmd_change(a):
     with editing_brand(a.slug) as (d, b):
         for it in a.pairs:
             k, v = it.split("=", 1)
-            val = parse_value(v)
+            k, cur = k.strip(), b
+            for part in k.split("."):  # the value type follows the field already there: a colour stays text
+                cur = cur.get(part) if isinstance(cur, dict) else None
+            # a list or an object (colors.speakers='["#F7F9FB", ...]', colors.extra={...}) is JSON (PR #68 review)
+            text = (k.startswith("colors.") or isinstance(cur, str)) and not v.strip().startswith(("[", "{"))
+            flag = isinstance(cur, bool) or k.split(".")[-1] in SETTING_KEYS_BOOL
+            val = (None if v.strip().lower() == "null" else v.strip()) if text else parse_value(v, flag=flag)
             if isinstance(val, str) and re.fullmatch(r"#?[0-9a-fA-F]{6}", val) and k.startswith("colors."):
                 val = norm_hex(val)
-            set_path(b, k.strip(), val)
+            set_path(b, k, val)
             print(f"{a.slug}: {k} = {val!r}")
 
 
@@ -623,7 +629,7 @@ def cmd_tone(a):
             except ValueError:
                 sys.exit(f"{k}: a number is needed, got {v!r}")
         else:
-            fields_given[k] = parse_value(v)
+            fields_given[k] = parse_value(v, flag=isinstance(ref, bool))
     if a.profile:
         return tone_for_profile(a)
     with editing_brand(a.slug) as (d, b):

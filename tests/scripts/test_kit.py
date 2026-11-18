@@ -448,3 +448,28 @@ def _render_setup_again(project, monkeypatch, outcomes):
     import shutil
     shutil.rmtree(project / "reels")
     return _render_setup(project, monkeypatch, outcomes)
+
+
+def test_an_older_remotion_than_the_kit_is_checked_with_is_named(project):
+    # review 2026-11-17 #15: update put a kit that uses Html5Audio and trimBefore into a project on an old Remotion with
+    # no word; tsc or the render then failed with a missing export
+    starter = json.loads((CORE.parent / "assets" / "remotion-starter" / "package.json").read_text(encoding="utf-8"))
+    ship = starter["dependencies"]["remotion"]
+    run_script("kit.py", "new", "reels", cwd=project)
+    rem = project / "reels"
+    pkg = json.loads((rem / "package.json").read_text(encoding="utf-8"))
+    pkg["dependencies"].update({"remotion": "4.0.100", "@remotion/cli": "4.0.100"})
+    write_json(rem / "package.json", pkg)
+    (rem / "src" / "kit" / "brand.ts").write_text("// an older kit file\n", encoding="utf-8")
+    write_json(project / "it-reelsmaker.json", {"remotion_dir": "reels"})
+    r = run_script("kit.py", "update", "--remotion", rem, cwd=project)
+    assert "4.0.100" in r.stdout and ship in r.stdout and f"remotion@{ship}" in r.stdout, r.stdout
+    rows = {c["name"]: c for c in json.loads(run_script("doctor.py", "--json", cwd=project, check=False).stdout)["checks"]}
+    row = rows[f"Remotion {ship}+ (the kit is checked with it)"]
+    assert not row["ok"] and "4.0.100" in row["found"] and f"remotion@{ship}" in row["fix"], row
+    pkg["dependencies"].update({"remotion": ship, "@remotion/cli": ship})
+    write_json(rem / "package.json", pkg)
+    r = run_script("kit.py", "update", "--remotion", rem, cwd=project)
+    assert "⚠ Remotion" not in r.stdout, r.stdout
+    rows = {c["name"]: c for c in json.loads(run_script("doctor.py", "--json", cwd=project, check=False).stdout)["checks"]}
+    assert rows[f"Remotion {ship}+ (the kit is checked with it)"]["ok"]

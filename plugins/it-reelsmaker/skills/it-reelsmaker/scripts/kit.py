@@ -104,6 +104,28 @@ def outside_plugin(p):
     return p
 
 
+def remotion_version(pkg):
+    """The exact remotion version a package.json asks for (a ^ or ~ dropped), None when it names none."""
+    try:
+        d = json.loads(Path(pkg).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    v = {**d.get("dependencies", {}), **d.get("devDependencies", {})}.get("remotion")
+    return str(v).lstrip("^~=v ") if v else None
+
+
+def remotion_behind(rem):
+    """(the project's remotion, the one the kit is checked with: the starter's) when the project's is older, else None:
+    the kit uses newer Remotion APIs (Html5Audio, trimBefore), an older one fails in tsc or the render."""
+    have, ship = remotion_version(Path(rem) / "package.json"), remotion_version(STARTER / "package.json")
+    return (have, ship) if have and ship and newer(ship, have) else None
+
+
+def remotion_fix(ship):
+    return (f"npm install --save-exact remotion@{ship} @remotion/cli@{ship} (and every other @remotion package at "
+            f"{ship}), in the Remotion project folder")
+
+
 def remotion_project(arg):
     rem = outside_plugin(Path(arg).resolve())
     if not (rem / "package.json").is_file() or not (rem / "src").is_dir():
@@ -222,6 +244,10 @@ def cmd_update(a):
     if newer(have, ship) and not a.force:
         sys.exit(f"the kit in {rem} ({have}) is newer than this plugin's ({ship}): update the plugin instead; "
                  "--force rolls the kit back (replaced files are backed up first)")
+    behind = remotion_behind(rem)
+    if behind:
+        print(f"⚠ Remotion {behind[0]} in {rem} is older than {behind[1]}, the one the kit is checked with: the kit "
+              f"uses newer Remotion APIs, and tsc or the render can fail. Update it: {remotion_fix(behind[1])}")
     missing, changed, extra = diff(rem)
     if not missing and not changed:
         if not a.dry_run:

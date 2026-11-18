@@ -2,6 +2,8 @@
 import json
 import subprocess
 
+import pytest
+
 from conftest import ffmpeg, make_speech, make_video, needs_ffmpeg, needs_pillow, probe_streams, run_script, write_json
 
 TRANSCRIPT = {"words": [
@@ -530,6 +532,25 @@ def test_master_audio_ducks_the_music_under_a_key_line(project):
     assert abs(band_db(ducked, 2.3, 3.3, voice) - band_db(plain, 2.3, 3.3, voice)) <= 0.5  # the voice untouched
     r = run_script("master_audio.py", *common, "-o", "x.mp4", "--duck", "3-2", cwd=project, check=False)
     assert r.returncode != 0 and "END after START" in (r.stdout + r.stderr)
+
+
+@needs_ffmpeg
+@pytest.mark.parametrize("flags, says", [
+    (["--drop-at", "5", "--drop-in-track", "2"], "comes before"),  # the track would have to start 3 s late
+    (["--drop-at", "5"], "--drop-in-track"),                         # half of the pair
+    (["--drop-in-track", "2"], "--drop-at"),
+])
+def test_a_drop_that_cannot_land_is_refused_not_moved(project, flags, says):
+    # review 2026-11-17 #11: a drop earlier in the track than the phrase was clamped to the track's start, so it landed
+    # 3 s early with no word; one flag of the pair was dropped in silence
+    from conftest import ffmpeg
+    ffmpeg("-f", "lavfi", "-i", "color=c=gray:s=360x640:r=30:d=6", "-f", "lavfi", "-i", "sine=f=300:d=6,volume=0.3",
+           "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", "-shortest", project / "render.mp4")
+    ffmpeg("-f", "lavfi", "-i", "sine=f=3000:d=9,volume=0.5", project / "track.wav")
+    r = run_script("master_audio.py", "render.mp4", "--music", "track.wav", "--no-denoise", "-o", "m.mp4", *flags,
+                   cwd=project, check=False)
+    assert r.returncode != 0 and says in (r.stdout + r.stderr), r.stdout + r.stderr
+    assert not (project / "m.mp4").exists()
 
 
 @needs_ffmpeg

@@ -175,12 +175,26 @@ def check_plugin(pdir, private_terms):
             errors.append(f"{rel}: OS junk file")
             continue
         ext = f.suffix.lower()
+        in_plugin = f.relative_to(pdir).as_posix()  # the file's name is published too (review 2026-11-17 #13)
+        if CYRILLIC.search(in_plugin):
+            errors.append(f"{rel}: Cyrillic in the file name")
+        if name == CORE and CORE_FORBIDDEN.search(in_plugin):
+            errors.append(f"{rel}: core mentions online provider/keys in the file name: "
+                          f"{CORE_FORBIDDEN.search(in_plugin).group(0)!r}")
         if ext in IMAGE_FONT_EXT:
             continue
+        raw = f.read_bytes()
         if ext not in TEXT_EXT and f.name != "LICENSE":
+            try:
+                if b"\0" in raw:
+                    raise ValueError
+                raw.decode("utf-8")
+            except ValueError:
+                errors.append(f"{rel}: a binary file other than an image or a font (the directory holds it)")
+                continue
+            # a text file of another type (.sh, .yaml): held for review, and its text is checked like any other
             warnings.append(f"{rel}: not a text/image/font file (held for review)")
-            continue
-        size = len(f.read_bytes().replace(b"\r\n", b"\n"))  # as the repository stores it: a Windows checkout adds CRs
+        size = len(raw.replace(b"\r\n", b"\n"))  # as the repository stores it: a Windows checkout adds CRs
         if size > MAX_TEXT:
             warnings.append(f"{rel}: {size} bytes > 256 KiB (held for review)")
         text = f.read_text(encoding="utf-8")

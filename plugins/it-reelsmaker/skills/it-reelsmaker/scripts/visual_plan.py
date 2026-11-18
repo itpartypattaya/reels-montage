@@ -330,7 +330,7 @@ def cmd_add(a):
         mode = a.mode or KINDS[kind]["modes"][0]
         seg = next((g for g in plan["segments"] if g["start"] <= start < g["end"]), None)
         ins = {"id": f"{pre}{n:02d}", "kind": kind, "segment": seg["id"] if seg else None, "start": round(start + a.offset, 3),
-               "dur": a.dur, "mode": mode, "what": a.what, "why": a.why, "query": a.query or "",
+               "at": a.at, **({"offset": a.offset} if a.offset else {}), "dur": a.dur, "mode": mode, "what": a.what, "why": a.why, "query": a.query or "",
                "source": a.source, "candidate": None, "file": None, "src_in": 0.0,
                "transition_in": a.transition, "transition_out": a.transition_out or ("cut" if a.transition == "cut" else a.transition),
                "status": "planned", "fallback": "main footage", "credit": None}

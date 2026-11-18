@@ -58,8 +58,8 @@ def test_safe_slug_accepts_plain_names():
 
 
 def test_parse_sets_types():
-    assert rc.parse_sets(["a=true", "b=off", "c=null", "d=3", "e=[1,2]", "f=text"]) == {
-        "a": True, "b": False, "c": None, "d": 3, "e": [1, 2], "f": "text"}
+    assert rc.parse_sets(["a=true", "use_broll=off", "c=null", "d=3", "e=[1,2]", "f=text", "g=off"]) == {
+        "a": True, "use_broll": False, "c": None, "d": 3, "e": [1, 2], "f": "text", "g": "off"}
 
 
 def test_migrate_brand_adds_expert_tone_once():
@@ -139,6 +139,21 @@ def test_the_old_name_of_code_scenes_is_still_read_in_every_layer(project):
     s, prov, *_ = rc.load_config(e)
     assert s["use_code_scenes"] is False and prov["use_code_scenes"] == "profile:educational"
     assert s["use_generated_footage"] is False and not rc.effective(s)[0]["generated_code"]
+
+
+def test_set_values_keep_their_meaning(project):
+    # review 2026-11-17 #12: every "1"/"0"/"yes"/"no"/"on"/"off" became a switch and "none" became null, so the
+    # documented `--set voice=none` saved no voice choice, corner_last_s=1 was `true` (no corner logo) and the
+    # Norwegian subtitles (subtitles_lang=no) were `false`
+    e = project / "edit" / "4821"
+    run_script("reelcfg.py", "save", "edit/4821", "--set", "voice=none", "music.source=none", "subtitles_lang=no",
+               "corner_last_s=1", "use_broll=yes", "use_memes=0", "use_scenes=on", cwd=project)
+    reel = json.loads((e / "reel.json").read_text(encoding="utf-8"))
+    assert {k: reel[k] for k in ("voice", "subtitles_lang", "corner_last_s", "use_broll", "use_memes", "use_scenes")}         == {"voice": "none", "subtitles_lang": "no", "corner_last_s": 1, "use_broll": True, "use_memes": False,
+            "use_scenes": True}
+    assert reel["music"] == {"source": "none"}
+    run_script("reelcfg.py", "save", "edit/4821", "--set", "voice=null", cwd=project)  # null still clears
+    assert json.loads((e / "reel.json").read_text(encoding="utf-8")).get("voice") is None
 
 
 def test_reelcfg_writes_the_new_name_of_code_scenes(project):

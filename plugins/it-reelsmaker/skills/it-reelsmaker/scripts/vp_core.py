@@ -1,11 +1,11 @@
 """The visual plan's core: its constants and speech patterns, the plan file and the settings snapshot, building
 the spans, time and text helpers, and the ending (hook, end card, sting, corner logo) a stage keeps. Part of visual_plan.py, with no command line
 of its own: the other scripts take these names from visual_plan."""
-import contextlib, datetime, hashlib, math, re, sys
+import contextlib, datetime, hashlib, math, re, sys, unicodedata
 from pathlib import Path
 
 from reels_common import (NUMBER_RE, budget, editing_json, effective, load_config, load_json, locked, probe,
-                          save_json, warn)
+                          save_json, take_words, warn)
 from pic_track import pic_shots, shots_of_words
 
 
@@ -369,9 +369,9 @@ def resolve_at(at, plan, cap):
         return seg["start"]
     m = re.fullmatch(r"word:(.+?)(?:#(\d+))?", at)
     if m:
-        target, nth = m.group(1).lower().replace(_YO, _YE), int(m.group(2) or 1)
-        hits = [w for w in cap.get("words", [])
-                if re.sub(r"[^\w" + _RU_AZ + "-]", "", w["text"].lower().replace(_YO, _YE)) == target]
+        key = lambda t: re.sub(r"[^\w-]", "", unicodedata.normalize("NFKC", t).lower().replace(_YO, _YE))
+        target, nth = key(m.group(1)), int(m.group(2) or 1)  # the same cleaning on both sides: word:don't = "don't,"
+        hits = [w for w in cap.get("words", []) if key(w["text"]) == target]
         if len(hits) < nth:
             sys.exit(f"the word '{target}' occurs {len(hits)} time(s), #{nth} is needed")
         return round(hits[nth - 1]["start"], 3)
@@ -398,8 +398,9 @@ def resolve_at(at, plan, cap):
 
 
 def norm_words(text):
-    """Words for matching a quote against the transcript: lowercase, Russian yo -> ye, no punctuation."""
-    return [w for w in re.split(r"[^0-9a-z" + _RU_AZ + "]+", str(text or "").lower().replace(_YO, _YE)) if w]
+    """Words for matching a quote against the transcript: lowercase, Russian yo -> ye, no punctuation, a letter of any
+    alphabet kept in its word (u-umlaut, e-acute)."""
+    return take_words(text)
 
 
 def find_spoken(text, cap, near=None, window=None):

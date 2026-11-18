@@ -44,3 +44,28 @@ def test_a_passing_check_is_remembered_for_this_version(project):
         assert cfg["doctor_ok"]["version"] == version and cfg["remotion_dir"] == "reels"
     else:
         assert "doctor_ok" not in cfg
+
+
+def fake_ffmpeg(monkeypatch, version, help_text):
+    """doctor's view of an ffmpeg on PATH: what the program prints for each question (the program is faked, the
+    check is real)."""
+    import shutil
+    import doctor
+    answers = {"-version": f"ffmpeg version {version} Copyright (c) 2000-2022 the FFmpeg developers",
+               "-encoders": " V....D libx264  libx264 H.264\n V....D libvpx-vp9  libvpx VP9",
+               "-filters": " ... loudnorm  A->A  EBU R128\n ... haldclut  VV->V  Hald CLUT",
+               "-h": help_text}
+    monkeypatch.setattr(shutil, "which", lambda name: f"/usr/bin/{name}")
+    monkeypatch.setattr(doctor, "out", lambda cmd: answers[cmd[2]])
+    monkeypatch.setattr(doctor, "rows", [])
+    doctor.check_ffmpeg()
+    return {r["name"]: r for r in doctor.rows}
+
+
+def test_an_ffmpeg_without_fps_mode_is_named(monkeypatch):
+    # review 2026-11-17 #16: five scripts pass -fps_mode (ffmpeg 5.1+); Ubuntu 22.04 ships 4.4, and doctor said all is fine
+    rows = fake_ffmpeg(monkeypatch, "4.4.2-0ubuntu0.22.04.1", "-vsync  video sync method\n-r  set frame rate")
+    bad = [r for r in rows.values() if not r["ok"]]
+    assert len(bad) == 1 and bad[0]["level"] == "required" and "5.1" in bad[0]["fix"], rows
+    rows = fake_ffmpeg(monkeypatch, "N-117000-g1a2b3c", "-fps_mode[:<stream_spec>]  set framerate mode")
+    assert all(r["ok"] for r in rows.values()), rows

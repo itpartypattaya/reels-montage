@@ -15,7 +15,7 @@ import argparse, importlib.util, json, os, platform, re, shutil, subprocess, sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from kit import KIT, kit_version, script_cmd
+from kit import KIT, STARTER, kit_version, newer, remotion_fix, remotion_version, script_cmd
 from reels_common import (SETTINGS_FILE, editing_json, is_project, load_json, online, project_root, project_settings,
                           remotion_leftovers, utf8_stdio)
 
@@ -77,6 +77,11 @@ def check_ffmpeg():
     add("ffmpeg: libx264", "required", "libx264" in enc, "", "an ffmpeg build with libx264 (the packages above have it)")
     add("ffmpeg: loudnorm, haldclut", "required", "loudnorm" in flt and "haldclut" in flt, "",
         "a full ffmpeg build (the packages above have it)")
+    # the option, not the version number (a nightly build says N-117000-g...): frame picks, the cover and the trackers
+    # pass -fps_mode, which came in ffmpeg 5.1 (Ubuntu 22.04 has 4.4)
+    add("ffmpeg 5.1+ (-fps_mode)", "required", "-fps_mode" in out(["ffmpeg", "-hide_banner", "-h", "full"]),
+        m.group(1) if m else "", "ffmpeg 5.1 or newer: on Ubuntu 22.04 and older the system package is 4.x; take a "
+        "static build from ffmpeg.org (johnvansickle.com) or a newer release")
     add("ffmpeg: libvpx-vp9 (figure with alpha)", "optional", "libvpx-vp9" in enc, "", "a full ffmpeg build")
 
 
@@ -118,6 +123,10 @@ def check_node(remotion):
         ", ".join(f"{k} {v}" for k, v in odd.items()) or ver,
         f"set every @remotion package to exactly {ver.lstrip('^~')}: npm install --save-exact remotion@{ver.lstrip('^~')} "
         f"@remotion/cli@{ver.lstrip('^~')} ...")
+    ship = remotion_version(STARTER / "package.json")
+    if ship:
+        add(f"Remotion {ship}+ (the kit is checked with it)", "recommended", not newer(ship, ver.lstrip("^~=v ")),
+            ver, remotion_fix(ship))
     add("node_modules installed", "recommended", (Path(remotion) / "node_modules" / "remotion").is_dir(), "",
         f"cd {remotion} && npm install")
     have, ship = kit_version(Path(remotion) / "src"), kit_version(KIT)
