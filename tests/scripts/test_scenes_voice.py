@@ -319,7 +319,7 @@ def test_the_kit_plays_the_voice_and_keeps_full_scene_text_where_validate_expect
     assert "<Voice p={p} />" in frame  # Codex review: the component alone, never mounted, passed the check
     # Codex review: with the voice off camera the typewriter darkening goes over the full scene's field, not under it
     assert "offCamera ? shadeLayer : null" in frame and frame.index("<SceneLayer") < frame.index("offCamera ? shadeLayer : null")
-    assert "sceneHideIntervals(p.scenes, offCamera)" in reel
+    assert "sceneHideIntervals(p.scenes, offCamera, KIT_FPS)" in reel  # the scenes' own frames (review #36)
     gap = re.search(r"export const VOICE_SUB_GAP = (\d+);", reel)
     assert gap and int(gap.group(1)) == vp_scenes.VOICE_SUB_GAP
     assert "offCamera ? s.hide_subtitles === true" in layer
