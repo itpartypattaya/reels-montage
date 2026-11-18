@@ -339,6 +339,15 @@ def music_start(a):
     return start or 0.0
 
 
+def music_len(a, start, D):
+    """Seconds of the track from start within the video (D); a track that ends early is named: silence after it."""
+    mlen = max(0.0, min(D, (dur(a.music, "a") or D) - start))
+    if mlen < D - 0.05:
+        print(f"⚠ the track from {start:.2f} s ends after {mlen:.1f} s, but the video is {D:.1f} s: silence at the end "
+              f"(take a longer track or start earlier: --music-start)")
+    return mlen
+
+
 def master_no_voice(a, tmp, D, why):
     """A render without sound (the "scenes only" format): loudnorm fails on silence (measured_I = −inf).
     Without --music and --sfx: skipped with a message, the file is copied as is; with --music: the music is mastered
@@ -365,10 +374,7 @@ def master_no_voice(a, tmp, D, why):
         mcut = os.path.join(tmp, "music_cut.wav")
         # the track can end before the video: fade out at the end of the music itself, then silence up to D (apad);
         # otherwise -shortest in the mix would cut the video at the end of the track
-        mlen = max(0.0, min(D, (dur(a.music, "a") or D) - start))
-        if mlen < D - 0.05:
-            print(f"⚠ the track from {start:.2f} s ends after {mlen:.1f} s, but the video is {D:.1f} s: silence at the end "
-                  f"(take a longer track or start earlier: --music-start)")
+        mlen = music_len(a, start, D)
         fade = min(1.2, mlen)
         duck = duck_filter(getattr(a, "ducks", []), D)
         # music made in code (beats.json) has its own start, stops, button and end: the master's fades would eat them
@@ -656,6 +662,10 @@ def master(a, tmp):
         start = music_start(a)
         mus = os.path.join(tmp, "music.wav")
         mcut = os.path.join(tmp, "music_cut.wav")
+        # a track shorter than the video fades out at its own end, as in the no-voice master: the fade at the video's
+        # end never came, and the music stopped dead mid-speech (review 2026-11-17 #18)
+        mlen = music_len(a, start, D)
+        fade = min(1.2, mlen)
         run(["ffmpeg", "-y", "-hide_banner", "-ss", f"{start:.3f}", "-t", f"{D + 2:.3f}", "-i", a.music,
              "-ar", "48000", "-ac", "2", mcut])
         loudnorm_2pass(mcut, mus, "", mtarget)
@@ -664,7 +674,7 @@ def master(a, tmp):
         # the main-line duck (--duck) goes after the sidechain, so the window is exactly that much below the bed
         duck = duck_filter(a.ducks, D)
         fc = (f"[0:a]apad=pad_dur=2,asplit=2[v][sc];"
-              f"[1:a]apad=pad_dur=2,afade=t=in:d=0.5,afade=t=out:st={max(0, D - 1.2):.3f}:d=1.2[m];"
+              f"[1:a]apad=pad_dur=2,afade=t=in:d=0.5,afade=t=out:st={max(0, mlen - fade):.3f}:d={fade:.3f}[m];"
               f"[m][sc]sidechaincompress=threshold=0.10:ratio=3:attack=20:release=380"
               + (f",{duck}" if duck else "") + "[md];"
               f"[v][md]amix=inputs=2:duration=first:normalize=0,atrim=0:{D:.3f}[a]")

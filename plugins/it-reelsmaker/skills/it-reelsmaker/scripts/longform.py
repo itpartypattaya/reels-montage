@@ -363,7 +363,11 @@ def cmd_import(a):
     f = Path(a.file)
     if not f.is_file():
         sys.exit(f"no such file: {f}")
-    text = f.read_text(encoding="utf-8-sig", errors="replace")
+    raw = f.read_bytes()
+    try:  # a UTF-16 file by its mark, else UTF-8; cp1251 came in "imported" as U+FFFD in place of every letter (#31)
+        text = raw.decode("utf-16") if raw[:2] in (b"\xff\xfe", b"\xfe\xff") else raw.decode("utf-8-sig")
+    except UnicodeDecodeError:
+        sys.exit(f"{f} is not UTF-8 or UTF-16 text (Windows-1251?): save it as UTF-8 and import it again")
     if f.suffix.lower() == ".json":
         doc = json.loads(text)
         if isinstance(doc, dict) and isinstance(doc.get("words"), list):
@@ -967,8 +971,12 @@ def cmd_extract(a):
                        "end": round(t1, 3), "start_in": local[0], "end_in": local[1], "identity": ident(frag),
                        "words": how, "wav": rel(wav, project)})
     wrote = write_cut(ce, project, card, pieces, recut=bool(rec) and bool(recut))
-    new_reel = not (ce / "reel.json").is_file()
+    # the series' settings go into a new reel.json; a run that stopped between the preset and the --set leaves the mark,
+    # and the next extract applies them again: reel.json was there, so they were never set (review 2026-11-17 #32)
+    pending = ce / ".series-settings-pending"
+    new_reel = not (ce / "reel.json").is_file() or pending.is_file()
     if new_reel:
+        pending.write_text("", encoding="utf-8")
         applied = []
         if m.get("preset"):
             print(reelcfg("preset", "use", m["preset"], str(ce)))
@@ -986,6 +994,7 @@ def cmd_extract(a):
         if sets:
             print(reelcfg("save", str(ce), "--set", *[f"{k2}={v if not isinstance(v, (list, dict)) else json.dumps(v)}"
                                                      for k2, v in sets.items()]))
+        pending.unlink()
     pm = ce / "project.md"
     if not pm.exists():
         lines = [f"# {card.get('title') or cid}", "",

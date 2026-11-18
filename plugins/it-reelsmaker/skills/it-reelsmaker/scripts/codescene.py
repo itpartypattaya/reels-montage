@@ -334,7 +334,8 @@ def ingest_one(e, i, src):
     from footage import prepare
     g = i.get("gen") or {}
     out = e / "inserts" / f"{i['id']}.mp4"
-    info = prepare(src, out, i["dur"], num(g.get("use_from"), 0.3) or 0.3)
+    start = num(g.get("use_from"), 0.3)  # use_from: 0 is the clip's first frame, not 0.3 (review 2026-11-17 #27)
+    info = prepare(src, out, i["dur"], 0.3 if start is None else start)
     note = g.get("publish_note") if g.get("engine") == "model" else None  # set by the online-sources add-on
     i.update({"file": rel(out, e), "status": "ready", "src_in": 0.0,
               "credit": {"provider": "generated:" + g.get("engine", "?"), "model": g.get("model"), "raw": rel(src, e),

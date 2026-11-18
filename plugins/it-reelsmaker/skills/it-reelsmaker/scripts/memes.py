@@ -84,6 +84,10 @@ def cmd_index(a):
             side = {}
             if p.with_suffix(".json").exists() and p.suffix.lower() != ".json":
                 side = load_json(p.with_suffix(".json"), {})
+                side = side if isinstance(side, dict) else {}
+                for k in ("tags", "emotion"):  # "cat, fail" by hand is two tags, not letters (review 2026-11-17 #29)
+                    if isinstance(side.get(k), str):
+                        side[k] = [x.strip() for x in side[k].split(",") if x.strip()]
             elif p.with_suffix(".txt").exists():
                 side = {"description": p.with_suffix(".txt").read_text(encoding="utf-8").strip()}
             scanned.append((p, kind, info, w, h, alpha, side))
@@ -201,6 +205,8 @@ def cmd_change(a):
         if a.id not in idx:
             sys.exit(f"no meme {a.id} (run memes.py index)")
         for it in a.pairs:
+            if "=" not in it:
+                sys.exit(f"expected field=value, got: {it}")
             k, v = it.split("=", 1)
             if k in ("emotion", "tags"):
                 v = [x.strip() for x in v.split(",") if x.strip()]

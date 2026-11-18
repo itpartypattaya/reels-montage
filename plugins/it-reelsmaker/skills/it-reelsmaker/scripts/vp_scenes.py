@@ -5,7 +5,7 @@ import filecmp, json, math, re, shutil, sys
 from pathlib import Path
 
 from reels_common import (FRAMED_HOOK_MIN, MEME_SIZES, SUB_BAND, SUB_BLOCK_H, SUB_TOP_KIT, edit_dir, framed_area,
-                          framed_at, load_json, media_kind, probe, ui_zone, voice_mode, warn, HEIF_EXT, UnreadablePhoto,
+                          framed_at, load_json, media_kind, numbers, probe, ui_zone, voice_mode, warn, HEIF_EXT, UnreadablePhoto,
                           photo_file)
 from vp_core import (HEADROOM_BAND, HEADROOM_MIN, SCENE_MODES, STATUSES, TRANSITIONS, WINDOW_DEFAULT, WINDOW_SLOTS,
                      current_settings, editing_plan, find_spoken, fmt_t, format_label, is_inside, item_time, jround,
@@ -423,7 +423,7 @@ def add_scene(a):
               "segment": seg["id"] if seg else None, "start": start, "dur": a.dur, "at": a.at, **({"offset": a.offset} if a.offset else {}), "tone": a.tone,
               "text": {"lines": a.lines or [], "accent": a.accent, "label": a.label},
               "items": items, "value": value, "media": media, "interaction": inter,
-              "box": [int(float(x)) for x in a.box.split(",")] if a.box else None, "side": a.side,
+              "box": numbers(a.box, 4, "--box", int) if a.box else None, "side": a.side,
               "source": {"kind": a.source, "ref": a.source_ref} if a.source in SCENE_SOURCES else None,
               "what": a.what, "why": a.why, "transition_in": tr_in, "transition_out": a.transition_out or tr_in,
               "sound": a.sound, "hide_subtitles": bool(a.hide_subtitles) or (voice_mode(s) != "off_camera" and (
@@ -432,7 +432,7 @@ def add_scene(a):
         if a.type == "cover" and a.frame_at is not None:
             sc["frame_at"] = round(a.frame_at, 3)  # the video second under the cover (the cover composition, stage -> cover.frameAt)
         if a.cam:
-            sc["cam"] = [float(x) for x in a.cam.split(",")]
+            sc["cam"] = numbers(a.cam, 3, "--cam")
         if getattr(a, "covers", None):
             sc["covers"] = list(a.covers)
         if not nofoot and mode in ("overlay", "split", "window") and sc["box"] is None:
@@ -990,7 +990,8 @@ def scene_export(i, e, pub, name, plan, cap, s):
     if i.get("interaction"):
         x = {k: v for k, v in i["interaction"].items() if k != "at"}
         tt = item_time(i["interaction"], plan, cap)
-        x["t"] = round(tt if tt is not None else i["start"], 3)
+        if tt is not None:  # without a time the kit taps after the screen is in: the scene's start put the tap on its
+            x["t"] = round(tt, 3)  # 8th frame, while the screen still slid in (review 2026-11-17 #37)
         sp["interaction"] = x
     m = i.get("media") or {}
     if m.get("file"):

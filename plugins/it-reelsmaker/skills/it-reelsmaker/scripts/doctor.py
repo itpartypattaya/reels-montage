@@ -130,7 +130,11 @@ def check_node(remotion):
     add("node_modules installed", "recommended", (Path(remotion) / "node_modules" / "remotion").is_dir(), "",
         f"cd {remotion} && npm install")
     have, ship = kit_version(Path(remotion) / "src"), kit_version(KIT)
+    # a kit newer than the plugin's: kit.py update refuses to roll it back, so the advice is the plugin's update
+    # (review 2026-11-17 #35: doctor sent the person to the command that says no)
     add("ReelKit in the project", "recommended", have == ship, f"kit {have or 'not found'}, plugin {ship}",
+        "update the it-reelsmaker plugin: the project's kit is newer than the plugin's, kit.py update would roll it back"
+        if have and newer(have, ship) else
         f"{script_cmd('kit.py')} update --remotion \"{Path(remotion).resolve()}\" (replaced files are backed up first)")
 
 

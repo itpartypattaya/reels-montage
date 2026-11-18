@@ -69,6 +69,9 @@ VERDICT_WORDS = ("ok", "caution", "no", "check license")
 # Top folder names that hold music (case-insensitive); any other audio is a sound effect. The last one is the Russian
 # word for "music", given as Unicode code points so that this file stays plain English text.
 MUSIC_DIRS = {"music", "musik", "musique", "musica", "".join(chr(int(c, 16)) for c in "43c 443 437 44b 43a 430".split())}
+# pixel formats with an alpha plane (ffmpeg -pix_fmts): yuva*, rgba/bgra/argb/abgr*, gbrap*, ya8/ya16, ayuv*, vuya;
+# a bare "a" in the name also hit gray, pal8 and bayer_* (review 2026-11-17 #25)
+ALPHA_PIX = re.compile(r"yuva|rgba|bgra|argb|abgr|gbrap|^ya\d|ayuv|vuya")
 
 
 def run(args):
@@ -160,7 +163,7 @@ def visual_info(p):
         info["bg"] = bg_of(im) if im is not None else "?"
         if im is None:
             info["frame"] = "not grabbed"  # a broken file or one ffmpeg can't read: look at it by hand
-        info["alpha"] = bool(info.get("pix") and "a" in info["pix"].replace("yuv", "").replace("nv", ""))
+        info["alpha"] = bool(info.get("pix") and ALPHA_PIX.search(info["pix"]))
     else:
         try:
             with Image.open(p) as im:

@@ -208,11 +208,11 @@ def check_doc(doc):
     for k, w in enumerate(words):
         if not str(w.get("text", "")).strip():
             out.append(f"word {k}: empty text")
-        try:
-            s, e = float(w["start"]), float(w["end"])
-        except (KeyError, TypeError, ValueError):
+        # numbers, not "1.2" in quotes: float() took the text, and cut.py then failed on it (review 2026-11-17 #20)
+        if not all(isinstance(w.get(x), (int, float)) and not isinstance(w.get(x), bool) for x in ("start", "end")):
             out.append(f"word {k}: start/end missing or not numbers")
             continue
+        s, e = float(w["start"]), float(w["end"])
         if e < s:
             out.append(f"word {k} {w.get('text')!r}: end {e} before start {s}")
         if s + 0.05 < prev:
@@ -261,9 +261,17 @@ def cmd_full(a):
     out = e / "transcripts" / f"{src.stem}.json"
     identity = {"path": str(src.resolve()), "size": src.stat().st_size, "mtime_ns": src.stat().st_mtime_ns}
     wav = e / f"audio16k-{src.stem}.wav"
-    if out.exists() and not a.force and (load_json(out) or {}).get("source_identity") == identity:
-        print(f"cached: {out} (--force to transcribe again)")
-        return
+    old = load_json(out) if out.exists() and not a.force else None
+    if isinstance(old, dict) and old.get("source_identity") == identity:
+        # a model or a language asked for that the cached transcript was not made with: transcribe again (it was
+        # "cached" with the other one, and --model large-v3 changed nothing, review 2026-11-17 #22)
+        made = f"faster-whisper {a.model} {a.compute}"
+        other = ([f"model {old.get('model')}"] if a.asked_model and old.get("model") != made else []) + \
+                ([f"language {old.get('language_code')}"] if a.language and old.get("language_code") != a.language else [])
+        if not other:
+            print(f"cached: {out} (--force to transcribe again)")
+            return
+        print(f"the cached transcript was made with {' and '.join(other)}: transcribing again", file=sys.stderr)
     with locked(wav, stale=86400):
         wav, identity, off = source_wav(e, src, a.force)
         model = load_model(a.model, a.compute)
@@ -499,7 +507,8 @@ def cmd_check(a):
     errors = [p for p in problems if not p.startswith("note:")]
     for p in problems:
         print(("  " if p.startswith("note:") else "  error: ") + p)
-    n = len([w for w in doc.get("words", []) if isinstance(w, dict) and w.get("type", "word") == "word"])
+    words = doc.get("words") if isinstance(doc, dict) else None  # a list or a number is named above, not a traceback
+    n = len([w for w in words or [] if isinstance(w, dict) and w.get("type", "word") == "word"])
     print(f"{a.file}: {n} words, {'OK' if not errors else f'{len(errors)} problem(s)'}")
     sys.exit(1 if errors else 0)
 
@@ -514,8 +523,8 @@ def main():
     sub = ap.add_subparsers(dest="cmd", required=True)
 
     def common(p):
-        p.add_argument("--model", default="medium", help="faster-whisper model name or folder (default medium)")
-        p.add_argument("--compute", default="int8", help="compute type (default int8)")
+        p.add_argument("--model", help="faster-whisper model name or folder (default medium)")
+        p.add_argument("--compute", help="compute type (default int8)")
         p.add_argument("--language", help="language code, e.g. ru, en (default: detected)")
 
     p = sub.add_parser("full", help="the whole source -> edit/<id>/transcripts/<name>.json")
@@ -540,6 +549,9 @@ def main():
     p.add_argument("edit"); p.add_argument("--source", help="only this cut.json source name")
     p.add_argument("--json", action="store_true"); p.set_defaults(fn=cmd_rate)
     a = ap.parse_args(argv)
+    if hasattr(a, "model"):  # asked for, or the default: only an asked one makes a cached transcript stale
+        a.asked_model = a.model is not None or a.compute is not None
+        a.model, a.compute = a.model or "medium", a.compute or "int8"
     a.fn(a)
 
 

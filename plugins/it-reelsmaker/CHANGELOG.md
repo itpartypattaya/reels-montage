@@ -2,6 +2,38 @@
 
 What changed in IT Reelsmaker, written for the people who use it. The newest version is on top. The skill shows a short “What's new” note from this file once, on the first edit after an update.
 
+## 1.40.0
+
+- **No repeated frame where your picture meets the speaker.** In a video with a picture of its own, the speaker's
+  shots between your clips sometimes began with a copy of their second frame (and lost the first): the start was
+  rounded to a millisecond, past the frame. They now start on the exact frame.
+- **A short music track fades out.** Under a voice, a track that ends before the video stopped dead mid-speech; it now
+  fades out at its own end, and the master says the track is shorter than the video (as it did without a voice).
+- **Long cuts on Windows.** A cut of about 190 pieces or more failed: the sound join went past the Windows
+  command-line limit. It now joins in batches, whatever the number of pieces.
+- **Transcripts.** `transcribe.py check` refuses times written as text (`"1.2"`), which used to pass and then break
+  the cut, and names a file that is not a transcript instead of a traceback. `--model` and `--language` are no longer
+  answered with “cached” when the saved transcript was made with another model or language.
+- **Footage search.** `--min-dur` now holds for your project footage and your libraries too, not only online; a
+  shorter index no longer leaves old contact sheets showing files that are gone; a grayscale video in a library is
+  no longer marked transparent.
+- **Clearer errors.** A recut that removes the word an insert is placed by now names that insert and leaves the plan
+  as it was. A typo in `--box`, `--cam`, `--own-face`, `--at`, `--slot` or a `field=value` pair is named, not a
+  traceback. `brand.py change lut.hald=…` works on a brand whose `lut` is empty.
+- **Files from other tools.** JSON saved with a BOM (Notepad, PowerShell) is read; subtitles in UTF-16 are imported,
+  and ones in Windows-1251 are refused with a note instead of arriving as question marks. Tags written as one string
+  in a meme's sidecar (`"tags": "cat, fail"`) are two tags, not letters.
+- **Small things.** A generated clip with `use_from: 0` starts at its first frame. A bare video id (`4821`) finds
+  `edit/4821` even when a folder of that name sits in the project. A series clip whose extract stopped halfway gets
+  the series' settings on the next run. When your project's kit is newer than the plugin, doctor says to update the
+  plugin (it used to point at `kit.py update`, which refuses).
+- **Kit 1.24.0** (`kit.py update`): the subtitles hide on exactly the frames a scene plays (`sceneFrames` in
+  `kit/series.ts`): a scene that did not start on a whole frame showed one frame of subtitle over its field.
+- **Product scenes.** A tap with no time of its own now waits for the screen to slide in (stage wrote the scene's
+  start, and the tap came on the 8th frame while the screen was still moving).
+- **Docs.** The mascot atlas command is `mascot_atlas.py atlas`, a scene is added with `visual_plan.py add --kind
+  scene`, and the “Bar” subtitles take up to 4 words.
+
 ## 1.39.0
 
 - **`--set voice=none` saves “no voice”.** Every `none`, `no`, `off`, `0` or `1` given with `--set` (and with

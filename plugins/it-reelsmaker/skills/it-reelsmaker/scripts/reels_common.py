@@ -63,11 +63,11 @@ def load_json(p, default=None):
     for _ in range(40):
         if not p.exists():
             return default
-        try:
-            return json.loads(p.read_text(encoding="utf-8"))
+        try:  # utf-8-sig: a file saved by Notepad or PowerShell starts with a BOM, json.loads failed on it (review #33)
+            return json.loads(p.read_text(encoding="utf-8-sig"))
         except PermissionError:  # Windows: another process is replacing the file right now (save_json -> os.replace)
             time.sleep(0.05)
-    return json.loads(p.read_text(encoding="utf-8"))
+    return json.loads(p.read_text(encoding="utf-8-sig"))
 
 
 def save_json(p, obj):
@@ -268,6 +268,10 @@ def edit_dir(arg, project=None, create=False):
     create=True: if the folder doesn't exist and the argument is `edit/<id>` or `<id>`, create edit/<id> in the
     project folder."""
     p = Path(arg)
+    if len(p.parts) == 1 and not p.is_absolute():  # a bare id is edit/<id> first: a footage folder "4821" in the
+        project = project or project_root()        # project was taken for the video's folder (review 2026-11-17 #34)
+        if (project / "edit" / arg).is_dir():
+            return (project / "edit" / arg).resolve()
     if p.is_dir():
         return p.resolve()
     project = project or project_root()
@@ -404,6 +408,18 @@ def to_new_names(d):
             v = d.pop(old)
             d.setdefault(new, v)
     return d
+
+
+def numbers(text, n, flag, kind=float):
+    """A flag's n numbers separated by commas ("1.2,540,960") -> a list of kind; anything else exits naming the flag
+    (a letter in --box or a missing number was a traceback, review 2026-11-17 #28)."""
+    try:
+        out = [kind(float(x)) for x in str(text).split(",")]
+    except ValueError:
+        out = []
+    if len(out) != n:
+        sys.exit(f"{flag} {text}: {n} numbers separated by commas")
+    return out
 
 
 def parse_value(v, flag=False):
