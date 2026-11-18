@@ -21,8 +21,10 @@ try:  # the core's scripts folder is on sys.path when this runs through the core
     from codescene import (CODE_STYLE, FIELDS, base_item, check as core_check, engine_of, gen_inserts, md_head, md_tail,
                            num, plan_of, put, safe_ingest, scene_text, scene_words)
     from reels_common import edit_dir, editing_json, effective, load_json, safe_slug, save_json, utf8_stdio, warn
-except ImportError:
-    sys.exit("run this through the core: python <it-reelsmaker scripts>/addon.py gen <command> ...")
+except ImportError as exc:  # no core on the path at all, or an older core without one of these names
+    sys.exit("run this through the core: python <it-reelsmaker scripts>/addon.py gen <command> ..."
+             if isinstance(exc, ModuleNotFoundError) else
+             f"generation needs a newer it-reelsmaker core: update the core plugin ({exc})")
 from reels_online import GEN_KEYS, api_key, color_name, download, err_text, offline, open_url, read_json_response
 
 # Models through fal.ai (queue: submit -> status_url -> response_url -> video.url). Prices without audio, per second,
@@ -210,7 +212,16 @@ def fal_wait(job, key, timeout_s=900, every=5):
         status = st.get("status")
         job["status"] = status or job.get("status")
         if status == "COMPLETED":
-            res = fal_http(job["response_url"], key)
+            # fal's statuses are IN_QUEUE, IN_PROGRESS, COMPLETED: a failed or cancelled request is COMPLETED too,
+            # with `error` and `error_type` (fal queue docs, checked 2026-11-18); the result of such a job is the error
+            if st.get("error") or st.get("error_type"):
+                raise JobGone(f"fal: {st.get('error_type') or 'error'}: {str(st.get('error') or '')[:120]}")
+            try:
+                res = fal_http(job["response_url"], key)
+            except urllib.error.HTTPError as ex:
+                if ex.code in (400, 422):  # the request itself was refused (fal: bad_request, validation errors)
+                    raise JobGone(f"fal: HTTP {ex.code}: the request failed") from None
+                raise  # a refused key, a rate limit, the server: the job and its clip are still there
             url = ((res or {}).get("video") or {}).get("url")
             if not url:
                 raise JobGone("fal: the result has no video.url")

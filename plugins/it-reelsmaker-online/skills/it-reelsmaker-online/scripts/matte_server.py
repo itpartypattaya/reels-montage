@@ -32,8 +32,10 @@ from pathlib import Path
 try:  # core modules: on sys.path when run through the core's addon.py
     import reels_common
     from reels_common import project_settings, utf8_stdio, warn
-except ImportError:
-    sys.exit("run this through the it-reelsmaker core: python <core scripts>/addon.py matte ...")
+except ImportError as exc:  # no core on the path at all, or an older core without one of these names
+    sys.exit("run this through the it-reelsmaker core: python <core scripts>/addon.py matte ..."
+             if isinstance(exc, ModuleNotFoundError) else
+             f"the server cut-out needs a newer it-reelsmaker core: update the core plugin ({exc})")
 
 
 def _core():

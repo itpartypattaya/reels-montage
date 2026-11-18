@@ -22,7 +22,8 @@ while the local faster-whisper times matched the audio. Subtitles and edges need
 The audio sent is the core's edit/<id>/audio16k-<source stem>.wav (16 kHz mono on the video's timeline: a phone MOV's
 sound track can start ~0.1 s after the picture). The result goes into edit/<id>/transcripts/<source stem>.json, the
 file the core reads; the local transcript is kept as <stem>.local.json, an older transcript of another kind as
-<stem>.prev.json, the provider's raw answer as <stem>.<provider>.raw.json (no key in any of them).
+<stem>.prev.json (.prev-2.json and on when that is taken: never written over), the provider's raw answer as
+<stem>.<provider>.raw.json (no key in any of them).
 
 Providers (references/sources.md): openai — text gpt-transcribe ($0.0045 per minute), word times whisper-1 ($0.006
 per minute, only with --words cloud); groq — text only, whisper-large-v3-turbo ($0.04 per hour; a free tier), a
@@ -40,7 +41,7 @@ video's reel.json (their standing choice). Otherwise it prints the price and exi
 a warning, exit code 2, and the local command to use instead (the edit continues with the core's transcriber).
 REELS_OFFLINE=1: no network at all.
 """
-import argparse, difflib, json, re, shutil, subprocess, sys, tempfile, unicodedata, urllib.error, urllib.request, uuid
+import argparse, difflib, http.client, json, re, shutil, subprocess, sys, tempfile, unicodedata, urllib.error, urllib.request, uuid
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -149,7 +150,9 @@ def post(url, body, headers, timeout, allowed):
         code = detail.get("code") if isinstance(detail, dict) else None
         why = {401: "the key was refused", 403: "access denied", 429: "rate limit or no credits left"}.get(ex.code, "")
         raise NoService(err_text(RuntimeError(f"HTTP {ex.code} {why} {code or ''} {msg or ''}".strip()), 240)) from None
-    except (urllib.error.URLError, TimeoutError, OSError) as ex:
+    except (urllib.error.URLError, TimeoutError, OSError, ValueError, http.client.HTTPException) as ex:
+        # ValueError: a page that is not JSON (a proxy, a captive portal), a redirect off the provider's host;
+        # HTTPException: an answer cut on the way (IncompleteRead), a broken status line
         raise NoService(err_text(ex)) from None
 
 
@@ -354,6 +357,20 @@ def long_starts(doc):
             and isinstance(w.get("end"), (int, float)) and w["end"] - w["start"] > 1.0}
 
 
+def set_aside(out, stem):
+    """Move a transcript of another kind out of the way as <stem>.prev.json, or .prev-2.json, ... when that is taken:
+    one corrected by hand or made by another service is never written over. Returns where it went (None: no file)."""
+    if not out.exists():
+        return None
+    n = 1
+    while True:
+        dest = out.with_name(f"{stem}.prev.json" if n == 1 else f"{stem}.prev-{n}.json")
+        if not dest.exists():
+            out.replace(dest)
+            return dest
+        n += 1
+
+
 def local_words(e, src, identity, a):
     """The local transcript of this source (made now if missing) → doc, or None when there is no local model."""
     keep = e / "transcripts" / f"{src.stem}.local.json"
@@ -364,15 +381,13 @@ def local_words(e, src, identity, a):
             if f is out:
                 shutil.copyfile(out, keep)
             return d
-    prev = out.with_name(f"{src.stem}.prev.json")
-    if out.exists():
-        out.replace(prev)
+    prev = set_aside(out, src.stem)
     try:
         core.cmd_full(SimpleNamespace(edit=a.edit, source=a.source, force=True, model="medium", compute="int8",
                                       language=a.language))
     except SystemExit as ex:  # no faster-whisper or no model on this computer
         warn(f"no local transcript ({ex}); word times come from the cloud (--words cloud)")
-        if prev.exists() and not out.exists():
+        if prev and not out.exists():
             prev.replace(out)
         return None
     shutil.copyfile(out, keep)
@@ -513,8 +528,9 @@ def cmd_run(a):
         if base is not None and not out.exists():
             save_json(out, base)
         return 2
-    if out.exists() and not str(old.get("model", "")).startswith(("faster-whisper", a.provider, used)):
-        out.replace(out.with_name(f"{src.stem}.prev.json"))
+    # what is there now: the local run above may have set the old file aside and written its own (review 2026-11-17)
+    if not str((load_json(out) or {}).get("model", "")).startswith(("faster-whisper", a.provider, used)):
+        set_aside(out, src.stem)
     save_json(out, doc)
     for n in problems:
         # the same long words on the same times: the local run has just named them, once is enough (the note came twice)

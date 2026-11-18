@@ -50,6 +50,10 @@ with `request-id` and `character-cost`) → `saved` (audio decoded, words taken 
 - `voice clear edit/<id> <block> --not-charged`: only after the person found no accepted request in the history; the
   block can then be planned and paid again. A `submitting` reservation younger than 15 minutes is refused: its request
   may still be on its way.
+- A `received` answer that cannot be taken apart (its words do not lay on the script, or ffmpeg cannot decode its
+  audio) keeps its file and `parse_error`; the block is blocked with that reason, and each run tries it again (a
+  missing ffmpeg, say). If the voice read the text wrong: `voice clear edit/<id> <block> --discard-paid` sets the
+  answer aside (into `cleared`, its file stays) and the block is planned and paid anew, after a new "yes".
 
 ## Words and joining
 

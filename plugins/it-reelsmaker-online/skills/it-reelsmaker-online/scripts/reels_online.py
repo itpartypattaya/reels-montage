@@ -81,16 +81,29 @@ VOICE_KEYS = {"elevenlabs": "ELEVENLABS_API_KEY"}
 _KEYS = None
 
 
+def _key_line(line):
+    """One line of the keys file -> (name, value), or None for a blank or comment line. Read as a person or another
+    tool writes it: `export NAME=value` (copied from a shell profile), a value in quotes, ` # a note` after a value
+    without quotes (a # with no space before it belongs to the value)."""
+    line = line.strip()
+    if not line or line.startswith("#") or "=" not in line:
+        return None
+    k, v = line.split("=", 1)
+    k = k.strip()
+    if k.startswith("export "):
+        k = k[len("export "):].strip()
+    v = v.strip()
+    if v[:1] in ("'", '"') and v[0] in v[1:]:
+        v = v[1:v.index(v[0], 1)]
+    else:
+        v = re.split(r"\s+#", v, maxsplit=1)[0].strip()
+    return k, v
+
+
 def _load_keys():
     global _KEYS
     if _KEYS is None:
-        _KEYS = {}
-        if KEYS_FILE.is_file():
-            for line in KEYS_FILE.read_text(encoding="utf-8").splitlines():
-                line = line.strip()
-                if line and not line.startswith("#") and "=" in line:
-                    k, v = line.split("=", 1)
-                    _KEYS[k.strip()] = v.strip().strip('"').strip("'")
+        _KEYS = dict(kv for kv in map(_key_line, _keys_lines()) if kv)
     return _KEYS
 
 
@@ -109,7 +122,7 @@ def _mask(v):
 
 
 def _keys_lines():
-    return KEYS_FILE.read_text(encoding="utf-8").splitlines() if KEYS_FILE.is_file() else []
+    return KEYS_FILE.read_text(encoding="utf-8-sig").splitlines() if KEYS_FILE.is_file() else []  # Notepad's BOM
 
 
 def write_private(path, text):
@@ -172,7 +185,7 @@ def cmd_keys_set(a):
     if any(c in value for c in "\r\n"):
         sys.exit("the key contains a line break: not saved")
     with file_lock(KEYS_FILE):
-        lines = [l for l in _keys_lines() if l.split("=", 1)[0].strip() != name]
+        lines = [l for l in _keys_lines() if (_key_line(l) or ("",))[0] != name]
         lines.append(f"{name}={value}")
         _write_keys(lines)
     global _KEYS
@@ -186,7 +199,7 @@ def cmd_keys_remove(a):
     name = _key_name(a.name)
     with file_lock(KEYS_FILE):
         lines = _keys_lines()
-        kept = [l for l in lines if l.split("=", 1)[0].strip() != name]
+        kept = [l for l in lines if (_key_line(l) or ("",))[0] != name]
         if len(kept) == len(lines):
             print(f"{name}: not in {KEYS_FILE}")
             return
