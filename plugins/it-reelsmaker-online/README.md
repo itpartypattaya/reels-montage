@@ -29,7 +29,7 @@ Then link the add-on to your editing project, once and again after each add-on u
 
 ## Keys
 
-Add your own API keys in your terminal, one at a time. The key is typed with hidden input, never passes through the chat, and goes into `~/.config/it-reelsmaker/keys.env` (readable by you only; `REELS_KEYS_FILE` picks another file):
+Add your own API keys in your terminal, one at a time. The key is typed with hidden input, never passes through the chat, and goes into `~/.config/it-reelsmaker/keys.env` (on macOS and Linux readable by you only; on Windows it has your user profile's permissions, which other users can't read by default; `REELS_KEYS_FILE` picks another file):
 
 ```bash
 python <add-on scripts>/reels_online.py keys set PEXELS_API_KEY
@@ -43,6 +43,7 @@ python <add-on scripts>/reels_online.py keys set PEXELS_API_KEY
 - `FAL_KEY`
 - `GIPHY_API_KEY`
 - `OPENAI_API_KEY`
+- `GROQ_API_KEY` (the fallback transcript text, `transcription_fallback=groq`)
 - `ANTHROPIC_API_KEY`
 - `GEMINI_API_KEY`
 - `ELEVENLABS_API_KEY` (allow it Text to Speech, Voices, User read and History read)

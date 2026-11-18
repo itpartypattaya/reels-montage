@@ -91,7 +91,8 @@ From the documentation, 2026-11-13 (not all checked live, see below):
 - A key without a permission answers **401** with `detail.status: "missing_permissions"` and names it: `user_read`
   (`/v1/user`, `/v1/user/subscription`), `models_read` (`/v1/models`), `speech_history_read` (`/v1/history`). So the
   key needs Text to Speech, Voices read, User read (the balance before every block), History read (recovery); Voices
-  write only to clone or delete. 401 is the one status the add-on treats as "nothing charged".
+  write only to clone or delete. 401 and 404 `voice_not_found` (below) are the statuses the add-on treats as "nothing
+  charged" (`NOT_CHARGED` in `voice_online.py`).
 - `GET /v1/usage/character-stats` works without User read (daily usage).
 - With User read: `GET /v1/user/subscription` on Starter gives `character_limit` (with rollover, above the plan's
   30,000), `character_count`, `can_use_instant_voice_cloning: true`, `voice_limit: 10`,
@@ -213,4 +214,4 @@ Before writing code, read the service's terms: commercial use, attribution, stor
 1. A branch for the new name in `online_search()` that returns `{provider, id, title, url, page_url, w, h, license, author, attribution, embed}`. `embed: False` for a reference-only source (its terms forbid downloading or burning into a commercial video): search marks it “REFERENCE ONLY”, and it is never downloaded.
 2. The name in the `--provider` choices in `main()`.
 3. In `reels_online.py`, `"<name>": "<KEY_VARIABLE>"` (or `None` without a key) in `MEME_KEYS`, and the name in `online_meme_providers`.
-4. `fetch` downloads only from Openverse, after checking the license on the item's detail record. A new source cleared for embedding needs its own branch there with the same license check and the same sidecar (`rights: "cc"`, license, attribution).
+4. `fetch` takes only Openverse items, after checking the license on the item's detail record; the file itself comes from its original host (the record's `url`: Flickr, Wikimedia Commons and the like), not from Openverse. A new source cleared for embedding needs its own branch there with the same license check and the same sidecar (`rights: "cc"`, license, attribution).

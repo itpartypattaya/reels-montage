@@ -2,6 +2,32 @@
 
 What changed in IT Reelsmaker Online. The newest version is on top.
 
+## 1.7.0
+
+- **A failed fal job is given up, not waited for forever.** fal reports a failed or cancelled request as `COMPLETED`
+  with an error, not as a failure, so every run took it for a job still on its way and said it would resume it for
+  free. Now such a job is moved to `job_failed` with fal's reason, and the insert says a new generation pays again.
+- **The keys file is read as people write it.** A file saved by Notepad (with a BOM), a line copied from a shell
+  profile (`export NAME=...`) and a note after a value (`NAME=value # work key`) gave a missing key or sent the note
+  to the provider as part of the key. `keys remove` finds such lines too.
+- **A transcript made elsewhere is kept.** The first cloud transcript of a video set the old transcript (corrected by
+  hand, or from another service) aside as `.prev.json` and then wrote the fresh local one over it. Now nothing is
+  written over: a second one goes to `.prev-2.json`.
+- **A broken answer from the transcription service falls back to Groq.** A page that is not JSON (a proxy, a captive
+  portal), an answer cut on the way or a redirect off the provider ended in a traceback, and the fallback was never
+  tried.
+- **A paid narration block that would not lay on the script has a way out.** When the voice read the text
+  differently or the audio would not decode, the block stayed `received` for good: every run failed on it and said
+  "no audio yet", and `clear` refused it. Now the run names the reason, and `voice clear <block> --discard-paid` sets
+  the answer aside (its file stays) so the block can be voiced and paid anew.
+- **Voice samples stay out of the project.** The MP3 copies made for `voice clone` were written into the project
+  folder, which may be synced or committed; they are now in the system's temporary folder and removed after the call.
+- **An older core is named as such.** The add-on said "run this through the core" even when it was, if the core was
+  too old for it; now it says to update the core and names what is missing.
+- Documents: PRIVACY.md lists what Openverse's original hosts, fal.ai and the transcription services actually receive
+  and what "readable by you only" means on Windows; README lists `GROQ_API_KEY`; sources.md names both statuses
+  treated as "nothing charged" (401 and 404).
+
 ## 1.6.1
 
 - **No key follows a redirect to another host.** The headers dropped on a redirect to another origin were a list of

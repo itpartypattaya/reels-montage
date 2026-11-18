@@ -321,3 +321,73 @@ def test_a_long_recording_is_sent_as_mp3(online, project, monkeypatch, capsys):
     monkeypatch.setitem(online.PROVIDERS["openai"], "max_bytes", 2_000)
     assert run(online, "--yes", "--force") == 2 and len(sent) == 1
     assert "Transcribe it locally" in capsys.readouterr().err
+
+
+# --- 2026-11-17 review, findings 44 and 46 -------------------------------------------------------------------------
+
+def foreign_transcript(project, model, rows=LOCAL):
+    """A transcript of IMG_4821.MOV made elsewhere (by hand, another service): the add-on keeps it as .prev.json."""
+    f = local_transcript(project, rows)
+    doc = json.loads(f.read_text(encoding="utf-8"))
+    doc["model"] = model
+    f.write_text(json.dumps(doc, ensure_ascii=False), encoding="utf-8")
+    return f
+
+
+def prev_models(project):
+    t = project / "edit" / "4821" / "transcripts"
+    return sorted(json.loads(f.read_text(encoding="utf-8"))["model"] for f in t.glob("IMG_4821.prev*.json"))
+
+
+@needs_ffmpeg
+def test_a_transcript_made_elsewhere_is_kept_and_never_written_over(online, project, monkeypatch):
+    # Requirement: the transcript that was there before (corrected by hand, made by another service) survives the
+    # cloud run as <stem>.prev.json. Before, the first run moved it there and, a few lines later, moved the fresh
+    # local transcript over it (the check looked at the file as it was before the local run): the work was lost.
+    late_audio_video(project / "IMG_4821.MOV")
+    foreign_transcript(project, "corrected by hand")
+    monkeypatch.setenv("OPENAI_API_KEY", KEY)
+    monkeypatch.setattr(online.core, "cmd_full", lambda a: local_transcript(project))  # the core's local run
+    monkeypatch.setattr(online, "openai_call", lambda *a, **k: {"text": TEXT})
+    assert run(online, "--yes") == 0
+    assert prev_models(project) == ["corrected by hand"]
+    # a second transcript from elsewhere, then a run without the local skeleton: the first one is not written over
+    foreign_transcript(project, "another service")
+    (project / "edit" / "4821" / "transcripts" / "IMG_4821.local.json").unlink()
+    assert run(online, "--yes") == 0
+    assert prev_models(project) == ["another service", "corrected by hand"]
+
+
+@needs_ffmpeg
+@pytest.mark.parametrize("failure", ["a proxy's page", "a cut answer", "a redirect off the API"])
+def test_a_broken_answer_of_the_main_provider_falls_back_to_groq(online, project, monkeypatch, capsys, failure):
+    # Requirement: the main provider answering with a non-JSON page (a proxy or a captive portal), an answer cut on
+    # the way or a redirect to another host is "no service": the person's fallback (Groq) gives the text. Before,
+    # these ended in a traceback, and the fallback was never tried.
+    import http.client
+    late_audio_video(project / "IMG_4821.MOV")
+    local = local_transcript(project)
+    (project / "reel-defaults.json").write_text(json.dumps({"settings": {
+        "transcription_provider": "openai", "transcription_fallback": "groq"}}), encoding="utf-8")
+    monkeypatch.setenv("OPENAI_API_KEY", KEY)
+    monkeypatch.setenv("GROQ_API_KEY", KEY + "-groq")
+
+    class Cut(io.BytesIO):
+        def read(self, n=-1):
+            raise http.client.IncompleteRead(b'{"text": "Hel', 4000)
+
+    def net(req, timeout, allowed=None):
+        if req.full_url.startswith("https://api.openai.com/"):
+            if failure == "a proxy's page":
+                return io.BytesIO(b"<html><body>502 Bad Gateway</body></html>")
+            if failure == "a cut answer":
+                return Cut()
+            raise ValueError("URL host is outside the allow-list")  # what SafeRedirect raises on a foreign hop
+        return io.BytesIO(json.dumps({"text": TEXT}).encode())
+    monkeypatch.setattr(online, "open_url", net)
+    with pytest.raises(SystemExit) as ex:
+        online.main(["edit/4821", "IMG_4821.MOV"])
+    assert ex.value.code == 0
+    assert json.loads(local.read_text(encoding="utf-8"))["model"] == "groq whisper-large-v3-turbo text + faster-whisper timing"
+    out = capsys.readouterr()
+    assert "Fallback: groq" in out.err and KEY not in out.out + out.err

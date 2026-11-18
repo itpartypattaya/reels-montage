@@ -810,3 +810,74 @@ def test_check_does_not_count_a_heard_dash_as_a_word(voice):
              {"text": "а", "start": 4.1}, {"text": "голос", "start": 4.2}, {"text": "мой.", "start": 4.5}]
     assert voice.compare("Ни дублей — а голос мой.", heard) == []
     assert len(voice.compare("Ни дублей — а голос твой.", heard)) == 1
+
+
+# --- 2026-11-17 review, findings 45 and 49 -------------------------------------------------------------------------
+
+@needs_ffmpeg
+def test_a_paid_answer_that_does_not_match_the_script_has_a_way_out(voice, project, tmp_path, capsys):
+    # Requirement: a paid answer whose words cannot be laid on the script (the voice added a word) stays on disk and
+    # is never paid again by itself; the run says what happened and how to voice the block anew. Before, the block
+    # sat in `received` for good: every run failed on the same words, said "no audio yet", and clear refused it.
+    own_voice(voice)
+    e = script(project, TEXT1)
+    turn_on(e)
+    pid = plan_id(voice, e, capsys)
+    spoken = [("Привет,", 0.3, 0.8), ("это", 0.9, 1.2), ("не", 1.25, 1.35), ("тест.", 1.4, 1.8)]
+    voice.fake.tts = [(tts_answer(tmp_path, TEXT1, WORDS1, 2.0, spoken="Привет, это не тест.", nwords=spoken), {})]
+    assert call(voice, "run", e, "--yes", "--plan", pid) != 0
+    capsys.readouterr()
+    assert call(voice, "run", e, "--yes", "--plan", pid) == 2  # blocked, with its reason and the way out
+    out = capsys.readouterr()
+    msg = out.out + out.err
+    assert "not in the script" in msg and "--discard-paid" in msg and len(voice.fake.paid()) == 1
+    assert call(voice, "plan", e) == 0 and "BLOCKED" in capsys.readouterr().out
+    assert call(voice, "clear", e, "b1", "--discard-paid") == 0
+    gen = json.loads((e / "voice_gen.json").read_text(encoding="utf-8"))
+    kept = gen["cleared"][-1]
+    assert kept["state"] == "received" and kept["discarded"] == "paid" and (e / kept["response"]).is_file()
+    pid2 = plan_id(voice, e, capsys)
+    voice.fake.tts = [(tts_answer(tmp_path, TEXT1, WORDS1, 2.0), {})]
+    assert call(voice, "run", e, "--yes", "--plan", pid2) == 0
+    assert len(voice.fake.paid()) == 2 and (e / "generated" / "narration.wav").is_file()
+
+
+@needs_ffmpeg
+def test_a_paid_answer_whose_audio_does_not_decode_is_a_message_not_a_traceback(voice, project, tmp_path, capsys):
+    own_voice(voice)
+    e = script(project, TEXT1)
+    turn_on(e)
+    pid = plan_id(voice, e, capsys)
+    ans = tts_answer(tmp_path, TEXT1, WORDS1, 2.0)
+    ans["audio_base64"] = base64.b64encode(b"not an mp3 at all " * 50).decode()
+    voice.fake.tts = [(ans, {})]
+    assert call(voice, "run", e, "--yes", "--plan", pid) != 0
+    assert call(voice, "run", e, "--yes", "--plan", pid) == 2 and len(voice.fake.paid()) == 1
+    assert "--discard-paid" in capsys.readouterr().out
+
+
+def test_discard_paid_refuses_a_block_that_was_taken_out(voice, project, capsys):
+    # only a paid answer that could not be taken apart can be discarded; a saved block is not thrown away by mistake
+    own_voice(voice)
+    e = script(project, TEXT1)
+    write_json(e / "voice_gen.json", {"attempts": {}})
+    code = call(voice, "clear", e, "b1", "--discard-paid")
+    assert isinstance(code, str) and "nothing to discard" in code
+
+
+@needs_ffmpeg
+def test_clone_copies_of_the_recordings_stay_out_of_the_project(voice, project, tmp_path, monkeypatch):
+    # Requirement: the MP3 copies of the person's voice made for the upload live in the system's temporary folder and
+    # are gone after the call; before, they were made in <project>/.voice-clone-tmp, where a synced or committed
+    # project folder (and a run stopped half way) could keep the voice samples
+    sent = []
+    real = voice.multipart
+
+    def spy(fields, files):
+        sent.extend(Path(p) for _, p in files)
+        assert all(p.is_file() for p in sent)
+        return real(fields, files)
+    monkeypatch.setattr(voice, "multipart", spy)
+    assert clone_with(voice, tmp_path, monkeypatch, {"voice_id": VOICE_ID, "requires_verification": False}) == 0
+    assert sent and all(project not in p.resolve().parents for p in sent), sent
+    assert not any(p.exists() for p in sent) and not (project / ".voice-clone-tmp").exists()

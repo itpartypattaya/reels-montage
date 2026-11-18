@@ -18,20 +18,24 @@ fresh clean recording (`clone`).
     python <core scripts>/addon.py voice status|build|check edit/<id>
     python <core scripts>/addon.py voice recover edit/<id> <block> --history <history item id>
     python <core scripts>/addon.py voice clear edit/<id> <block> --not-charged
+    python <core scripts>/addon.py voice clear edit/<id> <block> --discard-paid   # a paid answer that would not lay on the script
 
 Files: edit/<id>/voice_script.json (the text, by blocks), voice_gen.json (plan, attempts, build), generated/voice/
 (each paid answer, kept whole), generated/narration.wav, transcripts/narration.json; the voices and the consent in
 voices.json next to the keys file (~/.config/it-reelsmaker/), never in the project. Key: ELEVENLABS_API_KEY.
 """
-import argparse, array, base64, datetime, difflib, hashlib, json, math, os, re, subprocess, sys, time, unicodedata
+import argparse, array, base64, datetime, difflib, hashlib, json, math, os, re, subprocess, sys, tempfile, time
+import unicodedata
 import http.client, urllib.error, uuid, wave
 from pathlib import Path
 
 try:  # the core's scripts folder is on sys.path when this runs through the core's addon.py
     from reels_common import (edit_dir, editing_json, effective, load_config, load_json, locked, project_root, rel, run,
                               safe_slug, save_json, utf8_stdio, warn)
-except ImportError:
-    sys.exit("run this through the core: python <it-reelsmaker scripts>/addon.py voice <command> ...")
+except ImportError as exc:  # no core on the path at all, or an older core without one of these names
+    sys.exit("run this through the core: python <it-reelsmaker scripts>/addon.py voice <command> ..."
+             if isinstance(exc, ModuleNotFoundError) else
+             f"the narration needs a newer it-reelsmaker core: update the core plugin ({exc})")
 import reels_online as ro
 
 # --- What is known about the service (references/sources.md, with the date of the check) --------------------------
@@ -365,7 +369,9 @@ def cmd_clone(a):
         print("This needs the person's explicit “yes”; then repeat with --yes")
         return
     key = need_key()
-    tmp = Path(project_root()) / ".voice-clone-tmp" / uuid.uuid4().hex
+    # the MP3 copies of the person's voice: in the system's temporary folder, never the project (it may be synced or
+    # committed, and a run stopped half way would leave them there)
+    tmp = tempfile.TemporaryDirectory(prefix="reels-voice-")
     try:
         send = []
         for k, f in enumerate(a.files):
@@ -375,8 +381,7 @@ def cmd_clone(a):
                                                               or "{}").get("format", {}).get("bit_rate") or 0) >= 128000:
                 send.append(f)
                 continue
-            tmp.mkdir(parents=True, exist_ok=True)
-            out = tmp / f"sample-{k + 1}.mp3"  # the service asks for MP3 >= 128 kbit/s
+            out = Path(tmp.name) / f"sample-{k + 1}.mp3"  # the service asks for MP3 >= 128 kbit/s
             run(["ffmpeg", "-v", "error", "-y", "-i", str(f), "-vn", "-ac", "1", "-c:a", "libmp3lame", "-b:a", "192k",
                  str(out)])
             send.append(out)
@@ -393,14 +398,7 @@ def cmd_clone(a):
                      f"created on the account. Do not clone again: run `voice list`, and if the new voice is there, "
                      f"`voice use <voice_id> --name {name} --consent own`")
     finally:
-        if tmp.exists():
-            for f in tmp.iterdir():
-                f.unlink()
-            tmp.rmdir()
-            try:
-                tmp.parent.rmdir()
-            except OSError:
-                pass
+        tmp.cleanup()
     vid = res.get("voice_id") if isinstance(res, dict) else None
     if not vid:
         sys.exit("ElevenLabs answered without a voice_id; check the account's voices (voice list)")
@@ -597,7 +595,8 @@ def plan_of(req, gen):
     for b in req["blocks"]:
         at = gen["attempts"].get(b["fingerprint"])
         state = (at or {}).get("state")
-        (ready if state in READY else blocked if state in UNRESOLVED else buy).append(b)
+        stuck = state == "received" and at.get("parse_error")  # paid, kept, but could not be taken apart
+        (blocked if state in UNRESOLVED or stuck else ready if state in READY else buy).append(b)
     total = sum(b["credits"] for b in buy)
     pid = hashlib.sha256(json.dumps({"voice": req["voice"], "consent": req["rec"]["consent"]["at"],
                                      "blocks": [[b["id"], b["fingerprint"], b["credits"]] for b in buy],
@@ -606,6 +605,11 @@ def plan_of(req, gen):
 
 
 def blocked_message(b, at):
+    if at.get("state") == "received":
+        return (f"block {b['id']}: its paid answer is kept ({at.get('response') or at.get('audio')}), but it could not be "
+                f"taken apart: {at.get('parse_error')}. Nothing is sent again by itself. If it names ffmpeg, fix "
+                f"that and run again; if the voice read the text wrong, voice the block anew (paid again): voice clear "
+                f"edit/<id> {b['id']} --discard-paid")
     return (f"block {b['id']}: a paid request is {at.get('state')}" + (f" (request id {at['request_id']})"
                                                                        if at.get("request_id") else "")
             + f" ({at.get('error') or 'no answer recorded'}). It is not sent again by itself: look at the ElevenLabs "
@@ -950,7 +954,10 @@ def settle(e, req):
                     got = parse_recovered(e, fp, at, req, b["text"])
                 else:
                     got = parse_attempt(e, fp, at, req["format"], b["text"])
-            except AlignError as ex:
+            except (AlignError, RuntimeError, OSError, wave.Error, EOFError) as ex:
+                # the words do not lay on the script, or ffmpeg could not decode the audio: the paid answer stays on
+                # disk, the block is blocked with this reason (plan_of), and a repeat run tries it again (a missing
+                # ffmpeg, say); `clear --discard-paid` voices it anew
                 with editing_json(e / GEN, {}) as gen:
                     gen["attempts"][fp]["parse_error"] = str(ex)[:400]
                     if isinstance(ex, BrokenAnswer):
@@ -1024,6 +1031,10 @@ def cmd_run(a):
                      f"is wrong somewhere: tell the person before going on")
     left = settle(e, req)
     if left:
+        attempts = gen_of(e)["attempts"]
+        for b in left:
+            if (attempts.get(b["fingerprint"]) or {}).get("parse_error"):
+                print("✗ " + blocked_message(b, attempts[b["fingerprint"]]))
         sys.exit(f"not built: block(s) {', '.join(b['id'] for b in left)} have no audio yet (voice status edit/<id>)")
     return build(e, req)
 
@@ -1136,6 +1147,17 @@ def cmd_clear(a):
     e = edit_dir(a.edit)
     req = request_of(e, load_script(e))
     b = find_block(req, a.block)
+    if a.discard_paid:  # a paid answer that could not be taken apart: kept on disk, the block is planned and paid anew
+        with editing_json(e / GEN, {}) as gen:
+            at = gen.setdefault("attempts", {}).get(b["fingerprint"])
+            if not at or at.get("state") != "received" or not at.get("parse_error"):
+                sys.exit(f"block {b['id']}: nothing to discard (only a paid answer that could not be taken apart)")
+            gen.setdefault("cleared", []).append({**at, "fingerprint": b["fingerprint"], "cleared_at": now_iso(),
+                                                  "discarded": "paid"})
+            gen["attempts"].pop(b["fingerprint"])
+        print(f"block {b['id']}: the paid answer is set aside (its file stays); voice plan edit/<id> names the price "
+              f"of voicing it anew")
+        return
     if not a.not_charged:
         sys.exit("clear only after the person checked the ElevenLabs history and found no accepted request for this "
                  "block: then --not-charged (a new run pays again)")
@@ -1370,8 +1392,11 @@ def main(argv=None):
     p = sub.add_parser("recover", help="an unknown block's audio from one ElevenLabs history item")
     p.add_argument("edit"); p.add_argument("block"); p.add_argument("--history", required=True)
     p.set_defaults(fn=cmd_recover)
-    p = sub.add_parser("clear", help="drop an unknown request the person found was not charged")
-    p.add_argument("edit"); p.add_argument("block"); p.add_argument("--not-charged", action="store_true")
+    p = sub.add_parser("clear", help="drop an unknown request the person found was not charged, or set aside a paid "
+                                     "answer that could not be taken apart (--discard-paid: voiced and paid anew)")
+    p.add_argument("edit"); p.add_argument("block")
+    mode = p.add_mutually_exclusive_group()
+    mode.add_argument("--not-charged", action="store_true"); mode.add_argument("--discard-paid", action="store_true")
     p.set_defaults(fn=cmd_clear)
     a = ap.parse_args(argv)
     sys.exit(a.fn(a) or 0)
