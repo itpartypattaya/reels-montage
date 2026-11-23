@@ -2,6 +2,13 @@
 
 What changed in IT Reelsmaker, written for the people who use it. The newest version is on top. The skill shows a short “What's new” note from this file once, on the first edit after an update.
 
+## 1.40.1
+
+- **iPhone photos get their white balance.** In a voice-over or a no-speech reel with an iPhone HEIC among the
+  shots, the automatic white balance stopped on the photo (ffmpeg refuses a filter on a HEIC itself) and the cut
+  was built without the correction; `balance.py --still` and `--ref` on such a photo stopped too. They now read the
+  photo through its upright JPEG, the same picture the cut shows.
+
 ## 1.40.0
 
 - **No repeated frame where your picture meets the speaker.** In a video with a picture of its own, the speaker's

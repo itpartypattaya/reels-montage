@@ -633,6 +633,27 @@ def test_cut_py_makes_a_photo_reel_from_an_iphone_heic(project, tmp_path):
 
 
 @needs_ffmpeg
+@needs_pillow
+def test_the_white_balance_measures_an_iphone_heic_shot_upright(project, tmp_path):
+    # Codex review of PR #63: balance.py gave ffmpeg the HEIC itself with a filter, which ffmpeg refuses on a tiled
+    # HEIC, so the automatic white balance, --still and --ref stopped and cut.py built the reel without the correction
+    heic_reads(tmp_path)
+    e = photo_project(project, [{"source": "h", "dur": 2.0, "move": "still"}, {"source": "p1", "move": "still"}])
+    iphone_heic(project / "h.HEIC")
+    cut = json.loads((e / "cut.json").read_text(encoding="utf-8"))
+    cut["sources"]["h"] = {"file": "h.HEIC", "strangers": []}
+    write_json(e / "cut.json", cut)
+    run_script("balance.py", "edit/ph", "--frames", "2", "--json", cwd=project)  # the automatic measurement
+    run_script("balance.py", "edit/ph", "--ref", "h:0,500,100,80,80", "--json", cwd=project)  # a box on the red half
+    run_script("balance.py", "edit/ph", "--still", "h:0", cwd=project)
+    from PIL import Image
+    still = Image.open(e / "verify" / "still-h-0.00.png").convert("RGB")
+    w, h = still.size
+    assert (w, h) == (1080, 1920), still.size  # scaled as cut.py scales it
+    assert near(still.getpixel((w // 2, h // 4)), (255, 0, 0)) and near(still.getpixel((w // 2, 3 * h // 4)), (0, 0, 255))
+
+
+@needs_ffmpeg
 def test_a_broken_heic_is_an_error_that_names_the_file_and_the_way_out(project):
     # a photo cut off mid-copy (a messenger download that stopped): a clear stop, not a traceback or a tile of it
     import footage
