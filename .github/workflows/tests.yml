@@ -74,7 +74,7 @@ jobs:
         run: python -m pip install -r tests/requirements.txt
       - name: Run the script tests
         # One worker per CPU core; --durations lists the slowest tests for the next round of speed-ups.
-        run: python tools/_dbg_rate.py && python -m pytest tests/scripts/test_transcribe.py -q -k rate
+        run: python -m pytest tests/scripts -q -n auto --durations=15
 
   remotion-kit:
     name: remotion kit (starter project, npm install, tsc)
