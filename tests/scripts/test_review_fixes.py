@@ -185,7 +185,7 @@ def test_audio_trim_uses_frame_duration(tmp_path, monkeypatch):
 
 @needs_ffmpeg
 def test_frame_exact_total_and_apostrophe_path(tmp_path):
-    e = tmp_path / "Anton's reels" / "edit" / "4821"
+    e = tmp_path / "Leon's reels" / "edit" / "4821"
     e.mkdir(parents=True)
     source = make_video(e / "source.mp4", 64, 96, 1, color="blue")
     write_json(e / "cut.json", {"scale": "none", "sources": {"main": str(source)},
@@ -193,7 +193,7 @@ def test_frame_exact_total_and_apostrophe_path(tmp_path):
     run_script("cut.py", e, cwd=e.parent.parent)
     assert cut.check_final(e / "final.mp4", 30, 40) == []
     assert cut.check_final(e / "final.mp4", 30, 20)
-    assert "Anton's" not in (e / "clips" / "list.txt").read_text()
+    assert "Leon's" not in (e / "clips" / "list.txt").read_text()
     assert not list(e.glob("*.part"))
 
 
