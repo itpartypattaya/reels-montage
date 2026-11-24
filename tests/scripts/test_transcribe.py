@@ -169,6 +169,26 @@ def test_rate_leaves_numbers_in_digits_out_of_vowels_and_time(project):
     assert doc["segments"][0]["numbers"] == ["1 270"] and "numbers in digits are left out" in r.stdout
 
 
+def test_rate_gives_the_speech_around_a_number_to_the_number():
+    # CI on Windows: the test above read "mama" (0.2-0.7 s) at 0.68 s of speech. The number's time was cut at its word
+    # timestamps (0.8-1.8), and the mask's spread around it (its +-30 ms widening, the AAC hiss of ffmpeg 9.1 in the
+    # pause read as a consonant) went to the text. The masks below are the ones the runners printed for that sound
+    import transcribe
+
+    def mask(*runs):
+        m = [False] * 250
+        for a, b in runs:
+            m[a:b] = [True] * (b - a)
+        return m
+    words = [{"text": "мама", "start": 0.2, "end": 0.7}, {"text": "1 270", "start": 0.8, "end": 1.8}]
+    for runs, number_s in (([(17, 75), (78, 185)], 1.07), ([(17, 185)], 1.10)):  # Linux; Windows (ffmpeg 9.1)
+        text, num = transcribe.split_speech(mask(*runs), 0.01, 0, 250, words)
+        assert round(text, 2) == 0.58 and round(num, 2) == number_s  # "mama" keeps only its own sound
+    assert transcribe.split_speech(mask((17, 75)), 0.01, 0, 250, words[:1]) == (0.58, 0.0)
+    assert transcribe.split_speech(mask((17, 75)), 0.01, 0, 250, []) == (0.58, 0.0)  # no words: all of it is text
+    assert transcribe.split_speech(mask((17, 75)), 0.01, 30, 250, words)[0] == 0.45  # only the segment's windows
+
+
 def test_snip_language_as_faster_whisper_takes_it(tmp_path):
     # review: "rus" from another transcriber (or "en-US", or the online add-on's "swedish") went to faster-whisper as
     # is and stopped it with "not a valid language code"; main passed None (detect)
