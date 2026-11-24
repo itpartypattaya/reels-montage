@@ -63,7 +63,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from cut import load_cut, lut_inputs, video_graph
-from reels_common import IMAGE_EXT, edit_dir, editing_json, local_media_args, project_root, rel, utf8_stdio, warn
+from reels_common import (PHOTO_EXT, edit_dir, editing_json, local_media_args, photo_file, project_root, rel,
+                          utf8_stdio, warn)
 
 TILE_W = 360            # px: each frame's width in the measured still
 SHEET_W = 1600          # px: the comparison image's width at most
@@ -204,7 +205,13 @@ def frame_times(c, n, windows=None):
 
 def seek(sv, t):
     """ffmpeg's input seek for a frame at source second t: none on a photo (it has one frame)."""
-    return [] if Path(sv["path"]).suffix.lower() in IMAGE_EXT else ["-ss", f"{t:.3f}"]
+    return [] if Path(sv["path"]).suffix.lower() in PHOTO_EXT else ["-ss", f"{t:.3f}"]
+
+
+def frame_input(sv, t):
+    """The source as ffmpeg's input for its frame at second t. A HEIC is read through its upright JPEG, as cut.py
+    reads it (reels_common.photo_file): ffmpeg refuses a filter on a tiled HEIC itself (Codex review of PR #63)."""
+    return [*seek(sv, t), "-i", photo_file(sv["path"])]
 
 
 def frame_size(sv):
@@ -240,7 +247,7 @@ def write_still(c, spec, out_dir):
         sys.exit(f"--still {spec!r}: second {t} is outside the source {source_id!r}")
     out_dir.mkdir(parents=True, exist_ok=True)
     f = out_dir / f"still-{source_id}-{t:.2f}.png"
-    ffmpeg([*seek(sv, t), "-i", sv["path"], "-frames:v", "1", "-vf",
+    ffmpeg([*frame_input(sv, t), "-frames:v", "1", "-vf",
             ",".join(filter(None, [sv["scale"], "setsar=1"])), f])
     return (f, *frame_size(sv))
 
@@ -276,7 +283,7 @@ def make_still(c, times, tmp):
         sv = c["sources"][name]
         vf = ",".join(filter(None, [sv["scale"], f"scale={TILE_W}:-2:flags=area", "setsar=1"]))
         f = tmp / f"frame{k}.png"
-        ffmpeg([*seek(sv, t), "-i", sv["path"], "-frames:v", "1", "-vf", vf, f])
+        ffmpeg([*frame_input(sv, t), "-frames:v", "1", "-vf", vf, f])
         files.append(f)
     still = tmp / "still.png"
     stack = "".join(f"[{k}:v]" for k in range(len(files))) + f"hstack=inputs={len(files)}" if len(files) > 1 else "null"
@@ -293,7 +300,7 @@ def make_patches(c, refs, tmp):
         x, y, w, h = r["box"]
         f = tmp / f"patch{k}.png"
         vf = ",".join(filter(None, [sv["scale"], "setsar=1", f"crop={w}:{h}:{x}:{y}"]))
-        ffmpeg([*seek(sv, r["t"]), "-i", sv["path"], "-frames:v", "1", "-vf", vf, f])
+        ffmpeg([*frame_input(sv, r["t"]), "-frames:v", "1", "-vf", vf, f])
         files.append(f)
         offsets.append(x0)
         x0 += w
