@@ -78,7 +78,7 @@ class Fake:
     def __init__(self, tmp):
         self.tmp, self.log, self.tts, self.balance = tmp, [], [], 30000
         self.history = {}
-        self.voice = {"voice_id": VOICE_ID, "name": "Anton", "category": "cloned", "is_owner": True,
+        self.voice = {"voice_id": VOICE_ID, "name": "Leon", "category": "cloned", "is_owner": True,
                       "voice_verification": {"requires_verification": False}, "preview_url": "https://example.test/p.mp3",
                       "samples": [{"duration_secs": 138.5}], "created_at_unix": 1793210195}
 

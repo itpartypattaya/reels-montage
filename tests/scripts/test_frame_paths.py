@@ -45,7 +45,7 @@ def write_png(path):
 @needs_cv2
 @pytest.mark.parametrize("module", ["faces", "defects"])
 def test_frame_in_a_non_ascii_folder_reaches_the_detector(tmp_path, module):
-    folder = tmp_path / "Антон" / "кадры"
+    folder = tmp_path / "Леон" / "кадры"
     folder.mkdir(parents=True)
     write_png(folder / "00000.png")
     r = detect(module, [folder / "00000.png", folder / "00001.png"])  # the second frame: ffmpeg made none
