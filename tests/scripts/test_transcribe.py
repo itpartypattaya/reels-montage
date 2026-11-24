@@ -181,7 +181,7 @@ def test_rate_gives_the_speech_around_a_number_to_the_number():
             m[a:b] = [True] * (b - a)
         return m
     words = [{"text": "мама", "start": 0.2, "end": 0.7}, {"text": "1 270", "start": 0.8, "end": 1.8}]
-    for runs, number_s in (([(17, 75), (78, 185)], 1.07), ([(17, 185)], 1.10)):  # Linux and macOS; Windows
+    for runs, number_s in (([(17, 75), (78, 185)], 1.07), ([(17, 185)], 1.10)):  # Linux; Windows (ffmpeg 9.1)
         text, num = transcribe.split_speech(mask(*runs), 0.01, 0, 250, words)
         assert round(text, 2) == 0.58 and round(num, 2) == number_s  # "mama" keeps only its own sound
     assert transcribe.split_speech(mask((17, 75)), 0.01, 0, 250, words[:1]) == (0.58, 0.0)
