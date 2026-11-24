@@ -2,6 +2,13 @@
 
 What changed in IT Reelsmaker, written for the people who use it. The newest version is on top. The skill shows a short “What's new” note from this file once, on the first edit after an update.
 
+## 1.40.2
+
+- **Speech rate next to a price.** The measured pace of a segment with a number in digits came out a little slow:
+  the number's own time was cut at its word timestamps, and the speech around it (the edges of its sound, the pause
+  after it) was counted as the text's. Each moment of speech now goes to the nearest word, so the number takes its
+  whole sound with it.
+
 ## 1.40.1
 
 - **iPhone photos get their white balance.** In a voice-over or a no-speech reel with an iPhone HEIC among the

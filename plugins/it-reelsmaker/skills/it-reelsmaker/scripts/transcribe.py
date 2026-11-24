@@ -436,17 +436,23 @@ def is_number(text):
     return bool(re.search(r"\d", t)) and not re.search(r"[^\W\d_]", t)
 
 
-def masked(mask, hop, spans):
-    """Mask windows (speech) inside the union of spans [(start, end)] in seconds."""
-    on, cur = 0, None
-    for a, b in sorted(spans) + [(float("inf"), float("inf"))]:
-        if cur and a <= cur[1]:
-            cur[1] = max(cur[1], b)
+def split_speech(mask, hop, lo, hi, words):
+    """Speech time of mask windows lo..hi -> (seconds of the text, seconds of the numbers in digits). Each speech window
+    goes to the nearest word in time (0 inside it). The mask spreads past a word's timestamps (its +-30 ms widening, a
+    hiss read as a consonant, a pause bridged to the next word), and that spread is the word's own sound: cut at the
+    word's timestamps, the spread around a number was counted as text (CI on Windows: "mama" 0.68 s instead of 0.58)."""
+    spans = [(float(w["start"]), float(w["end"]), is_number(w["text"])) for w in words]
+    text = num = 0
+    for i in range(max(0, lo), min(hi, len(mask))):
+        if not mask[i]:
             continue
-        if cur:
-            on += sum(mask[max(0, int(round(cur[0] / hop))):max(0, int(round(cur[1] / hop)))])
-        cur = [a, b]
-    return on * hop
+        t = (i + 0.5) * hop
+        near = min(spans, key=lambda s: max(s[0] - t, t - s[1], 0.0), default=None)
+        if near and near[2]:
+            num += 1
+        else:
+            text += 1
+    return text * hop, num * hop
 
 
 def cmd_rate(a):
@@ -473,9 +479,7 @@ def cmd_rate(a):
         wlist = [w for w in cap.get("words", []) if w.get("seg") == g["i"]]
         nums = [w for w in wlist if is_number(w["text"])]
         # a number in digits: its vowels are not in the text, so its time is left out too
-        cut = masked(mask, sm.HOP, [(max(g0, float(w["start"])), min(g1, float(w["end"]))) for w in nums
-                                    if min(g1, float(w["end"])) > max(g0, float(w["start"]))])
-        speech = max(0.0, sum(mask[lo:hi]) * sm.HOP - cut)
+        speech, cut = split_speech(mask, sm.HOP, lo, hi, wlist)
         v = sum(vowels(w["text"]) for w in wlist if not is_number(w["text"]))
         rows.append((g, v, speech, [str(w["text"]) for w in nums], cut))
         t = total.setdefault(g.get("source"), [0, 0.0, 0, 0, 0.0])
