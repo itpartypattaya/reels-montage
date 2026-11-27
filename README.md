@@ -6,7 +6,33 @@ English · [中文](README.zh-CN.md) · [Русский](plugins/it-reelsmaker/R
 
 **Give Claude Code a raw talking-head take and get back a finished 1080×1920 Reel, Short or TikTok.** Pauses and retakes are cut by the audio, a virtual camera reframes the shot, subtitles are timed word by word, on-brand graphics are drawn in code, no text lands on a face, and the sound is mastered to −14 LUFS. The editing runs on your computer, and nothing is cut before you approve the plan.
 
-> **Listed in Anthropic's official Claude plugin directory: 16,000+ installs and 5,000+ accounts active in the last 28 days** (directory statistics, November 2026).
+> **Listed in Anthropic's official Claude plugin directory: 27,000+ installs and 7,000+ accounts active in the last 28 days** (directory statistics, November 2026).
+
+## Installed it from the Claude directory? Get the current version
+
+The directory still serves version 1.6.1 from October 2026. Everything in [What's new since 1.6.1](#whats-new-since-161) came after it and is available only from this repository's marketplace.
+
+**Claude Code in a terminal:** add the marketplace and install, as in [Quick start](#quick-start). The marketplace copy takes precedence over the directory one by itself.
+
+**Claude Desktop, Cowork and claude.ai:**
+
+1. Remove the directory copy: Customize → Plugins → IT Reelsmaker → **⋯** → remove. While it is installed, it is the copy that loads.
+2. Customize → Plugins → **+** → Add marketplace → the GitHub repository `itpartypattaya/reels-montage`.
+3. Install **IT Reelsmaker** from that marketplace.
+
+Your brand profiles, settings files and videos live in your own folders, so switching does not touch them.
+
+## What's new since 1.6.1
+
+- **A long recording → a series of clips.** A podcast, webinar or interview of 10–90 minutes: approve a list of clip cards once, then each clip is finished like a single video.
+- **No camera needed.** A voice note from your phone becomes scenes drawn in code over your narration, a voice-over over your own shots or photos, or a reel with no speech at all.
+- **A brand mascot.** A character in your colors, drawn in code or cut from your own character picture, that blinks, gestures on chosen words and moves its mouth with your voice.
+- **The agent reviews its own render before you see it**, as a list of “time · where · problem → fix”, and stops on a defect it could not fix instead of handing it over.
+- **Retakes found by the text**, a storyboard sheet of the cut, and callouts that stay on an object when the camera moves.
+- **Video profiles and a quick path:** say what the video is for, and a known brand edits with fewer questions up front.
+- **The master comes with its cover**, and every decision in the plan and the report comes with its reason.
+
+The full list, version by version: [CHANGELOG](plugins/it-reelsmaker/CHANGELOG.md).
 
 ## What you get
 
